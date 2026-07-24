@@ -49,6 +49,14 @@ fn view_grid(w: u16, h: u16, view: Element) -> String {
     grid(&buf)
 }
 
+/// Snapshots are written with `\n`, but a Windows checkout may materialize them
+/// with CRLF (`core.autocrlf`), which would fail every comparison with a diff
+/// that looks identical to the eye. `.gitattributes` pins the files to LF;
+/// normalizing here keeps the comparison correct under any checkout config.
+fn normalize(text: &str) -> String {
+    text.replace("\r\n", "\n")
+}
+
 /// Compare `actual` against the checked-in snapshot `name`, or write it when
 /// `UPDATE_SNAPSHOTS` is set.
 fn assert_snapshot(name: &str, actual: &str) {
@@ -60,9 +68,9 @@ fn assert_snapshot(name: &str, actual: &str) {
         std::fs::write(&path, actual).unwrap();
         return;
     }
-    let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| {
+    let expected = normalize(&std::fs::read_to_string(&path).unwrap_or_else(|_| {
         panic!("missing snapshot `{name}`; run with UPDATE_SNAPSHOTS=1 to create it")
-    });
+    }));
     assert!(
         expected == actual,
         "snapshot `{name}` mismatch (run UPDATE_SNAPSHOTS=1 to refresh)\n\
@@ -148,4 +156,14 @@ fn snapshot_centered_overlay() {
     }];
     host::paint(&mut buf, area, &theme, &base, &overlays);
     assert_snapshot("centered_overlay", &grid(&buf));
+}
+
+/// A CRLF checkout (`core.autocrlf` on Windows) must not fail every snapshot
+/// with a diff that reads identically — see [`normalize`].
+#[test]
+fn snapshot_comparison_tolerates_crlf_line_endings() {
+    let lf = "╭─ pick ─╮\n│ Alpha  │\n╰────────╯\n";
+    let crlf = lf.replace('\n', "\r\n");
+    assert_eq!(normalize(&crlf), lf);
+    assert_eq!(normalize(lf), lf);
 }
