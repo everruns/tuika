@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crossterm::event::{self, Event as CtEvent, KeyCode as CtKeyCode, KeyEventKind};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::{Terminal, TerminalOptions, Viewport};
@@ -148,10 +149,15 @@ type Build = fn(u64, &Theme) -> Element;
 struct Demo {
     name: &'static str,
     blurb: &'static str,
-    /// Content height in rows; sets the recorded frame's height.
+    /// Frame height in rows, chrome included. The scene is pinned to exactly this
+    /// many rows when recorded, so anything taller is cut off — see [`check`].
     rows: u16,
     /// Motion scenes hold longer and record at a higher frame rate.
     animated: bool,
+    /// The scene fills its frame edge to edge on purpose — a viewport or log tail
+    /// whose whole point is that content runs past the bottom. Exempts it from
+    /// the clipping check in [`check`].
+    fills_frame: bool,
     build: Build,
 }
 
@@ -167,7 +173,22 @@ const fn demo(
         blurb,
         rows,
         animated,
+        fills_frame: false,
         build,
+    }
+}
+
+/// A scene that runs to the bottom of its frame by design.
+const fn filling_demo(
+    name: &'static str,
+    blurb: &'static str,
+    rows: u16,
+    animated: bool,
+    build: Build,
+) -> Demo {
+    Demo {
+        fills_frame: true,
+        ..demo(name, blurb, rows, animated, build)
     }
 }
 
@@ -217,21 +238,21 @@ const DEMOS: &[Demo] = &[
     demo(
         "diff",
         "unified line diff with +/- gutters and line numbers",
-        11,
+        14,
         false,
         scene_diff,
     ),
     demo(
         "ascii_font",
         "large figlet-style block-letter banners",
-        9,
+        12,
         false,
         scene_ascii_font,
     ),
     demo(
         "qr",
         "QR code encoded and drawn with half-blocks",
-        18,
+        24,
         false,
         scene_qr,
     ),
@@ -256,7 +277,7 @@ const DEMOS: &[Demo] = &[
         false,
         scene_flex,
     ),
-    demo(
+    filling_demo(
         "scroll",
         "viewport + scrollbar over long content",
         13,
@@ -281,14 +302,14 @@ const DEMOS: &[Demo] = &[
     demo(
         "slider",
         "value picker over a numeric range",
-        9,
+        10,
         true,
         scene_slider,
     ),
     demo(
         "timeline",
         "keyframed easing tracks sampled from the frame counter",
-        11,
+        12,
         true,
         scene_timeline,
     ),
@@ -299,7 +320,7 @@ const DEMOS: &[Demo] = &[
         false,
         scene_toast,
     ),
-    demo(
+    filling_demo(
         "console",
         "captured stdout/log tail overlay",
         11,
@@ -330,7 +351,7 @@ const DEMOS: &[Demo] = &[
     demo(
         "hyperlink",
         "OSC 8 links — clickable URLs in the transcript",
-        11,
+        12,
         false,
         scene_hyperlink,
     ),
@@ -376,9 +397,9 @@ fn main() -> io::Result<()> {
                 std::process::exit(2);
             };
             if args.iter().any(|a| a == "--dump") {
-                dump(d.name, d.blurb, d.build)
+                dump(d)
             } else {
-                run(d.name, d.blurb, d.build)
+                run(d)
             }
         }
     }
@@ -386,17 +407,31 @@ fn main() -> io::Result<()> {
 
 // ---------------------------------------------------------------------------
 // `tapes` — emit a VHS tape per scene from the registry, so the tapes are
-// generated rather than committed. Recorded at 2× pixel density and displayed
-// at half width, so the GIFs stay crisp on HiDPI screens. `Output` is relative
+// generated rather than committed. Recorded at ~2× pixel density and displayed
+// at `width="880"`, so the GIFs stay crisp on HiDPI screens. `Output` is relative
 // to the tuika crate dir (the generator cds there); the command is an absolute
 // path to this very binary.
 // ---------------------------------------------------------------------------
 
+/// Recorded scene width in columns. Every scene records at the same width so the
+/// GIFs line up in the gallery; only the height varies, per `Demo::rows`.
+const RECORD_COLS: u16 = 66;
+/// Upper bounds on the cell size, in pixels, that JetBrains Mono at
+/// `Set FontSize 40` yields in VHS's `xterm.js`. A tape is sized in *pixels* and
+/// the emulator divides by its own cell size, so these are deliberately rounded
+/// up: the terminal is then never smaller than `RECORD_COLS × rows`, and the
+/// leftover row or column is absorbed by the scene pinning in [`run`].
+const CELL_W: u32 = 26;
+const CELL_H: u32 = 55;
+/// The tape's `Set Padding`, applied on every side.
+const PADDING: u32 = 40;
+
 fn emit_tapes(dir: &Path) -> io::Result<()> {
     fs::create_dir_all(dir)?;
     let bin = std::env::current_exe()?;
+    let width = u32::from(RECORD_COLS) * CELL_W + PADDING * 2;
     for d in DEMOS {
-        let height = u32::from(d.rows) * 52 + 96;
+        let height = u32::from(d.rows) * CELL_H + PADDING * 2;
         let (hold, fps) = if d.animated {
             ("4s", 24)
         } else {
@@ -409,9 +444,9 @@ fn emit_tapes(dir: &Path) -> io::Result<()> {
              \n\
              Set Shell bash\n\
              Set FontSize 40\n\
-             Set Width 1760\n\
+             Set Width {width}\n\
              Set Height {height}\n\
-             Set Padding 40\n\
+             Set Padding {PADDING}\n\
              Set Framerate {fps}\n\
              \n\
              Hide\n\
@@ -454,6 +489,40 @@ fn check() -> io::Result<()> {
                 gif.display()
             )),
         }
+    }
+
+    // Every scene fits its recorded frame. `rows` is hand-picked, so a scene that
+    // outgrows it records a *silently* clipped GIF — which is how a QR code, a
+    // banner, and a diff shipped with their bottoms cut off. Rendering the scene
+    // again with room to spare surfaces that: any line the taller frame shows and
+    // the recorded one does not is a line the recording loses. Scenes that overflow
+    // by design (`fills_frame`) are exempt.
+    for d in DEMOS.iter().filter(|d| !d.fills_frame) {
+        let lost = lost_to_clipping(d, d.rows);
+        if !lost.is_empty() {
+            errors.push(format!(
+                "scene `{}` is clipped by its {}-row frame; {} line(s) never make it \
+                 into the recording, starting with `{}` — raise `rows` and re-record",
+                d.name,
+                d.rows,
+                lost.len(),
+                lost[0].trim()
+            ));
+        }
+    }
+
+    // Guard the guard. A comparison that stops finding anything would let the
+    // loop above pass vacuously, so require it to still have teeth: squeezing a
+    // scene by a row has to register somewhere.
+    if !DEMOS
+        .iter()
+        .any(|d| !lost_to_clipping(d, d.rows.saturating_sub(1)).is_empty())
+    {
+        errors.push(
+            "the clipping check no longer detects a scene squeezed by a row — it is \
+             passing vacuously"
+                .to_owned(),
+        );
     }
 
     // No orphan recording without a scene.
@@ -506,6 +575,31 @@ fn check() -> io::Result<()> {
         }
         std::process::exit(1);
     }
+}
+
+/// Lines `d` would paint with room to spare that a `rows`-tall frame never
+/// shows — that is, the content a recording of that height silently loses.
+fn lost_to_clipping(d: &Demo, rows: u16) -> Vec<String> {
+    /// Extra rows granted to the reference render. Wide enough to reveal a
+    /// caption or a couple of trailing lines, narrow enough that a scene sized
+    /// against the terminal does not reflow into something unrecognizable.
+    const SLACK: u16 = 8;
+
+    let theme = Theme::default();
+    let at = |rows: u16| {
+        let root = framed(d.name, d.blurb, (d.build)(24, &theme), &theme);
+        let buffer = tuika::testing::render(root.as_ref(), RECORD_COLS, rows, &theme);
+        tuika::testing::grid(&buffer)
+            .lines()
+            .map(|l| l.trim_end().to_owned())
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+    };
+    let shown = at(rows);
+    at(rows + SLACK)
+        .into_iter()
+        .filter(|l| !shown.contains(l))
+        .collect()
 }
 
 /// File stems (without extension) of every `*.ext` entry in `dir`.
@@ -563,17 +657,27 @@ fn framed(name: &str, blurb: &str, body: Element, theme: &Theme) -> Element {
 }
 
 /// Render one frame into an in-memory buffer and print it — no terminal needed.
-fn dump(name: &str, blurb: &str, build: Build) -> io::Result<()> {
+///
+/// Uses the scene's recorded geometry, so a dump is a faithful preview of the
+/// GIF: content that would be clipped out of the recording is clipped here too.
+fn dump(d: &Demo) -> io::Result<()> {
     let theme = Theme::default();
-    let (w, h) = (76u16, 20u16);
-    let root = framed(name, blurb, build(24, &theme), &theme);
-    let buffer = tuika::testing::render(root.as_ref(), w, h, &theme);
+    let root = framed(d.name, d.blurb, (d.build)(24, &theme), &theme);
+    let buffer = tuika::testing::render(root.as_ref(), RECORD_COLS, d.rows, &theme);
     println!("{}", tuika::testing::grid(&buffer));
     Ok(())
 }
 
 /// Interactive loop: animate from a frame counter until `q`/`Esc`.
-fn run(name: &str, blurb: &str, build: Build) -> io::Result<()> {
+///
+/// The scene is pinned to `RECORD_COLS × d.rows` rather than filling the
+/// terminal. A recorder sizes its window in pixels and the emulator divides by
+/// whatever cell size the font happens to give it, so "how many rows the scene
+/// gets" is otherwise a property of the recording host — which is how demos ended
+/// up clipped. Pinning makes the registry the authority instead, and the surplus
+/// (the tape asks for a little more room than the scene needs) is painted in the
+/// theme background, so it reads as margin.
+fn run(d: &Demo) -> io::Result<()> {
     let _session = tuika::TerminalSession::enter()?;
     let mut terminal = Terminal::with_options(
         ratatui::backend::CrosstermBackend::new(io::stdout()),
@@ -586,8 +690,17 @@ fn run(name: &str, blurb: &str, build: Build) -> io::Result<()> {
     loop {
         terminal.draw(|f| {
             let area = f.area();
-            let root = framed(name, blurb, build(frame, &theme), &theme);
-            paint(f.buffer_mut(), area, &theme, root.as_ref(), &[]);
+            let (w, h) = (area.width.min(RECORD_COLS), area.height.min(d.rows));
+            let scene = Rect {
+                x: area.x + (area.width - w) / 2,
+                y: area.y + (area.height - h) / 2,
+                width: w,
+                height: h,
+            };
+            f.buffer_mut()
+                .set_style(area, Style::default().bg(theme.background));
+            let root = framed(d.name, d.blurb, (d.build)(frame, &theme), &theme);
+            paint(f.buffer_mut(), scene, &theme, root.as_ref(), &[]);
         })?;
         if event::poll(Duration::from_millis(80))?
             && let CtEvent::Key(key) = event::read()?
@@ -1076,13 +1189,14 @@ fn scene_ascii_font(frame: u64, theme: &Theme) -> Element {
 fn scene_qr(frame: u64, theme: &Theme) -> Element {
     let _ = frame;
     // Byte-mode v1-4 encoder; a short URL fits comfortably in version 1-2.
-    let qr = QrCode::encode("https://opentui.com", QrEcc::Medium)
+    const PAYLOAD: &str = "https://everruns.com";
+    let qr = QrCode::encode(PAYLOAD, QrEcc::Medium)
         .map(element)
         .unwrap_or_else(|| caption("(payload too large)", theme));
     view! {
         col(gap = 1) {
             grow(1) { node(qr) }
-            fixed(1) { node(caption("QrCode::encode(\"https://opentui.com\", QrEcc::Medium)", theme)) }
+            fixed(1) { node(caption(&format!("QrCode::encode(\"{PAYLOAD}\", QrEcc::Medium)"), theme)) }
         }
     }
 }

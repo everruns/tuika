@@ -486,7 +486,7 @@ pub fn encode(data: &[u8], ecc: QrEcc) -> Option<Vec<Vec<bool>>> {
 /// ```no_run
 /// use tuika::{QrCode, QrEcc, Theme};
 /// let theme = Theme::default();
-/// let qr = QrCode::encode("https://example.com", QrEcc::Medium).expect("fits in v1-4");
+/// let qr = QrCode::encode("https://everruns.com", QrEcc::Medium).expect("fits in v1-4");
 /// // `qr` is a `View`; paint it or embed it in a `Flex`.
 /// # let _ = (theme, qr);
 /// ```
