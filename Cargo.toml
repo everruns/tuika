@@ -33,6 +33,7 @@ categories = ["command-line-interface"]
 # See `tests/packaging.rs` for the guard that keeps this list honest.
 exclude = [
     "docs/demos/*.gif",
+    "docs/showcases/*.gif",
     "docs/styling/*.gif",
     "docs/themes/*.gif",
     "/.agents",

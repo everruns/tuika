@@ -3,7 +3,7 @@
 //! Two things must stay out of the tarball, and `Cargo.toml`'s `exclude` is the
 //! only thing keeping them out:
 //!
-//! - The `docs/` demo/theme/styling GIFs are ~8 MiB and serve only the
+//! - The `docs/` demo/showcase/theme/styling GIFs are ~8 MiB and serve only the
 //!   GitHub-rendered README and `docs/*.md`; docs.rs builds from the
 //!   hand-written `//!` header in `lib.rs`, which references no images.
 //! - Repository machinery. tuika is the *root* package of its repo, so the
@@ -50,12 +50,13 @@ fn packaged_files() -> Vec<String> {
 fn heavy_doc_gifs_are_excluded_from_the_package() {
     let files = packaged_files();
 
-    // No demo/theme/styling GIF may ship: those are GitHub-only assets.
+    // No demo/showcase/theme/styling GIF may ship: those are GitHub-only assets.
     let bundled_heavy_gifs: Vec<&String> = files
         .iter()
         .filter(|f| {
             f.ends_with(".gif")
                 && (f.starts_with("docs/demos/")
+                    || f.starts_with("docs/showcases/")
                     || f.starts_with("docs/styling/")
                     || f.starts_with("docs/themes/"))
         })

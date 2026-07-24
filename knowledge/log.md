@@ -3,6 +3,19 @@
 Significant changes to tuika's durable knowledge are recorded here. Routine
 wording, formatting, and link fixes do not need entries.
 
+## 2026-07-24 — Showcases
+
+- Added `docs/showcases.md`: applications built on tuika (yolop, LLMSim), each
+  with a recording of its real UI. It answers a question the component gallery
+  cannot — what the toolkit looks like carrying a product — and gives the
+  README's *Used in* list somewhere to point.
+- Recorded it as an explicit exception to the "every visual is generated from
+  checked-in code" rule, with two constraints written into
+  [Documentation](specs/documentation.md): a showcase must record
+  deterministically and offline, and it must not misrepresent the host. Both
+  scenes are driven by a local LLMSim, so no provider key or live model is
+  involved.
+
 ## 2026-07-24 — Changelog format: demos in, commit links out
 
 - Release notes now **show** the release: `### Highlights` embeds a VHS

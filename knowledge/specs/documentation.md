@@ -23,6 +23,11 @@ terminal UI with tuika without requiring knowledge of repository internals.
     build or regeneration instructions.
   - `docs/features.md`, `docs/keymap.md`, `docs/styling.md`, `docs/themes.md` —
     focused guides, each with its generated assets in a same-named subdirectory.
+  - `docs/showcases.md` — applications built on tuika: what each one is, where to
+    find it, and a recording of its UI. It exists to answer "what does this look
+    like carrying a real product?", which the component gallery cannot. Entries
+    are host-owned software, so the page states what it shows and links out; it
+    does not document the hosts.
 - rustdoc is public documentation too. The crate-level `//!` header in `lib.rs`
   is what docs.rs renders as the front page; component demos are embedded inline
   on the relevant type via `raw.githubusercontent.com` URLs so they resolve
@@ -90,10 +95,30 @@ to docs.rs.
 Regenerate an asset whenever the behavior or appearance it depicts changes — a
 stale recording is a documentation defect, not cosmetic debt.
 
+### Showcase recordings
+
+The showcase recordings are the one exception to "generated from code that is
+checked in": they capture *other projects*, so the source of truth is each host's
+own repository, and `scripts/gen-showcase-demos.sh` clones and builds them into a
+cache directory to record them. They live outside `docs/demos/`, so they are also
+outside the `demo -- check` invariant — nothing fails CI when one is
+unreferenced, and the pairing is kept by review.
+
+Two constraints govern any new showcase scene:
+
+- **It must record deterministically and offline.** A demo that depends on a
+  provider key, a paid API, or run-to-run model output is not reproducible by a
+  maintainer and cannot be regenerated when the look changes. Both current scenes
+  are driven by a local LLMSim — yolop against a *scripted* simulator, and the
+  LLMSim dashboard against a traffic loop the generator drives itself.
+- **It must not misrepresent the host.** The recording shows the host's real UI
+  doing something it really does; where the inputs are simulated, the page says
+  so.
+
 ### The crate/GitHub asset split
 
-The demo, theme, and styling GIFs total ~8 MiB and are consumed only by the
-GitHub-rendered README and `docs/*.md`. docs.rs renders the hand-written `//!`
+The demo, showcase, theme, and styling GIFs total ~12 MiB and are consumed only
+by the GitHub-rendered README and `docs/*.md`. docs.rs renders the hand-written `//!`
 header, which references none of them, so bundling them only bloats the
 published `.crate`. `Cargo.toml`'s `exclude` keeps them — and the repository
 machinery (`knowledge/`, `.agents/`, `.github/`, `scripts/`) — out of the
