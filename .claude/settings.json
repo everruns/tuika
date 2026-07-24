@@ -1,0 +1,20 @@
+{
+  "gitAttribution": false,
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/fix-git-identity.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
