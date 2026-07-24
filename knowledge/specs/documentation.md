@@ -87,10 +87,28 @@ staged by hand. The rule is that the *scene registry is the source of truth*:
   gate: shipped history may name a scene that no longer exists.
 
 `cargo run --example demo -- check` is the integrity gate: every scene has a
-non-empty recording, no orphan GIF lingers, and every `demos/<name>.gif`
-referenced by the gallery markdown or a rustdoc embed maps to a real scene. It
-runs in CI, so gallery drift fails the build instead of shipping a broken image
-to docs.rs.
+non-empty recording, no orphan GIF lingers, every `demos/<name>.gif` referenced
+by the gallery markdown or a rustdoc embed maps to a real scene, and no scene is
+clipped by the frame it records into. It runs in CI, so gallery drift fails the
+build instead of shipping a broken image to docs.rs.
+
+The clipping assertion exists because a scene's recorded height is a hand-picked
+number in the registry, and nothing about a too-small frame *looks* wrong from
+inside the harness — the terminal just paints fewer rows. Several demos shipped
+with their bottoms cut off before it was added. The check re-renders each scene
+with room to spare and compares: any line the taller frame shows and the recorded
+one does not is a line the GIF loses. Scenes that overflow deliberately — a
+scroll viewport, a log tail — declare it in the registry rather than being
+special-cased in the check.
+
+For that check to mean anything, the registry has to be what decides a scene's
+frame. A VHS tape is sized in *pixels*, and the emulator divides by whatever cell
+size the font gives it, so the same tape yields different row counts on different
+recording hosts — the original clipping was exactly this: heights computed from a
+cell size the recorder did not actually use. The harness therefore pins each
+scene to a fixed column count and its registry row count, paints the surplus in
+the theme background, and asks the tape for slightly more room than it needs.
+Font metrics can then drift without changing what a demo shows.
 
 Regenerate an asset whenever the behavior or appearance it depicts changes — a
 stale recording is a documentation defect, not cosmetic debt.

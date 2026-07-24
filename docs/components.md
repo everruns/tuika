@@ -505,7 +505,7 @@ and handed to `QrCode::from_matrix`.
 
 ```rust
 use tuika::{QrCode, QrEcc, view};
-let qr = QrCode::encode("https://example.com", QrEcc::Medium).expect("fits v1–4");
+let qr = QrCode::encode("https://everruns.com", QrEcc::Medium).expect("fits v1–4");
 view! { node(qr) }
 ```
 

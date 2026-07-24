@@ -3,6 +3,21 @@
 Significant changes to tuika's durable knowledge are recorded here. Routine
 wording, formatting, and link fixes do not need entries.
 
+## 2026-07-24 — Demo recordings can no longer be silently clipped
+
+- Six gallery GIFs (`qr`, `ascii_font`, `diff`, `slider`, `timeline`,
+  `hyperlink`) shipped with content cut off: each scene's recorded height is a
+  hand-picked number in the `DEMOS` registry, and outgrowing it clips the
+  recording without failing anything.
+- Root cause: the tape heights were computed from a cell size the recorder did
+  not actually use, so a scene's `rows` was never the number of rows it got. The
+  harness now pins each scene to a fixed frame and the tapes ask for slightly
+  more room than that, making font metrics irrelevant to what a demo shows.
+- `demo -- check` now asserts a scene fits the frame it records into, and scenes
+  that overflow by design declare it in the registry. `--dump` renders at the
+  scene's recorded geometry, so the pre-record preview shows the real framing
+  instead of a roomier one. See [Documentation](specs/documentation.md).
+
 ## 2026-07-24 — Showcases
 
 - Added `docs/showcases.md`: applications built on tuika (yolop, LLMSim), each

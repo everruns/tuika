@@ -183,8 +183,14 @@ scripts/gen-demos.sh              # all scenes
 scripts/gen-demos.sh spinner tabs # just these
 ```
 
-Recordings are captured at 2× pixel density and displayed at half width
-(`width="880"` / rustdoc's `max-width`), so they stay crisp on HiDPI screens.
+Recordings are captured at ~2× pixel density and displayed at `width="880"`
+(rustdoc uses its own `max-width`), so they stay crisp on HiDPI screens.
+
+A tape is sized in *pixels*; how many rows and columns that buys is up to the
+emulator's font metrics, so the harness pins each scene to `RECORD_COLS × rows`
+and paints the surplus in the theme background. The registry, not the recording
+host, decides what a scene's frame is — which is what makes `--dump` and the
+clipping check below trustworthy.
 
 The theme and stylesheet galleries have their own generators —
 [`scripts/gen-theme-demos.sh`](scripts/gen-theme-demos.sh) (one recording per
@@ -195,8 +201,12 @@ bundled theme, from `tuika::themes::PRESETS`) and
 ### Adding a component demo
 
 1. Add a `scene_*` builder and a `DEMOS` entry in `examples/demo.rs` (set
-   `rows` to the content height and `animated` for motion scenes).
-2. Confirm it renders: `cargo run --example demo -- <name> --dump`.
+   `rows` to the frame height and `animated` for motion scenes). Use
+   `filling_demo` instead of `demo` only for a scene that runs past the bottom of
+   its frame on purpose — a viewport or a log tail.
+2. Confirm it renders: `cargo run --example demo -- <name> --dump`. The dump uses
+   the scene's recorded geometry, so what it prints is what the GIF will show —
+   including anything `rows` is too small to fit.
 3. Record it: `scripts/gen-demos.sh <name>`.
 4. Reference `demos/<name>.gif` in `docs/components.md` and inline on the
    component's `struct` doc (via the `raw.githubusercontent.com/.../main/...`
@@ -233,11 +243,13 @@ cargo run --example screenshot -- run     # animate it (what VHS records)
 ### The check invariant
 
 `demo -- check` asserts every scene has a non-empty recording, no orphan GIF
-lingers, and every `demos/<name>.gif` referenced by the gallery markdown
+lingers, every `demos/<name>.gif` referenced by the gallery markdown
 (`components.md`, `features.md`) or a rustdoc embed (component docs plus
-module-level docs like `overlay.rs`) maps to a real scene. It runs in the CI MSRV
-job and at the end of the generator, so gallery drift fails CI instead of
-shipping a broken image to docs.rs.
+module-level docs like `overlay.rs`) maps to a real scene, and no scene is
+clipped by its own frame — it re-renders each one with room to spare and fails on
+any line the recorded height would cut off (`filling_demo` scenes are exempt). It
+runs in the CI MSRV job and at the end of the generator, so gallery drift fails
+CI instead of shipping a broken image to docs.rs.
 
 ## Showcase demos
 
