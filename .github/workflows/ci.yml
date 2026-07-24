@@ -186,9 +186,18 @@ jobs:
       - name: Build
         run: cargo build --locked --all-targets
 
+      # cargo-llvm-cov re-runs the suite in its own instrumented target dir
+      # (`target/llvm-cov-target`) and builds only *test* targets there, so the
+      # `gallery` example the PTY smoke launches would be missing — the Build
+      # step above put it under `target/debug`. Export the instrumentation env
+      # once (`show-env`) and drive cargo directly, so the examples land beside
+      # the test binaries the smoke test resolves them from.
       - name: Unit and integration tests with coverage
         run: |
-          cargo llvm-cov --no-report --all-features --workspace
+          source <(cargo llvm-cov show-env --export-prefix)
+          cargo llvm-cov clean --workspace
+          cargo build --locked --all-features --examples
+          cargo test --locked --all-features --workspace --tests
           cargo llvm-cov report --lcov --output-path lcov.info
           cargo llvm-cov report --summary-only
 
@@ -200,8 +209,12 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
+      # Only when the suite passed: a failing test aborts before the report is
+      # written, and `if-no-files-found: error` would then bury the real failure
+      # under a second, meaningless one. It still guards silent report loss on a
+      # green run.
       - name: Upload coverage artifact
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v7
         with:
           name: lcov-coverage

@@ -4,6 +4,9 @@
 **/*.rs.bk
 Cargo.lock.bak
 
+# Coverage report written by `cargo llvm-cov report --lcov`
+/lcov.info
+
 # Python (scripts/*.py are run by CI; local bytecode only)
 __pycache__/
 *.pyc
