@@ -72,7 +72,7 @@ jobs:
       # it. It compiles `-p tuika` alone: the declared `rust-version` is tuika's
       # promise to its consumers, and `tuika-codeformatters` carries its own.
       - name: Install Rust 1.88
-        uses: dtolnay/rust-toolchain@1.88.0
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -120,7 +120,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@1.100.0
         with:
           components: rustfmt, clippy
 
@@ -145,7 +145,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -169,7 +169,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -225,7 +225,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -255,7 +255,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -297,7 +297,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
