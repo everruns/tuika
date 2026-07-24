@@ -1,0 +1,117 @@
+---
+type: Policy
+title: Documentation Specification
+description: Defines the boundary between tuika's public documentation and its internal project knowledge, and the contract for its generated visual assets.
+---
+
+# Documentation Specification
+
+## Purpose
+
+This specification defines the boundary between tuika's public documentation and
+its internal development memory. Public documentation must help someone build a
+terminal UI with tuika without requiring knowledge of repository internals.
+
+## Information architecture
+
+- `README.md` is the public entry point **and the crates.io README**. It
+  explains the model, presents the primary APIs, and links to the guides. Its
+  relative links resolve against the repository, so they must stay valid there.
+- `docs/` is public, task-oriented documentation. A page must stand on its own
+  for someone who added `tuika` to their `Cargo.toml`:
+  - `docs/components.md` — the component gallery. **Presentational only**: no
+    build or regeneration instructions.
+  - `docs/features.md`, `docs/keymap.md`, `docs/styling.md`, `docs/themes.md` —
+    focused guides, each with its generated assets in a same-named subdirectory.
+- rustdoc is public documentation too. The crate-level `//!` header in `lib.rs`
+  is what docs.rs renders as the front page; component demos are embedded inline
+  on the relevant type via `raw.githubusercontent.com` URLs so they resolve
+  there.
+- `knowledge/specs/` is internal durable memory: intent, constraints, tradeoffs,
+  and architectural decisions for maintainers.
+- `.agents/` and `AGENTS.md` contain contributor and agent workflows, not user
+  guidance.
+
+## Direction of links
+
+The public documentation boundary is one-way:
+
+- `README.md` and files below `docs/` MUST NOT link to internal documents below
+  `knowledge/` or `.agents/`, or require users to read them.
+- Public pages MAY link to other public pages, docs.rs, external standards, and
+  source files when those links help complete a task.
+- Specs MAY link to public documentation to identify the user-facing surface.
+- Internal contributor material MAY link to both.
+
+Removing an internal link must not remove information users need. Move or
+summarize the relevant operational guidance in public docs first.
+
+CI enforces the link direction and runs the OKF bundle validator; review still
+owns clarity, task completeness, working examples, and accurate warnings.
+
+## Change requirements
+
+- A new public API needs rustdoc that says what it is for, and a README or guide
+  mention if a user would not otherwise discover it.
+- Behavior changes update the affected README or guide in the same change.
+  Architectural changes update the affected spec as well.
+- Public and internal descriptions must agree, but must not duplicate exhaustive
+  source-level detail. Specs keep the *why*; code is the *what*.
+- Renames and removals repair inbound links in the same change.
+- Documentation-only changes are validated with the boundary check and a review
+  of changed relative links.
+
+## Generated visual assets
+
+Every visual in this repository is generated from code that is checked in, not
+staged by hand. The rule is that the *scene registry is the source of truth*:
+
+- Component demos come from the `DEMOS` registry in `examples/demo.rs`; VHS
+  tapes are generated per scene into a temp dir and are **not committed**.
+- The README hero and the theme gallery come from the shared `scene()` in
+  `examples/screenshot.rs`, so hero and themes cannot drift apart.
+- The stylesheet gallery comes from the variant list in `examples/styling.rs`.
+- The image demo is rendered directly by `examples/image_demo.rs` rather than
+  recorded, because VHS captures through `ttyd` + `xterm.js`, which implements
+  no graphics protocol and would only ever show the text fallback.
+
+`cargo run --example demo -- check` is the integrity gate: every scene has a
+non-empty recording, no orphan GIF lingers, and every `demos/<name>.gif`
+referenced by the gallery markdown or a rustdoc embed maps to a real scene. It
+runs in CI, so gallery drift fails the build instead of shipping a broken image
+to docs.rs.
+
+Regenerate an asset whenever the behavior or appearance it depicts changes — a
+stale recording is a documentation defect, not cosmetic debt.
+
+### The crate/GitHub asset split
+
+The demo, theme, and styling GIFs total ~8 MiB and are consumed only by the
+GitHub-rendered README and `docs/*.md`. docs.rs renders the hand-written `//!`
+header, which references none of them, so bundling them only bloats the
+published `.crate`. `Cargo.toml`'s `exclude` keeps them — and the repository
+machinery (`knowledge/`, `.agents/`, `.github/`, `scripts/`) — out of the
+tarball; only `docs/hero.gif` and `docs/demos/image.svg`, which the crates.io
+README embeds by relative path, ship. `tests/packaging.rs` guards the split.
+
+### Capture toolchain
+
+Reproducing any VHS capture needs the same tools on `PATH`: **VHS**, which
+drives **ttyd** and **ffmpeg** (both installed separately) and renders frames
+through a headless Chromium it fetches via `go-rod` on first run into
+`~/.cache/rod`.
+
+- `ttyd` and `ffmpeg` come from the system package manager.
+- VHS ships prebuilt binaries; when a release download is unavailable, build it
+  with `go install github.com/charmbracelet/vhs@latest` (`GOTOOLCHAIN=auto` lets
+  Go fetch a new enough toolchain).
+
+In a container or as root, set `VHS_NO_SANDBOX=true`; to reuse an installed
+browser instead of the `go-rod` download, point `ROD_BROWSER_BIN` at its
+`chrome` binary. These knobs belong in the shell around a recording, not in
+generated tapes, so the tapes stay portable.
+
+## Public surface
+
+- [`README.md`](../../README.md)
+- [`docs/`](../../docs/)
