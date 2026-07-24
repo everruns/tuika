@@ -1,0 +1,8 @@
+# Golden snapshots are byte-compared against grids the tests build with `\n`,
+# so they must stay LF in the working tree even on a Windows checkout with
+# `core.autocrlf=true`.
+src/snapshots/*.txt text eol=lf
+
+# Generated demo assets are binary; never touch their bytes.
+*.gif binary
+*.png binary

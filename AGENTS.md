@@ -122,14 +122,17 @@ tuika's own suite covers more:
 - **Property tests** (`src/proptests.rs`, `proptest`) — solver and overlay
   invariants for *any* input (children stay in bounds, flex fills exactly).
 - **Golden snapshots** (`src/snapshots.rs`) — whole screens diffed against
-  checked-in glyph grids; refresh with `UPDATE_SNAPSHOTS=1`.
+  checked-in glyph grids; refresh with `UPDATE_SNAPSHOTS=1`. The grids are
+  LF-only (`.gitattributes`), so a CRLF checkout cannot fail them.
 - **Resize / degenerate sizes** — a size sweep from `0×0` up asserts no panic and
   no out-of-clip writes.
 - **PTY smoke** (`tests/pty_smoke.rs`) — drives the `gallery` example under a
   pseudo-terminal and asserts the terminal-facing protocol: alternate-screen
   enter/leave, cursor and mouse-capture lifecycle, OSC 9;4 progress, OSC 8
   hyperlinks, truecolor and Braille cells through a reference terminal parser,
-  resize survival, and clean exit.
+  resize survival, and clean exit. It launches a *built* example, so any runner
+  that rebuilds the suite elsewhere — CI's coverage step, notably — has to build
+  the examples into that same directory.
 - **Packaging** (`tests/packaging.rs`) — drives `cargo package --list` so the
   published `.crate` never re-inflates with repo-only files or heavy GIFs.
 

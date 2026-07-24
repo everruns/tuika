@@ -39,6 +39,12 @@ Snapshots refresh with `UPDATE_SNAPSHOTS=1`. A snapshot diff is a prompt to
 look, not a prompt to bless: regenerate only after confirming the new grid is
 what the change intended.
 
+Snapshot grids are LF-only: the comparison is byte-exact against a grid built
+with `\n`, so a CRLF checkout would fail every snapshot with a diff that reads
+identically. `.gitattributes` pins the files to LF and the comparison normalizes
+line endings, so neither a Windows CI leg nor a contributor's `core.autocrlf`
+can turn a green suite red.
+
 The consumer-facing subset of this machinery — `testing::{render, render_sizes,
 grid}` — is public API, so hosts test their own views the same way. Changes to
 it are API changes.
@@ -54,6 +60,14 @@ grid rather than a byte soup.
 It asserts *pairs*: every enter has its matching restore. A renderer that leaves
 the terminal in the alternate screen, with the cursor hidden or mouse capture on,
 is the failure mode a user notices most and a buffer test can never catch.
+
+Because it launches a *built example* rather than calling into the library, the
+`gallery` binary must exist beside the test binary. That constrains how coverage
+runs: `cargo llvm-cov` builds only test targets into its own instrumented target
+directory, so CI exports the instrumentation environment (`llvm-cov show-env`)
+and builds the examples there before running the suite. A coverage step that
+shells out to `cargo llvm-cov` directly leaves the example unbuilt and the smoke
+test fails on a missing binary, not on real behavior.
 
 Because the assertions read the gallery's on-screen text, that example's box
 titles, spinner style, and footer URL are load-bearing — changing them means
@@ -88,6 +102,12 @@ renderer change, a dependency bump, a toolchain upgrade — regenerate with
 baseline updated in a separate commit hides which change moved the numbers. To
 refresh from CI's exact environment, dispatch the workflow manually and commit
 the uploaded `iai-baseline` artifact.
+
+Blessing locally is legitimate when the toolchain matches CI's: counts measured
+on a matching local toolchain have landed bit-identical on the scroll benches and
+inside 0.2% on the markdown and highlighter ones — far under the ±2% tolerance.
+Treat a *pattern* in the drift as the signal worth reading: an environment
+difference moves everything, while one bench family moving alone is the code.
 
 ## MSRV
 
