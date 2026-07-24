@@ -27,9 +27,16 @@ Use this skill when the user asks to:
 **ALL outcomes below are MANDATORY. Do not skip or weaken any requirement.**
 
 1. **The branch state is safe.**
-   - Do not ship from `main`.
+   - A PR is required only for **external contributions**; as a maintainer you
+     may land directly on `main` once CI is green. Work on a branch anyway when
+     the change is risky or wants review.
    - The working tree must be clean before the final push.
    - Prefer rebasing onto the latest `origin/main` before merge.
+   - Every commit you push MUST be signed and verify (`git log --format='%h %G?'`
+     shows `G`/`U`, never `N`). A rebase or amend re-signs only when told to:
+     `git rebase --gpg-sign=$COMMIT_SIGNING_KEY_ID`. The key comes from Doppler
+     (`everruns-dev` / `dev`, `COMMIT_SIGNING_KEY_B64`) — see `AGENTS.md`
+     § Secrets and § Signing.
 
 2. **The requested goal is achieved with evidence.**
    - Review the delta with `git diff origin/main...HEAD` and `git log origin/main..HEAD`.
@@ -100,9 +107,9 @@ Use this skill when the user asks to:
    - For anything deferred, list it under a **Follow-ups** section in the PR body with a one-line rationale.
    - If there are no follow-ups, state "No follow-ups." in the PR body.
 
-9. **The PR is mergeable and merged safely.**
-   - Push the branch.
-   - Create or update the PR.
+9. **The change lands safely.**
+   - Push the branch (or `main`, for maintainer work that needs no PR).
+   - Create or update the PR when one is required.
    - Address every review comment — including low-confidence suggestions, nits, and bot comments. For each comment, post an inline reply on the same thread explaining the resolution (and apply a code change too when one is needed), then mark that thread resolved. An inline reply is required even when the fix is a pure code change; no comment may be left unanswered or unresolved before merge.
    - Wait for CI to go green.
    - Merge with squash only after CI is green and the final review sweep is clean.

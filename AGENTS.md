@@ -264,6 +264,24 @@ iTerm2, Windows Terminal) capture artifacts best-effort. Because the assertions
 read the gallery's on-screen text, its box titles, Braille spinner, and footer
 URL are load-bearing — changing them means updating the assert script.
 
+## Secrets
+
+- Every secret lives in [Doppler](https://doppler.com). Nothing secret belongs in
+  the repository, in a `.env` file, in a workflow literal, or pasted into a
+  command line.
+- Project **`everruns-dev`**, config **`dev`**.
+- Read secrets at the point of use instead of copying values around:
+
+```bash
+doppler run --project everruns-dev --config dev -- <command>
+doppler run --only-secrets COMMIT_SIGNING_KEY_B64 --project everruns-dev --config dev -- <command>
+```
+
+- `DOPPLER_TOKEN` is supplied by the environment. If it is missing, stop and ask
+  — do not fall back to an unmanaged copy of a credential.
+- Never print a secret to stdout, a log, or a commit. Write key material to a
+  private path with `0600` permissions and delete it when done.
+
 ## Git and commits
 
 - Conventional Commits: `type(scope): description`.
@@ -275,8 +293,50 @@ URL are load-bearing — changing them means updating the assert script.
 Commit attribution must be a real human user. If git identity is missing or
 agent-like, stop and ask before committing.
 
+### Signing
+
+**Every commit must be signed and must show as Verified on GitHub.** This is a
+hard requirement, not a preference: an unsigned commit on any branch is a defect
+to fix before pushing. Rewrites count too — `git rebase`, `git cherry-pick`, and
+`git commit --amend` all drop signatures unless told otherwise
+(`git rebase --gpg-sign=<fingerprint>`).
+
+The signing key is a secret like any other: the armored GPG private key is
+base64-encoded in Doppler as `COMMIT_SIGNING_KEY_B64`, and its fingerprint is
+`COMMIT_SIGNING_KEY_ID`. Import it into a throwaway keyring and point git at it:
+
+```bash
+export GNUPGHOME="$(mktemp -d)"   # throwaway keyring; never ~/.gnupg
+doppler run --only-secrets COMMIT_SIGNING_KEY_B64 --project everruns-dev --config dev \
+  -- sh -c 'printf %s "$COMMIT_SIGNING_KEY_B64" | base64 -d | gpg --batch --import'
+
+git config --local gpg.format openpgp
+git config --local user.signingkey FA3D613308B45D42D2D437FF6B554BC31F96585D
+git config --local commit.gpgsign true
+git config --local tag.gpgsign true
+```
+
+The fingerprint above is `COMMIT_SIGNING_KEY_ID`; read it from Doppler rather
+than trusting this file if the key is ever rotated. `GNUPGHOME` must stay
+exported for every `git commit`/`git rebase` in the session — git shells out to
+`gpg`, which will not find the key without it.
+
+A repository-wide setup with a signing key in the global config may set
+`gpg.format=ssh`; the local `gpg.format=openpgp` above overrides it. Confirm
+before pushing — `%G?` must be `G` (or `U`) for every commit, never `N`:
+
+```bash
+git log --format='%h %G? %s' origin/main..HEAD
+```
+
 ## PRs and CI
 
+- **A pull request is required only for external contributions.** Maintainers
+  with push access land work directly on `main` once CI is green. Open a PR
+  anyway when a change is risky, wants a second opinion, or needs the CI matrix
+  before it lands — but routine maintainer work does not need one.
+- Direct-to-`main` work carries the same bar as a PR: signed commits, green CI,
+  and the artifacts in [Shipping](knowledge/specs/shipping.md) kept in sync.
 - Use `.github/pull_request_template.md`. Center the description on functional
   change and impact, not a code-location walkthrough (the diff shows that). Add a
   Before / After with proof — a recording or a `--dump` capture for visual

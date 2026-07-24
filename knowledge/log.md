@@ -3,6 +3,20 @@
 Significant changes to tuika's durable knowledge are recorded here. Routine
 wording, formatting, and link fixes do not need entries.
 
+## 2026-07-24 — Signed history, Doppler secrets, PR policy
+
+- Rewrote the repository's history so every commit is GPG-signed and verifies.
+  Signing is now a hard requirement rather than a convention; a rewrite that
+  drops signatures is a defect, since a later commit cannot restore them.
+- The signing key is held in Doppler (`everruns-dev` / `dev`) as
+  `COMMIT_SIGNING_KEY_B64`, with its fingerprint in `COMMIT_SIGNING_KEY_ID`.
+  Doppler is now the stated home for every secret this repository touches — the
+  repository itself holds none.
+- Narrowed the pull-request requirement to **external contributions**.
+  Maintainers land directly on `main`. The bar for a change is unchanged either
+  way, so the shipping outcomes were reworded around "landing" rather than
+  "merging" a PR.
+
 ## 2026-07-24 — First green CI after extraction
 
 - The `iai-baseline.json` files carried over from yolop measured yolop's copy of
