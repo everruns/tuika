@@ -47,7 +47,7 @@ content:
 
 | Version | Supported |
 | --- | --- |
-| 0.4.x | Yes |
+| 0.5.x | Yes |
 
 ## Acknowledgments
 
