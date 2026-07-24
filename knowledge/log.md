@@ -3,6 +3,26 @@
 Significant changes to tuika's durable knowledge are recorded here. Routine
 wording, formatting, and link fixes do not need entries.
 
+## 2026-07-24 — Changelog format: demos in, commit links out
+
+- Release notes now **show** the release: `### Highlights` embeds a VHS
+  recording of the one or two most TUI-centric features. The recordings are
+  ordinary `DEMOS` gallery scenes — a release improves the permanent gallery
+  rather than leaving one-off assets behind — and they are the single place that
+  pins a `raw.githubusercontent.com` URL to the release tag instead of `main`,
+  so re-recording a scene cannot rewrite what a past release appeared to ship.
+  Consequently `CHANGELOG.md` stays outside the `demo -- check` reference gate.
+- Highlights are ordered user-facing functionality first, then a one-line
+  performance note and a one-line security note, each carrying a number or a
+  stated impact.
+- Dropped commit links and the `compare/vA.B.C...vX.Y.Z` line from
+  `### What's Changed`. This repository rewrites history when it has to, which
+  rots every SHA-based URL baked into a published release note; pull-request
+  references survive a rewrite, so a bare `(#42)` is still allowed.
+- Contributor attribution is now the exception rather than the rule: ` by
+  @handle` appears only for authors other than @chaliy, since the maintainer is
+  the default and repeating it is noise.
+
 ## 2026-07-24 — Signed history, Doppler secrets, PR policy
 
 - Rewrote the repository's history so every commit is GPG-signed and verifies.

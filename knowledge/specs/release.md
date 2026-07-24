@@ -95,10 +95,16 @@ When asked to release, the agent:
    next one from the unreleased commits and confirm before proceeding. An API
    removal or signature change forces at least a minor bump.
 
-2. **Update `CHANGELOG.md`.** Add a `## [X.Y.Z] - YYYY-MM-DD` section, list PRs
-   in descending order with GitHub-style links and contributor handles, end with
-   `**Full Changelog**: URL`. For minor bumps carrying API changes, add an
+2. **Update `CHANGELOG.md`.** Add a `## [X.Y.Z] - YYYY-MM-DD` section following
+   [Changelog Format](#changelog-format): highlights that embed a demo recording
+   for the release's main TUI-facing feature, then the mechanical change list in
+   descending order with no commit links and a `by @handle` suffix only for
+   contributors other than @chaliy. For minor bumps carrying API changes, add an
    explicit `### Breaking Changes` block with before/after snippets.
+
+   Record the highlighted demo *before* writing the section that embeds it —
+   `scripts/gen-demos.sh <scene>`, adding a `DEMOS` scene first if the feature
+   has none.
 
 3. **Bump the versions.** The root `Cargo.toml` for `tuika`; and
    `crates/tuika-codeformatters/Cargo.toml` when its API changed or it must
@@ -173,6 +179,8 @@ When asked to release, the agent:
       rendering.
 - [ ] `CHANGELOG.md` has an entry for every change since the last release, and
       API changes are called out.
+- [ ] Highlights embed a current, tag-pinned demo recording for the release's
+      main TUI-facing feature (or the release genuinely has nothing visual).
 - [ ] `Cargo.toml` and `Cargo.lock` both read `X.Y.Z`.
 - [ ] `cargo publish --dry-run -p tuika` succeeds.
 - [ ] `X.Y.Z` is greater than the latest crates.io version.
@@ -264,7 +272,15 @@ hotfix PR (packaging bug).
 
 ### Highlights
 
-- 2–5 bullet points summarizing the most impactful changes.
+**Streaming markdown keeps its scroll position** — a host can now append tokens
+to a `Markdown` view without the viewport jumping to the top on every chunk.
+
+![markdown demo](https://raw.githubusercontent.com/everruns/tuika/vX.Y.Z/docs/demos/markdown.gif)
+
+- **Performance**: the windowed scroll path renders ~30% fewer instructions per
+  frame at 10k lines.
+- **Security**: the highlighter no longer loads grammars from a path supplied by
+  the host.
 
 ### Breaking Changes
 
@@ -274,19 +290,63 @@ hotfix PR (packaging bug).
 
 ### What's Changed
 
-* feat(scope): description ([#42](https://github.com/everruns/tuika/pull/42)) by @contributor
-* fix(scope): description ([#41](https://github.com/everruns/tuika/pull/41)) by @contributor
-
-**Full Changelog**: https://github.com/everruns/tuika/compare/vA.B.C...vX.Y.Z
+* feat(markdown): keep scroll anchored while streaming
+* fix(scroll): clamp the viewport on shrink by @contributor
+* chore(deps): bump ratatui-core to 0.30
 ```
 
-Rules:
+### Highlights
 
-- PRs listed newest-first by number.
+`### Highlights` is the human summary and the part a reader actually looks at,
+so it leads with what changed for them and shows it.
+
+- **Show, don't tell.** A release that changes what the terminal *shows* carries
+  at least one demo recording; two at most. Pick the one or two most
+  TUI-centric features of the release — the ones worth watching move — and embed
+  their recordings inline. A release with nothing visual (dependency bumps, an
+  internal refactor) carries no demo rather than a padded one.
+- **Demos are gallery scenes, never bespoke assets.** The recording embedded in
+  a release note is a `DEMOS` scene from `examples/demo.rs`, recorded by
+  `scripts/gen-demos.sh` into `docs/demos/<name>.gif` like any other. If the
+  highlighted feature has no scene yet, add one — the release then improves the
+  permanent gallery instead of leaving a one-off GIF behind.
+- **Pin the embed to the release tag**, not `main`:
+  `https://raw.githubusercontent.com/everruns/tuika/vX.Y.Z/docs/demos/<name>.gif`.
+  Recordings are regenerated whenever the look changes, so a `main` URL would
+  silently rewrite the history of what past releases looked like. The tag-pinned
+  URL 404s until `release.yml` creates the tag; that resolves itself the moment
+  the release exists, which is when anyone reads the notes.
+- **Kinds of highlight**, in this order: user-facing functionality first (what a
+  host can now build), then a brief performance note, then a brief security
+  note. Performance and security stay to one line each and carry a number or a
+  stated impact — "~30% fewer instructions on the scroll path", not "various
+  performance improvements". Omit either when the release has nothing real to
+  report.
+- 2–5 highlights total. Anything that does not clear that bar belongs in
+  `### What's Changed`.
+
+`CHANGELOG.md` is deliberately outside the `demo -- check` invariant (which
+covers the gallery markdown and rustdoc embeds). Old release sections reference
+scenes that may later be renamed or retired, and the tag-pinned URLs keep
+resolving after that; adding the changelog to the check would turn shipped
+history into a build failure.
+
+### What's Changed
+
+`### What's Changed` is the mechanical list — every change since the previous
+tag, newest first, one line each, using the commit subject.
+
+- **No links to commits, and no commit-range compare link.** This repository
+  rewrites history when it has to (signing, rebases), which rots every commit
+  SHA and every `compare/vA.B.C...vX.Y.Z` URL baked into a published release
+  note. A bare `(#42)` pull-request reference is fine when the change came in
+  through a PR — pull requests survive a rewrite, and GitHub links them
+  automatically in the release body.
+- **Attribute contributors, not the maintainer.** Append ` by @handle` when the
+  change was authored by anyone other than @chaliy. The maintainer's own commits
+  carry no attribution — it is the default and repeating it is noise.
 - `### Breaking Changes` only when present; required whenever a `pub` item was
   removed, renamed, or changed signature.
-- `### Highlights` is the human summary; `### What's Changed` is the mechanical
-  PR list.
 
 ## Hotfix Releases
 

@@ -74,6 +74,12 @@ staged by hand. The rule is that the *scene registry is the source of truth*:
 - The image demo is rendered directly by `examples/image_demo.rs` rather than
   recorded, because VHS captures through `ttyd` + `xterm.js`, which implements
   no graphics protocol and would only ever show the text fallback.
+- Release notes embed demos too — see [Release](./release.md#changelog-format) —
+  and they reuse the same `DEMOS` scenes rather than adding one-off assets. They
+  are the one place that pins the raw URL to a release tag instead of `main`, so
+  a later re-recording cannot rewrite what a past release appeared to ship. That
+  also puts `CHANGELOG.md` deliberately outside the `demo -- check` reference
+  gate: shipped history may name a scene that no longer exists.
 
 `cargo run --example demo -- check` is the integrity gate: every scene has a
 non-empty recording, no orphan GIF lingers, and every `demos/<name>.gif`
