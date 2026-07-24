@@ -1,0 +1,7 @@
+# Development toolchain. tuika's *supported* Rust version is the `rust-version`
+# in Cargo.toml (1.88), which is compiled by the dedicated MSRV job in CI — this
+# pin only fixes the toolchain used for day-to-day work, formatting, and clippy,
+# so lint output is identical for everyone.
+[toolchain]
+channel = "1.94.0"
+components = ["rustfmt", "clippy"]
