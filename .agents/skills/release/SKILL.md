@@ -213,11 +213,8 @@ Stage explicitly — never `git add .`:
 ```bash
 git add CHANGELOG.md Cargo.toml Cargo.lock
 git commit -m "chore(release): prepare vX.Y.Z"
+git push -u origin "$(git branch --show-current)"
 ```
-
-Publish the branch through the GitHub API (`push_files`) so the release commit
-lands **Verified** — see `AGENTS.md` § Signed commits. A release commit that
-shows *Unverified* on `main` is a defect; fix it before opening the PR.
 
 ### 7. Open the PR
 
