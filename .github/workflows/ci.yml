@@ -1,0 +1,336 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # Classify the diff once, up front, so the rest of the pipeline can scope
+  # itself to what actually changed. A docs-only PR (e.g. a README badge tweak)
+  # must not spin up the whole Rust toolchain or occupy the scarce macOS/Windows
+  # runners. GitHub treats a job skipped by `if:` as a passing required check, so
+  # skipped legs never block merge.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      docs: ${{ steps.filter.outputs.docs }}
+      scripts: ${{ steps.filter.outputs.scripts }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            rust:
+              - '**/*.rs'
+              - '**/Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/ci.yml'
+              - 'benches/check_iai.py'
+              - '**/iai-baseline.json'
+            docs:
+              - '**/*.md'
+            # The repository's Python helpers gate the release path, so give
+            # them their own fast leg that needs no Rust toolchain.
+            scripts:
+              - 'scripts/*.py'
+              - 'knowledge/**'
+              - '.github/workflows/ci.yml'
+
+  msrv:
+    name: MSRV (1.88)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      # `rust-toolchain.toml` pins a newer toolchain for development, so an MSRV
+      # break never shows up locally — this job is the only thing that catches
+      # it. It compiles `-p tuika` alone: the declared `rust-version` is tuika's
+      # promise to its consumers, and `tuika-codeformatters` carries its own.
+      - name: Install Rust 1.88
+        uses: dtolnay/rust-toolchain@1.88.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "msrv"
+
+      - name: Check tuika on the MSRV
+        run: cargo check --locked -p tuika --all-targets
+
+      - name: Verify component gallery assets
+        run: cargo run --locked --example demo -- check
+
+  docs-boundary:
+    name: Docs boundary
+    needs: changes
+    if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.scripts == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      # Cheap guard for the documentation boundary (README/docs must not link
+      # into internal knowledge/ or .agents/), plus the OKF bundle and release
+      # helpers. Needs no Rust toolchain, so it stays fast on docs-only PRs.
+      - name: Validate knowledge bundle and release helpers
+        run: |
+          python3 scripts/validate_okf.py knowledge --check-links
+          python3 scripts/test_validate_okf.py
+          python3 scripts/test_publish_order.py
+
+      - name: Public docs boundary
+        run: |
+          if grep -R -n -E --include='*.md' '\]\([^)]*(knowledge/|\.agents/)' README.md docs; then
+            echo "::error::Public documentation must not link to internal knowledge/ or .agents/ files."
+            exit 1
+          fi
+
+  lint:
+    name: Format + Clippy
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  docs:
+    name: Rustdoc
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.94.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      # docs.rs is the primary documentation surface for a library, and a build
+      # failure there ships a release with no docs. Catch it on the PR instead.
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --all-features --no-deps --workspace
+
+  test:
+    name: Build + Tests
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.94.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      # --all-targets also builds the examples, which the PTY smoke test needs
+      # on disk (`target/debug/examples/gallery`).
+      - name: Build
+        run: cargo build --locked --all-targets
+
+      - name: Unit and integration tests with coverage
+        run: |
+          cargo llvm-cov --no-report --all-features --workspace
+          cargo llvm-cov report --lcov --output-path lcov.info
+          cargo llvm-cov report --summary-only
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v7
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lcov-coverage
+          path: lcov.info
+          if-no-files-found: error
+
+  # The renderer talks to a terminal, and terminal behavior is the least
+  # portable thing in the crate. Build and run the suite on macOS and Windows so
+  # a Unix-only assumption fails here rather than in a downstream host.
+  cross-platform:
+    name: Build + Tests (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.94.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "cross-${{ runner.os }}"
+
+      - name: Build
+        run: cargo build --locked --all-targets
+
+      # The PTY smoke is `#![cfg(unix)]` and compiles to nothing on Windows;
+      # everything else (buffer, property, snapshot tests) runs everywhere.
+      - name: Tests
+        run: cargo test --locked --all-features
+
+  benchmarks:
+    name: Benchmarks (archive)
+    needs: changes
+    # Trend archive, not a gate: wall-clock numbers on shared runners are too
+    # noisy to fail a build on, so this only runs on main pushes that touch Rust
+    # (and on demand) and uploads the Criterion output as an artifact. The
+    # benches still *compile* on every PR via the `test` job's --all-targets
+    # build, so they can't rot. Compare runs locally with --save-baseline.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.changes.outputs.rust == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.94.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      - name: Run benchmarks
+        # Criterion targets only. The `*_iai` benches need Valgrind and a
+        # version-matched runner (see the `iai` job) and reject Criterion's CLI
+        # flags, so naming the targets explicitly keeps the two families apart.
+        run: |
+          cargo bench --locked -p tuika --bench markdown --bench scroll -- \
+            --warm-up-time 2 --measurement-time 5 --noplot | tee bench-output.txt
+          cargo bench --locked -p tuika-codeformatters --bench highlight -- \
+            --warm-up-time 2 --measurement-time 5 --noplot | tee -a bench-output.txt
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: criterion-benchmarks
+          path: |
+            target/criterion/**
+            bench-output.txt
+          if-no-files-found: warn
+
+  iai:
+    name: iai-callgrind (instruction counts)
+    needs: changes
+    # Instruction counts are deterministic and machine-independent, so unlike the
+    # wall-clock `benchmarks` job this one IS a gate: it fails the build when a
+    # change regresses instruction counts past the tolerance in the committed
+    # iai-baseline.json. Runs on Rust-affecting PRs and pushes; ubuntu-latest
+    # matches the x86_64/glibc the baseline was captured on.
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.94.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      - name: Install Valgrind
+        run: sudo apt-get update && sudo apt-get install -y valgrind
+
+      - name: Install iai-callgrind-runner
+        # Must match the iai-callgrind library version in Cargo.toml.
+        run: cargo install iai-callgrind-runner --version 0.16.1 --locked
+
+      - name: Run instruction-count benchmarks
+        run: |
+          rm -rf target/iai
+          cargo bench --locked -p tuika --bench markdown_iai --bench scroll_iai \
+            -p tuika-codeformatters --bench highlight_iai -- --save-summary=json
+
+      - name: Check against committed baseline
+        # On workflow_dispatch, regenerate and upload the baseline instead of
+        # gating — the clean way to refresh it from CI's exact environment.
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python3 benches/check_iai.py --update
+          else
+            python3 benches/check_iai.py
+          fi
+
+      - name: Upload regenerated baseline
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: iai-baseline
+          path: '**/iai-baseline.json'
+          if-no-files-found: error
