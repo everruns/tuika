@@ -3,17 +3,22 @@
 Significant changes to tuika's durable knowledge are recorded here. Routine
 wording, formatting, and link fixes do not need entries.
 
-## 2026-07-24 — Agent commits publish through the GitHub API
+## 2026-07-24 — Agent commits cannot currently be verified
 
-- Every commit on the imported history showed *Unverified*: they were SSH-signed,
+- Every commit in the imported history shows *Unverified*: they are SSH-signed,
   but by the agent environment's own key, which no GitHub account trusts.
   Registering that key was rejected (`Key is already in use`) and would have been
   wrong anyway — it is not a maintainer key, so trusting it would verify anything
   that signer produces as the maintainer.
-- Settled the policy instead: agents publish commits through the GitHub API, which
-  GitHub signs with its own key, so they land verified without any key
-  registration. Recorded in `AGENTS.md` § Signed commits and
-  [Shipping](specs/shipping.md) § Merge Discipline.
+- Publishing through the GitHub API was tried as the fix and **does not work**:
+  the Contents API creates the commit with the right author but leaves it
+  unsigned (`verification.reason: "unsigned"`). GitHub's key signs only what the
+  web UI or a GitHub Actions token creates. Recorded the measurement in
+  `AGENTS.md` § Commit verification so the same dead end is not re-explored.
+- Left open: whether GitHub signs the squash commit it creates on merge (which
+  would keep `main` verified regardless of branch state), and otherwise
+  provisioning a dedicated maintainer-controlled signing key into the agent
+  environment.
 
 ## 2026-07-24 — First green CI after extraction
 

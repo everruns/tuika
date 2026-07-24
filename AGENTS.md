@@ -275,21 +275,36 @@ URL are load-bearing — changing them means updating the assert script.
 Commit attribution must be a real human user. If git identity is missing or
 agent-like, stop and ask before committing.
 
-### Signed commits
+### Commit verification
 
-Every commit on `main` must show **Verified** on GitHub. Agents reach that by
-publishing commits through the **GitHub API** (`push_files`,
-`create_or_update_file`) rather than `git push`: GitHub signs commits it creates
-with its own key, so they land verified and attributed to the configured author.
+Commits on `main` should show **Verified** on GitHub. No route available to an
+agent environment currently achieves that. Both were tried and measured:
 
-A `git push` from an agent environment carries that environment's own SSH
-signing key. No GitHub account trusts it, so every such commit renders as
-*Unverified* — and the key must not be registered to fix that, because it is not
-the maintainer's key. Use `git` locally for everything else (branching, staging,
-history inspection); only the publish step goes through the API.
+- **`git push`** — the environment SSH-signs with its own key. No account trusts
+  it, so the commit renders *Unverified*. Do not register that key to silence
+  the badge: it is not a maintainer key, so trusting it would verify anything
+  that signer produces as the maintainer. (GitHub rejects it anyway — `Key is
+  already in use`.)
+- **GitHub API** (`push_files`, `create_or_update_file`) — creates the commit
+  with the correct author but leaves it **unsigned**
+  (`verification.reason: "unsigned"`). GitHub's own key signs only what the web
+  UI or a GitHub Actions token creates.
 
-Humans pushing from their own machine with their own signing key are unaffected
-and should keep using `git push`.
+So agent-authored branch commits land unverified either way. Use `git push`; it
+is the simpler path and the outcome is identical. Do not spend effort chasing
+the badge on a feature branch.
+
+Two open questions, neither yet verified — check before relying on either:
+
+1. Whether the squash commit GitHub creates on **Squash and merge** is signed
+   with GitHub's key. If it is, `main` stays verified regardless of branch state
+   and nothing else is needed. Confirm on the next merge:
+   `curl -sS https://api.github.com/repos/everruns/tuika/commits/<sha> | jq .commit.verification`
+2. Otherwise, provisioning a dedicated maintainer-controlled signing key into
+   the agent environment is the only deterministic fix — revocable, registered
+   as a **Signing Key**, and distinct from the maintainer's personal key.
+
+Humans pushing from their own machine with their own signing key are unaffected.
 
 ## PRs and CI
 
