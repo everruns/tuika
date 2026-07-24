@@ -432,8 +432,11 @@ assert!(grid(&buffer).contains("expected text"));
 
 - [**yolop**](https://github.com/everruns/yolop) — a terminal coding agent whose
   experimental full-screen renderer is built on tuika.
+- [**LLMSim**](https://github.com/chaliy/llmsim) — an LLM traffic simulator whose
+  live stats dashboard is a tuika screen.
 
-Building something on tuika? Open a PR adding it here.
+See the [showcases](docs/showcases.md) for a recording of each. Building
+something on tuika? Open a PR adding it here.
 
 ## Compatibility
 

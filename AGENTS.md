@@ -147,12 +147,15 @@ tuika's own suite covers more:
   doc, plus module-level types like `OverlaySpec`.
 - `docs/hero.gif` — the README hero: a recording of a composite gallery screen.
   See [Hero screenshot](#hero-screenshot).
+- `docs/showcases.md` + `docs/showcases/*.gif` — applications built on tuika, one
+  recording each. See [Showcase demos](#showcase-demos).
 
-The demo, theme, and styling GIFs are GitHub-only assets: `Cargo.toml`'s
-`exclude` keeps them (and the repository machinery — `knowledge/`, `.agents/`,
-`.github/`, `scripts/`) out of the published `.crate`, and `tests/packaging.rs`
-guards that split. Only `docs/hero.gif` and `docs/demos/image.svg`, which the
-crates.io README embeds by relative path, ship in the crate.
+The demo, showcase, theme, and styling GIFs are GitHub-only assets:
+`Cargo.toml`'s `exclude` keeps them (and the repository machinery —
+`knowledge/`, `.agents/`, `.github/`, `scripts/`) out of the published `.crate`,
+and `tests/packaging.rs` guards that split. Only `docs/hero.gif` and
+`docs/demos/image.svg`, which the crates.io README embeds by relative path, ship
+in the crate.
 
 ## Component demos
 
@@ -235,6 +238,31 @@ lingers, and every `demos/<name>.gif` referenced by the gallery markdown
 module-level docs like `overlay.rs`) maps to a real scene. It runs in the CI MSRV
 job and at the end of the generator, so gallery drift fails CI instead of
 shipping a broken image to docs.rs.
+
+## Showcase demos
+
+`docs/showcases.md` lists applications built on tuika, one recording each in
+`docs/showcases/`. These record *other projects*, so there is no in-repo scene:
+[`scripts/gen-showcase-demos.sh`](scripts/gen-showcase-demos.sh) clones each host
+into a cache directory (`TUIKA_SHOWCASE_CACHE`, default
+`~/.cache/tuika-showcases`), builds it, and records it under VHS. Checkouts and
+build artifacts are cached because a full yolop build is slow.
+
+```bash
+scripts/gen-showcase-demos.sh          # both scenes
+scripts/gen-showcase-demos.sh llmsim   # just this one
+```
+
+Both scenes are driven by a local [LLMSim](https://github.com/chaliy/llmsim), so
+neither needs a provider key and neither reaches a model: yolop talks to a
+*scripted* simulator (a fixed tool call plus a fixed answer, so the transcript is
+identical on every run), and the dashboard scene records the simulator itself
+under a traffic loop the script drives from outside the recording.
+
+Showcase GIFs live outside `docs/demos/`, so they are outside the `demo -- check`
+invariant — an unreferenced one is not a CI failure. When adding a host, add the
+scene function and its `case` arm to the generator, then a section to
+`docs/showcases.md` and a bullet to the README's *Used in* list.
 
 ## Image demo
 
