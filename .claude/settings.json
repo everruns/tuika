@@ -4,6 +4,12 @@
     "commit": "",
     "pr": ""
   },
+  "permissions": {
+    "allow": [
+      "Bash(doppler me)",
+      "Bash(doppler run --only-secrets COMMIT_SIGNING_KEY_B64:*)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
