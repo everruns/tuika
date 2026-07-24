@@ -108,6 +108,11 @@ Use the smallest set that gives high confidence.
 
 ## Merge Discipline
 
+- Every commit that reaches a branch on GitHub must be signed and show
+  **Verified**. Agent-authored commits are published through the GitHub API so
+  GitHub signs them; an agent environment's own SSH signing key is not a
+  maintainer key and must never be registered to make its commits verify. See
+  `AGENTS.md` § Signed commits.
 - Conventional Commits PR titles under 70 characters.
 - Squash and Merge only.
 - GitHub Actions is the CI source of truth.

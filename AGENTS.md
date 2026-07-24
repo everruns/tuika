@@ -275,6 +275,22 @@ URL are load-bearing — changing them means updating the assert script.
 Commit attribution must be a real human user. If git identity is missing or
 agent-like, stop and ask before committing.
 
+### Signed commits
+
+Every commit on `main` must show **Verified** on GitHub. Agents reach that by
+publishing commits through the **GitHub API** (`push_files`,
+`create_or_update_file`) rather than `git push`: GitHub signs commits it creates
+with its own key, so they land verified and attributed to the configured author.
+
+A `git push` from an agent environment carries that environment's own SSH
+signing key. No GitHub account trusts it, so every such commit renders as
+*Unverified* — and the key must not be registered to fix that, because it is not
+the maintainer's key. Use `git` locally for everything else (branching, staging,
+history inspection); only the publish step goes through the API.
+
+Humans pushing from their own machine with their own signing key are unaffected
+and should keep using `git push`.
+
 ## PRs and CI
 
 - Use `.github/pull_request_template.md`. Center the description on functional

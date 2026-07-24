@@ -3,6 +3,18 @@
 Significant changes to tuika's durable knowledge are recorded here. Routine
 wording, formatting, and link fixes do not need entries.
 
+## 2026-07-24 — Agent commits publish through the GitHub API
+
+- Every commit on the imported history showed *Unverified*: they were SSH-signed,
+  but by the agent environment's own key, which no GitHub account trusts.
+  Registering that key was rejected (`Key is already in use`) and would have been
+  wrong anyway — it is not a maintainer key, so trusting it would verify anything
+  that signer produces as the maintainer.
+- Settled the policy instead: agents publish commits through the GitHub API, which
+  GitHub signs with its own key, so they land verified without any key
+  registration. Recorded in `AGENTS.md` § Signed commits and
+  [Shipping](specs/shipping.md) § Merge Discipline.
+
 ## 2026-07-24 — First green CI after extraction
 
 - The `iai-baseline.json` files carried over from yolop measured yolop's copy of
