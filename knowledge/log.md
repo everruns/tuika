@@ -3,22 +3,23 @@
 Significant changes to tuika's durable knowledge are recorded here. Routine
 wording, formatting, and link fixes do not need entries.
 
-<<<<<<< HEAD
-## 2026-07-24 — Demo recordings can no longer be silently clipped
+## 2026-07-25 — Process concepts split out of `specs/`
 
-- Six gallery GIFs (`qr`, `ascii_font`, `diff`, `slider`, `timeline`,
-  `hyperlink`) shipped with content cut off: each scene's recorded height is a
-  hand-picked number in the `DEMOS` registry, and outgrowing it clips the
-  recording without failing anything.
-- Root cause: the tape heights were computed from a cell size the recorder did
-  not actually use, so a scene's `rows` was never the number of rows it got. The
-  harness now pins each scene to a fixed frame and the tapes ask for slightly
-  more room than that, making font metrics irrelevant to what a demo shows.
-- `demo -- check` now asserts a scene fits the frame it records into, and scenes
-  that overflow by design declare it in the registry. `--dump` renders at the
-  scene's recorded geometry, so the pre-record preview shows the real framing
-  instead of a roomier one. See [Documentation](specs/documentation.md).
-=======
+- The bundle mixed two kinds of knowledge under one directory: what tuika *is*
+  (goal, architecture, and the capability concepts) and how maintainers *work on
+  it*. The frontmatter already said so — four concepts carried
+  `type: Process Specification` — but the directory did not, so an agent reading
+  `knowledge/specs/` had no way to tell a product invariant from a workflow
+  requirement without opening each file.
+- [Testing](processes/testing.md), [Shipping](processes/shipping.md),
+  [Maintenance](processes/maintenance.md), and [Release](processes/release.md)
+  now live in `knowledge/processes/`. `specs/` holds product and architecture
+  concepts only, plus the [Documentation](specs/documentation.md) policy, which
+  governs the published surface rather than a maintainer workflow.
+- Content is unchanged; this is a reclassification. The OKF validator walks the
+  bundle recursively and does not care about directory names, so the split is a
+  readability contract rather than a tooling one.
+
 ## 2026-07-25 — Codegen shifts the instruction-count gate
 
 - Landing `ItemScroll` and the composer token seams turned the `iai` gate red on
@@ -30,9 +31,9 @@ wording, formatting, and link fixes do not need entries.
   took it to ~4.5%. Growing the crate re-partitions its codegen units, so
   unrelated modules change what gets inlined on a hot path. The `scroll.rs`
   refactor in the same change cost one instruction.
-- Recorded the isolation procedure in [Testing](specs/testing.md) so the next red
-  gate is diagnosed rather than blessed on a hunch — a shift that survives the
-  isolation is a real regression.
+- Recorded the isolation procedure in [Testing](processes/testing.md) so the
+  next red gate is diagnosed rather than blessed on a hunch — a shift that
+  survives the isolation is a real regression.
 
 ## 2026-07-24 — Element viewports and composer token seams
 
@@ -49,7 +50,21 @@ wording, formatting, and link fixes do not need entries.
   whenever the bar is enabled, and `measure_height` takes the same `scrollbar`
   flag — otherwise a host's clamp and the paint would disagree about content
   height.
->>>>>>> da4f9d8 (feat(components): add ItemScroll and composer token seams)
+
+## 2026-07-24 — Demo recordings can no longer be silently clipped
+
+- Six gallery GIFs (`qr`, `ascii_font`, `diff`, `slider`, `timeline`,
+  `hyperlink`) shipped with content cut off: each scene's recorded height is a
+  hand-picked number in the `DEMOS` registry, and outgrowing it clips the
+  recording without failing anything.
+- Root cause: the tape heights were computed from a cell size the recorder did
+  not actually use, so a scene's `rows` was never the number of rows it got. The
+  harness now pins each scene to a fixed frame and the tapes ask for slightly
+  more room than that, making font metrics irrelevant to what a demo shows.
+- `demo -- check` now asserts a scene fits the frame it records into, and scenes
+  that overflow by design declare it in the registry. `--dump` renders at the
+  scene's recorded geometry, so the pre-record preview shows the real framing
+  instead of a roomier one. See [Documentation](specs/documentation.md).
 
 ## 2026-07-24 — Showcases
 
@@ -107,7 +122,7 @@ wording, formatting, and link fixes do not need entries.
   guard — windowed render is O(viewport), paging is O(1) per event — hold at the
   new counts; only the constants moved.
 - Recorded two constraints the extraction exposed: snapshot grids are LF-only
-  (see [Testing](specs/testing.md)), and the PTY smoke needs the `gallery`
+  (see [Testing](processes/testing.md)), and the PTY smoke needs the `gallery`
   example built inside the coverage run's instrumented target directory.
 
 ## 2026-07-24 — Extraction from yolop

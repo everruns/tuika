@@ -223,7 +223,7 @@ confirm the link is clickable **and** that surrounding text, colors, and wrappin
 are undamaged.
 
 **Graphics protocols** are the exception to "unknown escapes are harmless" and
-are gated on capability detection ([images.md](./images.md)); re-check the
+are gated on capability detection ([images.md](../specs/images.md)); re-check the
 `image` example on any terminal whose detection changed.
 
 ### Nightly cross-terminal job

@@ -10,7 +10,7 @@ user-invocable: true
 
 Goal: leave the repo materially healthier and closer to release-ready, with evidence.
 
-This skill implements [`knowledge/specs/maintenance.md`](../../../knowledge/specs/maintenance.md). Keep operational guidance here. Keep design intent and constraints in the spec.
+This skill implements [`knowledge/processes/maintenance.md`](../../../knowledge/processes/maintenance.md). Keep operational guidance here. Keep design intent and constraints in the spec.
 
 This skill is outcome-oriented. Choose the smallest set of actions that closes the real maintenance risk in front of you.
 

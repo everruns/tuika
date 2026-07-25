@@ -11,7 +11,7 @@ user-invocable: true
 Goal: cut a new tuika release and verify every crate it was meant to publish
 lands on crates.io with documentation built.
 
-This skill implements [`knowledge/specs/release.md`](../../../knowledge/specs/release.md). Keep
+This skill implements [`knowledge/processes/release.md`](../../../knowledge/processes/release.md). Keep
 operational guidance here. Keep design intent in the spec.
 
 ## When To Use
@@ -151,7 +151,7 @@ dependency bumps, internal refactors, a docs-only patch.
 * fix(scope): description by @contributor
 ```
 
-Three rules carry the format ([spec](../../../knowledge/specs/release.md#changelog-format)):
+Three rules carry the format ([spec](../../../knowledge/processes/release.md#changelog-format)):
 
 - **The embed is pinned to `vX.Y.Z`, not `main`.** It 404s until `release.yml`
   creates the tag — expected, and it resolves before anyone reads the notes.
@@ -319,7 +319,7 @@ Declare **shipped** only when crates.io reports `X.Y.Z` for every crate the
 release was meant to publish and docs.rs has built. If a workflow fails, inspect
 logs (`gh run view <id> --log-failed`) and either re-run (transient — network or
 registry propagation) or open a hotfix PR (packaging bug — see
-[`knowledge/specs/release.md`](../../../knowledge/specs/release.md) § Hotfix
+[`knowledge/processes/release.md`](../../../knowledge/processes/release.md) § Hotfix
 Releases).
 
 ## Common Pitfalls
@@ -357,6 +357,6 @@ Releases).
 ## Authentication
 
 Required repo secret — set up once, see
-[`knowledge/specs/release.md`](../../../knowledge/specs/release.md) § Authentication.
+[`knowledge/processes/release.md`](../../../knowledge/processes/release.md) § Authentication.
 
 - `CARGO_REGISTRY_TOKEN` — crates.io publish scope.

@@ -92,7 +92,7 @@ debt" note.
 ## Dependency Discipline
 
 The small dependency set is a designed property, not an accident
-([goal.md](./goal.md)). Maintenance defends it:
+([goal.md](../specs/goal.md)). Maintenance defends it:
 
 - **No new runtime dependency without an explicit justification in the PR.** The
   default answer for a heavy concern is a trait the host implements, or a place
@@ -130,7 +130,7 @@ credentials, so the surface is narrow and specific:
 
 - **Escape emission** — every out-of-band sequence must come from tuika's own
   encoder, never from interpolated caller text. Maintenance verifies that
-  property still holds ([out-of-band.md](./out-of-band.md)).
+  property still holds ([out-of-band.md](../specs/out-of-band.md)).
 - **Untrusted content** — markdown and code passed to `Markdown`/`CodeBlock` must
   degrade rather than panic or allocate unboundedly. The property tests and size
   sweeps are the standing defense; keep them running over the parsers.
@@ -182,5 +182,5 @@ details readable from code. Maintenance should:
 
 - [shipping.md](./shipping.md)
 - [release.md](./release.md)
-- [documentation.md](./documentation.md)
+- [documentation.md](../specs/documentation.md)
 - [testing.md](./testing.md)

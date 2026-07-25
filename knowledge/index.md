@@ -8,6 +8,10 @@ Read this index first, then open only the concepts relevant to the task and
 follow their links. Public documentation lives in [`README.md`](../README.md)
 and [`docs/`](../docs/); it must not link back into this internal bundle.
 
+Concepts are split by what they describe: `specs/` defines the product — what
+tuika is and how it is built — while `processes/` defines how maintainers and
+agents work on it.
+
 ## Product direction
 
 - [Product goal](specs/goal.md) — what tuika is for, and the boundary it defends.
@@ -23,8 +27,8 @@ and [`docs/`](../docs/); it must not link back into this internal bundle.
 
 ## Engineering processes
 
-- [Testing](specs/testing.md) — hermetic rendering tests and the benchmark gates.
-- [Shipping](specs/shipping.md) — requirements for landing a change.
-- [Maintenance](specs/maintenance.md) — repository health and release readiness.
-- [Release](specs/release.md) — publishing tuika and tuika-codeformatters.
+- [Testing](processes/testing.md) — hermetic rendering tests and the benchmark gates.
+- [Shipping](processes/shipping.md) — requirements for landing a change.
+- [Maintenance](processes/maintenance.md) — repository health and release readiness.
+- [Release](processes/release.md) — publishing tuika and tuika-codeformatters.
 - [Documentation](specs/documentation.md) — public/internal documentation contract.

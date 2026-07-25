@@ -137,6 +137,6 @@ Use the smallest set that gives high confidence.
 ## Related
 
 - [testing.md](./testing.md)
-- [documentation.md](./documentation.md)
+- [documentation.md](../specs/documentation.md)
 - [maintenance.md](./maintenance.md)
 - [release.md](./release.md)

@@ -141,5 +141,5 @@ side effect of reaching for a new language feature.
 ## Related
 
 - [shipping.md](./shipping.md)
-- [architecture.md](./architecture.md)
-- [out-of-band.md](./out-of-band.md)
+- [architecture.md](../specs/architecture.md)
+- [out-of-band.md](../specs/out-of-band.md)
