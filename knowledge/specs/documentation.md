@@ -32,17 +32,22 @@ terminal UI with tuika without requiring knowledge of repository internals.
   is what docs.rs renders as the front page; component demos are embedded inline
   on the relevant type via `raw.githubusercontent.com` URLs so they resolve
   there.
-- `knowledge/specs/` is internal durable memory: intent, constraints, tradeoffs,
-  and architectural decisions for maintainers.
-- `.agents/` and `AGENTS.md` contain contributor and agent workflows, not user
-  guidance.
+- `knowledge/` is internal durable memory: intent, constraints, tradeoffs, and
+  architectural decisions for maintainers, split into `specs/` (the product) and
+  `processes/` (working on it).
+- `.agents/`, `AGENTS.md`, and `CONTRIBUTING.md` are contributor and agent
+  workflow material, not user guidance. `CONTRIBUTING.md` addresses someone
+  changing tuika rather than using it, so it is the one contributor-facing file
+  a reader arrives at without being sent, and it may name internal machinery
+  where a contributor would otherwise be asked for something unexplained.
 
 ## Direction of links
 
 The public documentation boundary is one-way:
 
 - `README.md` and files below `docs/` MUST NOT link to internal documents below
-  `knowledge/` or `.agents/`, or require users to read them.
+  `knowledge/` or `.agents/`, or require users to read them. These two paths are
+  the whole of the restriction, and CI checks exactly them.
 - Public pages MAY link to other public pages, docs.rs, external standards, and
   source files when those links help complete a task.
 - Specs MAY link to public documentation to identify the user-facing surface.

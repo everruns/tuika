@@ -1,7 +1,30 @@
 # Knowledge Log
 
-Significant changes to tuika's durable knowledge are recorded here. Routine
-wording, formatting, and link fixes do not need entries.
+Significant changes to tuika's durable knowledge are recorded here, in the same
+change that makes them — an entry says why the knowledge moved, and that reason
+is rarely recoverable later. Routine wording, formatting, and link fixes do not
+need entries.
+
+## 2026-07-25 — The bundle now states and enforces its own upkeep
+
+- The rule that concepts are updated by the change that invalidates them lived in
+  `AGENTS.md`, three skills, and the pull-request template — everywhere except
+  the bundle it governs. `index.md` read as consumption-only, so an agent that
+  arrived by a grep hit or a link, rather than through `AGENTS.md`, got the read
+  contract and no write contract. The index now carries the maintenance rule
+  itself, which also gives the concepts a single stated update trigger instead of
+  twelve unstated ones.
+- `scripts/validate_okf.py` fails on a concept the index does not list. This
+  enforces only the mechanical half — a moved or added file cannot become
+  unreachable — deliberately leaving "did this change need a concept update?" to
+  review, because a diff-shaped check for it would fire on the majority of
+  changes that legitimately need nothing and train people to ignore it.
+- `CONTRIBUTING.md` explains the template's Knowledge section; before, an
+  external contributor met that checkbox with no explanation anywhere in their
+  path. [Documentation](specs/documentation.md) now classifies `CONTRIBUTING.md`
+  as contributor material and states that the no-internal-links rule covers
+  `README.md` and `docs/` and nothing else — previously that scope was only
+  discoverable by reading the CI grep.
 
 ## 2026-07-25 — Process concepts split out of `specs/`
 
