@@ -62,7 +62,8 @@ impl<'a> RenderCtx<'a> {
 /// `measure` reports the intrinsic content size the view would like given
 /// `available`; the flex solver uses it for `Dimension::Auto` sizing.
 /// `render` paints into the `area` the layout assigned, through the clipped
-/// `surface`.
+/// `surface`. A view may borrow application state; use it as the root of a
+/// [`ScopedScene`](crate::ScopedScene) when it needs Tuika-owned overlays.
 pub trait View {
     /// Report the intrinsic content size wanted given `available`.
     fn measure(&self, available: Size) -> Size;
@@ -70,7 +71,11 @@ pub trait View {
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx);
 }
 
-/// Boxed view, the element type stored by containers.
+/// Boxed `'static` view, the element type stored by owned containers.
+///
+/// For a frame root that borrows host state, keep the concrete view on the
+/// stack and compose it with [`ScopedScene`](crate::ScopedScene) instead of
+/// cloning the state into an `Element`.
 pub type Element = Box<dyn View>;
 
 impl View for Element {

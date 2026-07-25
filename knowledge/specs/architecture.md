@@ -35,6 +35,11 @@ rather than beside it.
   root and overlay elements for one frame and resolves each overlay's
   `OverlaySpec` while rendering. This removes borrowed compositor plumbing
   without adding identity, lifecycle, or hidden persistent state.
+- **Scoped scenes borrow only the frame root.** `ScopedScene` lets a concrete
+  root read large host-owned state directly while overlays remain owned
+  elements. It uses the same renderer and focus-owner resolution as `Scene`;
+  keeping the borrowing boundary at the root avoids making `Element` and every
+  component lifetime-generic.
 - **The host owns the terminal**: the screen mode (alternate screen or a split
   footer over live scrollback — see [screen-modes.md](./screen-modes.md)), raw
   mode, mouse capture, input translation, and frame compositing.
@@ -131,7 +136,9 @@ the child's logical extent is much larger.
 ## Rendering pipeline
 
 1. The host builds the view tree from application state (optionally through the
-   `view!` DSL, which expands to the same builder calls — no runtime cost).
+   `view!` DSL, which expands to the same builder calls — no runtime cost). A
+   root may borrow that state for the frame through `ScopedScene`; owned
+   component subtrees remain `Element`s.
 2. The solver resolves the tree to rects.
 3. Views paint into a clipped `Surface`; overlays composite over the base.
 4. The host calls out-of-band emitters (images, native progress) after the

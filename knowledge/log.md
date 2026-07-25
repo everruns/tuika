@@ -20,6 +20,20 @@ need entries.
   generated SVGs, companion crates, the Codex example, and external showcases,
   rather than meaning only the component registry by accident.
 
+## 2026-07-25 — Borrowing stops at the scene root
+
+- `Element = Box<dyn View>` deliberately remains owned and `'static`, but that
+  forced a live application root either to clone large host models each frame or
+  to retain its own compositor beside Tuika's owned `Scene`.
+- Added `ScopedScene<'_, V>` as the narrow borrowing boundary: one concrete root
+  is borrowed for the frame, while overlays remain owned `SceneOverlay`s. Owned
+  and scoped scenes share rendering and focus-owner resolution so backdrop,
+  clipping, placement, ordering, and focus behavior cannot drift.
+- Recorded the choice in [Rendering architecture](specs/architecture.md).
+  Lifetime-generic elements would make every container and component carry the
+  borrowing policy even though the motivating state naturally belongs at the
+  frame root.
+
 ## 2026-07-25 — Positioned as the default Rust TUI application framework
 
 - The project's goal is to become the default framework Rust developers build
