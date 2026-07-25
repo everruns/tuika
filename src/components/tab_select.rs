@@ -86,7 +86,7 @@ impl TabSelectState {
 /// a padded pill, the selected one drawn in the theme's selection style.
 ///
 /// ```
-/// use tuika::{Event, Key, KeyCode, TabSelectOutcome, TabSelectState};
+/// use tuika::prelude::*;
 /// let mut state = TabSelectState::default();
 /// let right = Event::Key(Key::new(KeyCode::Right));
 /// assert_eq!(state.handle(&right, 3), TabSelectOutcome::Changed(1));
@@ -162,7 +162,7 @@ mod tests {
     use super::*;
     use crate::event::{Event, Key, KeyCode};
     use crate::style::Theme;
-    use crate::test_support::{rainbow_theme, row};
+    use crate::tests::support::{rainbow_theme, row};
     use ratatui_core::text::Line;
 
     fn key(code: KeyCode) -> Event {

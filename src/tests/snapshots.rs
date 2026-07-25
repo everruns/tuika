@@ -5,21 +5,22 @@
 //! human-reviewable.
 //!
 //! To (re)generate after an intentional change:
-//! `UPDATE_SNAPSHOTS=1 cargo test --all-features tuika::snapshots`.
+//! `UPDATE_SNAPSHOTS=1 cargo test --all-features tests::snapshots`.
 
 use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 use ratatui_core::text::{Line, Span};
 
-use super::components::{
+use crate::components::{
     Boxed, Flex, ProgressBar, Scroll, ScrollState, SelectList, SelectState, Spinner, SpinnerStyle,
     StatusBar, Text,
 };
-use super::host::{self, Overlay};
-use super::overlay::OverlaySpec;
-use super::style::Theme;
-use super::surface::Surface;
-use super::view::{Element, RenderCtx, element};
+use crate::host;
+use crate::overlay::Overlay;
+use crate::overlay::OverlaySpec;
+use crate::style::Theme;
+use crate::surface::Surface;
+use crate::view::{Element, RenderCtx, element};
 
 /// A buffer rendered to a newline-joined glyph grid, trailing spaces trimmed.
 fn grid(buf: &Buffer) -> String {
@@ -61,7 +62,7 @@ fn normalize(text: &str) -> String {
 /// `UPDATE_SNAPSHOTS` is set.
 fn assert_snapshot(name: &str, actual: &str) {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("src/snapshots")
+        .join("src/tests/snapshots")
         .join(format!("{name}.txt"));
     if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -121,7 +122,7 @@ fn snapshot_select_list() {
     let mut state = SelectState::new();
     // Move to the middle entry deterministically.
     state.handle(
-        &super::event::Event::Key(super::event::Key::new(super::event::KeyCode::Down)),
+        &crate::event::Event::Key(crate::event::Key::new(crate::event::KeyCode::Down)),
         3,
     );
     let list = Boxed::new(element(SelectList::new(

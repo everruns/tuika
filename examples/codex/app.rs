@@ -10,10 +10,7 @@
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 
-use tuika::{
-    CodeTheme, Element, Event, EventFlow, Key, KeyCode, MouseKind, ScrollState, SelectOutcome,
-    SelectState, StyleSheet, TextInputEvent, TextInputState, Theme, Token, Trigger, TriggerAnchor,
-};
+use tuika::prelude::*;
 
 use crate::agent::{Agent, Decision, interrupted_notice};
 use crate::history::{Cell, Tone};
@@ -469,7 +466,7 @@ impl App {
 
     /// The composer's tokens as styled ranges — mentions and commands colored
     /// in the input itself, the way Codex marks them.
-    pub fn composer_highlights(&self, theme: &Theme) -> Vec<tuika::TextSpan> {
+    pub fn composer_highlights(&self, theme: &Theme) -> Vec<tuika::components::TextSpan> {
         self.composer
             .tokens(&triggers())
             .iter()

@@ -80,7 +80,7 @@ pub enum TriggerAnchor {
 /// different semantics — or use neither.
 ///
 /// ```
-/// use tuika::{TextInputState, Trigger, TriggerAnchor};
+/// use tuika::prelude::*;
 ///
 /// // `/command` only as the whole input's first character; `@mention` anywhere
 /// // a word starts; `#123` mid-word too.
@@ -880,7 +880,7 @@ fn wrap_visual_rows(lines: &[String], width: u16) -> Vec<VisualRow> {
 /// caret. The host places the terminal cursor through
 /// [`TextInputState::cursor_screen`], which derives the same offset.
 ///
-/// [`Scroll`]: crate::Scroll
+/// [`Scroll`]: crate::components::Scroll
 ///
 /// ![textinput demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/textinput.gif)
 pub struct TextInput {
@@ -920,7 +920,7 @@ impl TextInput {
     ///
     /// ```
     /// use ratatui_core::style::{Color, Style};
-    /// use tuika::{TextInput, TextInputState, Trigger};
+    /// use tuika::prelude::*;
     ///
     /// let state = TextInputState::from_text("ship @docs/readme.md");
     /// let mention = Style::default().fg(Color::Cyan);
@@ -1010,7 +1010,7 @@ mod tests {
     use crate::event::{Event, Key, KeyCode};
     use crate::style::Theme;
     use crate::surface::Surface;
-    use crate::test_support::{buffer, render_el, render_view_rows};
+    use crate::tests::support::{buffer, render_el, render_view_rows};
     use crate::view::{RenderCtx, element};
     use ratatui_core::layout::Rect;
     use ratatui_core::style::Color;

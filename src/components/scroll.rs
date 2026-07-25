@@ -9,7 +9,7 @@
 //! Beyond the built-in wheel/paging [`handle`](ScrollState::handle), the offset
 //! is **host-drivable**: an app that owns its scroll position in its own model
 //! mirrors it into the view with [`set_offset`](ScrollState::set_offset), the
-//! vertical peer of [`SelectState::select`](crate::SelectState::select).
+//! vertical peer of [`SelectState::select`](crate::components::SelectState::select).
 //!
 //! Content wider than the pane — logs, unified diffs, wide tables, deep paths —
 //! **pans horizontally**: [`set_x_offset`](ScrollState::set_x_offset) shifts the
@@ -64,7 +64,7 @@ impl ScrollState {
 
     /// Set the top visible content row explicitly, detaching bottom-stick.
     ///
-    /// The vertical counterpart to [`SelectState::select`](crate::SelectState::select):
+    /// The vertical counterpart to [`SelectState::select`](crate::components::SelectState::select):
     /// an event-loop app that already owns a scroll position in its own model
     /// mirrors it into the view each frame with this, instead of only nudging
     /// via [`handle`](Self::handle). A following [`clamp`](Self::clamp) still
@@ -369,7 +369,7 @@ mod tests {
     use crate::Surface;
     use crate::event::{Event, EventFlow, Key, KeyCode, Mouse, MouseKind};
     use crate::style::Theme;
-    use crate::test_support::{buffer, rainbow_theme, row};
+    use crate::tests::support::{buffer, rainbow_theme, row};
     use crate::view::{RenderCtx, View};
     use ratatui_core::style::Color;
     use ratatui_core::text::{Line, Span};

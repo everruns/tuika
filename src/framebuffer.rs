@@ -2,7 +2,7 @@
 //! shaders, rendered to cells with half-blocks.
 //!
 //! This is the drawing-surface analog of OpenTUI's framebuffer/sprite stack,
-//! built on the same RGBA pixel path as [`Image`](crate::Image) (so a buffer can
+//! built on the same RGBA pixel path as [`Image`](crate::components::Image) (so a buffer can
 //! also be handed to the crisp Kitty/iTerm2/Sixel graphics protocols via
 //! [`to_image_data`](FrameBuffer::to_image_data)). The always-available
 //! [`FrameBufferView`] needs no graphics protocol: it packs two vertical pixels
@@ -24,8 +24,8 @@ use ratatui_core::layout::Rect;
 use ratatui_core::style::{Color, Style};
 
 use crate::geometry::Size;
-use crate::image::ImageData;
 use crate::surface::Surface;
+use crate::term::image::ImageData;
 use crate::view::{RenderCtx, View};
 
 /// An 8-bit RGBA pixel: `[r, g, b, a]`, `a` = 255 opaque, 0 transparent.

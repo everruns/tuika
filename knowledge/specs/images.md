@@ -15,10 +15,13 @@ have no home in that model. Terminals that speak a graphics protocol (Kitty
 graphics, iTerm2 inline images, Sixel) can paint real pixels, but only via
 escape sequences that live *outside* the cell buffer.
 
-tuika already smuggles out-of-band escapes past ratatui three times — OSC 8
-hyperlinks (`hyperlink.rs`), OSC 52 clipboard (`clipboard.rs`), and OSC 9;4
-progress (`native.rs`). Image support follows the same shape, with one new
-constraint those three did not have (see *Cursor* below).
+tuika already smuggles out-of-band escapes past ratatui several times — OSC 8
+hyperlinks, OSC 52 clipboard, OSC 9;4 progress, OSC 22 pointer shape, all under
+`term`. Image support follows the same shape, with one new constraint those did
+not have (see *Cursor* below), which is why the protocol half lives beside them
+in `term::image` while the `Image` view lives in `components` with every other
+view. That split is the module tree stating the design: pixels are a terminal
+concern, reserving cells is a layout concern.
 
 ## What
 

@@ -13,10 +13,7 @@ use std::time::Duration;
 use ratatui::layout::Constraint;
 use ratatui::text::Line;
 use ratatui::widgets::{Bar, BarChart, BarGroup, Block, Borders, Row, Sparkline, Table, Widget};
-use tuika::{
-    Dimension, Element, Event, Flex, KeyCode, KeyHints, Live, LiveView, RatatuiView, Responsive,
-    Runner, RunnerConfig, Theme, element,
-};
+use tuika::prelude::*;
 
 #[derive(Clone)]
 struct Metrics {

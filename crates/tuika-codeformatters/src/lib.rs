@@ -1,15 +1,15 @@
 //! Tree-sitter syntax highlighting for [`tuika`]'s
-//! [`CodeBlock`](tuika::CodeBlock) and [`Markdown`](tuika::Markdown) components.
+//! [`CodeBlock`](tuika::components::CodeBlock) and [`Markdown`](tuika::components::Markdown) components.
 //!
 //! tuika owns the *presentation* of code (framing, background, language label,
 //! wrapping) but deliberately depends on no grammar. This crate fills the gap: a
-//! ready-made [`Highlighter`](tuika::Highlighter) backed by the same tree-sitter
+//! ready-made [`Highlighter`](tuika::highlight::Highlighter) backed by the same tree-sitter
 //! grammars a coding tool already carries, mapping token classes onto the host's
-//! [`Theme`]'s [`code`](tuika::CodeTheme) palette so highlighted code follows the
+//! [`Theme`]'s [`code`](tuika::style::CodeTheme) palette so highlighted code follows the
 //! theme.
 //!
 //! ```
-//! use tuika::{CodeBlock, Theme};
+//! use tuika::prelude::*;
 //! use tuika_codeformatters::TreeSitterHighlighter;
 //!
 //! let hl = TreeSitterHighlighter::new();
@@ -29,7 +29,8 @@ use std::rc::Rc;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Span;
 use tree_sitter_highlight::{Highlight, HighlightConfiguration, HighlightEvent, Highlighter};
-use tuika::{CodeTheme, Theme};
+use tuika::Theme;
+use tuika::style::CodeTheme;
 
 /// Highlight capture names we recognize, longest-specific first so
 /// tree-sitter-highlight resolves the most precise style. Kept in sync with
@@ -196,7 +197,7 @@ fn config_for(key: &'static str) -> Option<Rc<HighlightConfiguration>> {
     })
 }
 
-/// A tree-sitter-backed [`Highlighter`](tuika::Highlighter).
+/// A tree-sitter-backed [`Highlighter`](tuika::highlight::Highlighter).
 ///
 /// Zero-sized and cheap to construct; the per-language parser configurations are
 /// built lazily and cached thread-locally on first use, so keeping one around is
@@ -210,7 +211,7 @@ impl TreeSitterHighlighter {
     }
 }
 
-impl tuika::Highlighter for TreeSitterHighlighter {
+impl tuika::highlight::Highlighter for TreeSitterHighlighter {
     fn highlight(
         &self,
         lang: &str,
@@ -287,7 +288,7 @@ fn highlight_lines(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tuika::Highlighter as _;
+    use tuika::highlight::Highlighter as _;
 
     fn plain(spans: &[Span<'static>]) -> String {
         spans.iter().map(|s| s.content.as_ref()).collect()

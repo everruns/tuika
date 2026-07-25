@@ -3,7 +3,7 @@
 //! The defining widget of repo/branch/worktree browsers, process and container
 //! lists, and file explorers: a header row, per-column width policies, a
 //! full-row selection highlight, a caret gutter, and windowed scrolling. Column
-//! widths are resolved by the same flexbox [`solve`](crate::solve) the rest of
+//! widths are resolved by the same flexbox [`solve`](crate::layout::solve) the rest of
 //! the toolkit uses — a column is [`Column::fixed`], [`Column::auto`] (sizes to
 //! its widest cell), or [`Column::flex`] (shares leftover width by weight) — so
 //! a table lays out consistently with every other container.
@@ -18,8 +18,8 @@
 //! restyles the header row, and [`Table::preserve_selection_fg`] keeps each
 //! column's own color under the selection highlight.
 //!
-//! [`SelectList`]: crate::SelectList
-//! [`Boxed::border_color`]: crate::Boxed::border_color
+//! [`SelectList`]: crate::components::SelectList
+//! [`Boxed::border_color`]: crate::components::Boxed::border_color
 
 use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
@@ -68,7 +68,7 @@ impl Column {
 /// A multi-column selectable list.
 ///
 /// Pairs with a host-held [`SelectState`] (the row selection) exactly as
-/// [`SelectList`](crate::SelectList) does. Each row is a `Vec` of cell
+/// [`SelectList`](crate::components::SelectList) does. Each row is a `Vec` of cell
 /// [`Line`]s, one per column; a short row is padded with blanks, extra cells are
 /// ignored.
 ///
@@ -76,7 +76,7 @@ impl Column {
 ///
 /// ```
 /// use ratatui_core::text::Line;
-/// use tuika::{Column, Table, SelectState, Theme};
+/// use tuika::prelude::*;
 /// use tuika::testing::{grid, render};
 ///
 /// let cols = vec![Column::auto("name"), Column::auto("kind")];
@@ -165,7 +165,7 @@ impl Table {
 
     /// Style the header row explicitly, overriding the default
     /// (`theme.accent_style()`) — the same theme-by-default, explicit-override
-    /// pattern as [`Boxed::border_color`](crate::Boxed::border_color).
+    /// pattern as [`Boxed::border_color`](crate::components::Boxed::border_color).
     pub fn header_style(mut self, style: Style) -> Self {
         self.header_style = Some(style);
         self
@@ -360,7 +360,7 @@ impl View for Table {
 
 impl Table {
     /// A right-edge scrollbar whose thumb tracks the data-row window, mirroring
-    /// [`SelectList`](crate::SelectList)'s. Drawn over the body rows, below the
+    /// [`SelectList`](crate::components::SelectList)'s. Drawn over the body rows, below the
     /// header.
     fn draw_scrollbar(
         &self,
@@ -401,7 +401,7 @@ mod tests {
     use super::*;
     use crate::event::{Event, Key, KeyCode};
     use crate::style::Theme;
-    use crate::test_support::{buffer, rainbow_theme, row};
+    use crate::tests::support::{buffer, rainbow_theme, row};
     use crate::view::{RenderCtx, View};
     use crate::{Size, Surface};
     use ratatui_core::text::{Line, Span};

@@ -26,7 +26,7 @@ reproduces exactly what components looked like before stylesheets existed, so
 adopting it changes nothing until you override a role:
 
 ```rust
-use tuika::{StyleSheet, Theme};
+use tuika::prelude::*;
 
 let theme = Theme::default();
 let sheet = StyleSheet::from_theme(&theme); // a no-op: today's look, as data
@@ -36,7 +36,7 @@ Override a role with struct-update syntax — everything you don't name keeps
 tracking the theme:
 
 ```rust
-use tuika::{StyleBundle, StyleSheet, Theme};
+use tuika::prelude::*;
 use ratatui::style::Color;
 
 let theme = Theme::default();
@@ -58,7 +58,7 @@ the surrounding text's color and only contributes its modifier.
 A host sets one policy for the whole tree. Either paint with it directly:
 
 ```rust
-use tuika::{paint_with_sheet, StyleSheet, Theme};
+use tuika::prelude::*;
 
 let theme = Theme::default();
 let sheet = StyleSheet::from_theme(&theme);
@@ -92,7 +92,8 @@ both:
 The one-shot and streaming renderers both take the sheet:
 
 ```rust
-use tuika::{markdown_to_lines, CodeHighlighter, StyleBundle, StyleSheet, Theme};
+use tuika::components::markdown::to_lines;
+use tuika::prelude::*;
 use ratatui::style::Color;
 
 let theme = Theme::default();
@@ -100,7 +101,7 @@ let sheet = StyleSheet {
     link: StyleBundle::new().fg(Color::Green).bold(),
     ..StyleSheet::from_theme(&theme)
 };
-let lines = markdown_to_lines(
+let lines = to_lines(
     "See the [docs](https://tuika.dev) or https://everruns.dev",
     60,
     &theme,
@@ -121,7 +122,7 @@ surface fill, and `panel.fg` to recolor unfocused borders — without a per-call
 `.background(..)`:
 
 ```rust
-use tuika::{StyleBundle, StyleSheet, Theme};
+use tuika::prelude::*;
 
 let theme = Theme::default();
 let sheet = StyleSheet {

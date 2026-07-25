@@ -61,7 +61,7 @@ with tuika's surfaces (see [Compatibility](#compatibility)).
   queryable for help/`KeyHints` surfaces. Host-agnostic, so it unit-tests
   without a terminal. See the [keymap guide](docs/keymap.md).
 - **Motion** (`anim`, `components::{Spinner, ProgressBar, Loader}`,
-  `native::TerminalProgress`) animates from a host-supplied frame counter and
+  `term::progress::TerminalProgress`) animates from a host-supplied frame counter and
   can drive the terminal's own OSC 9;4 progress indicator. `anim::Timeline` adds
   a scheduler-free keyframe track (values eased over frame offsets, with
   looping/ping-pong) sampled purely from that counter.
@@ -70,6 +70,27 @@ with tuika's surfaces (see [Compatibility](#compatibility)).
   `Sprite` spritesheet frames). `FrameBufferView` paints it into cells with
   half-blocks on any terminal, or hand `to_image_data()` to the crisp graphics
   protocols.
+
+## Crate layout
+
+Four places, so you can guess where something is:
+
+| Path | Holds |
+| --- | --- |
+| `tuika::` | the framework spine — `View`, `Element`, `RenderCtx`, layout, events, `Theme`, `Surface`, the host seam |
+| `tuika::components` | every widget: `Flex`, `Boxed`, `Text`, `Scroll`, `Markdown`, `Table`, … |
+| `tuika::term` | everything out-of-band: `clipboard` (OSC 52), `hyperlink` (OSC 8), `progress` (OSC 9;4), `pointer` (OSC 22), `image`, `capabilities` |
+| `tuika::prelude` | the spine and the components in one glob import |
+
+Application code usually wants the prelude:
+
+```rust
+use tuika::prelude::*;
+```
+
+Everything else stays behind its module path on purpose — `themes::by_name`,
+`probe::RectProbe`, `width::str_cols`, `term::clipboard::write` — so a short
+path always means "you will use this constantly".
 
 ## Components
 
@@ -109,7 +130,7 @@ component. Linked names below jump straight to their demo.
 Layout reads top-down with the [`view!`](#declarative-dsl-view) DSL:
 
 ```rust
-use tuika::{ProgressBar, Spinner, Theme, paint, view};
+use tuika::prelude::*;
 
 let theme = Theme::default();
 let root = view! {
@@ -130,7 +151,7 @@ paint(f.buffer_mut(), f.area(), &theme, root.as_ref(), &[]);
 the macro:
 
 ```rust
-use tuika::{Flex, ProgressBar, Spinner, Text, element};
+use tuika::prelude::*;
 
 let root = Flex::column()
     .gap(1)
@@ -156,7 +177,7 @@ ready-made tree-sitter `Highlighter`. Images work the same way: supply an
 `ImageResolver` and `![alt](url)` renders as real pixels (see [Images](#images)).
 
 ```rust
-use tuika::{CodeBlock, Markdown};
+use tuika::prelude::*;
 use tuika_codeformatters::TreeSitterHighlighter;
 
 let hl = TreeSitterHighlighter::new();
@@ -178,7 +199,7 @@ use tuika::themes;
 
 let a = themes::GRUVBOX_DARK;                          // the struct
 let b = tuika::Theme::gruvbox_dark();                  // named constructor
-let c = tuika::theme_by_name("gruvbox-dark").unwrap(); // config / --theme
+let c = tuika::themes::by_name("gruvbox-dark").unwrap(); // config / --theme
 ```
 
 See the [theme gallery](docs/themes.md) for a screenshot of each bundled
@@ -266,7 +287,7 @@ assigned clip is composited into the frame:
 
 ```rust
 use ratatui::widgets::{Sparkline, Widget};
-use tuika::{RatatuiView, Size};
+use tuika::prelude::*;
 
 let values = vec![1, 4, 2, 8];
 let chart = RatatuiView::sized(Size::new(20, 4), move |area, buffer| {
@@ -317,7 +338,7 @@ and it may `.await`):
 ```rust,ignore
 use std::ops::ControlFlow;
 use std::time::Duration;
-use tuika::{AsyncRunner, Event, KeyCode, RunnerConfig, Signal, Text, Theme, element};
+use tuika::prelude::*;
 
 let runner = AsyncRunner::new(RunnerConfig { tick_rate: Duration::from_secs(2) });
 let mut stats = Stats::default();
@@ -341,7 +362,7 @@ counterpart to `ratatui_dashboard` with no shared state at all.
 
 ## Native terminal progress
 
-`native::TerminalProgress` emits the OSC 9;4 sequence, which drives the
+`term::progress::TerminalProgress` emits the OSC 9;4 sequence, which drives the
 terminal's own progress indicator — a bar across the top of the window in
 Ghostty, the taskbar in Windows Terminal / ConEmu, and similar in
 WezTerm / Konsole / mintty. It is out-of-band (no cursor movement, no cells),
@@ -368,7 +389,8 @@ records its placement into an `ImageLayer`, then the host calls
 `ImageLayer::emit` after `terminal.draw()` to paint the pixels over them.
 
 ```rust
-use tuika::{Image, ImageData, ImageLayer, ImageSupport};
+use tuika::prelude::*;
+use tuika::term::image::{ImageData, ImageLayer, ImageSupport};
 
 let data = ImageData::from_rgba(2, 2, vec![0u8; 2 * 2 * 4]).unwrap();
 let layer = ImageLayer::new();
@@ -400,13 +422,13 @@ you already rendered:
   gesture into a `SelectionRange` (a plain click selects nothing; a new press
   clears the old selection). `selected_text(buffer, area, range)` reads the text
   back out of the rendered `ratatui::Buffer` — linear/stream selection like a
-  terminal's own, wide glyphs intact — and `highlight(buffer, area, range,
+  terminal's own, wide glyphs intact — and `mouse::paint_selection(buffer, area, range,
   style)` paints it in.
 - **Clicks and regions.** `HitMap<T>` maps screen rects to values (a button, a
   link, a row); the last-pushed match wins, so children/overlays registered
   after their parents take precedence. `ClickTracker` turns a same-cell
   `Down`/`Up` into a `Click` and lets an intervening drag cancel it.
-- **Clipboard.** `clipboard::write_clipboard(out, text)` copies via **OSC 52**
+- **Clipboard.** `clipboard::write(out, text)` copies via **OSC 52**
   (`clipboard::osc52` is the pure encoder) — no platform clipboard library,
   works over SSH. Same tmux caveat as OSC 8: needs `allow-passthrough on`.
 
@@ -469,7 +491,7 @@ something on tuika? Open a PR adding it here.
   `Block`/`Paragraph`/`Table` live in `ratatui-widgets` (pulled in by your
   `ratatui` dependency, not by tuika) and compose through
   [`Surface::render_ratatui`](https://docs.rs/tuika/latest/tuika/surface/struct.Surface.html#method.render_ratatui)
-  and [`RatatuiView`](https://docs.rs/tuika/latest/tuika/struct.RatatuiView.html),
+  and [`RatatuiView`](https://docs.rs/tuika/latest/tuika/interop/struct.RatatuiView.html),
   whose seam is a raw `ratatui-core` `Buffer`.
 
 ## Extending
@@ -477,7 +499,7 @@ something on tuika? Open a PR adding it here.
 tuika is extended from your own crate — no fork, no registration step, no trait
 the built-ins get that yours don't:
 
-- **Custom components.** Implement [`View`](https://docs.rs/tuika/latest/tuika/trait.View.html)
+- **Custom components.** Implement [`View`](https://docs.rs/tuika/latest/tuika/view/trait.View.html)
   on your own type and splice it anywhere with `node(your_view)`, or hand it to
   any container — they accept any `impl View`. The built-in components are on
   equal footing with yours; nothing special-cases them.

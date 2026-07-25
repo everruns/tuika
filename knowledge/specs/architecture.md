@@ -133,6 +133,7 @@ decisions; declaring the lexical rule and returning the spans is the seam.
 
 ## Related
 
+- [api-surface.md](./api-surface.md)
 - [goal.md](./goal.md)
 - [markdown.md](./markdown.md)
 - [images.md](./images.md)

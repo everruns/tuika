@@ -49,7 +49,7 @@ mod tests {
     use super::*;
     use crate::components::Text;
     use crate::style::Theme;
-    use crate::test_support::row;
+    use crate::tests::support::row;
     use crate::view::element;
 
     #[test]

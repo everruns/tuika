@@ -17,10 +17,10 @@ rather than leaking escape codes onto the screen.
 `Capabilities` is the one place to ask what the terminal can do —
 `graphics` (an `ImageSupport`, the Images section below), `hyperlinks`,
 `clipboard`, `progress`, and `truecolor`.
-[API](https://docs.rs/tuika/latest/tuika/capabilities/index.html)
+[API](https://docs.rs/tuika/latest/tuika/term/capabilities/index.html)
 
 ```rust
-use tuika::Capabilities;
+use tuika::term::capabilities::Capabilities;
 
 let caps = Capabilities::from_env();   // instant, no terminal I/O
 if caps.supports_images() { /* … */ }
@@ -50,13 +50,13 @@ cell buffer can't carry a link target — a `ratatui::Cell` is one grapheme plus
 style — so tuika emits the link by writing the OSC 8 sequence around the run
 (either via [`HyperlinkBackend`] scanning bare URLs, or via
 [`apply_buffer_links`] for explicit destinations from the markdown renderer).
-[API](https://docs.rs/tuika/latest/tuika/hyperlink/index.html)
+[API](https://docs.rs/tuika/latest/tuika/term/hyperlink/index.html)
 
 <img src="demos/hyperlink.gif" width="880" alt="Hyperlink demo: a transcript line with 'https://docs.rs/tuika' and a markdown link label both shown in an underlined link color; unsupported terminals would render the same text without the link.">
 
 There are two entry points:
 
-- `osc8(url, text)` — the pure encoder. Returns `text` wrapped in the OSC 8
+- `hyperlink::encode(url, text)` — the pure encoder. Returns `text` wrapped in the OSC 8
   sequence, or `text` unchanged when `url` isn't a safe web URL. No I/O.
 - `write_line(out, line)` — serialize a `ratatui::Line` (colors, modifiers, and
   OSC 8 links) straight to a writer, so a host can push a transcript line to
@@ -64,14 +64,14 @@ There are two entry points:
 - `HyperlinkBackend` — a `ratatui::Backend` wrapper that scans drawn cell runs
   for URLs and wraps just those in OSC 8, so links work inside the normal render
   path too. When disabled it's a zero-cost pass-through.
-- `markdown_to_linked_lines` + `apply_buffer_links` — the markdown renderer
+- `markdown::to_linked_lines` + `apply_buffer_links` — the markdown renderer
   preserves `[label](url)` destinations as [`BufferLink`]s through wrapping;
   after painting the lines, `apply_buffer_links` embeds OSC 8 into the boundary
   cells (ForcedWidth) so a label that is not itself a URL stays clickable with
   the terminal's native modifier. Configure schemes with `LinkPolicy` (and
   `Markdown::link_policy`).
 
-Each of the first three has a policy-aware sibling — `osc8_with`, `write_line_with`, and
+Each of the first three has a policy-aware sibling — `encode_with`, `write_line_with`, and
 `HyperlinkBackend::with_policy` — taking a `LinkPolicy` so the host chooses which
 schemes are linked. The default (`LinkPolicy::WEB`) is `http(s)`-only;
 `LinkPolicy::WEB.with_mailto()` also links `mailto:` addresses.
@@ -84,10 +84,10 @@ application. Full-screen hosts that capture pointer motion can use
 and should be paired with `PointerShape::Default` on hover exit and shutdown.
 
 ```rust
-use tuika::{osc8, is_web_url};
+use tuika::term::hyperlink::{encode, is_web_url};
 
 // Pure encoder — safe to unit-test, no terminal needed.
-let link = osc8("https://docs.rs/tuika", "the tuika docs");
+let link = encode("https://docs.rs/tuika", "the tuika docs");
 
 // A bare URL a host would style and hand to `write_line` as a link run.
 assert!(is_web_url("https://docs.rs/tuika"));
@@ -125,7 +125,7 @@ event model (`MouseKind` carries `Down`/`Up`/`Drag`, `Moved`, and scroll, with
   `SelectionRange`, and a same-cell double click selects the word under the
   pointer. Call `resolve(buffer, area)` after rendering to resolve pending word
   boundaries; `selected_text(buffer, area, range)` then reads the selected text
-  back out of the rendered buffer (wide glyphs intact) and `highlight(buffer,
+  back out of the rendered buffer (wide glyphs intact) and `mouse::paint_selection(buffer,
   area, range, style)` paints it in.
 - `ctrl_click_url(event, buffer, area)` returns the URL under a Ctrl+left-button
   release: first an OSC 8 target embedded in the cell run (labeled markdown
@@ -149,7 +149,7 @@ if let Some(range) = sel.range() {
 ```
 
 Selection integrates with the clipboard feature below: the text a drag selects
-is exactly what `write_clipboard` copies. **Shift-drag** is deliberately left to
+is exactly what `clipboard::write` copies. **Shift-drag** is deliberately left to
 the terminal so its native selection still works as an escape hatch.
 
 ## System clipboard (OSC 52)
@@ -157,18 +157,18 @@ the terminal so its native selection still works as an escape hatch.
 Copy text to the system clipboard by writing an OSC 52 sequence — the *terminal*
 does the copy, so there's no platform clipboard library and it works over SSH.
 That makes it the natural partner to a mouse selection.
-[API](https://docs.rs/tuika/latest/tuika/clipboard/index.html)
+[API](https://docs.rs/tuika/latest/tuika/term/clipboard/index.html)
 
 - `osc52(text)` — pure encoder; returns the sequence, or `None` when `text` is
   empty or exceeds `MAX_LEN`.
-- `write_clipboard(out, text)` — encode and write in one step, returning whether
+- `clipboard::write(out, text)` — encode and write in one step, returning whether
   a sequence was emitted.
 
 ```rust
-use tuika::write_clipboard;
+use tuika::term::clipboard;
 
 let mut out = std::io::stdout();
-let copied = write_clipboard(&mut out, "selected text")?;   // Ok(true) when emitted
+let copied = clipboard::write(&mut out, "selected text")?;   // Ok(true) when emitted
 ```
 
 The emitted bytes are the base64-encoded payload, terminated by `ST` (`ESC \`):
@@ -193,7 +193,7 @@ Ghostty, the taskbar in Windows Terminal and ConEmu. It's fully out-of-band: it
 moves no cursor and paints no cells, so it works in both the inline and
 full-screen renderers and composes with an in-grid
 [`ProgressBar`](components.md#progressbar).
-[API](https://docs.rs/tuika/latest/tuika/struct.TerminalProgress.html)
+[API](https://docs.rs/tuika/latest/tuika/term/progress/struct.TerminalProgress.html)
 
 `TerminalProgress` owns the indicator and clears it on drop, so a dropped or
 panicking session never leaves a stuck bar in the taskbar. Its methods map to
@@ -201,7 +201,7 @@ the indicator states: `percent` (normal), `error`, `indeterminate`, and
 `clear`.
 
 ```rust
-use tuika::TerminalProgress;
+use tuika::term::progress::TerminalProgress;
 
 let mut progress = TerminalProgress::new();
 progress.percent(60);        // 60% on the terminal's own bar
@@ -226,7 +226,7 @@ session.
 Paint real pixels — an avatar, a chart, a rendered diagram — over the cells a
 view reserves for them, using the **Kitty**, **iTerm2**, or **Sixel** graphics
 protocol, whichever the terminal speaks.
-[API](https://docs.rs/tuika/latest/tuika/image/index.html)
+[API](https://docs.rs/tuika/latest/tuika/term/image/index.html)
 
 <img src="demos/image.svg" width="880" alt="Image demo, side by side: on a Kitty/Ghostty/WezTerm/Konsole terminal the Image view renders a red/green gradient in place; on every other terminal the same view shows a dimmed italic '[image: a red/green gradient]' placeholder.">
 
@@ -258,7 +258,8 @@ above — emission is a two-step draw:
   for the next frame.
 
 ```rust
-use tuika::{Image, ImageData, ImageLayer, ImageSupport};
+use tuika::prelude::*;
+use tuika::term::image::{ImageData, ImageLayer, ImageSupport};
 
 let data = ImageData::from_rgba(2, 2, vec![0u8; 2 * 2 * 4]).unwrap();
 let layer = ImageLayer::new();

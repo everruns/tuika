@@ -2,12 +2,12 @@
 //! subtree.
 //!
 //! Focus is carried on the [`RenderCtx`], and [`paint`](crate::paint) renders
-//! the whole tree from one root context, so a plain [`Flex`](crate::Flex) can't
+//! the whole tree from one root context, so a plain [`Flex`](crate::components::Flex) can't
 //! hand a single child `focused = true`. Multi-pane apps need exactly that: the
 //! active pane's border should light up while the others stay dim. [`FocusScope`]
 //! wraps a subtree and renders it with an explicit focus flag, so each pane can
 //! be marked focused or not independently of the frame's root context — and any
-//! focus-aware view inside it (notably [`Boxed`](crate::Boxed)) recolors
+//! focus-aware view inside it (notably [`Boxed`](crate::components::Boxed)) recolors
 //! accordingly.
 
 use ratatui_core::layout::Rect;
@@ -21,18 +21,18 @@ use crate::view::{Element, RenderCtx, View};
 ///
 /// Measures and draws exactly as the wrapped view does — it only overrides
 /// [`RenderCtx::focused`] for the subtree, so a focus-aware child (e.g.
-/// [`Boxed`](crate::Boxed)) picks the focused or unfocused theme color even
+/// [`Boxed`](crate::components::Boxed)) picks the focused or unfocused theme color even
 /// though the surrounding frame shares one root context.
 ///
 /// # Example
 ///
 /// ```
-/// use tuika::{Boxed, FocusScope, Text, Theme, element};
+/// use tuika::prelude::*;
 /// use tuika::testing::render;
 ///
 /// // Two panes in one frame: the left one focused, the right one not — each
 /// // Boxed border resolves its own color despite the shared root context.
-/// let panes = tuika::Flex::row()
+/// let panes = Flex::row()
 ///     .grow(1, element(FocusScope::focused(element(Boxed::new(element(Text::raw("active")))))))
 ///     .grow(1, element(FocusScope::unfocused(element(Boxed::new(element(Text::raw("idle")))))));
 ///
@@ -77,7 +77,7 @@ mod tests {
     use super::*;
     use crate::Surface;
     use crate::components::{Boxed, Text};
-    use crate::test_support::{buffer, rainbow_theme};
+    use crate::tests::support::{buffer, rainbow_theme};
     use crate::view::{RenderCtx, element};
 
     /// The focus flag a `FocusScope` imposes on its subtree wins over the root

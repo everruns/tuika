@@ -25,7 +25,8 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use tuika::{Event, Key, KeyCode, RenderCtx, Scroll, ScrollState, Surface, Theme, View};
+use tuika::components::{Scroll, ScrollState};
+use tuika::{Event, Key, KeyCode, RenderCtx, Surface, Theme, View};
 
 const WIDTH: u16 = 80;
 const HEIGHT: u16 = 24;

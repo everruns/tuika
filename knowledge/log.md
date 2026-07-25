@@ -5,6 +5,26 @@ change that makes them — an entry says why the knowledge moved, and that reaso
 is rarely recoverable later. Routine wording, formatting, and link fixes do not
 need entries.
 
+## 2026-07-25 — The crate root becomes a decision, not an accumulation
+
+- The public tree had grown by accretion: 30 flat public modules plus 167 names
+  re-exported to the crate root, so nearly every type had two equally valid
+  paths and neither was canonical. Symptoms were hand-prefixed names
+  (`ASCII_FONT_HEIGHT`, `qr_encode`), a `highlight` module and a `highlight`
+  function colliding at the root, and `Overlay`/`OverlaySpec` living in
+  different modules.
+- Wrote [Public API surface](specs/api-surface.md) to state what each level
+  owns — root = framework spine, `components` = widgets, `term` = escapes
+  outside the cell grid, `prelude` = the one-line import — and the rules that
+  place a new item: one canonical path per item, a module goes public only when
+  the flat namespace fails a name it owns, and a `cfg` is never a reason to
+  split a module.
+- Consequences recorded in the affected concepts: the out-of-band escapes are
+  now one family under `term` ([Out-of-band](specs/out-of-band.md)), images
+  split protocol from view along that same line ([Images](specs/images.md)), and
+  test scaffolding moved out of the crate root into `src/tests/`
+  ([Testing](processes/testing.md)).
+
 ## 2026-07-25 — The bundle now states and enforces its own upkeep
 
 - The rule that concepts are updated by the change that invalidates them lived in

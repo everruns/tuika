@@ -1,6 +1,6 @@
 //! OSC 8 terminal hyperlinks.
 //!
-//! Like [`crate::native`] (OSC 9;4 progress), this is an out-of-band terminal
+//! Like [`crate::term::progress`] (OSC 9;4), this is an out-of-band terminal
 //! capability that ratatui's cell buffer cannot carry: a `Cell` holds one
 //! grapheme + style, with nowhere to attach a link target, and embedding the
 //! escape in a cell's symbol breaks width accounting. So hyperlinks are emitted
@@ -15,7 +15,7 @@
 //! (Ghostty, iTerm2, WezTerm, Kitty, recent VTE) make the run clickable; others
 //! ignore the unknown OSC and render the text unchanged.
 //!
-//! [`osc8`] is the pure encoder (validated + sanitized, unit-testable with no
+//! [`encode`] is the pure encoder (validated + sanitized, unit-testable with no
 //! I/O). [`write_line`] serializes a ratatui [`Line`] — colors, common
 //! modifiers, and OSC 8 links — to any [`Write`] sink, so a host can push a
 //! transcript line to scrollback with real hyperlinks instead of going through
@@ -100,17 +100,17 @@ const MAILTO_PREFIX: &str = "mailto:";
 /// Wrap `text` in an OSC 8 hyperlink to `url` under `policy`, or return `text`
 /// unchanged when `url` is not a valid, safe target for that policy. Pure and
 /// allocation-only — no I/O.
-pub fn osc8_with(url: &str, text: &str, policy: LinkPolicy) -> String {
+pub fn encode_with(url: &str, text: &str, policy: LinkPolicy) -> String {
     match sanitize_url(url, policy) {
         Some(url) => format!("\x1b]8;;{url}{ST}{text}\x1b]8;;{ST}"),
         None => text.to_string(),
     }
 }
 
-/// [`osc8_with`] under the default ([`LinkPolicy::WEB`]) policy: wrap `text` in a
+/// [`encode_with`] under the default ([`LinkPolicy::WEB`]) policy: wrap `text` in a
 /// link to `url` when `url` is a safe `http(s)` URL, else return `text`.
-pub fn osc8(url: &str, text: &str) -> String {
-    osc8_with(url, text, LinkPolicy::default())
+pub fn encode(url: &str, text: &str) -> String {
+    encode_with(url, text, LinkPolicy::default())
 }
 
 /// Whether `s` is a bare `http(s)://` URL with no interior whitespace — the
@@ -449,7 +449,7 @@ fn write_span(out: &mut impl Write, span: &Span<'_>, policy: LinkPolicy) -> io::
     let content = span.content.as_ref();
     let is_link = content.trim() == content && is_linkable(content, policy);
     if is_link {
-        queue!(out, Print(osc8_with(content, content, policy)))?;
+        queue!(out, Print(encode_with(content, content, policy)))?;
     } else {
         queue!(out, Print(content))?;
     }
@@ -687,7 +687,7 @@ mod tests {
     #[test]
     fn osc8_wraps_valid_web_urls() {
         assert_eq!(
-            osc8("https://example.com", "example"),
+            encode("https://example.com", "example"),
             "\x1b]8;;https://example.com\x1b\\example\x1b]8;;\x1b\\"
         );
     }
@@ -695,13 +695,13 @@ mod tests {
     #[test]
     fn osc8_passes_through_non_web_or_unsafe_urls() {
         // Non-web schemes are left as plain text.
-        assert_eq!(osc8("mailto:a@b.com", "mail"), "mail");
-        assert_eq!(osc8("ftp://host/x", "f"), "f");
+        assert_eq!(encode("mailto:a@b.com", "mail"), "mail");
+        assert_eq!(encode("ftp://host/x", "f"), "f");
         // A URL trying to smuggle an ESC (which could terminate the OSC early
         // and break out) has the control byte stripped; the link target keeps
         // no raw ESC, so it cannot escape the sequence.
         let sneaky = "https://evil\x1b\\.com";
-        let encoded = osc8(sneaky, "x");
+        let encoded = encode(sneaky, "x");
         assert!(
             !encoded.contains("evil\x1b"),
             "raw escape must be stripped from the target: {encoded:?}"
@@ -809,7 +809,7 @@ mod tests {
     #[test]
     fn mailto_is_off_under_default_policy() {
         // Default (web-only) policy neither encodes nor finds `mailto:`.
-        assert_eq!(osc8("mailto:a@b.com", "mail"), "mail");
+        assert_eq!(encode("mailto:a@b.com", "mail"), "mail");
         assert!(find_links("write mailto:a@b.com now", LinkPolicy::default()).is_empty());
     }
 
@@ -817,7 +817,7 @@ mod tests {
     fn mailto_links_when_opted_in() {
         let policy = LinkPolicy::WEB.with_mailto();
         assert_eq!(
-            osc8_with("mailto:a@b.com", "mail", policy),
+            encode_with("mailto:a@b.com", "mail", policy),
             "\x1b]8;;mailto:a@b.com\x1b\\mail\x1b]8;;\x1b\\"
         );
         // Found in running text, trailing punctuation trimmed.
@@ -838,7 +838,7 @@ mod tests {
             find_links("mailto:a@b.com?cc=evil@x.com&body=hi", policy),
             vec![(0, 14)]
         );
-        let encoded = osc8_with("mailto:a@b.com?cc=evil@x.com&body=hi", "m", policy);
+        let encoded = encode_with("mailto:a@b.com?cc=evil@x.com&body=hi", "m", policy);
         assert_eq!(encoded, "\x1b]8;;mailto:a@b.com\x1b\\m\x1b]8;;\x1b\\");
         assert!(
             !encoded.contains("cc="),
@@ -850,7 +850,7 @@ mod tests {
     fn mailto_strips_control_bytes_from_target() {
         let policy = LinkPolicy::WEB.with_mailto();
         let sneaky = "mailto:a\x1b\\@b.com";
-        let encoded = osc8_with(sneaky, "m", policy);
+        let encoded = encode_with(sneaky, "m", policy);
         assert!(
             !encoded.contains("a\x1b"),
             "raw escape must be stripped: {encoded:?}"
@@ -861,7 +861,7 @@ mod tests {
     #[test]
     fn mailto_without_address_is_not_a_link() {
         let policy = LinkPolicy::WEB.with_mailto();
-        assert_eq!(osc8_with("mailto:", "m", policy), "m");
+        assert_eq!(encode_with("mailto:", "m", policy), "m");
         assert!(find_links("bare mailto: here", policy).is_empty());
     }
 

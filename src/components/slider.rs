@@ -129,12 +129,12 @@ impl SliderState {
 /// and an optional trailing value label.
 ///
 /// The filled portion and thumb use the theme accent, the remaining track the
-/// theme's dim color — the same palette split as [`ProgressBar`](crate::ProgressBar).
+/// theme's dim color — the same palette split as [`ProgressBar`](crate::components::ProgressBar).
 /// Like a progress bar it fills the width it's given, so place it in a
-/// [`fixed`](crate::Flex) row or let a flex child grow.
+/// [`fixed`](crate::components::Flex) row or let a flex child grow.
 ///
 /// ```
-/// use tuika::{Slider, SliderState};
+/// use tuika::prelude::*;
 /// let mut state = SliderState::new(0.0, 100.0, 50.0).step(10.0);
 /// state.increment();
 /// assert_eq!(state.value(), 60.0);
@@ -235,7 +235,7 @@ mod tests {
     use super::*;
     use crate::event::{Event, Key, KeyCode};
     use crate::style::Theme;
-    use crate::test_support::{buffer, rainbow_theme, row};
+    use crate::tests::support::{buffer, rainbow_theme, row};
     use crate::view::{RenderCtx, View};
 
     fn key(code: KeyCode) -> Event {

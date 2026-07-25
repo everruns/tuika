@@ -10,7 +10,7 @@ use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
 use ratatui_core::text::{Line, Span};
 
-use super::line_width;
+use super::text::line_width;
 use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
@@ -95,7 +95,7 @@ impl View for Rule {
 mod tests {
     use super::*;
     use crate::style::Theme;
-    use crate::test_support::row;
+    use crate::tests::support::row;
     use ratatui_core::style::{Color, Style};
     use ratatui_core::text::{Line, Span};
 

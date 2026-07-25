@@ -57,26 +57,26 @@ macro_rules! view {
 
     // ---- @one: parse one node into an Element -------------------------------
     (@one col $(( $($attr:tt)* ))? { $($kids:tt)* }) => {{
-        let __flex = $crate::Flex::column();
+        let __flex = $crate::components::Flex::column();
         let __flex = $crate::view!(@attrs __flex; $($($attr)*)?);
         let __flex = $crate::view!(@kids __flex; $($kids)*);
         $crate::element(__flex)
     }};
     (@one row $(( $($attr:tt)* ))? { $($kids:tt)* }) => {{
-        let __flex = $crate::Flex::row();
+        let __flex = $crate::components::Flex::row();
         let __flex = $crate::view!(@attrs __flex; $($($attr)*)?);
         let __flex = $crate::view!(@kids __flex; $($kids)*);
         $crate::element(__flex)
     }};
     (@one boxed $(( $($attr:tt)* ))? { $($kids:tt)* }) => {{
-        let __boxed = $crate::Boxed::new($crate::view!(@one $($kids)*));
+        let __boxed = $crate::components::Boxed::new($crate::view!(@one $($kids)*));
         let __boxed = $crate::view!(@boxattrs __boxed; $($($attr)*)?);
         $crate::element(__boxed)
     }};
     (@one text ( $e:expr )) => {
-        $crate::element($crate::Text::raw($e))
+        $crate::element($crate::components::Text::raw($e))
     };
-    (@one spacer ()) => { $crate::element($crate::Spacer) };
+    (@one spacer ()) => { $crate::element($crate::components::Spacer) };
     (@one node ( $e:expr )) => { $crate::element($e) };
 
     // ---- @kids: fold children onto a Flex builder ---------------------------
@@ -97,10 +97,10 @@ macro_rules! view {
         $crate::view!(@kids $b.auto($crate::view!(@one boxed $(($($a)*))? { $($k)* })); $($rest)*)
     };
     (@kids $b:expr; text ( $e:expr ) $($rest:tt)*) => {
-        $crate::view!(@kids $b.auto($crate::element($crate::Text::raw($e))); $($rest)*)
+        $crate::view!(@kids $b.auto($crate::element($crate::components::Text::raw($e))); $($rest)*)
     };
     (@kids $b:expr; spacer () $($rest:tt)*) => {
-        $crate::view!(@kids $b.auto($crate::element($crate::Spacer)); $($rest)*)
+        $crate::view!(@kids $b.auto($crate::element($crate::components::Spacer)); $($rest)*)
     };
     (@kids $b:expr; node ( $e:expr ) $($rest:tt)*) => {
         $crate::view!(@kids $b.auto($crate::element($e)); $($rest)*)
@@ -149,7 +149,7 @@ macro_rules! view {
 #[cfg(test)]
 mod tests {
     use crate::components::{Boxed, Flex, Spacer, Text};
-    use crate::test_support::render_el;
+    use crate::tests::support::render_el;
     use crate::view::{Element, RenderCtx, View, element};
     use crate::{Size, Surface};
     use ratatui_core::layout::Rect;

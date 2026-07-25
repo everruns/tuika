@@ -18,10 +18,8 @@ use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
-use tuika::{
-    Column, FocusScope, HyperlinkBackend, Loader, ProgressBar, SelectState, Spinner, SpinnerStyle,
-    Table, Text, Theme, view,
-};
+use tuika::prelude::*;
+use tuika::term::hyperlink::HyperlinkBackend;
 
 fn build(frame: u64, theme: &Theme) -> tuika::Element {
     let labeled = |style: SpinnerStyle, label: &str| -> tuika::Element {
@@ -144,7 +142,7 @@ fn main() -> io::Result<()> {
         },
     )?;
     let theme = Theme::default();
-    let mut progress = tuika::TerminalProgress::new();
+    let mut progress = tuika::term::progress::TerminalProgress::new();
     progress.indeterminate();
 
     let mut frame = 0u64;

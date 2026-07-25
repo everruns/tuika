@@ -343,7 +343,7 @@ impl StyleBundle {
 /// closed enum (rather than open string classes) so a typo is a compile error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Role {
-    /// A bordered panel / framed container ([`Boxed`](crate::Boxed)).
+    /// A bordered panel / framed container ([`Boxed`](crate::components::Boxed)).
     Panel,
     /// A markdown heading (`# …`).
     Heading,
@@ -381,7 +381,7 @@ pub enum Role {
 /// Override a rule with struct-update syntax:
 ///
 /// ```
-/// use tuika::{StyleBundle, StyleSheet, Theme};
+/// use tuika::style::{StyleBundle, StyleSheet, Theme};
 /// use ratatui_core::style::Color;
 ///
 /// let theme = Theme::default();
@@ -393,7 +393,7 @@ pub enum Role {
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StyleSheet {
-    /// Border color/background for a [`Boxed`](crate::Boxed) panel.
+    /// Border color/background for a [`Boxed`](crate::components::Boxed) panel.
     pub panel: StyleBundle,
     /// Markdown heading text.
     pub heading: StyleBundle,
@@ -470,7 +470,7 @@ impl Default for StyleSheet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::rainbow_theme;
+    use crate::tests::support::rainbow_theme;
     use ratatui_core::style::Modifier;
 
     #[test]

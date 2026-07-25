@@ -35,6 +35,7 @@ the reason for a decision is cheapest to write down while it is still at hand.
 
 - [Product goal](specs/goal.md) — what tuika is for, and the boundary it defends.
 - [Architecture](specs/architecture.md) — the view/state/layout/host model and its seams.
+- [Public API surface](specs/api-surface.md) — what the root, `components`, `term`, and the prelude each own.
 
 ## Capabilities
 

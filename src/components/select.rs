@@ -115,7 +115,7 @@ impl SelectState {
 ///
 /// ```
 /// use ratatui_core::text::Line;
-/// use tuika::{SelectList, SelectState, Theme};
+/// use tuika::prelude::*;
 /// use tuika::testing::{grid, render};
 ///
 /// // A fresh state highlights the first row; the caret `›` marks it.
@@ -277,7 +277,7 @@ mod tests {
     use super::*;
     use crate::event::{Event, EventFlow, Key, KeyCode};
     use crate::style::Theme;
-    use crate::test_support::{buffer, rainbow_theme, row};
+    use crate::tests::support::{buffer, rainbow_theme, row};
     use crate::view::{RenderCtx, View};
     use crate::{Size, Surface};
     use ratatui_core::text::Line;

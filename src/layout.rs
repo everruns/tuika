@@ -164,15 +164,16 @@ impl Item {
 /// align each child on the cross axis.
 ///
 /// This is the flexbox solver as a standalone, callable step — re-exported at
-/// the crate root as [`tuika::solve`](crate::solve) alongside [`Item`],
+/// the crate root as [`tuika::solve`](crate::layout::solve) alongside [`Item`],
 /// [`LayoutStyle`], and the [`Dimension`] rules. Reach for it (or the
-/// higher-level [`Flex::solve`](crate::Flex::solve)) when an app needs child
+/// higher-level [`Flex::solve`](crate::components::Flex::solve)) when an app needs child
 /// rects *before* or *without* a render pass — to size a scroll region to a
 /// pane's real height, hit-test a click, or decide what fits — so the flexbox
 /// drives those layouts instead of a second engine.
 ///
 /// ```
-/// use tuika::{Dimension, Item, LayoutStyle, Size, solve};
+/// use tuika::layout::{Dimension, Item, LayoutStyle, solve};
+/// use tuika::Size;
 /// use ratatui_core::layout::Rect;
 ///
 /// // A sidebar of 8 columns, then the rest of the row for content.

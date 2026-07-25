@@ -33,7 +33,7 @@ where
     ///
     /// ```
     /// use ratatui::widgets::{Block, Widget};
-    /// use tuika::RatatuiView;
+    /// use tuika::interop::RatatuiView;
     ///
     /// let view = RatatuiView::fill(|area, buffer| {
     ///     Block::bordered().title(" ratatui ").render(area, buffer);
@@ -78,7 +78,7 @@ where
 mod tests {
     use super::*;
     use crate::style::Theme;
-    use crate::test_support::row;
+    use crate::tests::support::row;
 
     #[test]
     fn ratatui_view_renders_borrowing_widget_data() {

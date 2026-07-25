@@ -28,9 +28,9 @@ terminal encoder, not the component, and belongs in the PTY layer.
 | Layer | Location | Responsible for |
 | --- | --- | --- |
 | Unit | each module's `#[cfg(test)] mod tests` | layout math, component rendering, interactive state, keymap dispatch, compositor, easing, OSC encoders, palette slots |
-| Cross-module | `src/integration.rs` | behavior spanning several modules with no single owner: composed trees, degenerate screens where scroll and overlay interact |
-| Property | `src/proptests.rs` | solver and overlay invariants for *any* input — children stay in bounds, flex fills exactly |
-| Golden snapshot | `src/snapshots.rs` | whole screens diffed against checked-in glyph grids |
+| Cross-module | `src/tests/integration.rs` | behavior spanning several modules with no single owner: composed trees, degenerate screens where scroll and overlay interact |
+| Property | `src/tests/proptests.rs` | solver and overlay invariants for *any* input — children stay in bounds, flex fills exactly |
+| Golden snapshot | `src/tests/snapshots.rs` | whole screens diffed against checked-in glyph grids |
 | Size sweep | unit | no panic and no out-of-clip writes from `0×0` upward |
 | PTY smoke | `tests/pty_smoke.rs` | the terminal-facing protocol: alt-screen and cursor/mouse lifecycle pairs, OSC 9;4, OSC 8, truecolor and Braille cells through a reference terminal parser, resize survival, clean exit |
 | Packaging | `tests/packaging.rs` | what the published `.crate` contains |

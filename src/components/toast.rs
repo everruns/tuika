@@ -31,7 +31,7 @@ pub enum ToastLevel {
 
 impl ToastLevel {
     /// The conventional accent color for this level (independent of theme hue,
-    /// like [`DiffStyle`](crate::DiffStyle)).
+    /// like [`DiffStyle`](crate::components::DiffStyle)).
     pub fn color(self) -> Color {
         match self {
             ToastLevel::Info => Color::Rgb(90, 150, 210),
@@ -67,7 +67,7 @@ pub const DEFAULT_TTL: u64 = 120;
 /// A host-owned stack of active toasts (newest first).
 ///
 /// ```
-/// use tuika::{ToastLevel, Toasts};
+/// use tuika::prelude::*;
 /// let mut toasts = Toasts::new(4);
 /// toasts.push_for(ToastLevel::Success, "Saved", Some(2));
 /// assert_eq!(toasts.len(), 1);
@@ -151,7 +151,7 @@ impl Toasts {
 ///
 /// Each toast is a single row: a level-colored bar and glyph, then the message
 /// over the theme's surface fill. Place it in a corner overlay (e.g.
-/// [`Anchor::BottomRight`](crate::Anchor)); it fills the width it is given and is
+/// [`Anchor::BottomRight`](crate::overlay::Anchor)); it fills the width it is given and is
 /// as tall as there are toasts.
 pub struct ToastList<'a> {
     toasts: &'a Toasts,
@@ -209,7 +209,7 @@ impl View for ToastList<'_> {
 mod tests {
     use super::*;
     use crate::style::Theme;
-    use crate::test_support::row;
+    use crate::tests::support::row;
 
     #[test]
     fn newest_pushes_to_the_top_and_max_evicts_oldest() {

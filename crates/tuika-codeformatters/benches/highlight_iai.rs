@@ -14,7 +14,8 @@
 use std::hint::black_box;
 
 use iai_callgrind::{library_benchmark, library_benchmark_group, main};
-use tuika::{Highlighter, Theme};
+use tuika::Theme;
+use tuika::highlight::Highlighter;
 use tuika_codeformatters::TreeSitterHighlighter;
 
 const RUST: &str = "use std::collections::HashMap;\n\n\

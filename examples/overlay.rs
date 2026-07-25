@@ -14,10 +14,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::text::{Line, Span};
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
-use tuika::{
-    Element, Event, KeyCode, Overlay, OverlaySpec, Padding, TerminalSession, Text, Theme, paint,
-    translate_event, view,
-};
+use tuika::prelude::*;
 
 fn main() -> io::Result<()> {
     let mut open = false;
