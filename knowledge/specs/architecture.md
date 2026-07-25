@@ -31,6 +31,10 @@ rather than beside it.
 - **Overlays anchor over the base tree** rather than nesting inside it, so a
   dialog's position is independent of where it is declared and input routing can
   give the topmost overlay first refusal.
+- **Owned scenes are frame descriptions, not retained UI.** `Scene` owns the
+  root and overlay elements for one frame and resolves each overlay's
+  `OverlaySpec` while rendering. This removes borrowed compositor plumbing
+  without adding identity, lifecycle, or hidden persistent state.
 - **The host owns the terminal**: alternate screen, raw mode, mouse capture,
   input translation, and frame compositing.
 
@@ -112,6 +116,11 @@ inserts a path — is the application's, and `TextInput::highlights` paints rang
 the host computed rather than semantics tuika inferred. A toolkit that shipped
 "mentions" and "slash commands" as features would be encoding one host's product
 decisions; declaring the lexical rule and returning the spans is the seam.
+
+`Viewport` follows the same host-state rule as `Scroll`: offsets live in
+`ScrollState`, while the view owns only an ephemeral child and declared content
+extent. Its scratch buffer covers only the visible source rectangle, even when
+the child's logical extent is much larger.
 
 ## Rendering pipeline
 

@@ -45,7 +45,10 @@ fn the_view_macro_expands_against_the_component_paths() {
 /// owning module is public.
 #[test]
 fn components_are_reachable_flat() {
-    use tuika::components::{AsciiFont, Boxed, Console, Diff, Image, Markdown, QrCode, Toasts};
+    use tuika::components::{
+        AsciiFont, Boxed, Console, Dialog, Diff, Form, FormField, FormState, Image, Markdown,
+        QrCode, Toasts, Viewport,
+    };
 
     let theme = Theme::default();
     let boxed = element(Boxed::new(element(tuika::components::Text::raw("x"))));
@@ -63,6 +66,38 @@ fn components_are_reachable_flat() {
     let _ = Markdown::new("# hi");
     let _ = QrCode::encode("hi", QrEcc::Low);
     let _ = Toasts::new;
+    let state = FormState::new();
+    let _ = Form::new(
+        vec![FormField::new("name", element(Text::raw("Ada")))],
+        &state,
+    );
+    let scroll = ScrollState::default();
+    let _ = Viewport::new(element(Text::raw("wide")), Size::new(20, 1), &scroll);
+    let _ = Dialog::new("title", element(Text::raw("content")));
+}
+
+/// Owned composition belongs to the framework spine; custom canvases remain an
+/// explicit view-module escape hatch rather than growing the prelude.
+#[test]
+fn scene_and_custom_drawing_follow_the_surface_policy() {
+    use ratatui_core::layout::Rect;
+    use tuika::view::{CanvasView, DrawView};
+
+    let canvas: CanvasView<_> = DrawView::new(
+        |area: Rect, surface: &mut Surface<'_>, ctx: &RenderCtx<'_>| {
+            surface.set_string(area.x, area.y, "ok", ctx.theme.info_style());
+        },
+    );
+    let scene =
+        Scene::new(element(canvas)).dialog(Dialog::new("title", element(Text::raw("content"))));
+    assert_eq!(scene.overlay_count(), 1);
+    let rendered = grid(&render(&scene, 30, 8, &Theme::default()));
+    assert!(rendered.contains("title"));
+    assert!(rendered.contains("content"));
+    assert_eq!(
+        Theme::default().semantic_style(SemanticRole::Info),
+        Theme::default().info_style()
+    );
 }
 
 /// A component module is public exactly when it owns a constant or free

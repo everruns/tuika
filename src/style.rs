@@ -226,6 +226,64 @@ impl Theme {
             .fg(self.selection_fg)
             .add_modifier(Modifier::BOLD)
     }
+
+    /// Resolve a generic status role without requiring additional public
+    /// fields in [`Theme`].
+    ///
+    /// The mapping reuses the syntax palette's established semantic colors:
+    /// strings for success, constants for warning, keywords for danger, and
+    /// links for info. This keeps existing downstream `Theme { .. }` literals
+    /// source-compatible while giving every custom and bundled theme sensible
+    /// status colors.
+    pub fn semantic_color(&self, role: SemanticRole) -> Color {
+        match role {
+            SemanticRole::Success => self.code.string,
+            SemanticRole::Warning => self.code.constant,
+            SemanticRole::Danger => self.code.keyword,
+            SemanticRole::Info => self.code.link,
+        }
+    }
+
+    /// Bold foreground style for a generic status role.
+    pub fn semantic_style(&self, role: SemanticRole) -> Style {
+        Style::default()
+            .fg(self.semantic_color(role))
+            .add_modifier(Modifier::BOLD)
+    }
+
+    /// Bold success style.
+    pub fn success_style(&self) -> Style {
+        self.semantic_style(SemanticRole::Success)
+    }
+
+    /// Bold warning style.
+    pub fn warning_style(&self) -> Style {
+        self.semantic_style(SemanticRole::Warning)
+    }
+
+    /// Bold danger/error style.
+    pub fn danger_style(&self) -> Style {
+        self.semantic_style(SemanticRole::Danger)
+    }
+
+    /// Bold informational style.
+    pub fn info_style(&self) -> Style {
+        self.semantic_style(SemanticRole::Info)
+    }
+}
+
+/// Generic semantic status roles shared by notifications, validation, and
+/// application-defined views.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SemanticRole {
+    /// Successful or completed state.
+    Success,
+    /// Warning or caution state.
+    Warning,
+    /// Error, destructive, or dangerous state.
+    Danger,
+    /// Informational or neutral status.
+    Info,
 }
 
 /// A resolved, partial style for one semantic [`Role`].
@@ -486,6 +544,22 @@ mod tests {
         assert_eq!(sel.bg, Some(t.selection_bg));
         assert_eq!(sel.fg, Some(t.selection_fg));
         assert!(sel.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(
+            t.success_style().fg,
+            Some(t.semantic_color(SemanticRole::Success))
+        );
+        assert_eq!(
+            t.warning_style().fg,
+            Some(t.semantic_color(SemanticRole::Warning))
+        );
+        assert_eq!(
+            t.danger_style().fg,
+            Some(t.semantic_color(SemanticRole::Danger))
+        );
+        assert_eq!(
+            t.info_style().fg,
+            Some(t.semantic_color(SemanticRole::Info))
+        );
     }
 
     #[test]

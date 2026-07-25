@@ -80,6 +80,7 @@ pub mod overlay;
 pub mod prelude;
 pub mod probe;
 pub mod runner;
+pub mod scene;
 pub mod style;
 pub mod surface;
 pub mod term;
@@ -96,13 +97,14 @@ pub mod width;
 // name earns it.
 pub use event::{Event, EventFlow, Key, KeyCode, Mouse, MouseButton, MouseKind};
 pub use geometry::{Padding, Size};
-pub use host::{TerminalSession, paint, paint_with_sheet, translate_event};
+pub use host::{TerminalSession, paint, paint_scene, paint_with_sheet, translate_event};
 pub use layout::{Align, Dimension, Direction, Justify, LayoutStyle};
 pub use overlay::{Overlay, OverlaySpec};
 #[cfg(feature = "async")]
 pub use runner::{AsyncRunner, Signal};
 pub use runner::{Runner, RunnerConfig};
-pub use style::{StyleSheet, Theme};
+pub use scene::{Backdrop, Scene, SceneOverlay};
+pub use style::{SemanticRole, StyleSheet, Theme};
 pub use surface::Surface;
 pub use view::{Element, RenderCtx, View, element};
 

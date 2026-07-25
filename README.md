@@ -110,9 +110,13 @@ component. Linked names below jump straight to their demo.
 | [`Flex`](docs/components.md#flex) | Flexbox container (the composition primitive) |
 | `Responsive` / `Constrained` | Breakpoint selection and min/max measurement |
 | [`Boxed`](docs/components.md#boxed) | Border + padding + title, focus-aware |
+| `Scene` / `Dialog` | Owned root + anchored overlays; modal composition |
 | `Spacer` | Flexible filler |
 | [`Scroll`](docs/components.md#scroll--scrollstate) (+ `ScrollState`) | Vertical scroll viewport + scrollbar over lines |
 | [`ItemScroll`](docs/components.md#itemscroll) | The same viewport over laid-out items (panels, tables, nested layouts) |
+| `Viewport` | Two-dimensional clipping/panning over any child view |
+| `Form` / `FormField` (+ `FormState`) | Responsive labeled controls and validation |
+| `DrawView` / `CanvasView` | Closure-based custom cell drawing |
 | [`SelectList`](docs/components.md#selectlist--selectstate) (+ `SelectState`) | Selectable list |
 | `Slider` (+ `SliderState`) | One-row value picker over a numeric range |
 | [`TextInput`](docs/components.md#textinput--textinputstate) (+ `TextInputState`) | Multi-line composer: soft-wrap, placeholder, highlighted ranges, `@`/`/` tokens |
@@ -144,6 +148,51 @@ let root = view! {
 // In a `terminal.draw(|f| ...)` closure:
 paint(f.buffer_mut(), f.area(), &theme, root.as_ref(), &[]);
 ```
+
+## Owned scenes, dialogs, and forms
+
+`Scene` owns a root `Element` and ordered `SceneOverlay`s. Each layer retains
+its `OverlaySpec`, so it resolves against the current terminal size inside
+rendering; callers do not retain borrowed views or pre-resolved `Rect`s.
+`Dialog` composes `Boxed`, `Flex`, and optional `KeyHints` into a centered modal
+with size clamps, clear/dim behavior, and an optional focus-owner id:
+
+```rust
+use tuika::prelude::*;
+
+let scene = Scene::new(element(base)).dialog(
+    Dialog::new("Confirm", element(Text::raw("Delete this item?")))
+        .min_size(30, 7)
+        .max_size(70, 20)
+        .key_hints([("enter", "delete"), ("esc", "cancel")])
+        .dim_backdrop(true)
+        .focus_owner("confirm"),
+);
+scene.sync_focus(&mut focus);
+paint_scene(buffer, area, &theme, &scene);
+```
+
+`Form` lays out arbitrary control `Element`s beside responsive labels, stacking
+on narrow terminals. Help and validation rows are built in; `FormState` owns
+only focus traversal and submit/cancel outcomes, while values and cursor state
+stay in existing host-owned `TextInputState`, `SelectState`, or application
+models.
+
+## Arbitrary-child viewports and drawing
+
+`Viewport` clips and pans any child view in both axes. The host supplies the
+full content `Size` and mirrors offsets through the same `ScrollState` used by
+line-oriented `Scroll`. It renders only the visible source window, so a large
+logical canvas does not allocate a full off-screen buffer.
+
+`DrawView` (also named `CanvasView`) turns a closure receiving `(Rect,
+&mut Surface, &RenderCtx)` into a normal view. The surface is already clipped,
+making it suitable for terminal grids, charts, emulators, and incremental
+migrations. Import it explicitly from `tuika::view`; custom canvases stay
+outside the application prelude.
+
+Run `cargo run --example primitives` for one composition using `Scene`,
+`Dialog`, `Form`, `Viewport`, and `DrawView`.
 
 ### Builder syntax (alternative)
 
@@ -221,6 +270,7 @@ Each enters the alternate screen; press `q` (or `esc`) to quit.
 | [`markdown`](examples/markdown.rs) | `cargo run --example markdown`   | streaming `MarkdownState` + highlighted `CodeBlock` |
 | [`select`](examples/select.rs)   | `cargo run --example select`     | `SelectState` + `SelectList` (stateful-widget idiom) |
 | [`overlay`](examples/overlay.rs)  | `cargo run --example overlay`    | `OverlaySpec` centered dialog + input routing      |
+| [`primitives`](examples/primitives.rs) | `cargo run --example primitives` | owned dialog scene + form + arbitrary-child viewport |
 | [`ratatui_dashboard`](examples/ratatui_dashboard.rs) | `cargo run --example ratatui_dashboard` | mixed Ratatui widgets + responsive live data |
 | [`async_dashboard`](examples/async_dashboard.rs) | `cargo run --example async_dashboard --features async` | `AsyncRunner` polling on a Tokio runtime, no shared state |
 | [`mouse`](examples/mouse.rs)     | `cargo run --example mouse`      | drag-to-select + highlight + OSC 52 copy, clickable buttons |

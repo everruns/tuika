@@ -357,6 +357,75 @@ state.clamp(content_h, viewport_h);          // reconcile before the paint
 view! { node(ItemScroll::new(items, &state).gap(1)) }
 ```
 
+### `Viewport` + `ScrollState`
+
+A two-dimensional clipped window over any child `Element`, rather than only
+line content. The host supplies the child's full cell extent and persists
+vertical/horizontal offsets in `ScrollState`; optional right and bottom
+scrollbars track the clamped window. Wide grapheme clusters are never painted
+halfway across either clipped edge.
+[API](https://docs.rs/tuika/latest/tuika/components/struct.Viewport.html)
+
+```rust
+use tuika::prelude::*;
+let view = Viewport::new(element(markdown_or_grid), Size::new(120, 80), &scroll)
+    .horizontal_scrollbar(true);
+```
+
+### `Form` + `FormField` + `FormState`
+
+Responsive labeled controls with help and validation rows. Labels share a
+column on wide terminals and stack above controls on narrow terminals.
+`FormState` handles focus traversal and submit/cancel outcomes; control values
+remain in their normal host-owned state.
+[API](https://docs.rs/tuika/latest/tuika/components/struct.Form.html)
+
+```rust
+use tuika::prelude::*;
+let form = Form::new(vec![
+    FormField::new("Name", element(name_input)).help("Shown publicly"),
+    FormField::new("Mode", element(mode_select)).error(validation_error),
+], &form_state);
+```
+
+### `Scene` + `Dialog`
+
+`Scene` owns a base tree and ordered, anchored overlays. `Dialog` builds a
+centered modal from ordinary Tuika elements, with optional action hints,
+min/max sizing, clear or dimmed backdrops, and top-layer focus ownership.
+[Scene API](https://docs.rs/tuika/latest/tuika/scene/struct.Scene.html) ·
+[Dialog API](https://docs.rs/tuika/latest/tuika/components/struct.Dialog.html)
+
+<img src="demos/primitives.gif" width="880" alt="Owned dialog containing a responsive form and horizontally panning custom-drawn viewport">
+
+```rust
+use tuika::prelude::*;
+let scene = Scene::new(element(base)).dialog(
+    Dialog::new("Confirm", element(Text::raw("Continue?")))
+        .key_hints([("enter", "yes"), ("esc", "no")])
+        .dim_backdrop(true)
+        .focus_owner("confirm"),
+);
+```
+
+### `DrawView` / `CanvasView`
+
+A closure-backed escape hatch for custom cell drawing. Its callback receives
+the assigned area, clipped `Surface`, and `RenderCtx`, and composes as a normal
+view.
+[API](https://docs.rs/tuika/latest/tuika/view/struct.DrawView.html)
+
+```rust
+use ratatui::layout::Rect;
+use tuika::{RenderCtx, Surface};
+use tuika::view::DrawView;
+let chart = DrawView::new(
+    |area: Rect, surface: &mut Surface<'_>, ctx: &RenderCtx<'_>| {
+        surface.set_string(area.x, area.y, "▁▃▆█", ctx.theme.success_style());
+    },
+);
+```
+
 ### `SelectList` + `SelectState`
 
 A selectable list; `SelectState` navigates with the arrow keys (wrapping),

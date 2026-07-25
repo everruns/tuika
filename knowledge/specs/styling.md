@@ -40,6 +40,12 @@ stylesheets existed, so adopting a sheet is a no-op until a role is overridden.
 Adoption must stay free; a default sheet that changes appearance would make the
 feature a migration rather than an addition.
 
+Generic status roles (`success`, `warning`, `danger`, `info`) are additive
+`Theme` helpers derived from the existing code palette. They deliberately do
+not add required fields to `Theme`: downstream themes commonly use public
+struct literals, so adding fields would turn a semantic addition into a
+source-breaking migration.
+
 ## Design
 
 ### Bundles are partial overlays
