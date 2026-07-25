@@ -68,42 +68,9 @@ cargo run --example image         # graphics protocols + alt-text fallback
 
 ### Benchmarks
 
-Component render benchmarks live in `benches/` (Criterion). When checking a
-change for a regression, save a baseline first and compare against it:
-
-```bash
-cargo bench --bench markdown -- --save-baseline before
-# ...make the change...
-cargo bench --bench markdown -- --baseline before
-```
-
-Wall-clock numbers are too noisy on shared CI runners to gate on, so CI runs the
-Criterion benches only on `main` (and via manual dispatch) and uploads the output
-as an artifact; regression-checking is a local, baseline-to-baseline comparison.
-New component benches go in the owning crate's `benches/` as another `[[bench]]`
-with `harness = false`.
-
-Alongside those, the `*_iai` benches count CPU instructions under
-Valgrind/callgrind ([iai-callgrind](https://github.com/iai-callgrind/iai-callgrind)).
-Instruction counts are deterministic and machine-independent for a fixed
-toolchain + libc, so the numbers are committed to `*/benches/iai-baseline.json`
-and the CI `iai` job **fails** on a regression past the baseline's tolerance —
-this is a real gate, not an archive. Running them locally needs Valgrind and a
-version-matched runner (`cargo install iai-callgrind-runner`):
-
-```bash
-rm -rf target/iai
-cargo bench -p tuika --bench markdown_iai --bench scroll_iai \
-  -p tuika-codeformatters --bench highlight_iai -- --save-summary=json
-python3 benches/check_iai.py            # compare to the committed baseline
-python3 benches/check_iai.py --update   # bless new counts (commit alongside the change)
-```
-
-When a change legitimately shifts counts (renderer change, dependency bump,
-toolchain upgrade), regenerate the baseline with `--update` and commit it with
-the code — like a snapshot test. To refresh it from CI's exact environment,
-run the workflow manually (`workflow_dispatch`) and commit the uploaded
-`iai-baseline` artifact.
+Criterion targets measure wall clock and are advisory; the `*_iai` targets count
+instructions against a committed baseline and are a CI gate. Procedure lives in
+[`benches/README.md`](benches/README.md).
 
 ### Testing
 
