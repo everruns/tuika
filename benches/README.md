@@ -1,0 +1,52 @@
+# tuika benchmarks
+
+Two suites with different jobs. Criterion measures wall clock and is advisory;
+iai-callgrind counts instructions and is a CI gate.
+
+## Criterion (wall clock)
+
+`markdown.rs` and `scroll.rs` here, and `highlight.rs` in
+`crates/tuika-codeformatters/benches/`, are Criterion targets. Wall-clock
+numbers are too noisy on shared runners to gate on, so CI runs these only on
+`main` (and via manual dispatch) and uploads the Criterion output as an
+artifact. Regression checking is local and baseline-to-baseline:
+
+```bash
+cargo bench --bench markdown -- --save-baseline before
+# ...make the change...
+cargo bench --bench markdown -- --baseline before
+```
+
+A new component bench goes in the owning crate's `benches/` as another
+`[[bench]]` with `harness = false`.
+
+## iai-callgrind (instruction counts)
+
+The `*_iai` targets count CPU instructions under Valgrind/callgrind
+([iai-callgrind](https://github.com/iai-callgrind/iai-callgrind)). Counts are
+deterministic and machine-independent for a fixed toolchain + libc, so they are
+committed to each crate's `benches/iai-baseline.json` and the CI `iai` job
+**fails** on a regression past the baseline's tolerance. This is a real gate,
+not an archive.
+
+Running locally needs Valgrind and a version-matched runner
+(`cargo install iai-callgrind-runner`, matching the `iai-callgrind` version in
+`Cargo.toml`):
+
+```bash
+rm -rf target/iai
+cargo bench -p tuika --bench markdown_iai --bench scroll_iai \
+  -p tuika-codeformatters --bench highlight_iai -- --save-summary=json
+python3 benches/check_iai.py            # compare to the committed baseline
+python3 benches/check_iai.py --update   # bless new counts
+```
+
+Name the targets explicitly. A bare `cargo bench` would sweep the Criterion
+targets in too, and they reject iai's flags just as the iai targets reject
+Criterion's.
+
+Treat the baseline like a snapshot test: when a change legitimately shifts
+counts (renderer change, dependency bump, toolchain upgrade), regenerate with
+`--update` and commit it alongside the code. To refresh from CI's exact
+environment, run the workflow manually (`workflow_dispatch`) and commit the
+uploaded `iai-baseline` artifact.
