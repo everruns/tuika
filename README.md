@@ -420,7 +420,7 @@ Each takes over the terminal — the alternate screen, or a pinned footer for
 | [`inherit`](examples/inherit.rs) | `cargo run --example inherit`    | adopting the terminal's own palette — probe, derive, and the no-I/O fallback |
 | [`split_footer`](examples/split_footer.rs) | `cargo run --example split_footer` | a pinned footer over live terminal scrollback, published through `Scrollback` |
 | [`codex`](examples/codex)        | `cargo run --example codex`      | a scripted Codex CLI interface replica: streaming transcript, composer, `@`/`/` pickers, approval prompt |
-| [`codex --split-footer`](examples/codex) | `cargo run --example codex -- --split-footer` | the same agent UI with its transcript published into the terminal's own scrollback |
+| [`codex --split-footer`](examples/codex) | `cargo run --example codex -- --split-footer` | the same agent UI with its transcript published into the terminal's own scrollback, and a footer that resizes to its composer |
 
 Each of the single-topic examples above quits on `q`/`esc`. [`codex`](examples/codex)
 is the composite one — those keys are text there, so it quits with `⌃C` — and it
@@ -538,10 +538,16 @@ let scrollback = runner.scrollback();
 scrollback.write(|_width| element(Text::raw("build finished in 12 ms")));
 ```
 
-The footer's height is fixed for the life of the terminal, so a host whose
-footer grows (a composer, a completion popup) reserves the tallest state it
-needs. There is a `scrolling-regions` feature, but it is a compatibility mirror
-of ratatui's, not an optimization to reach for: rows scrolled out of a DECSTBM
+`split_footer(rows)` is a *starting* height. A host driving its own loop calls
+`screen::resize_footer` to take exactly the rows the current frame needs — a
+composer that wraps, a completion popup that opens — and give them back when it
+shrinks, so the user keeps the scrollback the tallest state would otherwise have
+cost on every frame. It takes a backend *factory*, because ratatui fixes an
+inline viewport's height at construction and offers no way to recover a backend
+from a terminal, so changing the height means building a second one.
+
+There is a `scrolling-regions` feature, but it is a compatibility mirror of
+ratatui's, not an optimization to reach for: rows scrolled out of a DECSTBM
 region are discarded by the terminal instead of entering its scrollback, which
 is the one thing this mode exists to provide.
 

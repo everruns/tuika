@@ -48,7 +48,7 @@ use ratatui::{Terminal, TerminalOptions, Viewport};
 
 use tuika::components::Flex;
 use tuika::probe::RectProbe;
-use tuika::screen::{ScreenMode, close_footer, pin_footer, publish_block};
+use tuika::screen::{ScreenMode, close_footer, pin_footer, publish_block, resize_footer};
 use tuika::{
     Dimension, Element, Padding, RenderCtx, StyleSheet, TerminalSession, Theme, element, paint,
     translate_event,
@@ -57,10 +57,9 @@ use tuika::{
 use crate::app::{App, Flow};
 use crate::history::Cell;
 
-/// Rows the split-footer mode reserves: enough for the working row, the
-/// composer at a couple of lines, a completion popup, and the status footer.
-/// The region is fixed, so it is sized for the tallest of those states.
-const FOOTER_ROWS: u16 = tuika::screen::DEFAULT_FOOTER_HEIGHT;
+/// Rows the split footer starts with, before the first frame has measured the
+/// composer. It is resized to fit from then on — see [`ui::footer_rows`].
+const FOOTER_ROWS: u16 = 4;
 
 /// Frame budget. Also the clock the `Working (12s …)` timer counts in, so the
 /// scripted turn and the elapsed display stay in step without a wall clock.
@@ -87,9 +86,10 @@ fn main() -> io::Result<()> {
 /// The same app over a split footer: the composer owns the bottom rows, and
 /// finished transcript entries are published into the terminal's scrollback.
 ///
-/// The loop is the full-screen one plus two steps — publish what settled, and
-/// keep the footer pinned — which is the whole difference between the two modes
-/// for a host that drives its own loop.
+/// The loop is the full-screen one plus three steps — publish what settled,
+/// size the region to what the composer currently needs, and keep it pinned —
+/// which is the whole difference between the two modes for a host that drives
+/// its own loop.
 fn run_split() -> io::Result<()> {
     let mut app = App::new();
     let theme = app::codex_theme();
@@ -116,9 +116,16 @@ fn run_split() -> io::Result<()> {
             publish_block(&mut terminal, view.as_ref(), &ctx)?;
         }
 
-        // Resolve a resize before re-pinning, so the footer is measured against
-        // the screen it is about to be drawn on.
+        // Resolve a terminal resize before measuring, so the footer is sized
+        // against the screen it is about to be drawn on.
         terminal.autoresize()?;
+        // Then take exactly the rows this frame needs: the composer grows as it
+        // wraps, a completion popup adds its own, and both give the rows back
+        // when they close. `resize_footer` rebuilds the viewport only when the
+        // number actually changes.
+        let screen = terminal.size()?;
+        let rows = ui::footer_rows(&app, tuika::Size::new(screen.width, screen.height));
+        resize_footer(&mut terminal, rows, || CrosstermBackend::new(io::stdout()))?;
         pin_footer(&mut terminal)?;
         terminal.draw(|f| {
             let area = f.area();

@@ -58,6 +58,10 @@ struct ExampleRun {
     /// grid; for an alternate-screen example, parsing `output` would instead
     /// show the blank main screen the teardown restores.
     live: Vec<u8>,
+    /// The byte stream as it stood after each scripted key, so a test can read
+    /// the grid *between* inputs — the only way to assert a transition (a footer
+    /// that grows and then shrinks again) rather than just its end state.
+    steps: Vec<Vec<u8>>,
     exited_ok: bool,
     rows: u16,
     cols: u16,
@@ -70,6 +74,13 @@ impl ExampleRun {
     fn live_screen(&self) -> vt100::Parser {
         let mut parser = vt100::Parser::new(self.rows, self.cols, 0);
         parser.process(&self.live);
+        parser
+    }
+
+    /// The grid as it stood just after scripted key `index`.
+    fn step_screen(&self, index: usize) -> vt100::Parser {
+        let mut parser = vt100::Parser::new(self.rows, self.cols, 0);
+        parser.process(&self.steps[index]);
         parser
     }
 
@@ -255,11 +266,14 @@ impl Script {
             writer.flush().expect("flush input");
         };
 
-        // Let it paint a few frames, then follow the script.
+        // Let it paint a few frames, then follow the script, keeping the stream
+        // as it stood after each key so a test can read the grid between them.
         thread::sleep(self.settle);
+        let mut steps = Vec::with_capacity(self.keys.len());
         for (bytes, pause) in &self.keys {
             send(bytes);
             thread::sleep(*pause);
+            steps.push(buffer.lock().expect("lock read buffer").clone());
         }
 
         let (mut live_rows, mut live_cols) = (self.rows, self.cols);
@@ -312,6 +326,7 @@ impl Script {
         ExampleRun {
             output,
             live,
+            steps,
             exited_ok,
             rows: live_rows,
             cols: live_cols,
@@ -795,5 +810,90 @@ fn codex_leaves_the_session_in_the_scrollback_after_exit() {
     assert!(
         !contents.contains("Ask Codex"),
         "the composer's rows should be released:\n{contents}"
+    );
+}
+
+/// Rows the codex footer currently reserves, measured from the terminal's own
+/// grid: the footer paints a themed background across its whole area, and the
+/// scrollback above it keeps the terminal's default. Counting painted rows from
+/// the bottom is therefore a direct reading of how many rows the app took —
+/// which is the thing a resizable footer has to get right.
+fn codex_footer_rows(screen: &vt100::Screen) -> usize {
+    let (rows, _) = screen.size();
+    (0..rows)
+        .rev()
+        .take_while(|&row| {
+            screen
+                .cell(row, 0)
+                .is_some_and(|cell| cell.bgcolor() != vt100::Color::Default)
+        })
+        .count()
+}
+
+/// The last `rows` lines of a screen, joined — the region the footer owns.
+fn last_rows(screen: &vt100::Screen, rows: usize) -> String {
+    let contents = screen.contents();
+    let lines: Vec<&str> = contents.lines().collect();
+    lines[lines.len().saturating_sub(rows)..].join("\n")
+}
+
+#[test]
+fn codex_takes_more_rows_for_a_popup_and_gives_them_back() {
+    // `/` opens the slash-command popup above the composer, which is exactly the
+    // case a fixed-height footer has to over-reserve for. Esc closes it again.
+    let run = Script::new("codex")
+        .arg("--split-footer")
+        .size(24, 84)
+        .settle(Duration::from_millis(900))
+        .key(b"/", Duration::from_millis(800))
+        .key(b"\x1b", Duration::from_millis(800))
+        .quit_with(b"\x03")
+        .run();
+    assert!(
+        run.exited_ok,
+        "codex --split-footer should exit cleanly: {}",
+        visible_text(&run.output)
+    );
+
+    let opened = run.step_screen(0);
+    let opened = opened.screen();
+    let closed = run.step_screen(1);
+    let closed = closed.screen();
+
+    let with_popup = codex_footer_rows(opened);
+    let without = codex_footer_rows(closed);
+
+    // The popup's rows are real rows of the reserved region, taken from the
+    // scrollback while it is open and handed straight back when it closes.
+    assert!(
+        with_popup > without,
+        "the popup should grow the reserved region \
+         (with popup: {with_popup} rows, without: {without})\n{}",
+        opened.contents()
+    );
+    assert!(
+        (3..=6).contains(&without),
+        "with the popup closed the footer is just the composer and its status \
+         row, not the tallest state it ever needed ({without} rows)\n{}",
+        closed.contents()
+    );
+    // And the popup really is what those extra rows hold.
+    assert!(
+        last_rows(opened, with_popup).contains("/model"),
+        "the popup should be inside the reserved region:\n{}",
+        opened.contents()
+    );
+    assert!(
+        !last_rows(closed, without).contains("/model"),
+        "and gone from it once it closes:\n{}",
+        closed.contents()
+    );
+
+    // Whatever the region did, the session above it is untouched: the banner
+    // published at startup is still in the terminal.
+    let held = run.scrollback_text();
+    assert!(
+        held.contains("OpenAI Codex"),
+        "published scrollback should survive a footer resize:\n{held}"
     );
 }

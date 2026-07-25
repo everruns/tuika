@@ -33,8 +33,9 @@ A split footer renders into a ratatui `Viewport::Inline`. The pieces around it:
 
 - `TerminalSession::enter_with(mode)` takes only what the mode needs and
   restores exactly that.
-- `pin_footer` pushes the viewport to the bottom rows; `close_footer` gives them
-  back and parks the cursor so the shell prompt resumes cleanly.
+- `pin_footer` pushes the viewport to the bottom rows; `resize_footer` changes
+  how many it reserves mid-session; `close_footer` gives them back and parks the
+  cursor so the shell prompt resumes cleanly.
 - `Scrollback` is a cloneable, `Send + Sync` queue of *views*, for publishing
   into the loop from elsewhere; `publish_block` commits one view straight from
   inside the loop, with no `Send` bound.
@@ -108,19 +109,33 @@ This is also why the PTY layer earns its keep: `TestBackend` *does* model
 region-scrolled rows as entering its scrollback, so no hermetic test could have
 caught this. Only a reference terminal on the other end of a real pty did.
 
-### What a fixed footer height costs, and why it is still fixed
+### Resizing the footer is a rebuild, and the API says so
 
-`ScreenMode::SplitFooter { height }` is decided when the terminal is created,
-because that is where ratatui fixes an inline viewport; changing it means
-rebuilding the `Terminal`. A host whose footer grows — a composer expanding, a
-completion popup opening — therefore reserves the tallest state it needs and
-lays out inside it, which is what `codex --split-footer` does.
+`ScreenMode::SplitFooter { height }` is only the *starting* height. A footer that
+holds a composer, a completion popup, or a wrapping input needs a different
+number of rows from one frame to the next, and over-reserving for the tallest
+state costs the user scrollback on every other frame.
 
-Runtime resizing is a real capability (opentui exposes `footerHeight` as a
-setter) and a plausible follow-up, but it needs a seam for recreating the
-backend that does not exist on ratatui's `Terminal` today (there is no
-`into_backend`). Reserving the maximum is the honest interim: it costs rows, not
-correctness.
+ratatui fixes an inline viewport's height when the `Terminal` is built, exposes
+no way to change it, and no way to recover the backend from a terminal being
+replaced (there is no `into_backend`). So `resize_footer` rebuilds: it hands the
+current region back, constructs a new `Terminal` at the new height where the old
+one started, and re-pins. That is why it takes a **backend factory** rather than
+a backend — the caller is the only one who knows how to make a second handle to
+the same terminal, and the factory runs only when the height actually changes.
+The signature is the honest shape of the operation, not an inconvenience to hide.
+
+Two consequences worth knowing. Growing scrolls the scrollback up to make room,
+which is free. Shrinking cannot pull scrolled-off content back down — no terminal
+can — so the rows come back blank and fill as new output is published. And the
+frame repaints from scratch afterwards, since a new `Terminal` starts with empty
+buffers; the *published* scrollback is untouched, because it belongs to the
+terminal rather than to the viewport being replaced.
+
+The runners keep the height they were configured with. Rebuilding a `Terminal`
+needs a backend the loop cannot construct for an arbitrary `B`, and a runner is
+the simple path by definition — a variable-height footer is a host that already
+owns its loop, which is exactly what `codex --split-footer` demonstrates.
 
 ## Related
 

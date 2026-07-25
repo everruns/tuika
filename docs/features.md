@@ -160,8 +160,27 @@ let scrollback = runner.scrollback();
 scrollback.write(|_width| element(Text::raw("build finished in 12 ms")));
 ```
 
+The `rows` a mode is built with are its *starting* height. A host driving its own
+loop asks for a different number mid-session with `screen::resize_footer`, so a
+footer holding a composer takes the rows a wrapping input or an open popup needs
+and returns them when they close, instead of reserving its tallest state on every
+frame. Growing scrolls the scrollback up to make room; shrinking hands rows back
+blank, since no terminal can pull scrolled-off content back down. It takes a
+backend *factory* rather than a backend: ratatui fixes an inline viewport's
+height when the `Terminal` is built and exposes no way to recover a backend from
+one, so a height change is a rebuild, and only the caller knows how to make a
+second handle to the same terminal.
+
+```rust,ignore
+let rows = footer_rows_for(&app, terminal.size()?);
+screen::resize_footer(&mut terminal, rows, || CrosstermBackend::new(io::stdout()))?;
+screen::pin_footer(&mut terminal)?;
+```
+
 Run it with `cargo run --example split_footer`, or see a whole coding-agent UI
-in the mode with `cargo run --example codex -- --split-footer`.
+in the mode — composer, popup, and all, resizing as it goes — with
+`cargo run --example codex -- --split-footer`
+([recording](showcases.md#codex-cli-replica-in-repo-example)).
 
 ## Hyperlinks (OSC 8)
 

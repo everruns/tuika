@@ -5,6 +5,26 @@ change that makes them — an entry says why the knowledge moved, and that reaso
 is rarely recoverable later. Routine wording, formatting, and link fixes do not
 need entries.
 
+## 2026-07-25 — The split footer's height stops being fixed
+
+- The fixed height recorded below was a limitation, not a decision: reserving
+  the tallest state a footer ever reaches (an open completion popup over a
+  wrapped composer) costs the user that much scrollback on every other frame.
+  `resize_footer` replaces it.
+- Why it takes a backend *factory*, which reads oddly until the constraint is
+  stated: ratatui fixes an inline viewport's height when the `Terminal` is built
+  and offers no `into_backend`, so changing the height means building a second
+  `Terminal` — and only the caller can make another handle to the same terminal.
+  The awkward signature is the operation's honest shape; hiding it would mean
+  owning the backend, which tuika deliberately does not.
+- What a rebuild cannot do is recorded with it: shrinking hands rows back blank,
+  because no terminal can pull scrolled-off content back down. Runners keep their
+  configured height — a variable-height footer is a host that owns its loop.
+- The PTY layer earned its keep a second time. Sizing the footer against its own
+  rect instead of the screen shrank it two rows per frame, and each rebuild
+  scrolled the session away; no hermetic test models that, and the failure is
+  invisible in a single frame.
+
 ## 2026-07-25 — Demo format follows whether motion carries information
 
 - Component recordings treated GIF as a universal container even when a scene
@@ -57,9 +77,9 @@ need entries.
   are not `Send`. Blocks are committed once and never repainted, which is what
   makes them the terminal's content rather than tuika's.
 - Judgement calls recorded in [Screen modes](specs/screen-modes.md): a split
-  footer does not capture the mouse by default, the footer is pinned to the
-  bottom rather than left where ratatui anchors an inline viewport, and its
-  height is fixed for the terminal's life.
+  footer does not capture the mouse by default, and the footer is pinned to the
+  bottom rather than left where ratatui anchors an inline viewport. Its height
+  was fixed for the terminal's life at this point; see the entry above.
 - Driving the mode through a real pty overturned an assumption worth recording:
   ratatui's `scrolling-regions` looked like the obvious optimization (no
   viewport repaint per published block) and is the wrong trade — a terminal

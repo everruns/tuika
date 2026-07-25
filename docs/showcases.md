@@ -60,3 +60,12 @@ limit and server-error injection turned on.
 
 `cargo run --example codex -- --dump` prints the same screens as text, for a
 look without a terminal.
+
+The same UI in split-footer mode — `cargo run --example codex -- --split-footer`
+— keeps only the composer on screen and hands every finished transcript entry to
+the terminal. Watch the footer grow for the slash popup and shrink again when it
+closes, and note the last beat: after `⌃C` the reserved rows are released, the
+transcript stays as ordinary scrollback, and the shell prompt resumes on top of
+it.
+
+<img src="../examples/codex/codex-split-footer.gif" width="880" alt="The codex example in split-footer mode: a slash-command popup opening and closing while the footer takes and returns rows, then a scripted turn whose finished entries scroll away into the terminal's own scrollback above the pinned composer; after the example exits the transcript remains and a shell prompt runs beneath it.">

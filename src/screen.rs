@@ -66,7 +66,7 @@ use std::sync::{Arc, Mutex};
 
 use ratatui_core::backend::Backend;
 use ratatui_core::buffer::Buffer;
-use ratatui_core::terminal::{Terminal, Viewport};
+use ratatui_core::terminal::{Terminal, TerminalOptions, Viewport};
 use ratatui_core::text::Line;
 
 use crate::components::Text;
@@ -369,6 +369,78 @@ pub fn pin_footer<B: Backend>(terminal: &mut Terminal<B>) -> Result<(), B::Error
         terminal.insert_before(gap, |_| {})?;
     }
     Ok(())
+}
+
+/// Change how many rows the footer reserves, mid-session.
+///
+/// A footer that holds a composer, a completion popup, or a wrapping input does
+/// not want one height for its whole life. This gives the current region back
+/// (see [`close_footer`]), reserves `height` rows where it started, and pins the
+/// result to the bottom — so growing scrolls the scrollback up to make room, and
+/// shrinking hands the difference back as blank rows the next published block
+/// scrolls through. Returns whether anything changed.
+///
+/// `backend` is a factory rather than a value because ratatui fixes an inline
+/// viewport's height when the [`Terminal`] is built and exposes no way to change
+/// it or to recover the backend from the old one (there is no `into_backend`).
+/// So a resize *is* a rebuild, and the caller supplies a second handle to the
+/// same terminal — for the usual host, `|| CrosstermBackend::new(io::stdout())`.
+/// The factory runs only when the height actually changes.
+///
+/// The frame is repainted from scratch afterwards, since the new `Terminal`
+/// starts with empty buffers. Published scrollback is untouched: it belongs to
+/// the terminal, not to the viewport being rebuilt.
+///
+/// ```no_run
+/// use std::io;
+///
+/// use ratatui::backend::CrosstermBackend;
+/// use ratatui::{Terminal, TerminalOptions};
+/// use tuika::screen::{ScreenMode, resize_footer};
+///
+/// # fn main() -> io::Result<()> {
+/// # let mode = ScreenMode::split_footer(4);
+/// # let mut terminal = Terminal::with_options(
+/// #     CrosstermBackend::new(io::stdout()),
+/// #     TerminalOptions { viewport: mode.viewport() },
+/// # )?;
+/// // The composer grew a line: take one more row for it.
+/// resize_footer(&mut terminal, 5, || CrosstermBackend::new(io::stdout()))?;
+/// # Ok(())
+/// # }
+/// ```
+pub fn resize_footer<B: Backend>(
+    terminal: &mut Terminal<B>,
+    height: u16,
+    backend: impl FnOnce() -> B,
+) -> Result<bool, B::Error> {
+    let screen = terminal.size()?;
+    let area = terminal.get_frame().area();
+    // The viewport clamps to the screen, so compare against what the request
+    // would actually become — otherwise a footer taller than the terminal would
+    // rebuild on every frame.
+    let wanted = height.max(1).min(screen.height);
+    if area.is_empty() || area.height == wanted {
+        return Ok(false);
+    }
+
+    // Hand the current region back first: that clears it and parks the cursor at
+    // its top-left, which is where the replacement anchors itself — so the
+    // footer neither drifts nor leaves a painted band behind.
+    close_footer(terminal)?;
+    // Anything the old backend still holds must reach the terminal before it is
+    // dropped; a buffered writer would otherwise lose the teardown.
+    terminal.backend_mut().flush()?;
+
+    let mut replacement = Terminal::with_options(
+        backend(),
+        TerminalOptions {
+            viewport: Viewport::Inline(wanted),
+        },
+    )?;
+    pin_footer(&mut replacement)?;
+    *terminal = replacement;
+    Ok(true)
 }
 
 /// Give the footer's rows back to the terminal.
@@ -939,6 +1011,112 @@ mod tests {
         write_text(&scrollback, "after");
         assert!(scrollback.flush(&mut terminal, &theme).expect("flush"));
         assert!(screen_lines(&terminal).contains(&"after".to_string()));
+    }
+
+    // ---- Resizing the reserved region -------------------------------------
+
+    /// A backend factory that records whether it was called, so a no-op resize
+    /// can be asserted as *not rebuilding* rather than merely not changing.
+    fn tracked(
+        width: u16,
+        height: u16,
+        calls: &std::cell::Cell<usize>,
+    ) -> impl FnOnce() -> TestBackend + '_ {
+        move || {
+            calls.set(calls.get() + 1);
+            TestBackend::new(width, height)
+        }
+    }
+
+    #[test]
+    fn resize_footer_grows_the_region_and_keeps_it_pinned() {
+        let calls = std::cell::Cell::new(0);
+        let mut terminal = pinned(12, 20, 3);
+        assert_eq!(terminal.get_frame().area(), Rect::new(0, 17, 12, 3));
+
+        assert!(resize_footer(&mut terminal, 6, tracked(12, 20, &calls)).expect("grow"));
+
+        let area = terminal.get_frame().area();
+        assert_eq!(area.height, 6, "the footer took the rows it asked for");
+        assert_eq!(area.bottom(), 20, "and is still on the last row");
+        assert_eq!(calls.get(), 1);
+    }
+
+    #[test]
+    fn resize_footer_shrinks_the_region_and_keeps_it_pinned() {
+        let calls = std::cell::Cell::new(0);
+        let mut terminal = pinned(12, 20, 8);
+        assert_eq!(terminal.get_frame().area().height, 8);
+
+        assert!(resize_footer(&mut terminal, 3, tracked(12, 20, &calls)).expect("shrink"));
+
+        let area = terminal.get_frame().area();
+        assert_eq!(area.height, 3, "the difference went back to the terminal");
+        assert_eq!(area.bottom(), 20);
+        assert_eq!(calls.get(), 1);
+    }
+
+    #[test]
+    fn resize_footer_to_the_same_height_does_not_rebuild() {
+        let calls = std::cell::Cell::new(0);
+        let mut terminal = pinned(12, 20, 4);
+        let before = terminal.get_frame().area();
+
+        assert!(!resize_footer(&mut terminal, 4, tracked(12, 20, &calls)).expect("no-op"));
+
+        assert_eq!(terminal.get_frame().area(), before);
+        assert_eq!(calls.get(), 0, "the backend factory is never called");
+    }
+
+    #[test]
+    fn resize_footer_compares_against_the_clamped_height() {
+        // A request taller than the screen resolves to the screen height, so
+        // asking for it twice must not rebuild the terminal on every frame.
+        let calls = std::cell::Cell::new(0);
+        let mut terminal = pinned(10, 6, 2);
+
+        assert!(resize_footer(&mut terminal, 40, tracked(10, 6, &calls)).expect("clamped grow"));
+        assert_eq!(terminal.get_frame().area().height, 6);
+        assert!(!resize_footer(&mut terminal, 40, tracked(10, 6, &calls)).expect("second ask"));
+        assert_eq!(calls.get(), 1, "only the first request rebuilt anything");
+    }
+
+    #[test]
+    fn a_resized_footer_still_publishes_and_releases_its_rows() {
+        let theme = Theme::default();
+        let calls = std::cell::Cell::new(0);
+        let mut terminal = pinned(12, 12, 2);
+        resize_footer(&mut terminal, 4, tracked(12, 12, &calls)).expect("grow");
+        draw_footer(&mut terminal, "FOOTER");
+
+        // Publishing works against the rebuilt viewport...
+        let scrollback = Scrollback::new();
+        write_text(&scrollback, "after-resize");
+        assert!(scrollback.flush(&mut terminal, &theme).expect("flush"));
+        draw_footer(&mut terminal, "FOOTER");
+        let lines = screen_lines(&terminal);
+        assert!(
+            lines.contains(&"after-resize".to_string()),
+            "published above the resized footer: {lines:?}"
+        );
+        assert_eq!(&lines[8..], &["FOOTER"; 4], "{lines:?}");
+
+        // ...and so does teardown.
+        close_footer(&mut terminal).expect("close");
+        assert!(
+            screen_lines(&terminal)[8..]
+                .iter()
+                .all(|line| line.is_empty()),
+            "the resized region is handed back whole"
+        );
+    }
+
+    #[test]
+    fn resize_footer_leaves_a_degenerate_viewport_alone() {
+        let calls = std::cell::Cell::new(0);
+        let mut terminal = footer_terminal(10, 0, 2, 0);
+        assert!(!resize_footer(&mut terminal, 5, tracked(10, 0, &calls)).expect("no-op"));
+        assert_eq!(calls.get(), 0);
     }
 
     // ---- Teardown --------------------------------------------------------

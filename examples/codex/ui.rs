@@ -25,6 +25,9 @@ const MAX_COMPOSER_ROWS: u16 = 6;
 const MAX_POPUP_ROWS: usize = 8;
 /// Blank rows between two transcript items.
 const TRANSCRIPT_GAP: u16 = 1;
+/// Rows the split footer keeps for the entry still streaming, above the
+/// composer. Finished entries go to the terminal's scrollback instead.
+const STREAMING_TAIL_ROWS: u16 = 6;
 
 /// Build the frame. Takes `&mut App` because the transcript's streaming markdown
 /// re-renders through its own cache, and because the scroll offset is reconciled
@@ -40,21 +43,7 @@ pub fn build(
 
     // Measure the pinned bottom stack first; the transcript takes what is left.
     let popup_items = app.popup_items();
-    let popup_h = if popup_items.is_empty() {
-        0
-    } else {
-        popup_items.len().min(MAX_POPUP_ROWS) as u16 + 1
-    };
-    let working_h = if app.agent.is_running() { 2 } else { 0 };
-    let body_h = if app.approval.is_some() {
-        7
-    } else {
-        let rows = app
-            .composer
-            .visual_height(width.saturating_sub(4))
-            .clamp(1, MAX_COMPOSER_ROWS);
-        rows + 2
-    };
+    let (working_h, popup_h, body_h) = bottom_heights(app, width, &popup_items);
     let bottom_h = working_h + popup_h + body_h + 1;
     let transcript_h = area.height.saturating_sub(bottom_h).max(1);
 
@@ -89,6 +78,57 @@ pub fn build(
     );
     root = root.fixed(1, footer(app, theme));
     element(root)
+}
+
+/// Rows the pinned bottom stack needs: `(working, popup, body)`.
+///
+/// Split out because two callers need the same arithmetic for different reasons:
+/// [`build`] gives the transcript whatever is left over, and the split-footer
+/// loop asks [`footer_rows`] how many rows to reserve from the terminal in the
+/// first place. Measuring it twice, differently, is how a footer ends up one row
+/// short of its own composer.
+fn bottom_heights(app: &App, width: u16, popup_items: &[(String, String)]) -> (u16, u16, u16) {
+    let popup = if popup_items.is_empty() {
+        0
+    } else {
+        popup_items.len().min(MAX_POPUP_ROWS) as u16 + 1
+    };
+    let working = if app.agent.is_running() { 2 } else { 0 };
+    let body = if app.approval.is_some() {
+        7
+    } else {
+        let rows = app
+            .composer
+            .visual_height(width.saturating_sub(4))
+            .clamp(1, MAX_COMPOSER_ROWS);
+        rows + 2
+    };
+    (working, popup, body)
+}
+
+/// Rows the split-footer mode should reserve right now, given the whole
+/// **screen** — not the footer's current rect.
+///
+/// The bottom stack, plus room for the entry still being streamed while a turn
+/// is in flight — a fixed allowance rather than the entry's real height, because
+/// a footer that tracked a growing answer row by row would rebuild the viewport
+/// on every frame. Everything that settles is published into the scrollback, so
+/// the allowance only has to show the live tail.
+///
+/// Measuring against the screen is load-bearing: fed its own rect, the cap below
+/// would shrink the footer by two rows every frame, and each frame's rebuild
+/// would scroll the session away a little more.
+pub fn footer_rows(app: &App, screen: Size) -> u16 {
+    let width = screen.width.saturating_sub(GUTTER * 2);
+    let popup_items = app.popup_items();
+    let (working, popup, body) = bottom_heights(app, width, &popup_items);
+    let tail = if app.agent.is_running() {
+        STREAMING_TAIL_ROWS
+    } else {
+        0
+    };
+    // Never take the whole screen: the scrollback above is the point of the mode.
+    (working + popup + body + tail + 1).min(screen.height.saturating_sub(2).max(1))
 }
 
 /// `⠹ Working (12s • Esc to interrupt)` — the row Codex shows under the

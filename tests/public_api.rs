@@ -273,6 +273,14 @@ fn the_screen_mode_is_reachable_from_the_prelude() {
     let _: fn(
         &mut ratatui_core::terminal::Terminal<ratatui_core::backend::TestBackend>,
     ) -> Result<(), std::convert::Infallible> = tuika::screen::close_footer;
+    // `resize_footer` takes a backend *factory*; the fn-pointer coercion pins
+    // that shape, not just the name.
+    type ResizeFooter = fn(
+        &mut ratatui_core::terminal::Terminal<ratatui_core::backend::TestBackend>,
+        u16,
+        fn() -> ratatui_core::backend::TestBackend,
+    ) -> Result<bool, std::convert::Infallible>;
+    let _: ResizeFooter = tuika::screen::resize_footer;
 }
 
 /// The remaining modules keep their own path on purpose; this pins them so a

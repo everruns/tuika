@@ -109,7 +109,8 @@ tuika's own suite covers more:
   progress, OSC 8 hyperlinks, truecolor and Braille cells through a reference
   terminal parser, resize survival, clean exit) and `split_footer`/`codex
   --split-footer` for the split-footer mode (no alt-screen, no mouse capture, the
-  footer pinned to the bottom with published blocks above it, and its rows handed
+  footer pinned to the bottom with published blocks above it, a footer that grows
+  for a popup and gives the rows back when it closes, and the whole region handed
   back on exit with the scrollback intact). The harness answers the
   cursor-position query an inline viewport is anchored with, from a vt100 model
   of the same stream. It launches *built* examples, so any runner that rebuilds
@@ -135,14 +136,18 @@ tuika's own suite covers more:
 - `docs/showcases.md` + `docs/showcases/*.gif` — applications built on tuika, one
   recording each. See [Showcase demos](#showcase-demos).
 - A recording of a whole runnable example lives **beside that example**, so its
-  directory stays self-contained: `examples/codex/codex.gif` (a replica of the
-  Codex CLI's UI — label it as one wherever it is embedded, see
+  directory stays self-contained: `examples/codex/codex.gif` and
+  `examples/codex/codex-split-footer.gif` (a replica of the Codex CLI's UI —
+  label it as one wherever it is embedded, see
   `knowledge/specs/documentation.md`), embedded in `docs/showcases.md` while the
   README's runnable-examples table links to the example source, and regenerated
   by [`scripts/gen-codex-demo.sh`](scripts/gen-codex-demo.sh), which drives the
-  real `codex` binary under VHS so the recording cannot drift from the example.
-  These are outside the `demo -- check` invariant, which covers single-component
-  scenes.
+  real `codex` binary under VHS so the recordings cannot drift from the example.
+  It records both scenes by default; pass `full-screen` or `split-footer` for
+  one. The split-footer tape runs past the example's exit on purpose — the last
+  beat is the shell prompt resuming over the transcript the example left behind,
+  which is the whole point of the mode. These are outside the `demo -- check`
+  invariant, which covers single-component scenes.
   The `tuika-mermaid` integration recording follows the same pattern at
   `crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif`; regenerate it
   with `scripts/gen-mermaid-demo.sh`.

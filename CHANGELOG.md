@@ -32,8 +32,16 @@ described in the release process begins with the entry below.
   `AsyncRunner::scrollback()` return a cloneable, `Send + Sync` `Scrollback`
   queue of views the loop commits above the footer; `screen::publish_block`
   commits one view straight from a host's own loop, with no `Send` bound.
+- **A resizable footer.** `screen::resize_footer` changes how many rows a split
+  footer reserves mid-session, so a footer holding a composer takes what a
+  wrapping input or an open completion popup needs and gives the rows back when
+  they close. It takes a backend *factory*: ratatui fixes an inline viewport's
+  height at construction and exposes no way to recover a backend from a
+  `Terminal`, so a height change rebuilds one — the factory runs only when the
+  height actually changes.
 - New `split_footer` example, and `cargo run --example codex -- --split-footer`
-  runs the whole coding-agent UI in the mode.
+  runs the whole coding-agent UI in the mode, sizing its footer to the composer
+  and popup frame by frame.
 - New `scrolling-regions` feature. It is a compatibility mirror of ratatui's
   (Cargo unifies features one way, and `HyperlinkBackend` must still implement
   `Backend`), *not* an optimization: rows scrolled out of a DECSTBM region are
