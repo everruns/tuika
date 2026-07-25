@@ -20,8 +20,14 @@ need entries.
   a tag is a provenance claim that `git describe`, compare links, and tag-pinned
   demo URLs all trust — is not recoverable from the tag list itself.
 - [Documentation](specs/documentation.md): the crate/GitHub asset split is a rule
-  per *published crate*, not per repository. `tuika-codeformatters` was shipping
-  a 428 KiB recording its own README reaches by absolute URL.
+  per *published crate*, not per repository, and what decides it is how that
+  crate's own README reaches the asset — relative path means crates.io renders
+  from the tarball and it must ship, an absolute `raw.githubusercontent.com` URL
+  means the packaged copy is never read and must not. `tuika-codeformatters` was
+  shipping 428 KiB the second way, 94% of its download, while `tuika-mermaid`'s
+  small recording is correctly kept. Stated as the criterion rather than as
+  "every member excludes its GIFs", which would have been wrong for the very next
+  member added.
 
 ## 2026-07-25 — Non-Unix CI covered the workspace, not just the root package
 

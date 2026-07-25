@@ -5,14 +5,14 @@
 [workspace]
 members = ["crates/tuika-codeformatters", "crates/tuika-mermaid"]
 
-# Identity and toolchain floor are properties of the repository, not of either
-# package, so they live here and both manifests inherit them — a bumped MSRV or
-# a new author cannot land in one crate and be forgotten in the other.
+# Identity and toolchain floor are properties of the repository, not of any one
+# package, so they live here and every manifest inherits them — a bumped MSRV or
+# a new author cannot land in one crate and be forgotten in the others.
 #
-# Deliberately *not* inherited: `version` (the two crates version
-# independently), `description`/`keywords`/`categories` (they describe different
-# crates), and `readme`/`exclude` — Cargo resolves an inherited `readme` path
-# against the *workspace* root, so the member would advertise tuika's README.
+# Deliberately *not* inherited: `version` (the crates version independently),
+# `description`/`keywords`/`categories` (they describe different crates), and
+# `readme`/`exclude` — Cargo resolves an inherited `readme` path against the
+# *workspace* root, so a member would advertise tuika's README instead of its own.
 [workspace.package]
 edition = "2024"
 rust-version = "1.88"

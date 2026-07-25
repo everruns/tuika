@@ -1,13 +1,19 @@
 [package]
 name = "tuika-mermaid"
 version = "0.1.0"
-edition = "2024"
-rust-version = "1.88"
-authors = ["Everruns <support@everruns.com>"]
-license = "MIT"
+# Identity, MSRV, and license come from `[workspace.package]` in the root
+# manifest — see the comment there for what is and isn't shared.
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "Terminal-native Mermaid fenced blocks for tuika Markdown, powered by mmdflux."
-homepage = "https://github.com/everruns/tuika"
-repository = "https://github.com/everruns/tuika"
+homepage.workspace = true
+repository.workspace = true
+# No `exclude`: unlike `tuika-codeformatters`, this crate's README embeds
+# `examples/mermaid_markdown/mermaid.gif` by *relative* path, so the crates.io
+# page needs the packaged copy — and at ~32 KiB it costs little. Same rule as
+# tuika's own `docs/hero.gif`. `tests/packaging.rs` pins that it keeps shipping.
 readme = "README.md"
 keywords = ["tui", "mermaid", "markdown", "ratatui", "diagrams"]
 categories = ["command-line-interface", "text-processing"]

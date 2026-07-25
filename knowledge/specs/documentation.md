@@ -193,15 +193,23 @@ hand-written `//!` header, which references none of them, so bundling them only
 bloats the published `.crate`. Root `Cargo.toml`'s `exclude` keeps them — and the
 repository machinery (`knowledge/`, `.agents/`, `.github/`, `scripts/`) — out
 of that tarball; only `docs/hero.gif` and `docs/demos/image.svg`, which its
-crates.io README embeds by relative path, ship. A companion may ship a small
-recording beside an example when its own crates.io README embeds it, as
-`tuika-mermaid` does. `tests/packaging.rs` guards the root split.
+crates.io README embeds by relative path, ship.
 
-The rule is per **published crate**, not per repository: a recording embedded by
-absolute `raw.githubusercontent.com` URL is unreachable from inside a `.crate`,
-so it is excluded wherever it lives — including
-`tuika-codeformatters`' own `docs/languages.gif`. Every workspace member that is
-published needs its own `exclude`, and a case in `tests/packaging.rs`.
+The split is per **published crate**, not per repository, and the deciding
+question is how that crate's own README reaches the asset — because that is what
+determines whether the packaged copy is ever read:
+
+- **Relative path** — crates.io renders the page from the tarball, so the asset
+  must ship. tuika's `docs/hero.gif`, and `tuika-mermaid`'s ~32 KiB recording
+  beside its example, are here.
+- **Absolute `raw.githubusercontent.com` URL** — the packaged copy is
+  unreachable from inside the `.crate` and is pure weight, so it is excluded
+  wherever it lives. `tuika-codeformatters`' `docs/languages.gif` was shipping
+  428 KiB this way, 94% of that crate's download.
+
+So a member needs an `exclude` only when it has an absolute-URL asset; what every
+published member does need is a case in `tests/packaging.rs`, which drives the
+real `cargo package --list` for all three and asserts both directions.
 
 ### Capture toolchain
 

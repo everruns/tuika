@@ -17,9 +17,14 @@
 //! asset — or a regression that drops an image the crates.io README needs —
 //! fails loudly instead of silently re-inflating the crate.
 //!
-//! It guards *both* published crates. `tuika-codeformatters` has no test target
-//! of its own to spare it the tree-sitter build, and the rule it needs is the
-//! same one, so the root package checks it too.
+//! It guards all three published crates. The companions have no test target of
+//! their own — that would make every run pay their tree-sitter and mmdflux
+//! builds — and the rule they need is this one, so the root package checks them
+//! too. Which way it falls for a given recording is decided by how that crate's
+//! README embeds it: an absolute `raw.githubusercontent.com` URL means the
+//! packaged copy is unreachable and must not ship (`tuika-codeformatters`), a
+//! relative path means crates.io renders from the packaged copy and it must
+//! (`tuika-mermaid`, and tuika's own `docs/hero.gif`).
 
 use std::process::Command;
 
@@ -143,6 +148,23 @@ fn codeformatters_ships_source_but_not_its_demo_recording() {
     );
 
     let has = |p: &str| files.iter().any(|f| f == p);
+    assert!(has("src/lib.rs"), "library source must ship");
+    assert!(has("Cargo.toml"), "manifest must ship");
+    assert!(has("README.md"), "README must ship");
+}
+
+#[test]
+fn mermaid_keeps_the_recording_its_readme_embeds() {
+    let files = packaged_files("tuika-mermaid");
+    let has = |p: &str| files.iter().any(|f| f == p);
+
+    // The inverse of the case above, and the reason this crate has no `exclude`:
+    // its README reaches the recording by *relative* path, so crates.io renders
+    // from the packaged copy and dropping it would break that page.
+    assert!(
+        has("examples/mermaid_markdown/mermaid.gif"),
+        "the recording the crates.io README embeds by relative path must ship"
+    );
     assert!(has("src/lib.rs"), "library source must ship");
     assert!(has("Cargo.toml"), "manifest must ship");
     assert!(has("README.md"), "README must ship");
