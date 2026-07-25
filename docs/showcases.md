@@ -54,17 +54,9 @@ limit and server-error injection turned on.
 > shell. A turn is a scripted sequence chosen from the prompt's keywords and
 > revealed frame by frame, so the recording below is deterministic and offline.
 
-Why it exists: a component gallery shows one widget at a time, and an agent CLI
-is the hardest shape to get right from parts — a transcript of heterogeneous
-history items that must scroll as one, a composer whose `/` and `@` change what
-the keyboard means, a modal escalation prompt, and answers that stream in while
-the user scrolls. Building it surfaced two gaps that became
-[`ItemScroll`](components.md#itemscroll) and the
-[composer token seams](components.md#inline-tokens-mentions-commands-anything).
-
 [`examples/codex/`](../examples/codex) · `cargo run --example codex`
 
 <img src="../examples/codex/codex.gif" width="880" alt="The codex example, a replica of the Codex CLI built on tuika: a slash-command popup filtering as it is typed, an @-file picker completing a path in the composer, then a scripted turn — streamed reasoning, an approval prompt for a destructive command answered from the keyboard, command output, and a streamed markdown answer.">
 
-The example prints its frames as text too — `cargo run --example codex -- --dump`
-— which is how its layout is checked without a recorder.
+`cargo run --example codex -- --dump` prints the same screens as text, for a
+look without a terminal.
