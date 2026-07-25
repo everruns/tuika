@@ -122,7 +122,7 @@ cache directory to record them. They live outside `docs/demos/`, so they are als
 outside the `demo -- check` invariant — nothing fails CI when one is
 unreferenced, and the pairing is kept by review.
 
-Two constraints govern any new showcase scene:
+Three constraints govern any new showcase scene:
 
 - **It must record deterministically and offline.** A demo that depends on a
   provider key, a paid API, or run-to-run model output is not reproducible by a
@@ -132,10 +132,36 @@ Two constraints govern any new showcase scene:
 - **It must not misrepresent the host.** The recording shows the host's real UI
   doing something it really does; where the inputs are simulated, the page says
   so.
+- **It must be captured at the gallery's pixel density, in real time.** See
+  [Capture geometry](#capture-geometry): a showcase sits beside component demos
+  on a page, so a softer one reads as a defect.
+
+### Capture geometry
+
+Every VHS recording is displayed at `width="880"` (rustdoc caps embeds at roughly
+the same). Crispness therefore depends on one ratio: **recorded pixels per cell
+against displayed pixels per cell.** The component gallery sets the bar — 66
+columns at `FontSize 40`, so ~26 px cells in a ~1800 px window, a little over 2×
+the display width — and every other recording is held to it. A capture that packs
+more columns into the same 880 px must scale its font up to compensate, not leave
+the glyphs at a size that was only ever legible at full resolution.
+
+Resolution trades against a second, non-negotiable property: **playback must run
+at the speed the session really ran.** VHS captures frames through a headless
+browser and encodes them at a fixed rate, so once the frame is large enough that
+capture falls behind, the missing frames come out of the *duration* — the GIF
+plays faster than the recorded program behaved, which is the misrepresentation
+the constraint above forbids. Timing is the property to protect; resolution
+yields to it.
+
+The practical consequence for a full-screen host, which needs far more columns
+than a single component: pick the smallest grid the UI genuinely needs, then the
+largest font whose frame still records in real time, and verify the result — the
+GIF's duration must match the tape's, not merely look sharp in a still.
 
 ### The crate/GitHub asset split
 
-The demo, showcase, theme, and styling GIFs total ~12 MiB and are consumed only
+The demo, showcase, theme, and styling GIFs total ~14 MiB and are consumed only
 by the GitHub-rendered README and `docs/*.md`. docs.rs renders the hand-written `//!`
 header, which references none of them, so bundling them only bloats the
 published `.crate`. `Cargo.toml`'s `exclude` keeps them — and the repository

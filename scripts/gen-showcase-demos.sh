@@ -144,20 +144,25 @@ EOF
   pids+=($!)
   wait_for_port "${script_port}"
 
-  # Recorded larger than displayed (width="880" in the gallery) so it stays
-  # crisp on HiDPI; the theme background matches tuika's so VHS's padding
-  # blends into the app.
+  # Captured at the component gallery's pixel density — ~19 px per cell against a
+  # displayed width="880", i.e. more than 2x — so a showcase is as crisp as a demo.
+  # A host needs a real terminal, though, so the grid is ~103x32 cells rather than
+  # the gallery's ~70 columns: yolop's footer and the dashboard's panel grid do not
+  # fit in less. That already puts the frame at ~2.8 Mpx; going further (FontSize
+  # 40 at this grid) outruns what VHS can capture per second, and the recording
+  # then plays back faster than the session really ran. The theme background
+  # matches tuika's so VHS's padding blends into the app.
   cat >"${run}/yolop.tape" <<EOF
 Output "${out}/yolop.gif"
 
 Set Shell bash
-Set FontSize 22
-Set Width 1500
-Set Height 900
-Set Padding 25
+Set FontSize 32
+Set Width 2080
+Set Height 1370
+Set Padding 32
 Set WindowBar Colorful
 Set Theme { "background": "#141214", "foreground": "#ebe6e6" }
-Set Framerate 20
+Set Framerate 12
 
 Hide
 Type "cd ${ws}"
@@ -170,7 +175,7 @@ Sleep 800ms
 Type "how do I run the examples?"
 Sleep 700ms
 Enter
-Sleep 14s
+Sleep 13s
 EOF
 
   echo "Recording docs/showcases/yolop.gif…"
@@ -231,13 +236,13 @@ EOF
 Output "${out}/llmsim.gif"
 
 Set Shell bash
-Set FontSize 22
-Set Width 1500
-Set Height 900
-Set Padding 25
+Set FontSize 32
+Set Width 2080
+Set Height 1370
+Set Padding 32
 Set WindowBar Colorful
 Set Theme { "background": "#141214", "foreground": "#ebe6e6" }
-Set Framerate 20
+Set Framerate 10
 
 Hide
 Type "clear && TERM=xterm-256color ${llmsim_bin} serve --config ${run}/llmsim-stats.toml --tui"

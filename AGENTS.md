@@ -276,6 +276,17 @@ invariant — an unreferenced one is not a CI failure. When adding a host, add t
 scene function and its `case` arm to the generator, then a section to
 `docs/showcases.md` and a bullet to the README's *Used in* list.
 
+Recordings are captured at the same pixel density as the component demos (~19 px
+cells against the displayed `width="880"`, over 2×), on the smallest cell grid the
+host's UI actually needs — a showcase sits beside the demos, so a softer one looks
+broken. Push the frame much past that and VHS stops keeping up: the capture loses
+frames, and the GIF then plays back *faster* than the session really ran. After
+regenerating, check the duration against the tape, not just the sharpness:
+
+```bash
+ffprobe -v error -show_entries format=duration -of csv=p=0 docs/showcases/yolop.gif
+```
+
 ## Image demo
 
 The Images feature in `docs/features.md` (`docs/demos/image.svg`) can't be
