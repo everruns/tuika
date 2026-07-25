@@ -28,6 +28,20 @@ need entries.
   non-goal "no cascade, inheritance, or selectors" was about the *rule* layer;
   terminal inheritance produces a plain `Theme` and involves no cascade.
 
+## 2026-07-25 — Markdown's two passes become its file layout
+
+- Splitting the 2293-line markdown module surfaced the invariant that made the
+  split obvious: rendering is parse-then-flatten, separated by *what they know
+  about width*. Parsing is width-independent; flattening fits lines to a width.
+- Recorded that in [Markdown](specs/markdown.md), because it is the reason both
+  caches work: the settled-prefix cache can hold parsed blocks across frames
+  only because they carry no width, and a resize re-flattens without
+  re-tokenizing. A parser that wrapped as it went would make every resize a full
+  re-parse.
+- The files now follow the passes rather than the vocabulary. Submodules stay
+  private per [Public API surface](specs/api-surface.md) — the split is an
+  implementation detail, and `components::markdown` remains the one path in.
+
 ## 2026-07-25 — The crate root becomes a decision, not an accumulation
 
 - The public tree had grown by accretion: 30 flat public modules plus 167 names
