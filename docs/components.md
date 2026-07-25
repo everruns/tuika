@@ -131,73 +131,13 @@ view! {
 ### `Markdown` + `MarkdownState`
 
 Renders CommonMark (plus GFM tables and strikethrough) to styled lines —
-word-wrapping prose and re-laying-out code and tables to the render width.
-`MarkdownState` is the streaming form: fed deltas as a message arrives, it
-re-parses only the in-flight tail and caches everything before the last stable
-block boundary, so long transcripts don't re-tokenize. The cache holds
-width-independent parsed blocks, so layout (including table column fitting) is
-recomputed each frame — pass the current width and the output tracks the view
-as it resizes.
-[API](https://docs.rs/tuika/latest/tuika/components/markdown/struct.Markdown.html)
+word-wrapping prose and fitting code and tables to the render width.
+`MarkdownState` adds incremental rendering for streaming text. See the
+[markdown guide](markdown.md) for streaming, tables, fenced-block renderers,
+highlighting, links, and images.
+[API](https://docs.rs/tuika/latest/tuika/components/markdown/index.html)
 
 <img src="demos/markdown.gif" width="880" alt="Markdown streaming demo">
-
-```rust
-use tuika::prelude::*;
-let theme = Theme::default();
-let sheet = StyleSheet::from_theme(&theme);
-let mut md = MarkdownState::new();
-md.push_str(delta);                                  // forward each stream delta
-let lines = md.lines(width, &theme, &sheet, CodeHighlighter::Plain);
-view! { node(tuika::components::Text::new(lines)) }
-```
-
-#### Extensible fenced blocks
-
-`FencedBlockRenderer` can replace a language fence with terminal-native,
-width-aware lines. A renderer returns `None` for languages or inputs it does not
-handle, preserving the normal themed code block. `tuika-mermaid` supplies an
-mmdflux-backed implementation:
-
-```rust
-use tuika::prelude::*;
-use tuika_mermaid::MermaidRenderer;
-
-let mermaid = MermaidRenderer::new();
-let doc = Markdown::new(
-    "```mermaid\nflowchart LR\n  Source --> Parse --> Paint\n```",
-)
-.block_renderer(&mermaid);
-# let _ = doc;
-```
-
-The fence is painted directly as Unicode cells:
-
-<img src="https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif" width="880" alt="Mermaid diagram rendered as Unicode cells inside tuika Markdown">
-
-#### GFM tables
-
-Pipe tables render with box-drawing borders, a bold header, and per-column
-alignment from the `:---:` markers — cells keeping their inline styles, emoji,
-and links. Columns size to their content and are then fitted to the available
-width, so the same source reflows as the view resizes.
-
-<img src="demos/markdown_table.png" width="880" alt="A rendered GFM table with box-drawing borders: a bold header row; a left-aligned Component column of inline-code names; a centered Status column with ✅ and 🚧 emoji; and a right-aligned Docs column of underlined links.">
-
-```rust
-use tuika::prelude::*;
-let doc = Markdown::new("\
-| Component   |  Status   |                          Docs |
-| :---------- | :-------: | ----------------------------: |
-| `Markdown`  | ✅ stable | [docs.rs](https://docs.rs/tuika) |
-| **Image**   |  🚧 beta  | [features](features.md) |
-");
-# let _ = doc;
-```
-
-Markdown has more surface than one gallery entry holds — streaming, tables,
-highlighting, links, and images. The [markdown guide](markdown.md) covers all of
-it.
 
 ### `CodeBlock`
 
