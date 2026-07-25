@@ -39,14 +39,16 @@ a trait the host implements:
 | Concern | tuika owns | Host owns |
 | --- | --- | --- |
 | Syntax highlighting | framing, background, gutter, wrapping (`CodeBlock`) | token spans, via `Highlighter` |
+| Rich fenced blocks | width-aware placement and code fallback (`Markdown`) | parsing and terminal-native rendering, via `FencedBlockRenderer` |
 | Images | protocol encoding, cell reservation, alt fallback | decoding bytes to RGBA, via `ImageResolver` |
 | Live data | reading shared state at render time | producing it, and requesting redraws |
 | Input | translation to tuika events, keymap dispatch | the event source and the command semantics |
 
-`tuika-codeformatters` exists because of this rule: a ready-made tree-sitter
-`Highlighter` is genuinely useful, and the grammar crates it needs are exactly
-what tuika core must not carry. It is a separate published crate rather than an
-optional feature so tuika's dependency tree cannot grow by accident.
+The companion crates exist because of this rule: `tuika-codeformatters`
+supplies tree-sitter grammars behind `Highlighter`, while `tuika-mermaid`
+supplies mmdflux parsing and layout behind `FencedBlockRenderer`. They are
+separately published rather than optional tuika features so the core dependency
+tree cannot grow by accident.
 
 ## Non-goals
 

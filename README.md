@@ -222,17 +222,34 @@ Highlighting is a seam, not a dependency: `tuika` owns the *presentation* of cod
 colors from any `Highlighter` you supply — keeping the toolkit free of grammar
 crates. The companion crate
 [`tuika-codeformatters`](https://crates.io/crates/tuika-codeformatters) ships a
-ready-made tree-sitter `Highlighter`. Images work the same way: supply an
-`ImageResolver` and `![alt](url)` renders as real pixels (see [Images](#images)).
+ready-made tree-sitter `Highlighter`.
+
+Fenced blocks can replace their source with a different, width-aware
+presentation through `FencedBlockRenderer`. The
+[`tuika-mermaid`](crates/tuika-mermaid/) companion uses that seam with mmdflux:
+a `mermaid` fence becomes a Unicode cell diagram inside the surrounding
+Markdown, with no browser, SVG, or image protocol. Unsupported or invalid input
+falls back to the ordinary code block.
 
 ```rust
 use tuika::prelude::*;
-use tuika_codeformatters::TreeSitterHighlighter;
+use tuika_mermaid::MermaidRenderer;
 
-let hl = TreeSitterHighlighter::new();
-let _doc = Markdown::new("# Title\n\n```rust\nfn main() {}\n```").highlighter(&hl);
-let _code = CodeBlock::new("rust", "fn main() {}").highlighter(&hl);
+let mermaid = MermaidRenderer::new();
+let document = Markdown::new(
+    "```mermaid\nflowchart LR\n  Parse --> Layout --> Paint\n```",
+)
+.block_renderer(&mermaid);
+# let _ = document;
 ```
+
+Run the complete integration demo with
+`cargo run -p tuika-mermaid --example mermaid_markdown`.
+
+<img src="https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif" width="880" alt="Mermaid diagram rendered as Unicode cells inside tuika Markdown">
+
+Images use the same host-extension pattern: supply an `ImageResolver` and
+`![alt](url)` renders as real pixels (see [Images](#images)).
 
 ## Theming
 
@@ -579,10 +596,14 @@ Issues and pull requests are welcome at
 `cargo clippy --all-targets --all-features -- -D warnings`,
 `cargo test --all-features`) and the commit and review conventions.
 
-`tuika-codeformatters`, the tree-sitter `Highlighter` implementation, lives in
-the same repository under
-[`crates/tuika-codeformatters/`](crates/tuika-codeformatters/) and is published
-as its own crate so tuika core stays grammar-free.
+The separately published companion crates live in this repository:
+
+- [`tuika-codeformatters`](crates/tuika-codeformatters/) supplies the
+  tree-sitter `Highlighter`.
+- [`tuika-mermaid`](crates/tuika-mermaid/) renders Mermaid fences as Unicode
+  terminal diagrams through mmdflux.
+
+Both keep their heavier parsers and grammars out of tuika core.
 
 ## License
 

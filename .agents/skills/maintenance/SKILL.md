@@ -75,6 +75,8 @@ Actions:
 - for `tuika-codeformatters`, check the tree-sitter grammar crates and
   `tree-sitter-highlight` together — a grammar pinned to an older `tree-sitter`
   duplicates the parser runtime
+- for `tuika-mermaid`, check mmdflux with default features still disabled and
+  exercise an actual Mermaid fence through the Markdown adapter
 - run `cargo update` for transitive drift
 - review `cargo tree --duplicates`; fix or note why unfixable
 - run `cargo audit` when available; otherwise check Dependabot alerts

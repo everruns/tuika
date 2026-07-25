@@ -16,6 +16,7 @@ use crate::term::hyperlink::{BufferLink, LinkPolicy, apply_buffer_links};
 use crate::term::image::{ImageLayer, ImageSupport};
 use crate::view::{RenderCtx, View};
 
+use super::FencedBlockRenderer;
 use super::flatten::flatten_linked_into;
 use super::image::{ImageResolver, MarkdownImage};
 use super::parse::parse_with;
@@ -35,6 +36,7 @@ use super::parse::parse_with;
 /// | --- | --- | --- |
 /// | [`new(source)`](Self::new) | — | the markdown source to render |
 /// | [`highlighter(&h)`](Self::highlighter) | plain | syntax-highlight fenced code |
+/// | [`block_renderer(&r)`](Self::block_renderer) | off | replace recognized fences with rendered blocks |
 /// | [`images(&r, s, &l)`](Self::images) | off | render `![alt](url)` as real pixels |
 /// | [`link_policy(p)`](Self::link_policy) | [`LinkPolicy::WEB`] | OSC 8 schemes for links |
 ///
@@ -47,6 +49,7 @@ use super::parse::parse_with;
 pub struct Markdown<'a> {
     source: String,
     highlighter: CodeHighlighter<'a>,
+    block_renderer: Option<&'a dyn FencedBlockRenderer>,
     resolver: Option<&'a dyn ImageResolver>,
     image_support: ImageSupport,
     image_layer: Option<ImageLayer>,
@@ -61,6 +64,7 @@ impl<'a> Markdown<'a> {
         Self {
             source: source.into(),
             highlighter: CodeHighlighter::Plain,
+            block_renderer: None,
             resolver: None,
             image_support: ImageSupport::None,
             image_layer: None,
@@ -71,6 +75,15 @@ impl<'a> Markdown<'a> {
     /// Use `highlighter` to syntax-highlight fenced code blocks.
     pub fn highlighter(mut self, highlighter: &'a dyn Highlighter) -> Self {
         self.highlighter = CodeHighlighter::With(highlighter);
+        self
+    }
+
+    /// Render recognized fenced code blocks through `renderer`.
+    ///
+    /// The renderer receives the current viewport width. Returning `None` leaves
+    /// a fence in the ordinary themed code-block presentation.
+    pub fn block_renderer(mut self, renderer: &'a dyn FencedBlockRenderer) -> Self {
+        self.block_renderer = Some(renderer);
         self
     }
 
@@ -113,7 +126,8 @@ impl<'a> Markdown<'a> {
     ) -> (Vec<Line<'static>>, Vec<MarkdownImage>, Vec<BufferLink>) {
         let items = parse_with(&self.source, theme, sheet, self.highlighter, self.resolver);
         let mut images = Vec::new();
-        let (lines, links) = flatten_linked_into(&items, width, theme, &mut images);
+        let (lines, links) =
+            flatten_linked_into(&items, width, theme, self.block_renderer, &mut images);
         (lines, images, links)
     }
 }

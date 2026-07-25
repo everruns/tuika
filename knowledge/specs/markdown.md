@@ -75,6 +75,24 @@ means a host that renders no code pays nothing, and a host that renders code can
 choose its own highlighter. `tuika-codeformatters` is the batteries-included
 answer, published separately for exactly that reason.
 
+### Rich fenced blocks are a second seam
+
+Syntax highlighting must reconstruct the original source line-for-line, so it
+cannot express a fence whose presentation has a different shape than its source.
+`FencedBlockRenderer` handles that case: given the language, source, current
+width, and theme, it may replace the fence with styled lines. Returning `None`
+keeps the ordinary code-block fallback, so unsupported or malformed content
+never disappears.
+
+Parsed fenced blocks retain both their source and their already-highlighted
+fallback. Rendering happens during width-dependent flattening: settled blocks
+are rendered once per width, while an in-flight fence may be attempted on each
+streaming frame. Implementations therefore stay deterministic and avoid I/O.
+`tuika-mermaid` is the first companion implementation, keeping mmdflux and its
+diagram grammars outside tuika core. The adapter bounds source and output size,
+disables ANSI output, and strips control bytes before creating cells; a diagram
+fence is untrusted markdown, not permission to emit terminal commands.
+
 ### Styling is role-driven
 
 Markdown parts (headings, links, inline code, block quotes, rules) resolve their

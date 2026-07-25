@@ -64,6 +64,29 @@ pub use view::Markdown;
 use flatten::flatten_linked;
 use parse::parse;
 
+/// Replaces a fenced code block with width-aware rendered lines.
+///
+/// This is the extension seam for languages whose presentation is more than
+/// syntax coloring: diagrams, mathematical notation, query plans, and similar
+/// block content. Implementations inspect `language` and return `None` when they
+/// do not handle it (or when rendering fails); markdown then falls back to the
+/// ordinary themed [`CodeBlock`](crate::components::CodeBlock).
+///
+/// Renderers should be deterministic for `(language, source, width, theme)`.
+/// [`MarkdownState`] caches settled blocks and calls the renderer again only
+/// when a block is still streaming, the width changes, or the theme changes.
+pub trait FencedBlockRenderer {
+    /// Render a fenced block, or return `None` to use the normal code-block
+    /// presentation.
+    fn render(
+        &self,
+        language: &str,
+        source: &str,
+        width: u16,
+        theme: &Theme,
+    ) -> Option<Vec<Line<'static>>>;
+}
+
 /// Render a whole markdown string to width-fitted styled lines in one call.
 ///
 /// For streaming input, prefer [`MarkdownState`], which caches the settled
@@ -76,6 +99,21 @@ pub fn to_lines(
     highlighter: CodeHighlighter,
 ) -> Vec<Line<'static>> {
     to_linked_lines(source, width, theme, sheet, highlighter).0
+}
+
+/// Render markdown with a host-supplied fenced-block renderer.
+///
+/// The renderer can replace any language fence with width-aware lines; returning
+/// `None` preserves the ordinary [`CodeBlock`](crate::components::CodeBlock).
+pub fn to_lines_with_renderer(
+    source: &str,
+    width: u16,
+    theme: &Theme,
+    sheet: &StyleSheet,
+    highlighter: CodeHighlighter,
+    block_renderer: &dyn FencedBlockRenderer,
+) -> Vec<Line<'static>> {
+    to_linked_lines_with_renderer(source, width, theme, sheet, highlighter, block_renderer).0
 }
 
 /// Like [`to_lines`], but also returns [`BufferLink`]s for every
@@ -92,7 +130,20 @@ pub fn to_linked_lines(
     highlighter: CodeHighlighter,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let items = parse(source, theme, sheet, highlighter);
-    flatten_linked(&items, width, theme)
+    flatten_linked(&items, width, theme, None)
+}
+
+/// Like [`to_linked_lines`], with a host-supplied [`FencedBlockRenderer`].
+pub fn to_linked_lines_with_renderer(
+    source: &str,
+    width: u16,
+    theme: &Theme,
+    sheet: &StyleSheet,
+    highlighter: CodeHighlighter,
+    block_renderer: &dyn FencedBlockRenderer,
+) -> (Vec<Line<'static>>, Vec<BufferLink>) {
+    let items = parse(source, theme, sheet, highlighter);
+    flatten_linked(&items, width, theme, Some(block_renderer))
 }
 
 #[cfg(test)]
@@ -222,6 +273,65 @@ mod tests {
         );
         let code_rows = lines.iter().filter(|l| text(l).contains("xxxx")).count();
         assert_eq!(code_rows, 1, "code line must not wrap");
+    }
+
+    struct DiagramRenderer;
+
+    impl FencedBlockRenderer for DiagramRenderer {
+        fn render(
+            &self,
+            language: &str,
+            source: &str,
+            width: u16,
+            theme: &Theme,
+        ) -> Option<Vec<Line<'static>>> {
+            (language == "diagram").then(|| {
+                vec![Line::from(Span::styled(
+                    format!("rendered at {width}: {source}"),
+                    ratatui_core::style::Style::default().fg(theme.accent),
+                ))]
+            })
+        }
+    }
+
+    #[test]
+    fn fenced_block_renderer_replaces_recognized_language() {
+        let theme = Theme::default();
+        let lines = to_lines_with_renderer(
+            "```diagram\nA --> B\n```",
+            37,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+            &DiagramRenderer,
+        );
+
+        assert_eq!(lines.len(), 1);
+        assert_eq!(text(&lines[0]), "rendered at 37: A --> B");
+        assert_eq!(lines[0].spans[0].style.fg, Some(theme.accent));
+    }
+
+    #[test]
+    fn fenced_block_renderer_none_preserves_code_block() {
+        let theme = Theme::default();
+        let lines = to_lines_with_renderer(
+            "```rust\nfn main() {}\n```",
+            40,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+            &DiagramRenderer,
+        );
+        let output: Vec<String> = lines.iter().map(text).collect();
+
+        assert!(
+            output.iter().any(|line| line.contains("rust")),
+            "{output:?}"
+        );
+        assert!(
+            output.iter().any(|line| line.contains("fn main()")),
+            "{output:?}"
+        );
     }
 
     #[test]

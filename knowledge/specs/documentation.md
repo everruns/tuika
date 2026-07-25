@@ -85,7 +85,9 @@ staged by hand. The rule is that the *scene registry is the source of truth*:
   binary under VHS, so it cannot drift from what the example does, and is
   committed beside the example rather than under `docs/` so the example directory
   stays self-contained. These sit outside the `demo -- check` invariant, which is
-  about single-component scenes and their gallery references.
+  about single-component scenes and their gallery references. The
+  `tuika-mermaid` recording follows this rule and ships with that companion
+  crate so its crates.io README can show the integration it documents.
 - The image demo is rendered directly by `examples/image_demo.rs` rather than
   recorded, because VHS captures through `ttyd` + `xterm.js`, which implements
   no graphics protocol and would only ever show the text fallback.
@@ -179,13 +181,15 @@ GIF's duration must match the tape's, not merely look sharp in a still.
 
 ### The crate/GitHub asset split
 
-The demo, showcase, theme, and styling GIFs total ~14 MiB and are consumed only
-by the GitHub-rendered README and `docs/*.md`. docs.rs renders the hand-written `//!`
-header, which references none of them, so bundling them only bloats the
-published `.crate`. `Cargo.toml`'s `exclude` keeps them — and the repository
-machinery (`knowledge/`, `.agents/`, `.github/`, `scripts/`) — out of the
-tarball; only `docs/hero.gif` and `docs/demos/image.svg`, which the crates.io
-README embeds by relative path, ship. `tests/packaging.rs` guards the split.
+The root package's demo, showcase, theme, and styling GIFs total ~14 MiB and are
+consumed only by the GitHub-rendered README and `docs/*.md`. docs.rs renders the
+hand-written `//!` header, which references none of them, so bundling them only
+bloats the published `.crate`. Root `Cargo.toml`'s `exclude` keeps them — and the
+repository machinery (`knowledge/`, `.agents/`, `.github/`, `scripts/`) — out
+of that tarball; only `docs/hero.gif` and `docs/demos/image.svg`, which its
+crates.io README embeds by relative path, ship. A companion may ship a small
+recording beside an example when its own crates.io README embeds it, as
+`tuika-mermaid` does. `tests/packaging.rs` guards the root split.
 
 ### Capture toolchain
 

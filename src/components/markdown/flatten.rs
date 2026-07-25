@@ -13,6 +13,7 @@ use crate::style::Theme;
 use crate::term::hyperlink::BufferLink;
 use crate::width::grapheme_cols;
 
+use super::FencedBlockRenderer;
 use super::image::{MarkdownImage, image_cell_size};
 use super::item::{MdItem, RichSpan};
 use super::table::render_table_linked;
@@ -44,9 +45,10 @@ pub(super) fn flatten_linked(
     items: &[MdItem],
     width: u16,
     theme: &Theme,
+    block_renderer: Option<&dyn FencedBlockRenderer>,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let mut images = Vec::new();
-    flatten_linked_into(items, width, theme, &mut images)
+    flatten_linked_into(items, width, theme, block_renderer, &mut images)
 }
 
 /// Flatten into lines and collect the block images reserved, with the row each
@@ -56,15 +58,17 @@ pub(super) fn flatten_into(
     items: &[MdItem],
     width: u16,
     theme: &Theme,
+    block_renderer: Option<&dyn FencedBlockRenderer>,
     images: &mut Vec<MarkdownImage>,
 ) -> Vec<Line<'static>> {
-    flatten_linked_into(items, width, theme, images).0
+    flatten_linked_into(items, width, theme, block_renderer, images).0
 }
 
 pub(super) fn flatten_linked_into(
     items: &[MdItem],
     width: u16,
     theme: &Theme,
+    block_renderer: Option<&dyn FencedBlockRenderer>,
     images: &mut Vec<MarkdownImage>,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let mut out = Vec::new();
@@ -86,18 +90,18 @@ pub(super) fn flatten_linked_into(
                     out.push(line);
                 }
             }
-            MdItem::Verbatim { line, indent } => {
-                out.push(prefix_line(
-                    *indent,
-                    line.spans
-                        .iter()
-                        .map(|s| RichSpan {
-                            content: s.content.to_string(),
-                            style: s.style,
-                            href: None,
-                        })
-                        .collect(),
-                ));
+            MdItem::CodeBlock {
+                language,
+                source,
+                fallback,
+                indent,
+            } => {
+                let avail = width.saturating_sub(*indent).max(1);
+                let rendered = block_renderer
+                    .and_then(|renderer| renderer.render(language, source, avail, theme));
+                for line in rendered.as_ref().unwrap_or(fallback) {
+                    out.push(prefix_rendered_line(*indent, line));
+                }
             }
             MdItem::Table { table, indent } => {
                 let avail = width.saturating_sub(*indent).max(1);
@@ -132,6 +136,17 @@ pub(super) fn flatten_linked_into(
         }
     }
     (out, links)
+}
+
+/// Prefix an already-rendered line with `indent` blank columns.
+fn prefix_rendered_line(indent: u16, line: &Line<'static>) -> Line<'static> {
+    if indent == 0 {
+        return line.clone();
+    }
+    let mut spans = Vec::with_capacity(line.spans.len() + 1);
+    spans.push(Span::raw(" ".repeat(indent as usize)));
+    spans.extend(line.spans.iter().cloned());
+    Line::from(spans)
 }
 
 /// Prefix `spans` with `indent` blank columns.

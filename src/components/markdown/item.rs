@@ -18,8 +18,15 @@ pub(super) const INDENT: u16 = 2;
 pub(super) enum MdItem {
     /// Word-wrappable prose (a paragraph line, heading, list item, quote line).
     Prose { spans: Vec<RichSpan>, indent: u16 },
-    /// A verbatim line (code) drawn as-is at `indent`, never reflowed.
-    Verbatim { line: Line<'static>, indent: u16 },
+    /// A fenced or indented code block. The source stays width-independent so a
+    /// [`FencedBlockRenderer`](super::FencedBlockRenderer) can lay it out for
+    /// the current viewport; the ordinary themed presentation is the fallback.
+    CodeBlock {
+        language: String,
+        source: String,
+        fallback: Vec<Line<'static>>,
+        indent: u16,
+    },
     /// A GFM table, laid out to the available width when flattened.
     Table { table: TableData, indent: u16 },
     /// A resolved block image: reserves rows at flatten time and is painted by an

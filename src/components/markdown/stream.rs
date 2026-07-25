@@ -10,6 +10,7 @@ use ratatui_core::text::Line;
 use crate::highlight::CodeHighlighter;
 use crate::style::{StyleSheet, Theme};
 
+use super::FencedBlockRenderer;
 use super::flatten::flatten_into;
 use super::image::{ImageResolver, MarkdownImage};
 use super::item::MdItem;
@@ -84,6 +85,8 @@ pub struct MarkdownState {
     rendered_width: Option<u16>,
     /// Optional host hook turning image URLs into pixels; off ⇒ text placeholders.
     resolver: Option<Box<dyn ImageResolver>>,
+    /// Optional host hook replacing recognized fenced blocks with rendered lines.
+    block_renderer: Option<Box<dyn FencedBlockRenderer>>,
     /// Block images in the settled prefix, with their absolute `rendered` rows —
     /// accumulated once as blocks settle, mirroring `settled_lines`.
     settled_images: Vec<MarkdownImage>,
@@ -107,6 +110,16 @@ impl MarkdownState {
     /// tail (re-parsed each frame), so a host that decodes lazily should cache.
     pub fn with_image_resolver(mut self, resolver: Box<dyn ImageResolver>) -> Self {
         self.resolver = Some(resolver);
+        self.reset_cache();
+        self
+    }
+
+    /// Render recognized fenced blocks through `renderer`.
+    ///
+    /// A renderer returns `None` for languages or inputs it does not handle, and
+    /// markdown preserves the ordinary themed code block in that case.
+    pub fn with_block_renderer(mut self, renderer: Box<dyn FencedBlockRenderer>) -> Self {
+        self.block_renderer = Some(renderer);
         self.reset_cache();
         self
     }
@@ -214,6 +227,7 @@ impl MarkdownState {
                 &self.stable[self.flattened_items..],
                 width,
                 theme,
+                self.block_renderer.as_deref(),
                 &mut settled_imgs,
             );
             for mut img in settled_imgs {
@@ -233,7 +247,13 @@ impl MarkdownState {
             self.resolver.as_deref(),
         );
         let mut tail_imgs = Vec::new();
-        let tail_lines = flatten_into(&tail, width, theme, &mut tail_imgs);
+        let tail_lines = flatten_into(
+            &tail,
+            width,
+            theme,
+            self.block_renderer.as_deref(),
+            &mut tail_imgs,
+        );
         // The tail begins just past the boundary's blank line; keep that gap.
         if !self.rendered.is_empty()
             && !tail_lines.is_empty()
@@ -275,6 +295,10 @@ mod tests {
     use crate::style::{StyleSheet, Theme};
 
     use ratatui_core::text::Line;
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    use super::super::FencedBlockRenderer;
 
     #[test]
     fn sheet_change_invalidates_stream_cache() {
@@ -347,6 +371,40 @@ mod tests {
                 .collect();
         }
         assert_eq!(streamed, one_shot);
+    }
+
+    #[test]
+    fn streaming_caches_settled_rendered_blocks_until_resize() {
+        struct CountingRenderer(Rc<Cell<usize>>);
+
+        impl FencedBlockRenderer for CountingRenderer {
+            fn render(
+                &self,
+                language: &str,
+                _source: &str,
+                width: u16,
+                _theme: &Theme,
+            ) -> Option<Vec<Line<'static>>> {
+                (language == "diagram").then(|| {
+                    self.0.set(self.0.get() + 1);
+                    vec![Line::raw(format!("width {width}"))]
+                })
+            }
+        }
+
+        let calls = Rc::new(Cell::new(0));
+        let theme = Theme::default();
+        let sheet = StyleSheet::from_theme(&theme);
+        let mut state =
+            MarkdownState::new().with_block_renderer(Box::new(CountingRenderer(Rc::clone(&calls))));
+        state.set("```diagram\nA --> B\n```\n\n");
+
+        let _ = state.lines(40, &theme, &sheet, CodeHighlighter::Plain);
+        let _ = state.lines(40, &theme, &sheet, CodeHighlighter::Plain);
+        assert_eq!(calls.get(), 1, "settled block should stay flattened");
+
+        let _ = state.lines(20, &theme, &sheet, CodeHighlighter::Plain);
+        assert_eq!(calls.get(), 2, "resize must lay out the block again");
     }
 
     #[test]

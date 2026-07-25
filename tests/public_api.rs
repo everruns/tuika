@@ -128,6 +128,32 @@ fn component_modules_own_their_constants_and_free_functions() {
     assert!(!diff::rows("a\n", "b\n").is_empty());
     assert!(qr::encode(b"hi", tuika::components::QrEcc::Low).is_some());
     assert_eq!(text::wrap_lines(&[], 10).len(), 0);
+
+    struct Blocks;
+    impl FencedBlockRenderer for Blocks {
+        fn render(
+            &self,
+            language: &str,
+            _source: &str,
+            _width: u16,
+            _theme: &Theme,
+        ) -> Option<Vec<ratatui_core::text::Line<'static>>> {
+            (language == "demo").then(|| vec![ratatui_core::text::Line::raw("rendered")])
+        }
+    }
+    assert_eq!(
+        markdown::to_lines_with_renderer(
+            "```demo\nsource\n```",
+            20,
+            &theme,
+            &sheet,
+            plain,
+            &Blocks,
+        )[0]
+        .spans[0]
+            .content,
+        "rendered"
+    );
 }
 
 /// Everything out-of-band lives under `term`, and each escape module exposes the

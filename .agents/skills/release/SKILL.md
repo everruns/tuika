@@ -1,6 +1,6 @@
 ---
 name: release
-description: Cut a new tuika release. Prepares the release PR, runs publish-readiness checks, and monitors CI publish of tuika and tuika-codeformatters to crates.io. Use when the user asks to release, cut a version, or publish to crates.io.
+description: Cut a new tuika release. Prepares the release PR, runs publish-readiness checks, and monitors CI publication of tuika and its companion crates. Use when the user asks to release, cut a version, or publish to crates.io.
 metadata:
   internal: true
 user-invocable: true
@@ -31,8 +31,8 @@ change), use [`/ship`](../ship/SKILL.md) instead.
 
 1. **The version is correct.** The root `Cargo.toml` and `Cargo.lock` agree on
    `X.Y.Z`, and `X.Y.Z` is strictly greater than the latest version on
-   crates.io. If `tuika-codeformatters` is part of the release, its version and
-   its `tuika` dependency requirement are consistent too.
+   crates.io. If a companion crate is part of the release, its version and its
+   `tuika` dependency requirement are consistent too.
 2. **The changelog is honest.** `CHANGELOG.md` lists every change landed since
    the previous tag, in descending order, with no commit links and contributor
    attribution for anyone other than @chaliy. **Every `pub` API addition,
@@ -61,9 +61,9 @@ change), use [`/ship`](../ship/SKILL.md) instead.
 - Start by gathering the unreleased commit set, not by guessing the version.
 - The agent never tags the release directly — `release.yml` does that when the
   `chore(release): prepare vX.Y.Z` commit lands on `main`.
-- The repository tag tracks the **root package** (`tuika`).
-  `tuika-codeformatters` versions independently and is published only when its
-  in-tree version is not already live.
+- The repository tag tracks the **root package** (`tuika`). Companion crates
+  version independently and are published only when their in-tree versions are
+  not already live.
 
 ## Step-By-Step
 
@@ -99,7 +99,7 @@ If the user gave a version, use it. Otherwise propose based on the diff:
 Check the API delta rather than trusting commit subjects:
 
 ```bash
-git diff "$LATEST"..HEAD -- src crates/tuika-codeformatters/src | grep -E '^[-+]\s*pub '
+git diff "$LATEST"..HEAD -- src crates/*/src | grep -E '^[-+]\s*pub '
 ```
 
 Confirm with the user before proceeding.
@@ -182,10 +182,10 @@ name = "tuika"
 version = "X.Y.Z"
 ```
 
-Bump `crates/tuika-codeformatters/Cargo.toml` when its own API changed, **or**
-when it must track a new tuika range — and in that case update its dependency
-requirement in the same edit, or the published formatter resolves against the
-old tuika:
+Bump either companion's `Cargo.toml` when its own API changed, **or** when it
+must track a new tuika range — and in that case update its dependency
+requirement in the same edit, or the published companion resolves against old
+tuika:
 
 ```toml
 tuika = { version = "X.Y.0", path = "../.." }
@@ -196,6 +196,7 @@ Refresh the lockfile:
 ```bash
 cargo update -p tuika
 cargo update -p tuika-codeformatters   # only if it was bumped
+cargo update -p tuika-mermaid          # only if it was bumped
 ```
 
 ### 5. Run local verification
@@ -233,13 +234,11 @@ grep '^version' Cargo.toml           # confirm reads X.Y.Z
 python3 scripts/publish_order.py     # confirm the order CI will use
 ```
 
-**Two crates, ordered publish.** `tuika-codeformatters` depends on `tuika` by
-version, so crates.io requires tuika live first. `publish.yml` derives the
-dependency-first order from Cargo metadata (`tuika`, then
-`tuika-codeformatters`) and skips versions already live. A consequence for this
-step: **`cargo publish --dry-run -p tuika-codeformatters` fails locally** when it
-requires a tuika version that is not yet on crates.io. That is expected, not a
-broken release — CI validates it after tuika publishes.
+**Dependency-ordered publish.** Both companions depend on `tuika` by version, so
+crates.io requires tuika live first. `publish.yml` derives the order from Cargo
+metadata and skips versions already live. A companion dry-run can fail locally
+when it requires a tuika version that is not yet on crates.io. That is expected,
+not a broken release — CI validates it after tuika publishes.
 
 If the tuika dry-run fails, fix the root cause and re-run. Do **not** open a
 release PR with a known-broken publish path.
@@ -275,8 +274,8 @@ Body must include:
   - [x] `cargo clippy --all-targets --all-features -- -D warnings`
   - [x] `cargo test --all-features`
   - [x] `cargo run --example demo -- check`
-  - [x] `cargo publish --dry-run -p tuika` (`tuika-codeformatters` is validated
-        in CI after tuika publishes)
+  - [x] `cargo publish --dry-run -p tuika` (companions are validated in CI after
+        tuika publishes)
   - [x] crates.io currently serves `A.B.C` → publishing `X.Y.Z`
   - [x] `Cargo.toml` + `Cargo.lock` agree on `X.Y.Z`
   - [x] highlight demo(s) re-recorded and embedded, pinned to `vX.Y.Z`
@@ -311,6 +310,7 @@ workflow status alone.
 ```bash
 cargo search tuika --limit 1                    # shows X.Y.Z
 cargo search tuika-codeformatters --limit 1     # if it was part of the release
+cargo search tuika-mermaid --limit 1            # if it was part of the release
 gh release view "vX.Y.Z"                        # tag + notes present
 curl -sSI "https://docs.rs/tuika/X.Y.Z/tuika/"  # docs built
 ```
@@ -326,15 +326,15 @@ Releases).
 
 - **Shallow clone.** Cloud sandboxes default to depth ≈ 50 and silently drop
   older commits from `git log`. Always `git fetch --unshallow` first.
-- **Forgetting the formatter's dependency requirement.** Bumping tuika without
-  updating `tuika-codeformatters`'s `tuika = { version = … }` publishes a
-  formatter that resolves against the old tuika. The path dependency hides this
-  locally — the workspace builds fine either way.
-- **An unpublishable formatter.** If `tuika-codeformatters` requires a tuika
-  version that never gets published, it becomes unresolvable for new users. Bump
-  the two together or not at all.
-- **Yanking only half.** Yanking tuika without yanking a formatter release that
-  requires it leaves the formatter unresolvable. Yank or supersede both.
+- **Forgetting a companion's dependency requirement.** Bumping tuika without
+  updating a companion's `tuika = { version = … }` publishes it against old
+  tuika. The path dependency hides this locally.
+- **An unpublishable companion.** If a companion requires a tuika version that
+  never gets published, it becomes unresolvable for new users. Bump them
+  together or not at all.
+- **Yanking only the root.** Yanking tuika without yanking companion releases
+  that require it leaves those releases unresolvable. Yank or supersede all
+  affected versions.
 - **Tag/Cargo drift.** A same-day patch release is almost always caused by
   version drift between `Cargo.toml` and what `cargo publish` actually sees. The
   dry-run catches it.

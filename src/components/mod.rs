@@ -65,7 +65,7 @@ pub use image::Image;
 pub use item_scroll::ItemScroll;
 pub use key_hints::KeyHints;
 pub use loader::Loader;
-pub use markdown::{ImageResolver, Markdown, MarkdownImage, MarkdownState};
+pub use markdown::{FencedBlockRenderer, ImageResolver, Markdown, MarkdownImage, MarkdownState};
 pub use progress_bar::ProgressBar;
 pub use qr::{QrCode, QrEcc};
 pub use responsive::Responsive;

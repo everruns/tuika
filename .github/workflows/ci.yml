@@ -69,8 +69,8 @@ jobs:
 
       # `rust-toolchain.toml` pins a newer toolchain for development, so an MSRV
       # break never shows up locally — this job is the only thing that catches
-      # it. It compiles `-p tuika` alone: the declared `rust-version` is tuika's
-      # promise to its consumers, and `tuika-codeformatters` carries its own.
+      # it. Every published workspace crate declares the same floor, so check
+      # them together.
       - name: Install Rust 1.88
         uses: dtolnay/rust-toolchain@1.88.0
 
@@ -79,8 +79,8 @@ jobs:
         with:
           shared-key: "msrv"
 
-      - name: Check tuika on the MSRV
-        run: cargo check --locked -p tuika --all-targets
+      - name: Check workspace on the MSRV
+        run: cargo check --locked --workspace --all-targets
 
       - name: Verify component gallery assets
         run: cargo run --locked --example demo -- check
