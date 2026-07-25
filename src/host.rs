@@ -1,19 +1,22 @@
 //! Terminal host: alternate-screen lifecycle, event translation, compositor.
 //!
 //! This is the seam between `tuika` and a real terminal. [`TerminalSession`]
-//! owns the complete full-screen lifecycle; [`AltScreen`] is the narrower
-//! guard for hosts that manage raw mode and cursor visibility themselves.
+//! owns the complete full-screen lifecycle, including enhanced keyboard
+//! reporting; [`AltScreen`] is the narrower guard for hosts that manage raw
+//! mode, keyboard modes, and cursor visibility themselves.
 //! [`translate_event`] maps crossterm input to `tuika` [`Event`]s. [`paint`]
 //! composites a root view plus any overlays into the frame buffer: background
 //! fill, root, then each overlay last (clearing its rect first), which is why
 //! overlays never leak surrounding chrome here.
 
 use std::io::{self, Write};
+use std::process::{Command as ProcessCommand, Stdio};
 
 use crossterm::cursor::{Hide, Show};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event as CtEvent, KeyCode as CtKeyCode, KeyEventKind,
-    KeyModifiers, MouseButton as CtMouseButton, MouseEventKind as CtMouseKind,
+    KeyModifiers, KeyboardEnhancementFlags, MouseButton as CtMouseButton,
+    MouseEventKind as CtMouseKind,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -68,14 +71,18 @@ impl Drop for AltScreen {
 
 /// Complete RAII ownership of a full-screen terminal session.
 ///
-/// Construction enables raw mode, enters the alternate screen, enables mouse
-/// capture, and hides the cursor. Drop restores the terminal, including when
-/// unwinding from a panic. Pre-existing raw mode is preserved rather than
-/// disabled. If construction fails partway through, it performs the same
-/// best-effort rollback before returning.
+/// Construction enables raw mode and enhanced keyboard reporting, enters the
+/// alternate screen, enables mouse capture, and hides the cursor. Enhanced
+/// reporting is what lets crossterm distinguish chords such as Shift+Enter from
+/// plain Enter on ANSI terminals; Windows console events already carry modifier
+/// state through the native input API. Drop restores the terminal, including
+/// when unwinding from a panic. Pre-existing raw mode and keyboard-reporting
+/// stack entries are preserved. If construction fails partway through, it
+/// performs the same best-effort rollback before returning.
 pub struct TerminalSession {
     active: bool,
     raw_mode_owned: bool,
+    keyboard_enhancement: Option<KeyboardEnhancement>,
 }
 
 impl TerminalSession {
@@ -86,10 +93,23 @@ impl TerminalSession {
             enable_raw_mode()?;
         }
         let mut out = io::stdout();
+        let keyboard = KeyboardEnhancement::detect();
+        let keyboard_active = match keyboard.enable(&mut out) {
+            Ok(active) => active,
+            Err(error) => {
+                if raw_mode_owned {
+                    let _ = disable_raw_mode();
+                }
+                return Err(error);
+            }
+        };
         if let Err(error) =
             execute!(out, EnterAlternateScreen, EnableMouseCapture, Hide).and_then(|()| out.flush())
         {
             let _ = execute!(out, Show, DisableMouseCapture, LeaveAlternateScreen);
+            if keyboard_active {
+                keyboard.disable(&mut out);
+            }
             if raw_mode_owned {
                 let _ = disable_raw_mode();
             }
@@ -98,6 +118,7 @@ impl TerminalSession {
         Ok(Self {
             active: true,
             raw_mode_owned,
+            keyboard_enhancement: keyboard_active.then_some(keyboard),
         })
     }
 
@@ -111,6 +132,9 @@ impl TerminalSession {
             crate::term::pointer::encode(crate::term::pointer::PointerShape::Default).as_bytes(),
         );
         let _ = execute!(out, Show, DisableMouseCapture, LeaveAlternateScreen);
+        if let Some(keyboard) = self.keyboard_enhancement.take() {
+            keyboard.disable(&mut out);
+        }
         let _ = out.flush();
         if self.raw_mode_owned {
             let _ = disable_raw_mode();
@@ -123,6 +147,102 @@ impl Drop for TerminalSession {
     fn drop(&mut self) {
         self.leave();
     }
+}
+
+/// Keyboard-reporting policy for one terminal session.
+///
+/// Kitty's protocol is a stack: push exactly one level on entry and pop exactly
+/// one on exit, preserving any mode the caller had already installed. iTerm2
+/// and tmux's xterm key format must not report event types: both can lose or
+/// leak modified key events in that mode. tmux's CSI-u format instead needs
+/// xterm modifyOtherKeys mode 2 so modified Enter reaches the application.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct KeyboardEnhancement {
+    flags: KeyboardEnhancementFlags,
+    modify_other_keys: bool,
+}
+
+impl KeyboardEnhancement {
+    fn detect() -> Self {
+        let iterm2 = std::env::var("TERM_PROGRAM")
+            .is_ok_and(|value| value.eq_ignore_ascii_case("iTerm.app"))
+            || std::env::var("LC_TERMINAL").is_ok_and(|value| value.eq_ignore_ascii_case("iTerm2"));
+        let in_tmux = std::env::var_os("TMUX").is_some() || std::env::var_os("TMUX_PANE").is_some();
+        let tmux_format = in_tmux.then(read_tmux_extended_keys_format).flatten();
+        Self::for_terminal(iterm2, in_tmux, tmux_format.as_deref())
+    }
+
+    fn for_terminal(iterm2: bool, in_tmux: bool, tmux_format: Option<&str>) -> Self {
+        let mut flags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+            | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS;
+        if !iterm2 && tmux_format != Some("xterm") {
+            flags |= KeyboardEnhancementFlags::REPORT_EVENT_TYPES;
+        }
+        Self {
+            flags,
+            modify_other_keys: in_tmux && tmux_format == Some("csi-u"),
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn enable(self, out: &mut impl Write) -> io::Result<bool> {
+        self.write_enable_ansi(out)?;
+        out.flush()?;
+        Ok(true)
+    }
+
+    // The Windows console input API already reports modifier state, while
+    // crossterm deliberately does not implement Kitty keyboard negotiation for
+    // the legacy WinAPI backend.
+    #[cfg(windows)]
+    fn enable(self, _out: &mut impl Write) -> io::Result<bool> {
+        Ok(false)
+    }
+
+    #[cfg(not(windows))]
+    fn disable(self, out: &mut impl Write) {
+        let _ = self.write_disable_ansi(out);
+    }
+
+    #[cfg(windows)]
+    fn disable(self, _out: &mut impl Write) {}
+
+    #[cfg(any(not(windows), test))]
+    fn write_enable_ansi(self, out: &mut impl Write) -> io::Result<()> {
+        write!(out, "\x1b[>4;0m\x1b[>{}u", self.flags.bits())?;
+        if self.modify_other_keys {
+            out.write_all(b"\x1b[>4;2m")?;
+        }
+        Ok(())
+    }
+
+    #[cfg(any(not(windows), test))]
+    fn write_disable_ansi(self, out: &mut impl Write) -> io::Result<()> {
+        out.write_all(b"\x1b[<1u\x1b[>4;0m")
+    }
+}
+
+fn read_tmux_extended_keys_format() -> Option<String> {
+    for args in [
+        ["display-message", "-p", "#{extended-keys-format}"],
+        ["show-options", "-gqv", "extended-keys-format"],
+    ] {
+        let output = ProcessCommand::new("tmux")
+            .args(args)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()?;
+        if output.status.success()
+            && let Ok(value) = String::from_utf8(output.stdout)
+        {
+            let value = value.trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
 }
 
 /// Composite `root` and `overlays` into `buffer` over `area`, using `theme`'s
@@ -297,6 +417,48 @@ mod tests {
         assert_eq!((m.column, m.row), (7, 3));
         assert!(m.shift && m.ctrl && !m.alt && m.super_key);
         assert!(!m.plain());
+    }
+
+    #[test]
+    fn translate_preserves_shift_enter() {
+        let ct = CtEvent::Key(crossterm::event::KeyEvent::new(
+            CtKeyCode::Enter,
+            KeyModifiers::SHIFT,
+        ));
+        let Some(Event::Key(key)) = translate_event(ct) else {
+            panic!("expected a key event");
+        };
+        assert_eq!(key.code, KeyCode::Enter);
+        assert!(key.shift && !key.ctrl && !key.alt);
+    }
+
+    #[test]
+    fn keyboard_enhancement_uses_event_reporting_by_default() {
+        let keyboard = KeyboardEnhancement::for_terminal(false, false, None);
+        let mut output = Vec::new();
+        keyboard.write_enable_ansi(&mut output).unwrap();
+        keyboard.write_disable_ansi(&mut output).unwrap();
+        assert_eq!(output, b"\x1b[>4;0m\x1b[>7u\x1b[<1u\x1b[>4;0m");
+    }
+
+    #[test]
+    fn keyboard_enhancement_avoids_event_types_in_iterm_and_xterm_tmux() {
+        for keyboard in [
+            KeyboardEnhancement::for_terminal(true, false, None),
+            KeyboardEnhancement::for_terminal(false, true, Some("xterm")),
+        ] {
+            let mut output = Vec::new();
+            keyboard.write_enable_ansi(&mut output).unwrap();
+            assert_eq!(output, b"\x1b[>4;0m\x1b[>5u");
+        }
+    }
+
+    #[test]
+    fn keyboard_enhancement_enables_modify_other_keys_for_csi_u_tmux() {
+        let keyboard = KeyboardEnhancement::for_terminal(false, true, Some("csi-u"));
+        let mut output = Vec::new();
+        keyboard.write_enable_ansi(&mut output).unwrap();
+        assert_eq!(output, b"\x1b[>4;0m\x1b[>7u\x1b[>4;2m");
     }
 
     #[test]

@@ -99,9 +99,14 @@ above it.
 ## Input and focus
 
 The host translates crossterm events into tuika's own `Key`/`Mouse` events
-before anything else sees them. Everything above that boundary — the keymap
-engine, focus routing, component handlers — consumes only tuika types, which is
-what lets all of it be unit-tested without a PTY.
+before anything else sees them. `TerminalSession` first pushes enhanced keyboard
+reporting, because legacy terminal input cannot distinguish non-character
+chords such as `Shift+Enter` from `Enter`; it pops exactly its own stack entry on
+exit. iTerm2 and tmux's xterm format omit event-type reporting, while tmux CSI-u
+also enables `modifyOtherKeys` mode 2. Windows needs no negotiation because its
+native console events already include modifier state. Everything above that
+boundary — the keymap engine, focus routing, component handlers — consumes only
+tuika types, which is what lets all of it be unit-tested without a PTY.
 
 Focus is a registry of scopes rather than a flag per component: a `FocusScope`
 claims input ownership for its subtree, so a modal or overlay can take input

@@ -3,10 +3,10 @@
 //! Unit, property, and snapshot tests render into an in-memory ratatui `Buffer`
 //! and never touch a real terminal. This drives the `gallery` example under a
 //! pseudo-terminal (`portable-pty`) and asserts the terminal-facing behavior a
-//! buffer test cannot see: entering and restoring the alternate screen, cursor
-//! and mouse-capture lifecycle, the native OSC 9;4 progress indicator, OSC 8
-//! hyperlinks, truecolor and Braille cells surviving a reference terminal
-//! parser, resize survival, and a clean exit.
+//! buffer test cannot see: entering and restoring the alternate screen, enhanced
+//! keyboard reporting, cursor and mouse-capture lifecycle, the native OSC 9;4
+//! progress indicator, OSC 8 hyperlinks, truecolor and Braille cells surviving a
+//! reference terminal parser, resize survival, and a clean exit.
 //!
 //! This covers the *protocol* a terminal receives. Whether a specific emulator
 //! paints those bytes correctly is the cross-terminal nightly plus the manual
@@ -87,6 +87,16 @@ fn run_gallery(rows: u16, cols: u16, resize_to: Option<(u16, u16)>) -> GalleryRu
 
     let mut cmd = CommandBuilder::new(gallery_bin());
     cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+    for inherited in [
+        "NO_COLOR",
+        "TERM_PROGRAM",
+        "LC_TERMINAL",
+        "TMUX",
+        "TMUX_PANE",
+    ] {
+        cmd.env_remove(inherited);
+    }
 
     let mut child = pair.slave.spawn_command(cmd).expect("spawn gallery");
     drop(pair.slave);
@@ -253,6 +263,14 @@ fn gallery_drives_altscreen_and_native_progress() {
     assert!(
         contains(out, b"\x1b[?1000l"),
         "should disable mouse capture on exit"
+    );
+    assert!(
+        contains(out, b"\x1b[>7u"),
+        "should request modified-key and key-event reporting"
+    );
+    assert!(
+        contains(out, b"\x1b[<1u"),
+        "should pop enhanced keyboard reporting on exit"
     );
     // OSC 9;4: indeterminate on start, cleared on exit.
     assert!(
