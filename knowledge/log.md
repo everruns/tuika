@@ -5,6 +5,24 @@ change that makes them — an entry says why the knowledge moved, and that reaso
 is rarely recoverable later. Routine wording, formatting, and link fixes do not
 need entries.
 
+## 2026-07-25 — The tag history starts after the extraction
+
+- tuika 0.1.0–0.4.0 and `tuika-codeformatters` 0.1.0–0.2.0 were all published
+  from the yolop workspace: every publish timestamp on crates.io precedes this
+  repository's first content commit, and the published 0.4.0 tarball still
+  carries `AGENTS.md` and `scripts/` because it predates the `exclude` list. The
+  extraction also reworded documentation as it moved the sources, so no tree in
+  this history matches a published one.
+- [Release](processes/release.md) now states that those versions intentionally
+  have no tag and no GitHub Release here, and that "no previous tag" is a
+  legitimate state for release tooling rather than a shallow clone. Recorded
+  because the temptation to backfill tags will recur, and the reason not to —
+  a tag is a provenance claim that `git describe`, compare links, and tag-pinned
+  demo URLs all trust — is not recoverable from the tag list itself.
+- [Documentation](specs/documentation.md): the crate/GitHub asset split is a rule
+  per *published crate*, not per repository. `tuika-codeformatters` was shipping
+  a 428 KiB recording its own README reaches by absolute URL.
+
 ## 2026-07-25 — Non-Unix CI covered the workspace, not just the root package
 
 - CI's macOS and Windows legs ran Cargo's default package scope, which quietly

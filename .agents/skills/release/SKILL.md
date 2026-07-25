@@ -86,6 +86,21 @@ gh api "repos/everruns/tuika/compare/$LATEST...main" --jq '.total_commits'
 
 If those disagree, the clone is still shallow.
 
+**No tag yet is a valid state, not a shallow clone.** tuika 0.1.0–0.4.0 were
+published from the yolop workspace before the extraction, so this repository
+carries no tag for them and `git describe --tags` fails outright until the first
+release is cut here. Do not invent one to satisfy the command: no commit in this
+repository produced any of those `.crate` files, so a backfilled tag would point
+at a tree that was never published, and every consumer of that tag — `compare`
+links, tag-pinned demo URLs, "changes since" lists — would be wrong. Use the full
+history instead, and take the previous version from crates.io rather than from a
+tag:
+
+```bash
+git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD
+curl -s https://index.crates.io/tu/ik/tuika | tail -1   # last published version
+```
+
 ### 1. Pick the version
 
 If the user gave a version, use it. Otherwise propose based on the diff:
