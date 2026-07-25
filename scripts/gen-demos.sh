@@ -38,7 +38,9 @@ for tape in "${tapes_dir}"/*.tape; do
   fi
   echo "Recording ${name}…"
   # Tape Output paths are relative to the repo root.
-  (cd "${repo_root}" && vhs "${tape}")
+  # Documentation records the theme's palette even when the caller prefers
+  # colorless command output in their own shell.
+  (cd "${repo_root}" && env -u NO_COLOR vhs "${tape}")
 done
 
 echo "Verifying gallery assets…"
