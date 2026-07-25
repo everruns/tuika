@@ -378,8 +378,9 @@ keyboard reporting, alternate screen, mouse capture, and cursor visibility,
 including rollback after partial initialization. Enhanced reporting preserves
 non-character modifiers, so `Shift+Enter` reaches `TextInputState` as a
 different chord from `Enter`; iTerm2 and tmux get their required protocol
-variants. It preserves raw mode and any keyboard-reporting stack entries the
-caller had already enabled. `AltScreen` remains available for hosts that
+variants, while Windows uses the modifier state already carried by its native
+console events. It preserves raw mode and any keyboard-reporting stack entries
+the caller had already enabled. `AltScreen` remains available for hosts that
 intentionally own raw mode, keyboard modes, and cursor visibility themselves.
 
 `Runner` is an optional synchronous event loop for dashboards and small tools.

@@ -9,7 +9,6 @@
 //! fill, root, then each overlay last (clearing its rect first), which is why
 //! overlays never leak surrounding chrome here.
 
-use std::fmt;
 use std::io::{self, Write};
 use std::process::{Command as ProcessCommand, Stdio};
 
@@ -17,13 +16,13 @@ use crossterm::cursor::{Hide, Show};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event as CtEvent, KeyCode as CtKeyCode, KeyEventKind,
     KeyModifiers, KeyboardEnhancementFlags, MouseButton as CtMouseButton,
-    MouseEventKind as CtMouseKind, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    MouseEventKind as CtMouseKind,
 };
+use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
     is_raw_mode_enabled,
 };
-use crossterm::{Command, execute};
 use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
@@ -75,10 +74,11 @@ impl Drop for AltScreen {
 /// Construction enables raw mode and enhanced keyboard reporting, enters the
 /// alternate screen, enables mouse capture, and hides the cursor. Enhanced
 /// reporting is what lets crossterm distinguish chords such as Shift+Enter from
-/// plain Enter. Drop restores the terminal, including when unwinding from a
-/// panic. Pre-existing raw mode and keyboard-reporting stack entries are
-/// preserved. If construction fails partway through, it performs the same
-/// best-effort rollback before returning.
+/// plain Enter on ANSI terminals; Windows console events already carry modifier
+/// state through the native input API. Drop restores the terminal, including
+/// when unwinding from a panic. Pre-existing raw mode and keyboard-reporting
+/// stack entries are preserved. If construction fails partway through, it
+/// performs the same best-effort rollback before returning.
 pub struct TerminalSession {
     active: bool,
     raw_mode_owned: bool,
@@ -94,17 +94,22 @@ impl TerminalSession {
         }
         let mut out = io::stdout();
         let keyboard = KeyboardEnhancement::detect();
-        if let Err(error) = keyboard.enable(&mut out) {
-            if raw_mode_owned {
-                let _ = disable_raw_mode();
+        let keyboard_active = match keyboard.enable(&mut out) {
+            Ok(active) => active,
+            Err(error) => {
+                if raw_mode_owned {
+                    let _ = disable_raw_mode();
+                }
+                return Err(error);
             }
-            return Err(error);
-        }
+        };
         if let Err(error) =
             execute!(out, EnterAlternateScreen, EnableMouseCapture, Hide).and_then(|()| out.flush())
         {
             let _ = execute!(out, Show, DisableMouseCapture, LeaveAlternateScreen);
-            keyboard.disable(&mut out);
+            if keyboard_active {
+                keyboard.disable(&mut out);
+            }
             if raw_mode_owned {
                 let _ = disable_raw_mode();
             }
@@ -113,7 +118,7 @@ impl TerminalSession {
         Ok(Self {
             active: true,
             raw_mode_owned,
-            keyboard_enhancement: Some(keyboard),
+            keyboard_enhancement: keyboard_active.then_some(keyboard),
         })
     }
 
@@ -179,23 +184,41 @@ impl KeyboardEnhancement {
         }
     }
 
-    fn enable(self, out: &mut impl Write) -> io::Result<()> {
-        execute!(
-            out,
-            DisableModifyOtherKeys,
-            PushKeyboardEnhancementFlags(self.flags)
-        )?;
-        if self.modify_other_keys
-            && let Err(error) = execute!(out, EnableModifyOtherKeys)
-        {
-            self.disable(out);
-            return Err(error);
-        }
-        out.flush()
+    #[cfg(not(windows))]
+    fn enable(self, out: &mut impl Write) -> io::Result<bool> {
+        self.write_enable_ansi(out)?;
+        out.flush()?;
+        Ok(true)
     }
 
+    // The Windows console input API already reports modifier state, while
+    // crossterm deliberately does not implement Kitty keyboard negotiation for
+    // the legacy WinAPI backend.
+    #[cfg(windows)]
+    fn enable(self, _out: &mut impl Write) -> io::Result<bool> {
+        Ok(false)
+    }
+
+    #[cfg(not(windows))]
     fn disable(self, out: &mut impl Write) {
-        let _ = execute!(out, PopKeyboardEnhancementFlags, DisableModifyOtherKeys);
+        let _ = self.write_disable_ansi(out);
+    }
+
+    #[cfg(windows)]
+    fn disable(self, _out: &mut impl Write) {}
+
+    #[cfg(any(not(windows), test))]
+    fn write_enable_ansi(self, out: &mut impl Write) -> io::Result<()> {
+        write!(out, "\x1b[>4;0m\x1b[>{}u", self.flags.bits())?;
+        if self.modify_other_keys {
+            out.write_all(b"\x1b[>4;2m")?;
+        }
+        Ok(())
+    }
+
+    #[cfg(any(not(windows), test))]
+    fn write_disable_ansi(self, out: &mut impl Write) -> io::Result<()> {
+        out.write_all(b"\x1b[<1u\x1b[>4;0m")
     }
 }
 
@@ -220,40 +243,6 @@ fn read_tmux_extended_keys_format() -> Option<String> {
         }
     }
     None
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct EnableModifyOtherKeys;
-
-impl Command for EnableModifyOtherKeys {
-    fn write_ansi(&self, f: &mut impl fmt::Write) -> fmt::Result {
-        f.write_str("\x1b[>4;2m")
-    }
-
-    #[cfg(windows)]
-    fn execute_winapi(&self) -> io::Result<()> {
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "modifyOtherKeys is unavailable through the legacy Windows API",
-        ))
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct DisableModifyOtherKeys;
-
-impl Command for DisableModifyOtherKeys {
-    fn write_ansi(&self, f: &mut impl fmt::Write) -> fmt::Result {
-        f.write_str("\x1b[>4;0m")
-    }
-
-    #[cfg(windows)]
-    fn execute_winapi(&self) -> io::Result<()> {
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "modifyOtherKeys is unavailable through the legacy Windows API",
-        ))
-    }
 }
 
 /// Composite `root` and `overlays` into `buffer` over `area`, using `theme`'s
@@ -447,8 +436,8 @@ mod tests {
     fn keyboard_enhancement_uses_event_reporting_by_default() {
         let keyboard = KeyboardEnhancement::for_terminal(false, false, None);
         let mut output = Vec::new();
-        keyboard.enable(&mut output).unwrap();
-        keyboard.disable(&mut output);
+        keyboard.write_enable_ansi(&mut output).unwrap();
+        keyboard.write_disable_ansi(&mut output).unwrap();
         assert_eq!(output, b"\x1b[>4;0m\x1b[>7u\x1b[<1u\x1b[>4;0m");
     }
 
@@ -459,7 +448,7 @@ mod tests {
             KeyboardEnhancement::for_terminal(false, true, Some("xterm")),
         ] {
             let mut output = Vec::new();
-            keyboard.enable(&mut output).unwrap();
+            keyboard.write_enable_ansi(&mut output).unwrap();
             assert_eq!(output, b"\x1b[>4;0m\x1b[>5u");
         }
     }
@@ -468,7 +457,7 @@ mod tests {
     fn keyboard_enhancement_enables_modify_other_keys_for_csi_u_tmux() {
         let keyboard = KeyboardEnhancement::for_terminal(false, true, Some("csi-u"));
         let mut output = Vec::new();
-        keyboard.enable(&mut output).unwrap();
+        keyboard.write_enable_ansi(&mut output).unwrap();
         assert_eq!(output, b"\x1b[>4;0m\x1b[>7u\x1b[>4;2m");
     }
 
