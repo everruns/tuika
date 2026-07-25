@@ -24,7 +24,9 @@ correct layout, focus, and terminal lifecycle without writing a reconciler.
 3. **Dependency-light.** The published crate depends only on `ratatui-core`,
    `ratatui-crossterm`, `crossterm`, `textwrap`, `unicode-segmentation`,
    `unicode-width`, and `pulldown-cmark`. Anything heavier belongs behind a
-   trait the host implements.
+   trait the host implements. `crossterm` and `ratatui-crossterm` are optional
+   (default-on `crossterm` feature): they serve the terminal host, and a host on
+   another surface should not carry them.
 4. **Interoperable, not exclusive.** Existing ratatui widgets compose through a
    raw-`Buffer` seam; adopting tuika never means giving up ratatui.
 5. **Testable without a terminal.** Rendering is observable as cells in memory,
@@ -56,6 +58,10 @@ optional feature so tuika's dependency tree cannot grow by accident.
   `AsyncRunner` for hosts already on Tokio; the default build has no runtime.
 - **No data sources.** tuika neither spawns tasks nor performs I/O beyond the
   terminal.
+- **No second renderer.** The terminal host is the only one tuika ships. Other
+  surfaces are reachable — `default-features = false` leaves a platform-free
+  crate that builds for wasm — but a canvas, DOM, or GPU presenter belongs in a
+  host or a separate crate, behind the `Buffer` seam tuika already exposes.
 - **No re-implementation of ratatui widgets.** Where ratatui has a widget, wrap
   it rather than clone it.
 - **No configuration format.** Themes, stylesheets, and keymaps are code-defined

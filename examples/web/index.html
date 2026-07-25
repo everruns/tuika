@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tuika in the browser</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        /* Matches tuika's default theme background so the page chrome and the
+           canvas are one surface rather than two. */
+        --bg: #10121a;
+        --muted: #6f7793;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--muted);
+        font:
+          13px/1.5 ui-sans-serif,
+          system-ui,
+          sans-serif;
+        height: 100dvh;
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        display: flex;
+        align-items: baseline;
+        gap: 0.75rem;
+        padding: 0.6rem 1rem;
+        border-bottom: 1px solid #232838;
+      }
+      header strong {
+        color: #d7dcf0;
+        font-weight: 600;
+      }
+      #status {
+        margin-left: auto;
+        font-variant-numeric: tabular-nums;
+      }
+      main {
+        flex: 1;
+        min-height: 0;
+        padding: 0.5rem;
+      }
+      /* The canvas is the terminal: it takes the whole box, and the host derives
+         the cell grid from its measured size. */
+      #screen {
+        width: 100%;
+        height: 100%;
+        display: block;
+        outline: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>tuika</strong>
+      <span>ratatui cell buffer → canvas, no terminal</span>
+      <span id="status">loading…</span>
+    </header>
+    <main><canvas id="screen"></canvas></main>
+    <script src="tuika.js"></script>
+  </body>
+</html>

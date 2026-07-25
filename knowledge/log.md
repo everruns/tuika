@@ -3,6 +3,31 @@
 Significant changes to tuika's durable knowledge are recorded here. Routine
 wording, formatting, and link fixes do not need entries.
 
+## 2026-07-25 — The terminal is a feature, not an assumption
+
+- Investigated whether tuika can run in a browser via wasm. It can, and the
+  change was small: `crossterm` and `ratatui-crossterm` became optional behind a
+  default-on `crossterm` feature. Nothing above `paint` needed touching, which is
+  the architecture's host-agnostic claim finally being checked rather than
+  asserted. See [Architecture](specs/architecture.md).
+- Two latent assumptions surfaced. `SelectionState` read `Instant::now()`, which
+  panics on `wasm32-unknown-unknown`; it now takes a caller-supplied timestamp
+  (`handle_at`), and `handle` is compiled out on that target. `RedrawHandle::take`
+  was `pub(crate)` and reachable only from `Runner`, so no other host could drive
+  a `Live` value; it is now public.
+- A CI leg checks `--no-default-features` for `wasm32-unknown-unknown` and for
+  the host test suite. Without it, a crossterm import leaking out of the host
+  layer compiles everywhere CI looks and breaks only non-terminal hosts.
+- `examples/web/` is a research prototype, deliberately outside the workspace: a
+  wasm module plus a canvas renderer, no wasm-bindgen. It established what a
+  non-terminal host must supply that a terminal gives away — resolving
+  `Color::Reset` and the ANSI palette, and drawing box-drawing glyphs as
+  geometry so borders tile. Public guidance lives in `docs/wasm.md`.
+- Adding the default feature is a breaking change for anyone already building
+  with `default-features = false`; it must be called out in the next release's
+  notes. Publishing a canvas/DOM renderer from this repository remains a
+  non-goal — see [Product goal](specs/goal.md).
+
 ## 2026-07-24 — Demo recordings can no longer be silently clipped
 
 - Six gallery GIFs (`qr`, `ascii_font`, `diff`, `slider`, `timeline`,

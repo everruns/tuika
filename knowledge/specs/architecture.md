@@ -54,6 +54,40 @@ umbrella resolves to one shared `ratatui-core`, so `Surface::render_ratatui` and
 `underline-color` feature is enabled to match the umbrella's default so cell
 rendering is byte-identical either way.
 
+## The host boundary is a feature, not an assumption
+
+Everything above `paint` is pure computation: the solver, overlays, focus, the
+keymap, and every component read state and write cells. Only the layer *below*
+it needs a terminal — alternate screen, raw mode, crossterm's event types, and
+the write loop.
+
+That line is drawn in the manifest: `crossterm` is a default-on feature carrying
+`TerminalSession`, `AltScreen`, `translate_event`, `Runner`, `AsyncRunner`, and
+`HyperlinkBackend`/`write_line`. With it off, the crate has no platform I/O and
+builds for `wasm32-unknown-unknown`, which crossterm does not support.
+
+This is not speculative portability. It is the same claim the architecture
+already makes — that tuika owns presentation and the host owns acquisition —
+made checkable: a `use crossterm::…` that leaks out of the host layer now fails
+a CI job instead of passing unnoticed. A non-terminal host supplies four things
+(own a `Buffer`, call `paint`, present the cells, translate input); everything
+else it inherits. See [`docs/wasm.md`](../../docs/wasm.md) and the browser
+prototype in `examples/web/`.
+
+Two consequences are worth stating, because they are the only places the model
+assumed a terminal:
+
+- **Colors are unresolved.** tuika emits `Color::Reset` and the ANSI palette
+  slots and lets the terminal decide what they mean. A host without a palette
+  must resolve them itself; tuika should not grow a palette table to spare it.
+- **`std` has no clock on `wasm32-unknown-unknown`.** tuika reads the clock in
+  exactly one place — double-click detection — so `SelectionState::handle_at`
+  takes a caller-supplied timestamp and `handle` (which reads `Instant`) is
+  compiled out on that target. Everything else is driven by a host-supplied
+  frame counter, which is why animation, spinners, and toast expiry need no
+  clock at all. New time-dependent behavior must follow the frame-counter rule
+  rather than reaching for `Instant`.
+
 ## The probe pattern
 
 Some facts about a frame are only known *after* it is painted — where a view

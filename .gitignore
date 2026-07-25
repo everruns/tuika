@@ -36,3 +36,6 @@ Thumbs.db
 # Claude Code agent worktrees
 .claude/worktrees/
 .claude/*.local.json
+
+# Browser research prototype: built page assets (`examples/web/build.sh`)
+/examples/web/dist/

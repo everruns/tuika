@@ -1,0 +1,35 @@
+# A standalone crate, deliberately outside the tuika workspace (its own empty
+# `[workspace]` table detaches it): it only ever builds for
+# `wasm32-unknown-unknown`, so it must not join the root `cargo test`/`clippy`
+# runs or the MSRV job.
+[workspace]
+
+[package]
+name = "tuika-web-demo"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+license = "MIT"
+description = "Research prototype: tuika rendering to a browser canvas via wasm."
+
+[lib]
+# `cdylib` is what produces a `.wasm` module. No `rlib` — nothing links this.
+crate-type = ["cdylib"]
+
+[dependencies]
+# The whole point of the prototype: tuika with its terminal host switched off.
+# `default-features = false` drops crossterm, which has no wasm support.
+tuika = { path = "../..", default-features = false }
+ratatui-core = { version = "0.1", features = ["std", "underline-color"] }
+
+[profile.release]
+# The `.wasm` is downloaded, so size is the metric that matters. `opt-level = "s"`
+# plus LTO and one codegen unit keeps it small without giving up much speed;
+# `panic = "abort"` drops the unwinding tables (a panic in the browser is a
+# console error either way).
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

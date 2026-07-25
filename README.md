@@ -24,7 +24,8 @@ umbrella — keeping `ratatui-widgets`, `ratatui-macros`, and their transitive
 weight out of its dependency tree. Your application still uses any ratatui
 widget it likes (see [Compatibility](#compatibility)). (The optional `async`
 feature adds Tokio for [`AsyncRunner`](#terminal-lifecycle-and-runner); it is
-off by default.)
+off by default. The `crossterm` feature is on by default and carries the
+terminal host — see [Running without a terminal](#running-without-a-terminal).)
 
 ## Install
 
@@ -202,6 +203,7 @@ Each enters the alternate screen; press `q` (or `esc`) to quit.
 | [`async_dashboard`](examples/async_dashboard.rs) | `cargo run --example async_dashboard --features async` | `AsyncRunner` polling on a Tokio runtime, no shared state |
 | [`mouse`](examples/mouse.rs)     | `cargo run --example mouse`      | drag-to-select + highlight + OSC 52 copy, clickable buttons |
 | [`image`](examples/image.rs)     | `cargo run --example image`      | `Image` over reserved cells (Kitty/iTerm2/Sixel), alt-text fallback |
+| [`web`](examples/web)            | `cd examples/web && ./build.sh --serve` | research prototype: the same components on a browser canvas, no terminal |
 
 
 ## Declarative DSL (`view!`)
@@ -321,6 +323,24 @@ Enabling `async` adds Tokio (timer + `select!`) and crossterm's `event-stream`
 feature; it stays off by default so sync-only hosts pull in no runtime. The
 [`async_dashboard`](examples/async_dashboard.rs) example is the runnable
 counterpart to `ratatui_dashboard` with no shared state at all.
+
+## Running without a terminal
+
+The terminal host is a default-on `crossterm` feature, not a hard dependency.
+With `default-features = false` you keep layout, overlays, focus, the keymap,
+every component, `paint`, the OSC string builders, and the testing helpers, and
+you drop `TerminalSession`/`AltScreen`/`translate_event`, `Runner`, and
+`HyperlinkBackend`. What is left has no platform I/O, so it builds for
+`wasm32-unknown-unknown` — a target crossterm does not support — and can be
+driven by a host that presents cells some other way.
+
+```toml
+tuika = { version = "0.4", default-features = false }
+```
+
+See the [wasm / non-terminal host guide](docs/wasm.md) for what a host has to
+supply, and [`examples/web`](examples/web) for a working browser prototype that
+paints the cell buffer onto a `<canvas>`.
 
 ## Native terminal progress
 
