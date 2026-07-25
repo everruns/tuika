@@ -24,7 +24,9 @@ preference:
 - **New**: `tuika::prelude` — `use tuika::prelude::*;` replaces most import
   blocks outright, which is the intended migration for application code.
 - No behavior change: this release moves and renames public items only. Every
-  test, snapshot, and benchmark passes unchanged apart from its imports.
+  test, snapshot, and benchmark passes unchanged apart from its imports, and
+  `tests/public_api.rs` now pins the layout from outside the crate, the way a
+  host sees it.
 
 ### Breaking Changes
 
@@ -87,5 +89,5 @@ styling extras) are no longer flattened to `tuika::`. Reach them through
 * refactor(components): move markdown and the image view in with the components
 * refactor: fold `async_runner` into `runner` and rename `ratatui_view` to `interop`
 * refactor(tests): move the crate's test scaffolding under `src/tests`
+* test: pin the public module layout from outside the crate (`tests/public_api.rs`)
 * docs: add `knowledge/specs/api-surface.md` and a crate-layout section to the README
-* fix(docs): resolve a merge conflict committed to `knowledge/log.md`
