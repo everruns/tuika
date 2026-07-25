@@ -5,6 +5,17 @@ change that makes them — an entry says why the knowledge moved, and that reaso
 is rarely recoverable later. Routine wording, formatting, and link fixes do not
 need entries.
 
+## 2026-07-25 — Positioned as the default Rust TUI application framework
+
+- The project's goal is to become the default framework Rust developers build
+  terminal *applications* on, but public material described a "small composable
+  toolkit" — accurate about the code, silent about the ambition, and easy to
+  read as one more widget crate.
+- Recorded the positioning in [Product goal](specs/goal.md) and led with it in
+  the README and the crates.io description/keywords, with the guard rails that
+  keep the claim honest: additive to ratatui rather than competing with it, and
+  backed by runnable examples and the showcases rather than asserted popularity.
+
 ## 2026-07-25 — Screen modes: a split footer over live scrollback
 
 - tuika could only own the whole terminal. That rules out the shape a

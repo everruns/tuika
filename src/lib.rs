@@ -1,5 +1,9 @@
-//! `tuika` — a small composable terminal UI toolkit over
+//! `tuika` — the application framework for Rust terminal UIs, built over
 //! [`ratatui`](https://docs.rs/ratatui).
+//!
+//! Where ratatui owns the cell buffer and the widgets drawn into it, `tuika`
+//! owns the layer an *application* needs above that, so a TUI starts as a
+//! described screen rather than a render loop.
 //!
 //! `tuika` adds the pieces ratatui leaves to you — a flexbox-style layout
 //! solver, anchored overlays, focus/input-ownership, a host for either screen

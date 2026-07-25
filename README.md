@@ -1,30 +1,107 @@
 # tuika
 
+<div align="center">
+
 [![crates.io](https://img.shields.io/crates/v/tuika.svg)](https://crates.io/crates/tuika)
 [![docs.rs](https://img.shields.io/docsrs/tuika)](https://docs.rs/tuika)
 [![downloads](https://img.shields.io/crates/d/tuika.svg)](https://crates.io/crates/tuika)
 [![license](https://img.shields.io/crates/l/tuika.svg)](https://github.com/everruns/tuika/blob/main/LICENSE)
-![msrv](https://img.shields.io/badge/rust-1.88%2B-blue.svg)
+![msrv](https://img.shields.io/badge/rust-1.88%2B-blue.svg) \
+[Docs](https://docs.rs/tuika) · [Components](docs/components.md) ·
+[Markdown](docs/markdown.md) · [Terminal features](docs/features.md) ·
+[Keymap](docs/keymap.md) · [Styling](docs/styling.md) ·
+[Themes](docs/themes.md) \
+[Showcases](docs/showcases.md) · [Examples](#runnable-examples) ·
+[Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) ·
+[Report a bug](https://github.com/everruns/tuika/issues)
+
+</div>
 
 <p align="center">
   <img src="docs/hero.gif" width="880" alt="Animated tuika gallery: a terminal window with tabs, an activity panel of spinners, progress bars and a loader, a command palette, a commit-message input, and a status bar — all animating.">
 </p>
 
-A small composable terminal UI toolkit. `tuika` provides the layout,
-overlay, focus, and component primitives that `ratatui` leaves to you, while
-letting `ratatui` keep ownership of the cell buffer and its diff against the
-terminal.
+<div align="center">
 
-It is a published, self-contained crate that depends only on `ratatui-core`
-(plus `ratatui-crossterm` for the terminal backend), `crossterm`, `textwrap`,
-`unicode-segmentation`, and `unicode-width`, and is host-agnostic — it knows
-nothing about the application embedding it. tuika renders none of ratatui's own
-widgets, so it builds against `ratatui-core` directly rather than the `ratatui`
-umbrella — keeping `ratatui-widgets`, `ratatui-macros`, and their transitive
-weight out of its dependency tree. Your application still uses any ratatui
-widget it likes (see [Compatibility](#compatibility)). (The optional `async`
-feature adds Tokio for [`AsyncRunner`](#screen-modes-lifecycle-and-runner); it is
-off by default.)
+### tuika's goal is to become the default TUI [application](./docs/showcases.md) framework for Rust
+
+**Build the app, not the render loop.**
+
+</div>
+
+<details>
+<summary>Table of contents</summary>
+
+- [Install](#install)
+- [Model](#model)
+- [Crate layout](#crate-layout)
+- [Components](#components)
+- [Example](#example)
+- [Owned scenes, dialogs, and forms](#owned-scenes-dialogs-and-forms)
+- [Markdown and syntax highlighting](#markdown-and-syntax-highlighting)
+- [Theming](#theming)
+- [Runnable examples](#runnable-examples)
+- [Declarative DSL (`view!`)](#declarative-dsl-view)
+- [Ratatui interoperability](#ratatui-interoperability)
+- [Screen modes, lifecycle, and runner](#screen-modes-lifecycle-and-runner)
+- [Images](#images)
+- [Mouse, selection, and clipboard](#mouse-selection-and-clipboard)
+- [Testing your UI](#testing-your-ui)
+- [Used in](#used-in)
+- [Compatibility](#compatibility)
+- [Extending](#extending)
+- [License](#license)
+
+</details>
+
+`ratatui` gives you a cell buffer and widgets to draw into it; everything above
+that — layout, overlays, focus, input, the terminal lifecycle — has been left to
+each application to build for itself. tuika is that missing layer, and wants to
+be the standing answer to "what do I build a Rust TUI *application* on?": start
+with `cargo add tuika`, describe your screen, and get a real app instead of a
+render loop.
+
+You write views; tuika owns the rest:
+
+- **A whole app, not a widget set** — [flexbox layout](#model), anchored
+  [overlays](#owned-scenes-dialogs-and-forms), focus, a declarative
+  [keymap](docs/keymap.md), [themes and stylesheets](#theming), and a
+  [runner](#screen-modes-lifecycle-and-runner) that owns raw mode, the alternate
+  screen (or a [split footer](#screen-modes-lifecycle-and-runner) over live
+  scrollback), and event translation.
+- **Batteries the terminal era expects** — [30+ components](#components)
+  including streaming [Markdown](docs/markdown.md) with pluggable syntax
+  highlighting, [images](#images) over Kitty/iTerm2/Sixel, mermaid diagrams,
+  [mouse selection and clipboard](#mouse-selection-and-clipboard), and
+  [native OSC 9;4 progress](#native-terminal-progress).
+- **No lock-in** — it is additive to ratatui, not a replacement: wrap any
+  ratatui widget in [`RatatuiView`](#ratatui-interoperability) and it composes
+  like a built-in, and your own types implement the same `View` trait the
+  built-ins do (see [Extending](#extending)).
+- **Boring where it counts** — no reconciler, no retained tree, no runtime, no
+  macro DSL you are forced into. Views are rebuilt each frame and `ratatui`
+  diffs the buffer. Rendering is deterministic, so
+  [UI is unit-tested](#testing-your-ui) against an in-memory buffer with no
+  terminal at all.
+- **Small enough to adopt without a second thought** — a self-contained crate
+  depending only on `ratatui-core` (plus `ratatui-crossterm` for the backend),
+  `crossterm`, `textwrap`, `unicode-segmentation`, `unicode-width`, and
+  `pulldown-cmark`. Anything heavy — grammars, diagram layout, image decoding —
+  lives behind a trait in a companion crate or your host.
+
+It is host-agnostic: it knows nothing about the application embedding it, and no
+type, feature, or default exists to serve one host. tuika renders none of
+ratatui's own widgets, so it builds against `ratatui-core` directly rather than
+the `ratatui` umbrella — keeping `ratatui-widgets`, `ratatui-macros`, and their
+transitive weight out of its dependency tree. Your application still uses any
+ratatui widget it likes (see [Compatibility](#compatibility)). (The optional
+`async` feature adds Tokio for [`AsyncRunner`](#screen-modes-lifecycle-and-runner);
+it is off by default.)
+
+See what that buys in practice: the [showcases](docs/showcases.md) are
+recordings of real applications running on tuika (also listed under
+[Used in](#used-in)), and the [`codex` example](examples/codex) is a whole
+coding-agent UI built with nothing else.
 
 ## Install
 
@@ -284,7 +361,7 @@ onto the style it draws with. Override a role in one place and every element wit
 that role restyles at once; markdown parts and bare URLs are role-driven too. See
 the [styling guide](docs/styling.md).
 
-### Runnable examples
+## Runnable examples
 
 Each takes over the terminal — the alternate screen, or a pinned footer for
 [`split_footer`](examples/split_footer.rs); press `q` (or `esc`) to quit.
