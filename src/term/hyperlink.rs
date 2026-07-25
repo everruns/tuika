@@ -672,6 +672,18 @@ impl<W: Write> Backend for HyperlinkBackend<W> {
     fn flush(&mut self) -> io::Result<()> {
         Backend::flush(&mut self.inner)
     }
+    // Scrolling regions carry no cell content, so there is nothing to wrap in an
+    // OSC 8 target; forward them verbatim. These exist only so this backend
+    // still implements `Backend` when the `scrolling-regions` feature is on —
+    // which a host can cause from its own `ratatui` dependency.
+    #[cfg(feature = "scrolling-regions")]
+    fn scroll_region_up(&mut self, region: std::ops::Range<u16>, lines: u16) -> io::Result<()> {
+        self.inner.scroll_region_up(region, lines)
+    }
+    #[cfg(feature = "scrolling-regions")]
+    fn scroll_region_down(&mut self, region: std::ops::Range<u16>, lines: u16) -> io::Result<()> {
+        self.inner.scroll_region_down(region, lines)
+    }
 }
 
 #[cfg(test)]

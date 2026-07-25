@@ -90,6 +90,24 @@ bench = false
 # `StreamExt` for polling the event stream, and crossterm's async `EventStream`.
 async = ["dep:tokio", "dep:tokio-stream", "crossterm/event-stream"]
 
+# Mirror of ratatui's `scrolling-regions`, which changes how content is inserted
+# above an inline viewport: DECSTBM region scrolling instead of the portable
+# scroll-and-repaint. Cargo unifies features one way only, so a host that turns
+# the ratatui feature on would otherwise fail to build tuika — `HyperlinkBackend`
+# implements `Backend`, and the feature adds two required methods. Declaring it
+# here is what lets that impl be gated (see `src/term/hyperlink.rs`).
+#
+# It is NOT an optimization to reach for under `ScreenMode::SplitFooter`: rows
+# scrolled out of a DECSTBM region are discarded by the terminal instead of
+# entering its scrollback buffer, and a split footer exists precisely so
+# published output *becomes* scrollback. The portable path costs a viewport
+# repaint per published block and keeps it; the `codex` PTY tests pin the
+# difference. See `knowledge/specs/screen-modes.md`.
+scrolling-regions = [
+    "ratatui-core/scrolling-regions",
+    "ratatui-crossterm/scrolling-regions",
+]
+
 [dependencies]
 # tuika uses only ratatui's cell buffer, style/text/layout primitives, the
 # `Widget`/`StatefulWidget` traits, and the `Terminal`/backend loop — all of

@@ -584,6 +584,21 @@ impl App {
         self.scroll.jump_to_bottom(self.content_h, self.viewport_h);
     }
 
+    /// Take the transcript entries that will never change again, removing them
+    /// from the app.
+    ///
+    /// Used by the split-footer mode, where finished entries are handed to the
+    /// terminal's scrollback instead of being redrawn every frame. The agent
+    /// only ever appends a cell or streams into the *last* one, so everything
+    /// before it is settled; when no turn is in flight, the last one is too.
+    /// Ownership moves out with the cell, which is the point: once an entry is
+    /// the terminal's, this app cannot repaint it.
+    pub fn drain_settled(&mut self) -> Vec<Cell> {
+        let in_flight = usize::from(self.agent.is_running());
+        let settled = self.cells.len().saturating_sub(in_flight);
+        self.cells.drain(..settled).collect()
+    }
+
     /// Rebuild the transcript as one item per cell, laid out to `width`.
     ///
     /// Rebuilding every frame is the model working as intended: only the

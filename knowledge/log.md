@@ -5,6 +5,30 @@ change that makes them — an entry says why the knowledge moved, and that reaso
 is rarely recoverable later. Routine wording, formatting, and link fixes do not
 need entries.
 
+## 2026-07-25 — Screen modes: a split footer over live scrollback
+
+- tuika could only own the whole terminal. That rules out the shape a
+  long-running CLI wants: a live footer over output the user keeps — scrollable,
+  selectable, still there after the tool exits.
+- Added `ScreenMode` (`Alternate` | `SplitFooter`) as the host's first decision,
+  and two publishing paths above a footer, since the footer owns the cursor and
+  `println!` would land anywhere: `Scrollback` for producers on another thread,
+  `publish_block` for the render loop itself, whose blocks may hold caches that
+  are not `Send`. Blocks are committed once and never repainted, which is what
+  makes them the terminal's content rather than tuika's.
+- Judgement calls recorded in [Screen modes](specs/screen-modes.md): a split
+  footer does not capture the mouse by default, the footer is pinned to the
+  bottom rather than left where ratatui anchors an inline viewport, and its
+  height is fixed for the terminal's life.
+- Driving the mode through a real pty overturned an assumption worth recording:
+  ratatui's `scrolling-regions` looked like the obvious optimization (no
+  viewport repaint per published block) and is the wrong trade — a terminal
+  discards rows scrolled out of a DECSTBM region instead of adding them to its
+  scrollback. `TestBackend` models it the other way, so only the PTY layer could
+  have caught it. The feature stays declared as a compatibility mirror, and CI
+  now runs the suite on the default feature set too, which it previously only
+  compiled.
+
 ## 2026-07-25 — docs.rs is a build CI has to rehearse, not assume
 
 - 0.4.0 shipped with no documentation on docs.rs: `src/lib.rs` gated on
@@ -17,6 +41,7 @@ need entries.
   consumer does, once the way docs.rs does. Recorded because the failure mode is
   silence — a library's documentation surface can be entirely absent while every
   gate reports success.
+
 
 ## 2026-07-25 — The tag history starts after the extraction
 

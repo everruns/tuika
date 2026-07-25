@@ -35,8 +35,9 @@ rather than beside it.
   root and overlay elements for one frame and resolves each overlay's
   `OverlaySpec` while rendering. This removes borrowed compositor plumbing
   without adding identity, lifecycle, or hidden persistent state.
-- **The host owns the terminal**: alternate screen, raw mode, mouse capture,
-  input translation, and frame compositing.
+- **The host owns the terminal**: the screen mode (alternate screen or a split
+  footer over live scrollback — see [screen-modes.md](./screen-modes.md)), raw
+  mode, mouse capture, input translation, and frame compositing.
 
 `measure` and `render` are the two halves of every view: `measure` reports a
 size in whole cells so the solver can allocate, `render` paints into the clipped

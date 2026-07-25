@@ -1,16 +1,56 @@
-//! Property-based tests for the layout solver and overlay resolver.
+//! Property-based tests for the layout solver, overlay resolver, and the split
+//! footer.
 //!
 //! Example-based tests pin down specific cases; these assert *invariants* that
 //! must hold for every input, which is how the flexbox solver's arithmetic
 //! edge cases get shaken out (the out-of-bounds-placement bug fixed alongside
-//! the resize suite is exactly the kind proptest finds automatically).
+//! the resize suite is exactly the kind proptest finds automatically). The
+//! footer properties are the same idea one layer up: whatever the screen size,
+//! footer height, and publishing history, the footer must end up on the last
+//! rows with its own content intact.
 
 use proptest::prelude::*;
-use ratatui_core::layout::Rect;
+use ratatui_core::backend::{Backend, TestBackend};
+use ratatui_core::layout::{Position, Rect};
+use ratatui_core::terminal::{Terminal, TerminalOptions};
+use ratatui_core::text::Line;
 
+use crate::components::Text;
 use crate::geometry::{Axis, Padding, Size};
 use crate::layout::{Align, Dimension, Direction, Item, Justify, LayoutStyle, solve};
 use crate::overlay::{Anchor, Extent, OverlaySpec};
+use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
+use crate::style::Theme;
+use crate::tests::support::row;
+use crate::view::element;
+
+/// An inline terminal anchored at `cursor_row`, as a host gets on startup.
+fn footer_terminal(width: u16, height: u16, footer: u16, cursor_row: u16) -> Terminal<TestBackend> {
+    let mut backend = TestBackend::new(width, height);
+    backend
+        .set_cursor_position(Position::new(0, cursor_row.min(height.saturating_sub(1))))
+        .expect("place cursor");
+    Terminal::with_options(
+        backend,
+        TerminalOptions {
+            viewport: ScreenMode::split_footer(footer).viewport(),
+        },
+    )
+    .expect("inline terminal")
+}
+
+/// Paint `FOOTER` on every row the footer owns.
+fn draw_footer(terminal: &mut Terminal<TestBackend>) {
+    let theme = Theme::default();
+    terminal
+        .draw(|frame| {
+            let area = frame.area();
+            let lines = vec![Line::from("FOOTER"); area.height as usize];
+            let view = element(Text::new(lines));
+            crate::paint(frame.buffer_mut(), area, &theme, view.as_ref(), &[]);
+        })
+        .expect("draw footer");
+}
 
 fn dimension_strategy() -> impl Strategy<Value = Dimension> {
     prop_oneof![
@@ -160,5 +200,117 @@ proptest! {
         );
         prop_assert!(r.width <= max_w, "width exceeds max");
         prop_assert!(r.height <= max_h, "height exceeds max");
+    }
+}
+
+proptest! {
+    /// For ANY screen, footer height, and starting cursor row: pinning lands the
+    /// footer on the last rows of the screen, never taller than the screen and
+    /// never past its edges — and pinning again changes nothing.
+    #[test]
+    fn a_pinned_footer_always_owns_the_last_rows(
+        width in 1u16..80,
+        height in 1u16..40,
+        footer in 1u16..24,
+        cursor_row in 0u16..40,
+    ) {
+        let mut terminal = footer_terminal(width, height, footer, cursor_row);
+        pin_footer(&mut terminal).expect("pin");
+
+        let area = terminal.get_frame().area();
+        prop_assert_eq!(area.height, footer.min(height), "footer clamps to the screen");
+        prop_assert_eq!(area.bottom(), height, "footer sits on the last row");
+        prop_assert_eq!(area.x, 0);
+        prop_assert_eq!(area.width, width);
+
+        pin_footer(&mut terminal).expect("re-pin");
+        prop_assert_eq!(terminal.get_frame().area(), area, "pinning is idempotent");
+    }
+
+    /// For ANY sequence of published blocks — including blocks taller than the
+    /// screen — the footer keeps its own rows: publishing scrolls the terminal
+    /// above it and a repaint restores it exactly.
+    #[test]
+    fn publishing_never_costs_the_footer_its_rows(
+        width in 4u16..40,
+        height in 2u16..24,
+        footer in 1u16..8,
+        blocks in proptest::collection::vec(1u16..30, 0..6),
+    ) {
+        let theme = Theme::default();
+        let mut terminal = footer_terminal(width, height, footer, 0);
+        pin_footer(&mut terminal).expect("pin");
+        draw_footer(&mut terminal);
+
+        let scrollback = Scrollback::new();
+        for (i, &rows) in blocks.iter().enumerate() {
+            scrollback.write(move |_width| {
+                element(Text::new(
+                    (0..rows).map(|r| Line::from(format!("b{i}.{r}"))).collect::<Vec<_>>(),
+                ))
+            });
+        }
+        scrollback.flush(&mut terminal, &theme).expect("flush");
+        prop_assert!(scrollback.is_empty(), "every block was consumed");
+
+        // The footer is repainted after publishing, exactly as a host loop does.
+        pin_footer(&mut terminal).expect("re-pin");
+        draw_footer(&mut terminal);
+
+        let area = terminal.get_frame().area();
+        prop_assert_eq!(area.bottom(), height, "the footer is still pinned");
+        let buffer = terminal.backend().buffer();
+        for y in area.top()..area.bottom() {
+            let painted = row(buffer, y);
+            prop_assert!(
+                painted.starts_with(&"FOOTER"[..(width as usize).min(6)]),
+                "footer row {} was overwritten by published output: {:?}",
+                y,
+                painted
+            );
+        }
+    }
+
+    /// For ANY screen and footer, closing hands back exactly the footer's rows:
+    /// they end up blank, the cursor is parked at the top of them, and nothing
+    /// above is touched.
+    #[test]
+    fn closing_returns_the_footer_rows_and_nothing_else(
+        width in 6u16..40,
+        height in 2u16..24,
+        footer in 1u16..8,
+    ) {
+        let theme = Theme::default();
+        let mut terminal = footer_terminal(width, height, footer, 0);
+        pin_footer(&mut terminal).expect("pin");
+
+        let scrollback = Scrollback::new();
+        scrollback.write(|_width| element(Text::raw("kept")));
+        scrollback.flush(&mut terminal, &theme).expect("flush");
+        pin_footer(&mut terminal).expect("re-pin");
+        draw_footer(&mut terminal);
+
+        let area = terminal.get_frame().area();
+        close_footer(&mut terminal).expect("close");
+
+        prop_assert_eq!(
+            terminal.backend().cursor_position(),
+            Position::new(area.x, area.y),
+            "the prompt resumes at the top of the released rows"
+        );
+        let buffer = terminal.backend().buffer();
+        for y in area.top()..area.bottom() {
+            prop_assert_eq!(row(buffer, y), "", "row {} was not released", y);
+        }
+        // The published block survives whenever it was still on screen: the
+        // footer's own rows are the only ones `close_footer` may touch.
+        if area.top() > 0 {
+            let above: Vec<String> = (0..area.top()).map(|y| row(buffer, y)).collect();
+            prop_assert!(
+                above.iter().any(|line| line == "kept"),
+                "published scrollback was cleared: {:?}",
+                above
+            );
+        }
     }
 }

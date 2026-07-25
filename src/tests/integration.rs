@@ -151,3 +151,93 @@ fn nested_flex_tree_lays_out_status_and_body() {
     assert!(row(&buf, 0).contains("Body"));
     assert_eq!(buf[(0, 0)].symbol(), "╭");
 }
+
+/// A split footer end to end, with the pieces a host actually composes: a real
+/// component tree painted into the reserved rows, markdown published into the
+/// scrollback above it, and the rows handed back on exit. This spans `screen`,
+/// `host::paint`, the layout solver, and the markdown renderer — no module owns
+/// it alone.
+#[test]
+fn a_split_footer_composes_components_over_published_markdown() {
+    use ratatui_core::backend::{Backend, TestBackend};
+    use ratatui_core::layout::Position;
+    use ratatui_core::terminal::{Terminal, TerminalOptions};
+
+    use crate::components::Markdown;
+    use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
+
+    let theme = Theme::default();
+    let mut backend = TestBackend::new(28, 10);
+    backend
+        .set_cursor_position(Position::new(0, 0))
+        .expect("place cursor");
+    let mut terminal = Terminal::with_options(
+        backend,
+        TerminalOptions {
+            viewport: ScreenMode::split_footer(3).viewport(),
+        },
+    )
+    .expect("inline terminal");
+    pin_footer(&mut terminal).expect("pin");
+
+    // An answer arrives and is committed to the terminal's scrollback.
+    let scrollback = Scrollback::new();
+    scrollback.write(|_width| element(Markdown::new("# Answer\n\nIt was the **cache**.")));
+    assert!(scrollback.flush(&mut terminal, &theme).expect("flush"));
+
+    // The footer is a composed tree, not a string: a bordered status panel.
+    let draw = |terminal: &mut Terminal<TestBackend>| {
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let tree = Flex::column()
+                    .grow(
+                        1,
+                        element(Boxed::new(element(Text::raw("ready"))).title("codex")),
+                    )
+                    .fixed(
+                        1,
+                        element(StatusBar::new().left(vec![Span::raw("ctrl-c quit")])),
+                    );
+                crate::paint(frame.buffer_mut(), area, &Theme::default(), &tree, &[]);
+            })
+            .expect("draw footer");
+    };
+    draw(&mut terminal);
+
+    let lines: Vec<String> = {
+        let buffer = terminal.backend().buffer();
+        (0..10).map(|y| row(buffer, y)).collect()
+    };
+    // Published markdown sits above the footer, rendered (heading styled, bold
+    // inline) rather than as raw source.
+    assert!(
+        lines[..7].iter().any(|line| line.contains("Answer")),
+        "the heading was published: {lines:?}"
+    );
+    assert!(
+        lines[..7].iter().any(|line| line.contains("cache")),
+        "the body was published: {lines:?}"
+    );
+    assert!(
+        !lines.iter().any(|line| line.contains("**")),
+        "markdown was rendered, not printed as source: {lines:?}"
+    );
+    // The footer owns exactly the last three rows: border, then the status bar.
+    assert!(lines[7].contains("codex"), "footer border row: {lines:?}");
+    assert!(lines[9].starts_with("ctrl-c quit"), "status row: {lines:?}");
+
+    close_footer(&mut terminal).expect("close");
+    let after: Vec<String> = {
+        let buffer = terminal.backend().buffer();
+        (0..10).map(|y| row(buffer, y)).collect()
+    };
+    assert!(
+        after[7..].iter().all(|line| line.is_empty()),
+        "the footer's rows go back to the terminal: {after:?}"
+    );
+    assert!(
+        after[..7].iter().any(|line| line.contains("cache")),
+        "the published answer is the user's to keep: {after:?}"
+    );
+}

@@ -32,7 +32,7 @@ terminal encoder, not the component, and belongs in the PTY layer.
 | Property | `src/tests/proptests.rs` | solver and overlay invariants for *any* input — children stay in bounds, flex fills exactly |
 | Golden snapshot | `src/tests/snapshots.rs` | whole screens diffed against checked-in glyph grids |
 | Size sweep | unit | no panic and no out-of-clip writes from `0×0` upward |
-| PTY smoke | `tests/pty_smoke.rs` | the terminal-facing protocol: alt-screen and cursor/mouse lifecycle pairs, OSC 9;4, OSC 8, truecolor and Braille cells through a reference terminal parser, resize survival, clean exit |
+| PTY smoke | `tests/pty_smoke.rs` | the terminal-facing protocol in both screen modes: alt-screen and cursor/mouse lifecycle pairs, OSC 9;4, OSC 8, truecolor and Braille cells through a reference terminal parser, resize survival, clean exit; and for a split footer, that it stays off the alternate screen, pins to the bottom, publishes above itself, and releases its rows |
 | Packaging | `tests/packaging.rs` | what the published `.crate` contains |
 
 Snapshots refresh with `UPDATE_SNAPSHOTS=1`. A snapshot diff is a prompt to
@@ -53,9 +53,19 @@ it are API changes.
 
 Cell assertions cannot see the alternate screen, cursor visibility, mouse
 capture, or out-of-band escapes, because none of those are cells. The PTY smoke
-drives the `gallery` example under a real pseudo-terminal and replays the byte
+drives real examples under a pseudo-terminal and replays the byte
 stream through a reference terminal (vt100), so the assertions still read a cell
 grid rather than a byte soup.
+
+A split footer is asserted by its *absences* too — no alternate screen, no mouse
+capture — because those are the neighbours the mode promises not to disturb, and
+by what the user is left with after exit. That layer earns its keep beyond
+protocol pairs: `TestBackend` models rows scrolled out of a DECSTBM region as
+entering its scrollback, and a real terminal discards them, so only a reference
+terminal on the other end of a pty could catch the difference (see
+[screen-modes.md](../specs/screen-modes.md)). The harness answers the
+cursor-position report an inline viewport is anchored with, from a vt100 model of
+the same byte stream — a fixed row would silently test a fiction.
 
 It asserts *pairs*: every enter has its matching restore. A renderer that leaves
 the terminal in the alternate screen, with the cursor hidden or mouse capture on,

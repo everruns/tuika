@@ -1,9 +1,11 @@
-//! Terminal host: alternate-screen lifecycle, event translation, compositor.
+//! Terminal host: screen-mode lifecycle, event translation, compositor.
 //!
 //! This is the seam between `tuika` and a real terminal. [`TerminalSession`]
-//! owns the complete full-screen lifecycle, including enhanced keyboard
-//! reporting; [`AltScreen`] is the narrower guard for hosts that manage raw
-//! mode, keyboard modes, and cursor visibility themselves.
+//! owns the complete lifecycle for either [`ScreenMode`] — the alternate screen
+//! or a split footer on the main screen (see [`screen`](crate::screen)) —
+//! including enhanced keyboard reporting; [`AltScreen`] is the narrower guard
+//! for hosts that manage raw mode, keyboard modes, and cursor visibility
+//! themselves.
 //! [`translate_event`] maps crossterm input to `tuika` [`Event`]s. [`paint`]
 //! composites a root view plus any overlays into the frame buffer: background
 //! fill, root, then each overlay last (clearing its rect first), which is why
@@ -29,6 +31,7 @@ use ratatui_core::style::Style;
 
 use super::event::{Event, Key, KeyCode, Mouse, MouseButton, MouseKind};
 use super::overlay::Overlay;
+use super::screen::ScreenMode;
 use super::style::{StyleSheet, Theme};
 use super::surface::Surface;
 use super::view::{RenderCtx, View};
@@ -69,25 +72,40 @@ impl Drop for AltScreen {
     }
 }
 
-/// Complete RAII ownership of a full-screen terminal session.
+/// Complete RAII ownership of a terminal session, in either [`ScreenMode`].
 ///
-/// Construction enables raw mode and enhanced keyboard reporting, enters the
-/// alternate screen, enables mouse capture, and hides the cursor. Enhanced
-/// reporting is what lets crossterm distinguish chords such as Shift+Enter from
-/// plain Enter on ANSI terminals; Windows console events already carry modifier
-/// state through the native input API. Drop restores the terminal, including
-/// when unwinding from a panic. Pre-existing raw mode and keyboard-reporting
-/// stack entries are preserved. If construction fails partway through, it
-/// performs the same best-effort rollback before returning.
+/// Construction enables raw mode and enhanced keyboard reporting, hides the
+/// cursor, and — depending on the mode — enters the alternate screen and
+/// enables mouse capture. Enhanced reporting is what lets crossterm distinguish
+/// chords such as Shift+Enter from plain Enter on ANSI terminals; Windows
+/// console events already carry modifier state through the native input API.
+/// Drop restores exactly what it took, including when unwinding from a panic.
+/// Pre-existing raw mode and keyboard-reporting stack entries are preserved. If
+/// construction fails partway through, it performs the same best-effort
+/// rollback before returning.
+///
+/// A split-footer session touches neither the alternate screen nor (by default)
+/// mouse capture, so the terminal's scrollback, selection, and wheel keep
+/// working while the footer is up. It does *not* reserve or release the footer's
+/// rows — that is the renderer's job, since only it knows where the viewport
+/// landed: see [`pin_footer`](crate::screen::pin_footer) and
+/// [`close_footer`](crate::screen::close_footer).
 pub struct TerminalSession {
     active: bool,
     raw_mode_owned: bool,
     keyboard_enhancement: Option<KeyboardEnhancement>,
+    mode: ScreenMode,
 }
 
 impl TerminalSession {
-    /// Enter a full-screen terminal session, rolling back on failure.
+    /// Enter a full-screen session on the alternate screen, rolling back on
+    /// failure. Shorthand for `enter_with(ScreenMode::Alternate)`.
     pub fn enter() -> io::Result<Self> {
+        Self::enter_with(ScreenMode::Alternate)
+    }
+
+    /// Enter a session in `mode`, rolling back on failure.
+    pub fn enter_with(mode: ScreenMode) -> io::Result<Self> {
         let raw_mode_owned = !is_raw_mode_enabled()?;
         if raw_mode_owned {
             enable_raw_mode()?;
@@ -103,10 +121,24 @@ impl TerminalSession {
                 return Err(error);
             }
         };
-        if let Err(error) =
-            execute!(out, EnterAlternateScreen, EnableMouseCapture, Hide).and_then(|()| out.flush())
-        {
-            let _ = execute!(out, Show, DisableMouseCapture, LeaveAlternateScreen);
+        let entered = (|| -> io::Result<()> {
+            if mode.is_alternate() {
+                execute!(out, EnterAlternateScreen)?;
+            }
+            if mode.captures_mouse() {
+                execute!(out, EnableMouseCapture)?;
+            }
+            execute!(out, Hide)?;
+            out.flush()
+        })();
+        if let Err(error) = entered {
+            let _ = execute!(out, Show);
+            if mode.captures_mouse() {
+                let _ = execute!(out, DisableMouseCapture);
+            }
+            if mode.is_alternate() {
+                let _ = execute!(out, LeaveAlternateScreen);
+            }
             if keyboard_active {
                 keyboard.disable(&mut out);
             }
@@ -119,7 +151,13 @@ impl TerminalSession {
             active: true,
             raw_mode_owned,
             keyboard_enhancement: keyboard_active.then_some(keyboard),
+            mode,
         })
+    }
+
+    /// The mode this session was entered in.
+    pub fn mode(&self) -> ScreenMode {
+        self.mode
     }
 
     /// Restore the terminal immediately. Calling this more than once is safe.
@@ -131,7 +169,13 @@ impl TerminalSession {
         let _ = out.write_all(
             crate::term::pointer::encode(crate::term::pointer::PointerShape::Default).as_bytes(),
         );
-        let _ = execute!(out, Show, DisableMouseCapture, LeaveAlternateScreen);
+        let _ = execute!(out, Show);
+        if self.mode.captures_mouse() {
+            let _ = execute!(out, DisableMouseCapture);
+        }
+        if self.mode.is_alternate() {
+            let _ = execute!(out, LeaveAlternateScreen);
+        }
         if let Some(keyboard) = self.keyboard_enhancement.take() {
             keyboard.disable(&mut out);
         }

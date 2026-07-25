@@ -392,8 +392,10 @@ fn render_svg(frames: &[Buffer], theme: &Theme) -> String {
     }
 
     // CSS: reveal one frame group at a time. A boxcar keyframe (opacity 1 across
-    // its slot, then an ~instant drop) staggered by a negative animation-delay
-    // gives every group a disjoint window over one shared timeline.
+    // its slot, then an ~instant drop) staggered by animation-delay gives every
+    // group a disjoint window over one shared timeline. The stagger is
+    // *positive*: a negative delay also gives disjoint windows, but assigns
+    // them in descending order, so the animation would run backwards.
     let per_frame = 0.5_f32; // seconds each frame is shown
     let dur = per_frame * frames.len() as f32;
     let slot = 100.0 / frames.len() as f32;
@@ -476,7 +478,7 @@ fill=\"{muted}\">tuika · component gallery</text>\n",
     s.push_str(&base);
     s.push_str("</g>\n");
     for (f, group) in anim.iter().enumerate() {
-        let delay = -(f as f32) * per_frame;
+        let delay = f as f32 * per_frame;
         s.push_str(&format!(
             "<g class=\"fr\" style=\"animation-delay:{delay:.3}s\">"
         ));

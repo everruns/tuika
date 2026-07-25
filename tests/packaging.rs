@@ -123,11 +123,15 @@ fn crates_io_readme_assets_and_source_are_kept() {
     let files = packaged_files("tuika");
     let has = |p: &str| files.iter().any(|f| f == p);
 
-    // The two assets the crates.io README embeds by relative path.
+    // The assets the crates.io README embeds by relative path.
     assert!(has("docs/hero.gif"), "README hero image must ship");
     assert!(
         has("docs/demos/image.svg"),
         "README image-protocol asset must ship"
+    );
+    assert!(
+        has("docs/demos/split-footer.svg"),
+        "README split-footer recording must ship"
     );
     // Sanity: the crate still carries its source and manifest.
     assert!(has("src/lib.rs"), "library source must ship");

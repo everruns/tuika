@@ -72,6 +72,8 @@ Run any example to see a change in a real terminal (`q`/`Esc` quits):
 cargo run --example gallery       # motion components + OSC 9;4 progress
 cargo run --example markdown      # streaming markdown + highlighted code
 cargo run --example image         # graphics protocols + alt-text fallback
+cargo run --example split_footer  # split-footer screen mode over live scrollback
+cargo run --example codex -- --split-footer   # the agent UI in that mode
 ```
 
 ### Benchmarks
@@ -134,13 +136,18 @@ tuika's own suite covers more:
   LF-only (`.gitattributes`), so a CRLF checkout cannot fail them.
 - **Resize / degenerate sizes** — a size sweep from `0×0` up asserts no panic and
   no out-of-clip writes.
-- **PTY smoke** (`tests/pty_smoke.rs`) — drives the `gallery` example under a
-  pseudo-terminal and asserts the terminal-facing protocol: alternate-screen
-  enter/leave, cursor and mouse-capture lifecycle, OSC 9;4 progress, OSC 8
-  hyperlinks, truecolor and Braille cells through a reference terminal parser,
-  resize survival, and clean exit. It launches a *built* example, so any runner
-  that rebuilds the suite elsewhere — CI's coverage step, notably — has to build
-  the examples into that same directory.
+- **PTY smoke** (`tests/pty_smoke.rs`) — drives examples under a pseudo-terminal
+  and asserts the terminal-facing protocol: `gallery` for the alternate screen
+  (enter/leave, cursor, keyboard-reporting and mouse-capture lifecycle, OSC 9;4
+  progress, OSC 8 hyperlinks, truecolor and Braille cells through a reference
+  terminal parser, resize survival, clean exit) and `split_footer`/`codex
+  --split-footer` for the split-footer mode (no alt-screen, no mouse capture, the
+  footer pinned to the bottom with published blocks above it, and its rows handed
+  back on exit with the scrollback intact). The harness answers the
+  cursor-position query an inline viewport is anchored with, from a vt100 model
+  of the same stream. It launches *built* examples, so any runner that rebuilds
+  the suite elsewhere — CI's coverage step, notably — has to build the examples
+  into that same directory.
 - **Packaging** (`tests/packaging.rs`) — drives `cargo package --list` so the
   published `.crate` never re-inflates with repo-only files or heavy GIFs.
 
@@ -315,6 +322,25 @@ regenerating, check the duration against the tape, not just the sharpness:
 ```bash
 ffprobe -v error -show_entries format=duration -of csv=p=0 docs/showcases/yolop.gif
 ```
+
+## Split-footer demo
+
+`docs/demos/split-footer.svg` (embedded in the README, `docs/features.md`, and
+`ScreenMode`'s rustdoc) shows a whole terminal, not a component: the footer *and*
+the scrollback above it, which no `Buffer` holds. VHS can't record it either
+without ttyd, so it is generated the same way the smoke test asserts —
+[`examples/split_footer_demo.rs`](examples/split_footer_demo.rs) runs the built
+`split_footer` example under a pseudo-terminal, samples the grid through a
+reference terminal (vt100), and serializes the frames to an animated SVG. The
+last frame is captured *after* the example exits, which is the point of the mode.
+
+```bash
+cargo build --example split_footer          # the recording's subject
+cargo run --example split_footer_demo       # writes docs/demos/split-footer.svg
+cargo run --example split_footer_demo -- --dump   # the frames as text
+```
+
+Being an `.svg`, it is outside the `.gif`-based `demo -- check` invariant.
 
 ## Image demo
 

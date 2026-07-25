@@ -23,7 +23,7 @@ widgets, so it builds against `ratatui-core` directly rather than the `ratatui`
 umbrella — keeping `ratatui-widgets`, `ratatui-macros`, and their transitive
 weight out of its dependency tree. Your application still uses any ratatui
 widget it likes (see [Compatibility](#compatibility)). (The optional `async`
-feature adds Tokio for [`AsyncRunner`](#terminal-lifecycle-and-runner); it is
+feature adds Tokio for [`AsyncRunner`](#screen-modes-lifecycle-and-runner); it is
 off by default.)
 
 ## Install
@@ -286,7 +286,8 @@ the [styling guide](docs/styling.md).
 
 ### Runnable examples
 
-Each enters the alternate screen; press `q` (or `esc`) to quit.
+Each takes over the terminal — the alternate screen, or a pinned footer for
+[`split_footer`](examples/split_footer.rs); press `q` (or `esc`) to quit.
 
 | Example    | Command                                   | Shows                                              |
 | ---------- | ----------------------------------------- | -------------------------------------------------- |
@@ -300,7 +301,9 @@ Each enters the alternate screen; press `q` (or `esc`) to quit.
 | [`mouse`](examples/mouse.rs)     | `cargo run --example mouse`      | drag-to-select + highlight + OSC 52 copy, clickable buttons |
 | [`image`](examples/image.rs)     | `cargo run --example image`      | `Image` over reserved cells (Kitty/iTerm2/Sixel), alt-text fallback |
 | [`inherit`](examples/inherit.rs) | `cargo run --example inherit`    | adopting the terminal's own palette — probe, derive, and the no-I/O fallback |
+| [`split_footer`](examples/split_footer.rs) | `cargo run --example split_footer` | a pinned footer over live terminal scrollback, published through `Scrollback` |
 | [`codex`](examples/codex)        | `cargo run --example codex`      | a whole coding-agent TUI — [demo](docs/showcases.md#codex-cli-replica-in-repo-example) (a UI replica, see below): streaming transcript, composer, `@`/`/` pickers, approval prompt |
+| [`codex --split-footer`](examples/codex) | `cargo run --example codex -- --split-footer` | the same agent UI with its transcript published into the terminal's own scrollback |
 
 Each of the single-topic examples above quits on `q`/`esc`. [`codex`](examples/codex)
 is the composite one — those keys are text there, so it quits with `⌃C` — and it
@@ -388,11 +391,64 @@ derives a fresh view from its current value each frame. Connect it to
 screen. Producers retain ownership of their threads, tasks, retries, and
 lifecycle.
 
-## Terminal lifecycle and runner
+## Screen modes, lifecycle, and runner
 
-`TerminalSession` is the complete RAII guard: it owns raw mode, enhanced
-keyboard reporting, alternate screen, mouse capture, and cursor visibility,
-including rollback after partial initialization. Enhanced reporting preserves
+`ScreenMode` picks which part of the terminal a frame owns:
+
+- `ScreenMode::Alternate` (the default) takes the whole window on the alternate
+  buffer and restores the user's screen and scrollback on exit.
+- `ScreenMode::split_footer(rows)` reserves those rows at the bottom of the
+  *main* screen. Everything above stays the terminal's own scrollback: the shell
+  prompt that launched the app, the wheel, and mouse selection all keep working,
+  and the output the app publishes is still there after it exits. This is the
+  shape for a long-running tool with a live composer, status line, or progress
+  panel over output the user wants to keep.
+
+<p align="center">
+  <img src="docs/demos/split-footer.svg" width="880" alt="A terminal running the split_footer example: a bordered status box pinned to the last rows while published build lines accumulate above it as ordinary scrollback; after the example exits the lines remain and the box's rows are gone.">
+</p>
+
+In split-footer mode a host must not `println!` — the footer owns the cursor.
+`Runner::scrollback()` (and `AsyncRunner::scrollback()`) returns a `Scrollback`
+handle instead: a cheap, cloneable, `Send + Sync` queue of *views*, which the
+runner renders and commits above the footer, one whole block at a time. A host
+driving its own loop can skip the queue with `screen::publish_block`, which
+commits one view immediately and takes no `Send` bound — so a block may own
+frame state that could never cross a thread. Blocks are painted without a
+background fill, so they blend into the surrounding shell session rather than
+looking like a pasted panel.
+
+```rust,ignore
+use tuika::prelude::*;
+
+let runner = Runner::new(RunnerConfig {
+    tick_rate: Duration::from_millis(80),
+    screen_mode: ScreenMode::split_footer(5),
+});
+let scrollback = runner.scrollback();
+
+// From any thread; committed above the footer on the next loop iteration.
+scrollback.write(|_width| element(Text::raw("build finished in 12 ms")));
+```
+
+The footer's height is fixed for the life of the terminal, so a host whose
+footer grows (a composer, a completion popup) reserves the tallest state it
+needs. There is a `scrolling-regions` feature, but it is a compatibility mirror
+of ratatui's, not an optimization to reach for: rows scrolled out of a DECSTBM
+region are discarded by the terminal instead of entering its scrollback, which
+is the one thing this mode exists to provide.
+
+[`split_footer`](examples/split_footer.rs) is the runnable version of all of
+this, and [`codex`](examples/codex) runs its whole coding-agent UI this way with
+`--split-footer`: each finished transcript entry is handed to the terminal, and
+the composer keeps the bottom rows. Hosts driving their own loop reserve and
+release the footer's rows with `screen::pin_footer` and `screen::close_footer`.
+
+`TerminalSession` is the complete RAII guard for either mode: it owns raw mode,
+enhanced
+keyboard reporting, the alternate screen, mouse capture, and cursor visibility,
+including rollback after partial initialization, and restores exactly what it
+took. Enhanced reporting preserves
 non-character modifiers, so `Shift+Enter` reaches `TextInputState` as a
 different chord from `Enter`; iTerm2 and tmux get their required protocol
 variants, while Windows uses the modifier state already carried by its native
@@ -419,7 +475,10 @@ use std::ops::ControlFlow;
 use std::time::Duration;
 use tuika::prelude::*;
 
-let runner = AsyncRunner::new(RunnerConfig { tick_rate: Duration::from_secs(2) });
+let runner = AsyncRunner::new(RunnerConfig {
+    tick_rate: Duration::from_secs(2),
+    ..RunnerConfig::default()
+});
 let mut stats = Stats::default();
 runner.run(
     &Theme::default(),

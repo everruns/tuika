@@ -11,6 +11,36 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
+## [Unreleased]
+
+### Added
+
+- **Screen modes.** `ScreenMode` picks which part of the terminal a frame owns:
+  `Alternate` (the previous, still-default behavior) or `split_footer(rows)`,
+  which reserves rows at the bottom of the *main* screen and leaves everything
+  above as the terminal's own scrollback — the shell prompt, the wheel, mouse
+  selection, and the output the app publishes, which survives its exit.
+  `RunnerConfig::screen_mode` drives both runners; a host with its own loop
+  composes `TerminalSession::enter_with`, `screen::pin_footer`, and
+  `screen::close_footer`.
+- **Publishing above a footer.** `Runner::scrollback()` /
+  `AsyncRunner::scrollback()` return a cloneable, `Send + Sync` `Scrollback`
+  queue of views the loop commits above the footer; `screen::publish_block`
+  commits one view straight from a host's own loop, with no `Send` bound.
+- New `split_footer` example, and `cargo run --example codex -- --split-footer`
+  runs the whole coding-agent UI in the mode.
+- New `scrolling-regions` feature. It is a compatibility mirror of ratatui's
+  (Cargo unifies features one way, and `HyperlinkBackend` must still implement
+  `Backend`), *not* an optimization: rows scrolled out of a DECSTBM region are
+  discarded by the terminal instead of entering its scrollback.
+
+### Changed
+
+- **Breaking**: `RunnerConfig` gains a `screen_mode` field. Struct literals need
+  `..RunnerConfig::default()`:
+  `RunnerConfig { tick_rate, .. }` → `RunnerConfig { tick_rate, ..RunnerConfig::default() }`.
+- `ScreenMode` and `Scrollback` join the crate root and the prelude.
+
 ## [0.5.0] - 2026-07-25
 
 The first release cut from this repository. Companion crates released alongside
