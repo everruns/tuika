@@ -241,6 +241,34 @@ fn the_former_root_collisions_resolve() {
     assert!(grid(&screen).contains("hi"));
 }
 
+/// The screen mode is a host's first decision, so the two names it needs are on
+/// the spine; the rest of `screen` is for hosts driving their own loop and keeps
+/// its module path.
+#[test]
+fn the_screen_mode_is_reachable_from_the_prelude() {
+    // From the prelude alone: pick a mode and hand it to a runner.
+    let mode = ScreenMode::split_footer(6);
+    assert_eq!(mode.footer_height(), Some(6));
+    let runner = Runner::new(RunnerConfig {
+        screen_mode: mode,
+        ..RunnerConfig::default()
+    });
+
+    // The publishing handle comes off the runner and takes views.
+    let scrollback: Scrollback = runner.scrollback();
+    scrollback.write(|_width| element(Text::raw("published")));
+    assert!(!scrollback.is_empty());
+
+    // The loop-driving pieces stay behind `screen::`.
+    let _ = tuika::screen::DEFAULT_FOOTER_HEIGHT;
+    let _: fn(
+        &mut ratatui_core::terminal::Terminal<ratatui_core::backend::TestBackend>,
+    ) -> Result<(), std::convert::Infallible> = tuika::screen::pin_footer;
+    let _: fn(
+        &mut ratatui_core::terminal::Terminal<ratatui_core::backend::TestBackend>,
+    ) -> Result<(), std::convert::Infallible> = tuika::screen::close_footer;
+}
+
 /// The remaining modules keep their own path on purpose; this pins them so a
 /// later "helpful" flattening is a test failure rather than a silent addition.
 #[test]

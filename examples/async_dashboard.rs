@@ -95,6 +95,7 @@ fn dashboard(metrics: &Metrics) -> Element {
 async fn main() -> std::io::Result<()> {
     let runner = AsyncRunner::new(RunnerConfig {
         tick_rate: Duration::from_millis(500),
+        ..RunnerConfig::default()
     });
     let mut metrics = Metrics::new();
 

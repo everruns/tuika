@@ -2,7 +2,8 @@
 //! [`ratatui`](https://docs.rs/ratatui).
 //!
 //! `tuika` adds the pieces ratatui leaves to you — a flexbox-style layout
-//! solver, anchored overlays, focus/input-ownership, an alternate-screen host,
+//! solver, anchored overlays, focus/input-ownership, a host for either screen
+//! mode (alternate screen or a split footer over live terminal scrollback),
 //! and a set of components (text, boxes, scroll, select, spinner, progress) —
 //! while letting ratatui keep ownership of the cell buffer and its diff against
 //! the terminal. It builds against `ratatui-core` (and `ratatui-crossterm` for
@@ -23,8 +24,9 @@
 //!   [`components::SelectState`], [`focus::FocusRegistry`]) lives in the host,
 //!   in the `StatefulWidget` idiom.
 //! - **Layout** is a flexbox subset ([`layout`]); **overlays** ([`overlay`])
-//!   anchor over the base tree; the **host** ([`host`]) owns the alternate
-//!   screen, translates crossterm input, and composites the frame.
+//!   anchor over the base tree; the **host** ([`host`]) owns the screen
+//!   ([`screen::ScreenMode`] — the alternate screen, or a split footer over live
+//!   terminal scrollback), translates crossterm input, and composites the frame.
 //!
 //! # Finding things
 //!
@@ -84,6 +86,7 @@ pub mod prelude;
 pub mod probe;
 pub mod runner;
 pub mod scene;
+pub mod screen;
 pub mod style;
 pub mod surface;
 pub mod term;
@@ -107,6 +110,7 @@ pub use overlay::{Overlay, OverlaySpec};
 pub use runner::{AsyncRunner, Signal};
 pub use runner::{Runner, RunnerConfig};
 pub use scene::{Backdrop, Scene, SceneOverlay};
+pub use screen::{ScreenMode, Scrollback};
 pub use style::{SemanticRole, StyleSheet, Theme};
 pub use surface::Surface;
 pub use view::{Element, RenderCtx, View, element};

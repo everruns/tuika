@@ -130,6 +130,39 @@ The [`inherit`](../examples/inherit.rs) example does all of this end to end —
 including `cargo run --example inherit -- --probe`, which prints what your
 terminal actually answers without taking over the screen.
 
+## Screen modes: alternate screen & split footer
+
+`ScreenMode` decides which part of the terminal a frame owns. The default takes
+the whole window on the alternate buffer. `ScreenMode::split_footer(rows)`
+instead reserves rows at the bottom of the *main* screen and leaves everything
+above as the terminal's own scrollback — the shell prompt, the wheel, mouse
+selection, and the output the app publishes, which is still there after it
+exits.
+
+<p align="center">
+  <img src="demos/split-footer.svg" width="880" alt="A terminal running the split_footer example: a bordered status box pinned to the last rows while published build lines accumulate above it as ordinary scrollback; after the example exits the lines remain and the box's rows are gone.">
+</p>
+
+Because the footer owns the cursor, a host publishes through tuika instead of
+`println!`: `Scrollback` is a cloneable, `Send + Sync` queue for background
+producers, and `screen::publish_block` commits a view straight from a host's own
+render loop. Either way a block is rendered once and handed over — it is the
+terminal's content afterwards, not a frame tuika will repaint.
+
+```rust,ignore
+use tuika::prelude::*;
+
+let runner = Runner::new(RunnerConfig {
+    tick_rate: Duration::from_millis(80),
+    screen_mode: ScreenMode::split_footer(5),
+});
+let scrollback = runner.scrollback();
+scrollback.write(|_width| element(Text::raw("build finished in 12 ms")));
+```
+
+Run it with `cargo run --example split_footer`, or see a whole coding-agent UI
+in the mode with `cargo run --example codex -- --split-footer`.
+
 ## Hyperlinks (OSC 8)
 
 Turn a bare `http(s)` URL — or a markdown `[label](url)` whose visible text is

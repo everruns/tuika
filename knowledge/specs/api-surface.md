@@ -29,6 +29,7 @@ Four levels, each with one job:
 | crate root | the framework spine: `View`/`Element`/`RenderCtx`, owned `Scene` composition, layout, events, `Theme`/`StyleSheet`, `Surface`, host seam, runners | a host touches it on essentially every frame |
 | `components` | every widget | it implements `View` |
 | `term` | escapes outside the cell grid: clipboard, hyperlink, progress, pointer, image, capabilities | it talks to the terminal, not to the buffer |
+| `screen` | which part of the terminal a frame owns, and publishing above a split footer | it decides or manipulates the reserved region |
 | `prelude` | the spine plus all components, in one glob | an application wants it without thinking |
 
 Everything else stays behind its own module path: `themes::by_name`,
@@ -63,6 +64,15 @@ does not.
 The alternative — flattening everything and hand-prefixing the collisions —
 produces names like `TOAST_DEFAULT_TTL`, where the prefix is doing the work a
 module path would do for free.
+
+### A startup decision can still earn the root
+
+`ScreenMode` and `Scrollback` sit at the crate root even though a host names the
+first once, at startup: the mode is a field of `RunnerConfig`, which is already
+there, and `TerminalSession` — also a once-per-run type — set the precedent. The
+rest of `screen` stays behind its module path, because `pin_footer`,
+`close_footer`, and `publish_block` are for hosts that drive their own loop, and
+an explicit `screen::` documents that call better than a bare name would.
 
 ### Feature-gating is not a reason to split a module
 

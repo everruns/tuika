@@ -18,7 +18,7 @@ use tuika::probe::RectProbe;
 use crate::app::{App, Popup};
 
 /// Columns of blank Codex keeps down each side of its UI.
-const GUTTER: u16 = 1;
+pub const GUTTER: u16 = 1;
 /// Visual rows the composer grows to before it scrolls internally.
 const MAX_COMPOSER_ROWS: u16 = 6;
 /// Rows the completion popup shows before it windows around the selection.

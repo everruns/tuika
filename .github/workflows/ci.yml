@@ -217,6 +217,18 @@ jobs:
           cargo llvm-cov report --lcov --output-path lcov.info
           cargo llvm-cov report --summary-only
 
+      # The step above runs with --all-features, which is *not* what most hosts
+      # build. `scrolling-regions` in particular selects a different publish path
+      # for the split footer (DECSTBM region scrolling instead of the portable
+      # scroll-and-repaint), and the two differ in what reaches the terminal's
+      # scrollback — a difference `tests/pty_smoke.rs` asserts on both sides. So
+      # run the suite once more on the default feature set, rebuilding the
+      # examples the PTY smoke launches so they match the features under test.
+      - name: Tests (default features)
+        run: |
+          cargo build --locked --examples
+          cargo test --locked --workspace
+
       - name: Upload coverage to Codecov
         if: always()
         uses: codecov/codecov-action@v7

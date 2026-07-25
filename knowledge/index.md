@@ -43,6 +43,7 @@ the reason for a decision is cheapest to write down while it is still at hand.
 - [Images](specs/images.md) — terminal graphics protocols over reserved cells.
 - [Keymap](specs/keymap.md) — declarative key-binding dispatch.
 - [Styling](specs/styling.md) — themes as tokens, stylesheets as rules.
+- [Screen modes](specs/screen-modes.md) — the alternate screen, and a split footer over live scrollback.
 - [Out-of-band escapes](specs/out-of-band.md) — hyperlinks, clipboard, and native progress.
 
 ## Engineering processes

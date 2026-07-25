@@ -27,6 +27,7 @@
 //! async fn dashboard() -> std::io::Result<()> {
 //!     let runner = AsyncRunner::new(RunnerConfig {
 //!         tick_rate: Duration::from_secs(2),
+//!         ..RunnerConfig::default()
 //!     });
 //!     let mut requests = 0u64;
 //!
@@ -62,11 +63,12 @@ use std::time::Duration;
 
 use crossterm::event::EventStream;
 use ratatui_core::backend::Backend;
-use ratatui_core::terminal::{Terminal, TerminalOptions, Viewport};
+use ratatui_core::terminal::{Terminal, TerminalOptions};
 use ratatui_crossterm::CrosstermBackend;
 use tokio::time::{MissedTickBehavior, interval};
 use tokio_stream::{Stream, StreamExt};
 
+use crate::screen::{Scrollback, close_footer, pin_footer};
 use crate::{Element, Event, RunnerConfig, TerminalSession, Theme, paint, translate_event};
 
 /// A tick or an input event delivered to an [`AsyncRunner`]'s update callback.
@@ -92,6 +94,7 @@ pub enum Signal {
 /// event stream, for tests and hosts that own the terminal lifecycle).
 pub struct AsyncRunner {
     config: RunnerConfig,
+    scrollback: Scrollback,
 }
 
 impl AsyncRunner {
@@ -101,7 +104,19 @@ impl AsyncRunner {
         // events or updates. Enforce the same scheduling floor the synchronous
         // `Runner` does.
         config.tick_rate = config.tick_rate.max(Duration::from_millis(1));
-        Self { config }
+        Self {
+            config,
+            scrollback: Scrollback::new(),
+        }
+    }
+
+    /// Return a handle for publishing content above a
+    /// [`ScreenMode::SplitFooter`](crate::ScreenMode::SplitFooter) — see
+    /// [`Scrollback`]. Blocks queued while running in
+    /// [`ScreenMode::Alternate`](crate::ScreenMode::Alternate) are discarded,
+    /// since there is no scrollback of the host's to write into.
+    pub fn scrollback(&self) -> Scrollback {
+        self.scrollback.clone()
     }
 
     /// Run on the real terminal until `update` returns [`ControlFlow::Break`].
@@ -147,11 +162,12 @@ impl AsyncRunner {
         V: FnMut(&S, u64) -> Element,
         U: AsyncFnMut(&mut S, Signal) -> ControlFlow<()>,
     {
-        let _session = TerminalSession::enter()?;
+        let mode = self.config.screen_mode;
+        let _session = TerminalSession::enter_with(mode)?;
         let mut terminal = Terminal::with_options(
             backend,
             TerminalOptions {
-                viewport: Viewport::Fullscreen,
+                viewport: mode.viewport(),
             },
         )?;
         // Translate crossterm events to tuika events at the stream boundary,
@@ -167,8 +183,13 @@ impl AsyncRunner {
         // Some terminal emulators do not answer the cursor-position query used
         // by `clear`; a cosmetic cleanup failure must not turn a completed run
         // into an application error. (Session restoration is the `_session`
-        // guard's job and happens regardless.)
-        let _ = terminal.clear();
+        // guard's job and happens regardless.) A split footer gives its rows
+        // back instead — the scrollback above it is the user's.
+        if mode.is_alternate() {
+            let _ = terminal.clear();
+        } else {
+            let _ = close_footer(&mut terminal);
+        }
         result
     }
 
@@ -206,6 +227,7 @@ impl AsyncRunner {
     {
         let mut events_done = false;
         let mut frame = 0u64;
+        let split = !self.config.screen_mode.is_alternate();
 
         let mut ticker = interval(self.config.tick_rate);
         // A slow `update` must not make the timer fire a burst of catch-up ticks
@@ -214,6 +236,9 @@ impl AsyncRunner {
 
         // Paint once before waiting for the first signal so the UI is visible
         // immediately rather than after the first tick or keypress.
+        if split {
+            pin_footer(terminal)?;
+        }
         draw(terminal, theme, &mut view, state, &mut frame)?;
 
         loop {
@@ -234,6 +259,19 @@ impl AsyncRunner {
 
             if update(state, signal).await.is_break() {
                 break;
+            }
+            if split {
+                // Publish first: committing a block scrolls the terminal and
+                // (on the portable path) clears the viewport, so the draw below
+                // is what puts the footer back. Resolve any resize before
+                // re-pinning, so the footer is measured against the new height.
+                self.scrollback.flush(terminal, theme)?;
+                terminal.autoresize()?;
+                pin_footer(terminal)?;
+            } else {
+                // Nothing above the frame to publish into; drop queued blocks
+                // rather than let a producer grow the queue without bound.
+                self.scrollback.clear();
             }
             // Redraws are a ratatui buffer diff, so repainting after every
             // handled signal only flushes the cells that actually changed.
@@ -304,6 +342,7 @@ mod tests {
     fn zero_tick_rate_is_clamped() {
         let runner = AsyncRunner::new(RunnerConfig {
             tick_rate: Duration::ZERO,
+            ..RunnerConfig::default()
         });
         assert_eq!(runner.config.tick_rate, Duration::from_millis(1));
     }
@@ -315,6 +354,7 @@ mod tests {
     async fn events_drive_state_and_quit_breaks() {
         let runner = AsyncRunner::new(RunnerConfig {
             tick_rate: Duration::from_secs(3600),
+            ..RunnerConfig::default()
         });
         let mut terminal = terminal(24, 1);
         let mut count = 0u64;
@@ -385,6 +425,7 @@ mod tests {
     async fn ticks_fire_and_can_await() {
         let runner = AsyncRunner::new(RunnerConfig {
             tick_rate: Duration::from_millis(50),
+            ..RunnerConfig::default()
         });
         let mut terminal = terminal(20, 1);
         let mut ticks = 0u64;
@@ -424,6 +465,175 @@ mod tests {
         );
     }
 
+    // The whole split-footer loop, hermetically: the footer is pinned to the
+    // bottom rows, a block published from the update callback is committed to
+    // the scrollback above it, and the footer is repainted afterwards.
+    #[tokio::test]
+    async fn split_footer_publishes_above_a_pinned_footer() {
+        use crate::screen::ScreenMode;
+        use ratatui_core::layout::Position;
+
+        let runner = AsyncRunner::new(RunnerConfig {
+            tick_rate: Duration::from_secs(3600),
+            screen_mode: ScreenMode::split_footer(2),
+        });
+        let scrollback = runner.scrollback();
+        let mut backend = TestBackend::new(12, 6);
+        backend
+            .set_cursor_position(Position::new(0, 0))
+            .expect("place cursor");
+        let mut terminal = Terminal::with_options(
+            backend,
+            TerminalOptions {
+                viewport: runner.config.screen_mode.viewport(),
+            },
+        )
+        .expect("inline terminal");
+        let events = tokio_stream::iter([key(KeyCode::Char('a')), key(KeyCode::Char('q'))]);
+        let mut state = ();
+
+        runner
+            .run_with_events(
+                &mut terminal,
+                &Theme::default(),
+                &mut state,
+                events,
+                |_state, _frame| {
+                    element(Text::new(vec![
+                        ratatui_core::text::Line::from("FOOTER"),
+                        ratatui_core::text::Line::from("FOOTER"),
+                    ]))
+                },
+                async |_state, signal| match signal {
+                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Char('q') => {
+                        ControlFlow::Break(())
+                    }
+                    Signal::Event(_) => {
+                        scrollback.write(|_width| element(Text::raw("published")));
+                        ControlFlow::Continue(())
+                    }
+                    _ => ControlFlow::Continue(()),
+                },
+            )
+            .await
+            .expect("run");
+
+        let buffer = terminal.backend().buffer();
+        let lines: Vec<String> = (0..6)
+            .map(|y| crate::tests::support::row(buffer, y))
+            .collect();
+        assert_eq!(
+            &lines[3..],
+            &["published", "FOOTER", "FOOTER"],
+            "the block sits directly above the repainted footer: {lines:?}"
+        );
+    }
+
+    // A producer running beside the loop — the shape every real host has — gets
+    // its blocks published without touching the runner's state.
+    #[tokio::test]
+    async fn a_background_task_publishes_while_the_loop_runs() {
+        use crate::screen::ScreenMode;
+        use ratatui_core::layout::Position;
+
+        let runner = AsyncRunner::new(RunnerConfig {
+            tick_rate: Duration::from_millis(5),
+            screen_mode: ScreenMode::split_footer(2),
+        });
+        let scrollback = runner.scrollback();
+        let mut backend = TestBackend::new(14, 8);
+        backend
+            .set_cursor_position(Position::new(0, 0))
+            .expect("place cursor");
+        let mut terminal = Terminal::with_options(
+            backend,
+            TerminalOptions {
+                viewport: runner.config.screen_mode.viewport(),
+            },
+        )
+        .expect("inline terminal");
+
+        // The producer is a task, not the update callback: it publishes on its
+        // own schedule and the loop picks the blocks up on its next tick.
+        let producer = scrollback.clone();
+        tokio::spawn(async move {
+            for i in 0..3u32 {
+                producer.write(move |_width| element(Text::raw(format!("task-{i}"))));
+                tokio::task::yield_now().await;
+            }
+        });
+
+        let mut ticks = 0u32;
+        runner
+            .run_with_events(
+                &mut terminal,
+                &Theme::default(),
+                &mut ticks,
+                tokio_stream::iter(Vec::<Result<Event, Infallible>>::new()),
+                |_ticks, _frame| element(Text::raw("FOOTER")),
+                async |ticks, _signal| {
+                    *ticks += 1;
+                    // Enough ticks for the spawned task to be polled and its
+                    // blocks flushed.
+                    if *ticks >= 8 {
+                        ControlFlow::Break(())
+                    } else {
+                        ControlFlow::Continue(())
+                    }
+                },
+            )
+            .await
+            .expect("run");
+
+        let buffer = terminal.backend().buffer();
+        let lines: Vec<String> = (0..8)
+            .map(|y| crate::tests::support::row(buffer, y))
+            .collect();
+        for i in 0..3 {
+            assert!(
+                lines.contains(&format!("task-{i}")),
+                "block {i} from the background task reached the scrollback: {lines:?}"
+            );
+        }
+        assert!(scrollback.is_empty(), "the queue drains as the loop runs");
+    }
+
+    // Nothing above the frame owns scrollback on the alternate screen, so a
+    // queued block is dropped instead of accumulating for a flush that can
+    // never happen.
+    #[tokio::test]
+    async fn alternate_screen_discards_queued_blocks() {
+        let runner = AsyncRunner::new(RunnerConfig {
+            tick_rate: Duration::from_secs(3600),
+            ..RunnerConfig::default()
+        });
+        let scrollback = runner.scrollback();
+        scrollback.write(|_width| element(Text::raw("dropped")));
+        let mut terminal = terminal(16, 2);
+        let events = tokio_stream::iter([key(KeyCode::Char('a')), key(KeyCode::Esc)]);
+        let mut state = ();
+
+        runner
+            .run_with_events(
+                &mut terminal,
+                &Theme::default(),
+                &mut state,
+                events,
+                |_state, _frame| element(Text::raw("frame")),
+                async |_state, signal| match signal {
+                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => {
+                        ControlFlow::Break(())
+                    }
+                    _ => ControlFlow::Continue(()),
+                },
+            )
+            .await
+            .expect("run");
+
+        assert!(scrollback.is_empty(), "the queue is drained, not retained");
+        assert!(!buffer_text(&terminal).contains("dropped"));
+    }
+
     // A read error from the event stream propagates out of the run. This uses a
     // real `io::Error` backend (crossterm over a `Vec` sink) so the run's error
     // type is `io::Error` rather than the `Infallible` of `TestBackend`. A fixed
@@ -437,11 +647,12 @@ mod tests {
 
         let runner = AsyncRunner::new(RunnerConfig {
             tick_rate: Duration::from_secs(3600),
+            ..RunnerConfig::default()
         });
         let mut terminal = Terminal::with_options(
             CrosstermBackend::new(Vec::<u8>::new()),
             TerminalOptions {
-                viewport: Viewport::Fixed(Rect::new(0, 0, 10, 1)),
+                viewport: ratatui_core::terminal::Viewport::Fixed(Rect::new(0, 0, 10, 1)),
             },
         )
         .expect("test terminal");
