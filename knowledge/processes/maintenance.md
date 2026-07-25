@@ -40,7 +40,7 @@ That skill is user-invocable so maintenance can be requested directly as
 - Maintenance is risk-proportional, not sweep-proportional.
 - The selected scope must be explained, including what was skipped and why.
 - If maintenance changes code or behavior, affected artifacts must stay in sync:
-  `README.md`, `docs/`, rustdoc, `AGENTS.md`, `knowledge/specs/`, and generated
+  `README.md`, `docs/`, rustdoc, `AGENTS.md`, `knowledge/`, and generated
   demo assets.
 - Maintenance prefers concrete fixes over ceremonial audits when a safe local fix
   exists.
@@ -74,7 +74,7 @@ Deferred items are not failures. Untracked ones are.
 
 A capability is not complete merely because the code exists. tuika's surfaces are
 the public API, rustdoc, `README.md`, the guides in `docs/`, the demo scene
-registry, `knowledge/specs/`, and the test suite. Maintenance should catch:
+registry, `knowledge/`, and the test suite. Maintenance should catch:
 
 - `pub` items with no rustdoc, or rustdoc that no longer matches behavior
   (`#![warn(missing_docs)]` catches absence, not staleness)
