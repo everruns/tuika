@@ -1,12 +1,32 @@
 //! Streaming Markdown renderer. Run with `cargo run --example markdown`
-//! (space pause/resume · r restart · q or esc quit).
+//! (space pause/resume · r restart · PgUp/PgDn/Home/End or wheel scroll ·
+//! q or esc quit).
 //!
 //! Demonstrates [`MarkdownState`]: a rich CommonMark document is fed in a few
 //! glyphs per frame — exactly how a host feeds an assistant message as it
 //! streams — while only the in-flight tail re-parses each frame. Fenced code is
-//! syntax-highlighted through a tiny self-contained [`Highlighter`](tuika::Highlighter)
+//! syntax-highlighted through a tiny self-contained [`Highlighter`](tuika::highlight::Highlighter)
 //! (see `DemoHighlighter` below); for production highlighting across many
 //! languages, use the `tuika-codeformatters` crate.
+//!
+//! # Following a stream
+//!
+//! A streamed document outgrows the viewport, so this also shows the pattern
+//! every streaming host needs: the view **follows the newest content, until the
+//! reader scrolls away from it**. Scrolling back must not be yanked to the
+//! bottom by the next delta, and returning to the bottom must resume following.
+//!
+//! That is two calls, not a mechanism:
+//!
+//! - [`ScrollState::clamp`] once per frame reconciles the offset with the
+//!   current content and viewport heights, pinning it to the bottom *while the
+//!   state is stuck there*. Appending content therefore scrolls it into view on
+//!   its own.
+//! - [`ScrollState::handle`] releases that stick when the reader scrolls up, and
+//!   re-arms it when they reach the bottom again.
+//!
+//! [`ScrollState::is_stuck_to_bottom`] reads the flag back, which is how the
+//! status bar below can say whether it is live or held.
 
 use std::io;
 use std::time::Duration;
@@ -149,6 +169,7 @@ fn main() -> io::Result<()> {
     let doc: Vec<char> = SOURCE.chars().collect();
 
     let mut state = MarkdownState::new();
+    let mut scroll = ScrollState::new();
     let mut cursor = 0usize;
     let mut paused = false;
 
@@ -166,36 +187,59 @@ fn main() -> io::Result<()> {
         // Advance the stream: a few glyphs per frame until the document is fully
         // in, then hold. `push_str` is the delta a host would forward verbatim.
         if !paused && cursor < doc.len() {
-            let end = (cursor + 3).min(doc.len());
+            // Fast enough that the document outgrows a normal viewport within a
+            // few seconds, which is when the follow behavior becomes visible.
+            let end = (cursor + 6).min(doc.len());
             let chunk: String = doc[cursor..end].iter().collect();
             state.push_str(&chunk);
             cursor = end;
         }
 
+        // Lay the document out *before* drawing: the scroll state has to
+        // reconcile against the content and viewport heights, and neither is
+        // known until the lines exist.
+        let size = terminal.size()?;
+        let width = size.width.saturating_sub(4);
+        let lines = state
+            .lines(width, &theme, &sheet, CodeHighlighter::With(&highlighter))
+            .to_vec();
+        let content_h = lines.len();
+        // The column's own chrome: one row of padding top and bottom, the gap,
+        // and the status bar.
+        let viewport_h = usize::from(size.height.saturating_sub(4));
+
+        // The whole follow-while-streaming behavior. `clamp` pins the offset to
+        // the newest content while the state is stuck to the bottom, and leaves
+        // a reader who scrolled back exactly where they were.
+        scroll.clamp(content_h, viewport_h);
+
         terminal.draw(|f| {
             let area = f.area();
-            let width = area.width.saturating_sub(4);
-            let lines = state
-                .lines(width, &theme, &sheet, CodeHighlighter::With(&highlighter))
-                .to_vec();
             let status = if cursor < doc.len() {
                 format!("streaming… {}/{} glyphs", cursor, doc.len())
             } else {
                 "done".to_string()
             };
+            // Reading the stick back is what lets a host tell the reader whether
+            // they are live or holding a position.
+            let follow = if scroll.is_stuck_to_bottom() {
+                Span::styled(" following ", theme.selection_style())
+            } else {
+                Span::styled(" scrolled back — End to follow ", theme.warning_style())
+            };
             let bar = StatusBar::new()
-                .left(vec![Span::styled(
-                    format!(" {status} "),
-                    theme.selection_style(),
-                )])
+                .left(vec![
+                    Span::styled(format!(" {status} "), theme.selection_style()),
+                    follow,
+                ])
                 .right(vec![Span::styled(
-                    "space pause · r restart · q quit ",
+                    "space pause · r restart · pgup/pgdn scroll · q quit ",
                     theme.muted_style(),
                 )])
                 .background(Style::default().bg(theme.surface));
             let root = view! {
                 col(padding = Padding::all(1), gap = 1) {
-                    grow(1) { node(Text::new(lines)) }
+                    grow(1) { node(Scroll::new(lines, &scroll)) }
                     fixed(1) { node(bar) }
                 }
             };
@@ -205,22 +249,27 @@ fn main() -> io::Result<()> {
         if !event::poll(Duration::from_millis(70))? {
             continue;
         }
-        let Some(Event::Key(k)) = translate_event(event::read()?) else {
+        let Some(event) = translate_event(event::read()?) else {
             continue;
         };
-        if !k.plain() {
-            continue;
-        }
-        match k.code {
-            KeyCode::Char('q') | KeyCode::Esc => break,
-            KeyCode::Char(' ') => paused = !paused,
-            KeyCode::Char('r') => {
-                state = MarkdownState::new();
-                cursor = 0;
-                paused = false;
+        if let Event::Key(k) = &event
+            && k.plain()
+        {
+            match k.code {
+                KeyCode::Char('q') | KeyCode::Esc => break,
+                KeyCode::Char(' ') => paused = !paused,
+                KeyCode::Char('r') => {
+                    state = MarkdownState::new();
+                    scroll = ScrollState::new();
+                    cursor = 0;
+                    paused = false;
+                }
+                _ => {}
             }
-            _ => {}
         }
+        // PgUp/PgDn/Home/End and the wheel; scrolling up releases the stick,
+        // reaching the bottom re-arms it.
+        scroll.handle(&event, content_h, viewport_h);
     }
 
     let _ = terminal.clear();

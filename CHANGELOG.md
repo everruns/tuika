@@ -113,6 +113,7 @@ styling extras) are no longer flattened to `tuika::`. Reach them through
 * refactor: fold `async_runner` into `runner` and rename `ratatui_view` to `interop`
 * refactor(tests): move the crate's test scaffolding under `src/tests`
 * refactor(markdown): split the module along its parse/flatten passes
+* docs(example): follow the stream in the markdown example until the reader scrolls back
 * test: pin the public module layout from outside the crate (`tests/public_api.rs`)
 * docs: add `knowledge/specs/api-surface.md` and a crate-layout section to the README
 * feat(themes): inherit the terminal's palette

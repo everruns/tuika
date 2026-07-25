@@ -274,7 +274,7 @@ Each enters the alternate screen; press `q` (or `esc`) to quit.
 | Example    | Command                                   | Shows                                              |
 | ---------- | ----------------------------------------- | -------------------------------------------------- |
 | [`gallery`](examples/gallery.rs)  | `cargo run --example gallery`    | motion components + native OSC 9;4 progress        |
-| [`markdown`](examples/markdown.rs) | `cargo run --example markdown`   | streaming `MarkdownState` + highlighted `CodeBlock` |
+| [`markdown`](examples/markdown.rs) | `cargo run --example markdown`   | streaming `MarkdownState` + highlighted `CodeBlock`, following the stream until you scroll back |
 | [`select`](examples/select.rs)   | `cargo run --example select`     | `SelectState` + `SelectList` (stateful-widget idiom) |
 | [`overlay`](examples/overlay.rs)  | `cargo run --example overlay`    | `OverlaySpec` centered dialog + input routing      |
 | [`primitives`](examples/primitives.rs) | `cargo run --example primitives` | owned dialog scene + form + arbitrary-child viewport |
