@@ -197,6 +197,12 @@ crates.io README embeds by relative path, ship. A companion may ship a small
 recording beside an example when its own crates.io README embeds it, as
 `tuika-mermaid` does. `tests/packaging.rs` guards the root split.
 
+The rule is per **published crate**, not per repository: a recording embedded by
+absolute `raw.githubusercontent.com` URL is unreachable from inside a `.crate`,
+so it is excluded wherever it lives — including
+`tuika-codeformatters`' own `docs/languages.gif`. Every workspace member that is
+published needs its own `exclude`, and a case in `tests/packaging.rs`.
+
 ### Capture toolchain
 
 Reproducing any VHS capture needs the same tools on `PATH`: **VHS**, which

@@ -1,16 +1,24 @@
 [package]
 name = "tuika-codeformatters"
 version = "0.2.0"
-edition = "2024"
-rust-version = "1.88"
-authors = ["Mykhailo Chalyi <mike@chaliy.name>", "Everruns <support@everruns.com>"]
-license = "MIT"
+# Identity, MSRV, and license come from `[workspace.package]` in the root
+# manifest — see the comment there for what is and isn't shared.
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "Tree-sitter syntax highlighting for tuika's CodeBlock and Markdown components — a ready-made Highlighter implementation."
-homepage = "https://github.com/everruns/tuika"
-repository = "https://github.com/everruns/tuika"
+homepage.workspace = true
+repository.workspace = true
 readme = "README.md"
 keywords = ["tui", "syntax-highlighting", "tree-sitter", "ratatui", "markdown"]
 categories = ["command-line-interface", "text-processing"]
+# Same rule as the root package: a demo recording is a GitHub-only asset. This
+# crate's README embeds `docs/languages.gif` by absolute
+# `raw.githubusercontent.com` URL, so nothing in the published `.crate` reads it
+# — shipping it just adds ~400 KiB to every download. `tests/packaging.rs` in the
+# root package guards this for both crates.
+exclude = ["docs/*.gif"]
 
 # See the root Cargo.toml: disable the default lib bench harness so `cargo bench`
 # runs only the Criterion target below.

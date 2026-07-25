@@ -10,16 +10,23 @@
 //! - Repository machinery. tuika is the *root* package of its repo, so the
 //!   internal knowledge bundle, agent skills, CI definitions, and
 //!   asset-generation scripts all sit beside it and would otherwise ship.
+//!   `tuika-codeformatters` has one GitHub-only recording of its own
+//!   (`docs/languages.gif`) under the same rule.
 //!
 //! This test drives the real packaging path (`cargo package --list`) so a stray
 //! asset — or a regression that drops an image the crates.io README needs —
 //! fails loudly instead of silently re-inflating the crate.
+//!
+//! It guards *both* published crates. `tuika-codeformatters` has no test target
+//! of its own to spare it the tree-sitter build, and the rule it needs is the
+//! same one, so the root package checks it too.
 
 use std::process::Command;
 
-/// Ask cargo which files it would put in tuika's `.crate`, exactly as `publish`
-/// would. `--list` resolves the manifest's `include`/`exclude` without building.
-fn packaged_files() -> Vec<String> {
+/// Ask cargo which files it would put in `package`'s `.crate`, exactly as
+/// `publish` would. `--list` resolves the manifest's `include`/`exclude` without
+/// building, so this stays cheap even for the tree-sitter-heavy member.
+fn packaged_files(package: &str) -> Vec<String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let output = Command::new(cargo)
         .args([
@@ -28,7 +35,7 @@ fn packaged_files() -> Vec<String> {
             "--quiet",
             "--allow-dirty",
             "-p",
-            "tuika",
+            package,
         ])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
@@ -49,7 +56,7 @@ fn packaged_files() -> Vec<String> {
 
 #[test]
 fn heavy_doc_gifs_are_excluded_from_the_package() {
-    let files = packaged_files();
+    let files = packaged_files("tuika");
 
     // No demo/showcase/theme/styling GIF, and no example recording, may ship:
     // those are GitHub-only assets.
@@ -72,7 +79,7 @@ fn heavy_doc_gifs_are_excluded_from_the_package() {
 
 #[test]
 fn repository_machinery_is_excluded_from_the_package() {
-    let files = packaged_files();
+    let files = packaged_files("tuika");
 
     // Internal-only trees that live beside the root package in the repo.
     const INTERNAL_PREFIXES: [&str; 5] =
@@ -108,7 +115,7 @@ fn repository_machinery_is_excluded_from_the_package() {
 
 #[test]
 fn crates_io_readme_assets_and_source_are_kept() {
-    let files = packaged_files();
+    let files = packaged_files("tuika");
     let has = |p: &str| files.iter().any(|f| f == p);
 
     // The two assets the crates.io README embeds by relative path.
@@ -118,6 +125,24 @@ fn crates_io_readme_assets_and_source_are_kept() {
         "README image-protocol asset must ship"
     );
     // Sanity: the crate still carries its source and manifest.
+    assert!(has("src/lib.rs"), "library source must ship");
+    assert!(has("Cargo.toml"), "manifest must ship");
+    assert!(has("README.md"), "README must ship");
+}
+
+#[test]
+fn codeformatters_ships_source_but_not_its_demo_recording() {
+    let files = packaged_files("tuika-codeformatters");
+
+    // `docs/languages.gif` is embedded by absolute raw.githubusercontent.com URL
+    // in the member's README, so no crate consumer can reach the packaged copy.
+    let gifs: Vec<&String> = files.iter().filter(|f| f.ends_with(".gif")).collect();
+    assert!(
+        gifs.is_empty(),
+        "demo recordings must not ship in tuika-codeformatters (see its Cargo.toml `exclude`): {gifs:?}"
+    );
+
+    let has = |p: &str| files.iter().any(|f| f == p);
     assert!(has("src/lib.rs"), "library source must ship");
     assert!(has("Cargo.toml"), "manifest must ship");
     assert!(has("README.md"), "README must ship");
