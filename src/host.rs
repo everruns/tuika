@@ -145,6 +145,11 @@ pub fn paint(
     );
 }
 
+/// Paint an owned [`Scene`](crate::Scene) with no borrowed overlay plumbing.
+pub fn paint_scene(buffer: &mut Buffer, area: Rect, theme: &Theme, scene: &crate::Scene) {
+    paint(buffer, area, theme, scene, &[]);
+}
+
 /// [`paint`] with an explicit [`StyleSheet`], so a host installs one styling
 /// policy that the whole component tree resolves against.
 pub fn paint_with_sheet(

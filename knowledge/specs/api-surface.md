@@ -26,15 +26,16 @@ Four levels, each with one job:
 
 | Level | Owns | Test for belonging |
 | --- | --- | --- |
-| crate root | the framework spine: `View`/`Element`/`RenderCtx`, layout, events, `Theme`/`StyleSheet`, `Surface`, host seam, runners | a host touches it on essentially every frame |
+| crate root | the framework spine: `View`/`Element`/`RenderCtx`, owned `Scene` composition, layout, events, `Theme`/`StyleSheet`, `Surface`, host seam, runners | a host touches it on essentially every frame |
 | `components` | every widget | it implements `View` |
 | `term` | escapes outside the cell grid: clipboard, hyperlink, progress, pointer, image, capabilities | it talks to the terminal, not to the buffer |
 | `prelude` | the spine plus all components, in one glob | an application wants it without thinking |
 
 Everything else stays behind its own module path: `themes::by_name`,
 `probe::RectProbe`, `width::str_cols`, `framebuffer::FrameBuffer`,
-`mouse::paint_selection`. That is not a demotion — it is the point. A short path
-is a claim about frequency, so it is worth something only when it is true.
+`view::DrawView`, `mouse::paint_selection`. That is not a demotion — it is the
+point. A short path is a claim about frequency, so it is worth something only
+when it is true.
 
 ## Design
 

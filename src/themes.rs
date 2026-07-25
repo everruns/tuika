@@ -306,4 +306,37 @@ mod tests {
             assert!(!p.label.is_empty());
         }
     }
+
+    #[test]
+    fn every_preset_has_semantic_status_colors() {
+        use crate::SemanticRole;
+
+        for preset in PRESETS {
+            let theme = preset.theme;
+            assert_eq!(
+                theme.semantic_color(SemanticRole::Success),
+                theme.code.string,
+                "{} success",
+                preset.name
+            );
+            assert_eq!(
+                theme.semantic_color(SemanticRole::Warning),
+                theme.code.constant,
+                "{} warning",
+                preset.name
+            );
+            assert_eq!(
+                theme.semantic_color(SemanticRole::Danger),
+                theme.code.keyword,
+                "{} danger",
+                preset.name
+            );
+            assert_eq!(
+                theme.semantic_color(SemanticRole::Info),
+                theme.code.link,
+                "{} info",
+                preset.name
+            );
+        }
+    }
 }

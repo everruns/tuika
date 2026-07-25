@@ -34,9 +34,9 @@ Use this skill when the user asks to:
    - Prefer rebasing onto the latest `origin/main` before merge.
    - Every commit you push MUST be signed and verify (`git log --format='%h %G?'`
      shows `G`/`U`, never `N`). A rebase or amend re-signs only when told to:
-     `git rebase --gpg-sign=$COMMIT_SIGNING_KEY_ID`. The key comes from Doppler
-     (`everruns-dev` / `dev`, `COMMIT_SIGNING_KEY_B64`) — see `AGENTS.md`
-     § Secrets and § Signing.
+     `git rebase --gpg-sign`. Prefer the human maintainer's existing SSH or
+     OpenPGP signing configuration. Doppler's OpenPGP identity is a fallback
+     when no usable personal key is configured — see `AGENTS.md` § Signing.
 
 2. **The requested goal is achieved with evidence.**
    - Review the delta with `git diff origin/main...HEAD` and `git log origin/main..HEAD`.

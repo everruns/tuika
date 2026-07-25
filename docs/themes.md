@@ -85,6 +85,21 @@ let mine = Theme {
 };
 ```
 
+## Semantic status styles
+
+Every theme also exposes `success_style`, `warning_style`, `danger_style`, and
+`info_style` (or `semantic_style(SemanticRole)`). These derive from the
+theme's existing syntax palette, so custom `Theme` struct literals remain
+source-compatible and automatically get status colors:
+
+```rust
+use tuika::prelude::{SemanticRole, Theme};
+
+let theme = Theme::default();
+let error = theme.danger_style();
+let notice = theme.semantic_style(SemanticRole::Info);
+```
+
 ## See also
 
 - [`themes` API](https://docs.rs/tuika/latest/tuika/themes/index.html) — the

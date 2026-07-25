@@ -87,3 +87,72 @@ impl View for Element {
 pub fn element<V: View + 'static>(view: V) -> Element {
     Box::new(view)
 }
+
+/// A closure-backed view for custom terminal-cell drawing.
+///
+/// The callback receives the assigned area, an already-clipped [`Surface`],
+/// and the current [`RenderCtx`]. It is the small escape hatch for charts,
+/// terminal grids, and incremental migrations that do not warrant a named
+/// component.
+///
+/// ![custom drawing demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/primitives.gif)
+pub struct DrawView<F> {
+    intrinsic: Size,
+    draw: F,
+}
+
+impl<F> DrawView<F> {
+    /// Create a draw view that measures to all available space.
+    pub fn new(draw: F) -> Self {
+        Self {
+            intrinsic: Size::new(u16::MAX, u16::MAX),
+            draw,
+        }
+    }
+
+    /// Set the intrinsic size reported by [`View::measure`].
+    pub fn intrinsic_size(mut self, size: Size) -> Self {
+        self.intrinsic = size;
+        self
+    }
+}
+
+impl<F> View for DrawView<F>
+where
+    F: Fn(Rect, &mut Surface<'_>, &RenderCtx<'_>),
+{
+    fn measure(&self, available: Size) -> Size {
+        Size::new(
+            self.intrinsic.width.min(available.width),
+            self.intrinsic.height.min(available.height),
+        )
+    }
+
+    fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
+        (self.draw)(area, surface, ctx);
+    }
+}
+
+/// Alias for [`DrawView`] emphasizing free-form canvas-style drawing.
+pub type CanvasView<F> = DrawView<F>;
+
+#[cfg(test)]
+mod draw_view_tests {
+    use super::*;
+    use crate::Theme;
+    use crate::testing::{grid, render};
+
+    #[test]
+    fn draw_view_is_clipped_and_reports_intrinsic_size() {
+        let view = DrawView::new(
+            |area: Rect, surface: &mut Surface<'_>, ctx: &RenderCtx<'_>| {
+                surface.set_string(area.x, area.y, "canvas", ctx.theme.text_style());
+                surface.set(area.right(), area.bottom(), 'x', ctx.theme.text_style());
+            },
+        )
+        .intrinsic_size(Size::new(20, 3));
+
+        assert_eq!(view.measure(Size::new(4, 1)), Size::new(4, 1));
+        assert_eq!(grid(&render(&view, 4, 1, &Theme::default())), "canv");
+    }
+}

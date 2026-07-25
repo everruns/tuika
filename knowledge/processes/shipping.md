@@ -40,10 +40,12 @@ suggestions.
    contributions**; a maintainer with push access may land directly on `main`
    once CI is green, and still owes every other outcome in this list. Open a PR
    regardless when the change is risky or wants review.
-2. **Signed commits.** Every commit is GPG-signed and verifies on GitHub —
+2. **Signed commits.** Every commit is cryptographically signed and verifies on
+   GitHub — SSH and OpenPGP signatures are both acceptable —
    including commits produced by a rebase, cherry-pick, amend, or history
-   rewrite, which drop signatures unless explicitly re-signed. The key is a
-   Doppler secret, never a file in the repository; see `AGENTS.md` § Secrets and
+   rewrite, which drop signatures unless explicitly re-signed. Prefer the
+   maintainer's configured personal signing identity; Doppler's OpenPGP identity
+   is the fallback when no usable personal key is configured. See `AGENTS.md`
    § Signing.
 3. **Goal achieved with evidence.** The requested behavior is implemented and
    validated with proof matching the risk.

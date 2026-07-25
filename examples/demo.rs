@@ -26,10 +26,11 @@ use crossterm::event::{self, Event as CtEvent, KeyCode as CtKeyCode, KeyEventKin
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::{Terminal, TerminalOptions, Viewport};
+use ratatui::{Terminal, TerminalOptions, Viewport as RatatuiViewport};
 
 use tuika::framebuffer::{FrameBuffer, FrameBufferView};
 use tuika::prelude::*;
+use tuika::view::DrawView;
 
 /// A tiny self-contained Rust highlighter for the `markdown`/`code_block` scenes.
 ///
@@ -284,6 +285,13 @@ const DEMOS: &[Demo] = &[
         13,
         true,
         scene_item_scroll,
+    ),
+    demo(
+        "primitives",
+        "owned dialog + form + panning custom viewport",
+        17,
+        true,
+        scene_primitives,
     ),
     demo(
         "select",
@@ -683,7 +691,7 @@ fn run(d: &Demo) -> io::Result<()> {
     let mut terminal = Terminal::with_options(
         ratatui::backend::CrosstermBackend::new(io::stdout()),
         TerminalOptions {
-            viewport: Viewport::Fullscreen,
+            viewport: RatatuiViewport::Fullscreen,
         },
     )?;
     let theme = Theme::default();
@@ -981,6 +989,51 @@ fn scene_item_scroll(frame: u64, theme: &Theme) -> Element {
             fixed(8) { node(ItemScroll::new(items, &state).gap(1)) }
         }
     }
+}
+
+fn scene_primitives(frame: u64, theme: &Theme) -> Element {
+    let mut scroll = ScrollState::default();
+    let pan = (tuika::anim::ping_pong(frame, 160) * 14.0).round() as usize;
+    scroll.set_x_offset(pan);
+    let mut form_state = FormState::default();
+    form_state.focus(((frame / 28) % 2) as usize);
+
+    let canvas = DrawView::new(
+        |area: Rect, surface: &mut tuika::Surface<'_>, ctx: &tuika::RenderCtx<'_>| {
+            for y in area.y..area.bottom() {
+                surface.set_string(
+                    area.x,
+                    y,
+                    "界  custom grid  0123456789  →",
+                    ctx.theme.info_style(),
+                );
+            }
+        },
+    )
+    .intrinsic_size(Size::new(31, 2));
+    let preview = Viewport::new(element(canvas), Size::new(31, 2), &scroll)
+        .vertical_scrollbar(false)
+        .horizontal_scrollbar(true);
+    let form = Form::new(
+        vec![
+            FormField::new("Name", element(Text::raw("Ada"))).help("host-owned value"),
+            FormField::new("Preview", element(preview)).error("semantic validation row"),
+        ],
+        &form_state,
+    )
+    .stack_below(36);
+    let dialog = Dialog::new("Reusable primitives", element(form))
+        .size(56, 10)
+        .key_hints([("enter", "submit"), ("esc", "cancel")])
+        .dim_backdrop(true)
+        .focus_owner("primitives");
+    element(
+        Scene::new(element(Text::new(vec![Line::from(Span::styled(
+            "base screen · overlay placement resolves at render time",
+            theme.muted_style(),
+        ))])))
+        .dialog(dialog),
+    )
 }
 
 fn scene_select(frame: u64, theme: &Theme) -> Element {

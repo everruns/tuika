@@ -94,6 +94,17 @@ need entries.
   flag — otherwise a host's clamp and the paint would disagree about content
   height.
 
+## 2026-07-24 — Owned composition primitives
+
+- Added owned scenes and dialogs, arbitrary-child two-axis viewports,
+  responsive forms, and a closure-backed drawing view. Persistent input and
+  control state remains host-owned; the additions are frame descriptions over
+  the existing `View`, `Surface`, `OverlaySpec`, `FocusRegistry`, and
+  `ScrollState` seams.
+- Added semantic success/warning/danger/info styles without expanding the
+  public `Theme` struct. The roles derive from each theme's existing syntax
+  colors, preserving source compatibility for downstream struct literals.
+
 ## 2026-07-24 — Demo recordings can no longer be silently clipped
 
 - Six gallery GIFs (`qr`, `ascii_font`, `diff`, `slider`, `timeline`,
@@ -142,15 +153,15 @@ need entries.
   @handle` appears only for authors other than @chaliy, since the maintainer is
   the default and repeating it is noise.
 
-## 2026-07-24 — Signed history, Doppler secrets, PR policy
+## 2026-07-24 — Signed history, signing identities, PR policy
 
-- Rewrote the repository's history so every commit is GPG-signed and verifies.
+- Rewrote the repository's history so every commit is signed and verifies.
   Signing is now a hard requirement rather than a convention; a rewrite that
   drops signatures is a defect, since a later commit cannot restore them.
-- The signing key is held in Doppler (`everruns-dev` / `dev`) as
-  `COMMIT_SIGNING_KEY_B64`, with its fingerprint in `COMMIT_SIGNING_KEY_ID`.
-  Doppler is now the stated home for every secret this repository touches — the
-  repository itself holds none.
+- Maintainers use their existing GitHub-recognized SSH or OpenPGP identity.
+  Doppler (`everruns-dev` / `dev`) holds a backup OpenPGP key, not a mandatory
+  signing path. Shared repository secrets remain in Doppler; personal SSH
+  identities remain in their normal OS/Git setup.
 - Narrowed the pull-request requirement to **external contributions**.
   Maintainers land directly on `main`. The bar for a change is unchanged either
   way, so the shipping outcomes were reworded around "landing" rather than

@@ -332,9 +332,10 @@ URL are load-bearing — changing them means updating the assert script.
 
 ## Secrets
 
-- Every secret lives in [Doppler](https://doppler.com). Nothing secret belongs in
-  the repository, in a `.env` file, in a workflow literal, or pasted into a
-  command line.
+- Shared repository secrets live in [Doppler](https://doppler.com). Nothing
+  secret belongs in the repository, in a `.env` file, in a workflow literal, or
+  pasted into a command line. A maintainer's existing SSH signing key stays in
+  their normal OS/Git setup; it is a personal identity, not a repository secret.
 - Project **`everruns-dev`**, config **`dev`**.
 - Read secrets at the point of use instead of copying values around:
 
@@ -343,8 +344,9 @@ doppler run --project everruns-dev --config dev -- <command>
 doppler run --only-secrets COMMIT_SIGNING_KEY_B64 --project everruns-dev --config dev -- <command>
 ```
 
-- `DOPPLER_TOKEN` is supplied by the environment. If it is missing, stop and ask
-  — do not fall back to an unmanaged copy of a credential.
+- A preauthenticated Doppler CLI is sufficient; `DOPPLER_TOKEN` need not also
+  be present. If a task actually needs Doppler and neither authentication path
+  works, stop and ask — do not fall back to an unmanaged credential.
 - Never print a secret to stdout, a log, or a commit. Write key material to a
   private path with `0600` permissions and delete it when done.
 
@@ -365,11 +367,26 @@ agent-like, stop and ask before committing.
 hard requirement, not a preference: an unsigned commit on any branch is a defect
 to fix before pushing. Rewrites count too — `git rebase`, `git cherry-pick`, and
 `git commit --amend` all drop signatures unless told otherwise
-(`git rebase --gpg-sign=<fingerprint>`).
+(`git rebase --gpg-sign`).
 
-The signing key is a secret like any other: the armored GPG private key is
-base64-encoded in Doppler as `COMMIT_SIGNING_KEY_B64`, and its fingerprint is
-`COMMIT_SIGNING_KEY_ID`. Import it into a throwaway keyring and point git at it:
+Use the real human identity already configured in Git first. Both SSH and
+OpenPGP signatures are acceptable when GitHub recognizes the signing key. A
+typical SSH setup is:
+
+```bash
+git config --local gpg.format ssh
+git config --local user.signingkey ~/.ssh/id_ed25519.pub
+git config --local commit.gpgsign true
+git config --local tag.gpgsign true
+```
+
+Use the maintainer's actual configured public-key path; do not assume the
+example filename. Do not replace a working SSH setup merely because Doppler is
+available.
+
+When no usable personal signing key is configured, Doppler holds the backup
+OpenPGP identity as `COMMIT_SIGNING_KEY_B64`, with its fingerprint in
+`COMMIT_SIGNING_KEY_ID`. Import it into a throwaway keyring and point Git at it:
 
 ```bash
 export GNUPGHOME="$(mktemp -d)"   # throwaway keyring; never ~/.gnupg
@@ -382,14 +399,13 @@ git config --local commit.gpgsign true
 git config --local tag.gpgsign true
 ```
 
-The fingerprint above is `COMMIT_SIGNING_KEY_ID`; read it from Doppler rather
-than trusting this file if the key is ever rotated. `GNUPGHOME` must stay
-exported for every `git commit`/`git rebase` in the session — git shells out to
-`gpg`, which will not find the key without it.
+The fingerprint above is the current `COMMIT_SIGNING_KEY_ID`; read it from
+Doppler if the key is rotated. `GNUPGHOME` must stay exported for every OpenPGP
+commit or rewrite in the session.
 
-A repository-wide setup with a signing key in the global config may set
-`gpg.format=ssh`; the local `gpg.format=openpgp` above overrides it. Confirm
-before pushing — `%G?` must be `G` (or `U`) for every commit, never `N`:
+Confirm before pushing — `%G?` must be `G` (or `U`) for every commit, never `N`.
+For SSH signatures, configure `gpg.ssh.allowedSignersFile` locally when needed
+so Git can verify the same public key GitHub recognizes:
 
 ```bash
 git log --format='%h %G? %s' origin/main..HEAD

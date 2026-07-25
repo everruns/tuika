@@ -34,10 +34,10 @@ pub use crate::style::{BorderStyle, CodeTheme, Role, StyleBundle};
 // `$crate::…` paths, so a glob-importing host needs neither in scope by name.
 pub use crate::view;
 pub use crate::{
-    Align, Dimension, Direction, Element, Event, EventFlow, Justify, Key, KeyCode, LayoutStyle,
-    Mouse, MouseButton, MouseKind, Overlay, OverlaySpec, Padding, RenderCtx, Runner, RunnerConfig,
-    Size, StyleSheet, Surface, TerminalSession, Theme, View, element, paint, paint_with_sheet,
-    translate_event,
+    Align, Backdrop, Dimension, Direction, Element, Event, EventFlow, Justify, Key, KeyCode,
+    LayoutStyle, Mouse, MouseButton, MouseKind, Overlay, OverlaySpec, Padding, RenderCtx, Runner,
+    RunnerConfig, Scene, SceneOverlay, SemanticRole, Size, StyleSheet, Surface, TerminalSession,
+    Theme, View, element, paint, paint_scene, paint_with_sheet, translate_event,
 };
 
 #[cfg(feature = "async")]

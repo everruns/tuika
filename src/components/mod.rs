@@ -23,9 +23,11 @@ mod boxed;
 pub(crate) mod code_block;
 pub mod console;
 mod constrained;
+mod dialog;
 pub mod diff;
 mod flex;
 mod focus_scope;
+mod form;
 mod image;
 mod item_scroll;
 mod key_hints;
@@ -47,15 +49,18 @@ mod tabs;
 pub mod text;
 mod textinput;
 pub mod toast;
+mod viewport;
 
 pub use ascii_font::AsciiFont;
 pub use boxed::Boxed;
 pub use code_block::CodeBlock;
 pub use console::{Console, ConsoleLog};
 pub use constrained::Constrained;
+pub use dialog::Dialog;
 pub use diff::{Diff, DiffMode, DiffRow, DiffStyle, DiffTag};
 pub use flex::Flex;
 pub use focus_scope::FocusScope;
+pub use form::{Form, FormField, FormOutcome, FormState};
 pub use image::Image;
 pub use item_scroll::ItemScroll;
 pub use key_hints::KeyHints;
@@ -80,3 +85,4 @@ pub use textinput::{
     TriggerAnchor,
 };
 pub use toast::{ToastLevel, ToastList, Toasts};
+pub use viewport::Viewport;
