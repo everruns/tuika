@@ -224,6 +224,10 @@ jobs:
   # The renderer talks to a terminal, and terminal behavior is the least
   # portable thing in the crate. Build and run the suite on macOS and Windows so
   # a Unix-only assumption fails here rather than in a downstream host.
+  #
+  # `--workspace` is load-bearing: Cargo defaults to the root package, which
+  # would leave `tuika-codeformatters` — the one member that compiles C, via
+  # tree-sitter's grammars through `cc`/MSVC — with no non-Unix coverage at all.
   cross-platform:
     name: Build + Tests (${{ matrix.os }})
     needs: changes
@@ -246,12 +250,12 @@ jobs:
           shared-key: "cross-${{ runner.os }}"
 
       - name: Build
-        run: cargo build --locked --all-targets
+        run: cargo build --locked --all-targets --workspace
 
       # The PTY smoke is `#![cfg(unix)]` and compiles to nothing on Windows;
       # everything else (buffer, property, snapshot tests) runs everywhere.
       - name: Tests
-        run: cargo test --locked --all-features
+        run: cargo test --locked --all-features --workspace
 
   benchmarks:
     name: Benchmarks (archive)
