@@ -14,8 +14,8 @@ tuika — the transcript, the streaming markdown and highlighted code, the tool
 cards, the composer, and the status footer are all tuika components under
 tuika's layout and host loop.
 
-[github.com/everruns/yolop](https://github.com/everruns/yolop) ·
-[crates.io](https://crates.io/crates/yolop)
+[everruns.com/yolop](https://everruns.com/yolop) ·
+[github.com/everruns/yolop](https://github.com/everruns/yolop)
 
 <img src="showcases/yolop.gif" width="880" alt="yolop demo: a question typed into the composer, a tool call listing the examples directory, then a streamed markdown answer with a highlighted bash code block.">
 
