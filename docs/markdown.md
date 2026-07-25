@@ -12,6 +12,7 @@ This page covers all of it in one place.
 - [Streaming](#streaming)
 - [GFM tables](#gfm-tables)
 - [Fenced code](#fenced-code)
+- [Extensible fenced blocks](#extensible-fenced-blocks)
 - [Links](#links)
 - [Images](#images)
 - [Styling](#styling)
@@ -140,6 +141,29 @@ view! { node(Markdown::new(source).highlighter(&highlighter)) }
 Without one, code is themed but uncolored. The `tuika-codeformatters` crate ships
 a tree-sitter implementation covering the common languages; a host with its own
 lexer implements the two-method trait instead.
+
+## Extensible fenced blocks
+
+`FencedBlockRenderer` can replace a language fence with terminal-native,
+width-aware lines. A renderer returns `None` for languages or inputs it does not
+handle, preserving the normal themed code block. `tuika-mermaid` supplies an
+mmdflux-backed implementation:
+
+```rust
+use tuika::prelude::*;
+use tuika_mermaid::MermaidRenderer;
+
+let mermaid = MermaidRenderer::new();
+let doc = Markdown::new(
+    "```mermaid\nflowchart LR\n  Source --> Parse --> Paint\n```",
+)
+.block_renderer(&mermaid);
+# let _ = doc;
+```
+
+The fence is painted directly as Unicode cells:
+
+<img src="https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif" width="880" alt="Mermaid diagram rendered as Unicode cells inside tuika Markdown">
 
 ## Links
 
