@@ -497,6 +497,48 @@ mod tests {
         );
     }
 
+    /// The streaming host's loop: follow the newest content, hold position when
+    /// the reader scrolls back, and resume following when they page down to the
+    /// end again. `End` is the shortcut for the last step
+    /// ([`scroll_end_key_rearms_bottom_stick`]); this covers arriving there by
+    /// scrolling, which is how a reader normally does it.
+    #[test]
+    fn scrolling_back_to_the_bottom_resumes_following() {
+        let mut s = ScrollState::new();
+        s.clamp(100, 10);
+        assert_eq!(s.offset(), 90);
+
+        // Read back a couple of screens.
+        let up = Event::Mouse(Mouse::at(MouseKind::ScrollUp, 0, 0));
+        s.handle(&up, 100, 10);
+        s.handle(&up, 100, 10);
+        assert_eq!(s.offset(), 84);
+        assert!(!s.is_stuck_to_bottom());
+
+        // Deltas keep arriving while the reader is back there: the view must not
+        // move under them.
+        s.clamp(130, 10);
+        assert_eq!(s.offset(), 84, "content growth must not yank a reader back");
+
+        // Page down until the end is reached; arriving there re-arms the stick.
+        let down = Event::Key(Key::new(KeyCode::PageDown));
+        for _ in 0..8 {
+            if s.is_stuck_to_bottom() {
+                break;
+            }
+            s.handle(&down, 130, 10);
+        }
+        assert!(
+            s.is_stuck_to_bottom(),
+            "reaching the bottom resumes following"
+        );
+        assert_eq!(s.offset(), 120);
+
+        // ...so the next delta scrolls itself into view again.
+        s.clamp(160, 10);
+        assert_eq!(s.offset(), 150);
+    }
+
     #[test]
     fn scroll_end_key_rearms_bottom_stick() {
         let mut s = ScrollState::new();

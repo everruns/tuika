@@ -334,6 +334,29 @@ state.clamp_x(widest_line_w, viewport_w);    // keep the pan within the content
 view! { node(Scroll::new(lines, &state)) }
 ```
 
+#### Following a stream
+
+Content that grows while it is being read — a transcript, a log tail, a
+streaming answer — wants to show the newest rows *until the reader scrolls away
+from them*. That is not a mode to implement; it falls out of two calls:
+
+```rust
+use tuika::prelude::*;
+let mut state = ScrollState::new();
+
+// Once per frame, after appending: pins the offset to the newest content while
+// the state is stuck to the bottom, and leaves a scrolled-back reader alone.
+state.clamp(content_h, viewport_h);
+
+// Scrolling up releases the stick; reaching the bottom again re-arms it.
+state.handle(&event, content_h, viewport_h);
+
+// Read it back to tell the reader which they are.
+let live = state.is_stuck_to_bottom();
+```
+
+`examples/markdown.rs` runs exactly this over a streaming `MarkdownState`.
+
 ### `ItemScroll`
 
 The same viewport over **items** instead of lines: `Vec<Element>`, each measured
