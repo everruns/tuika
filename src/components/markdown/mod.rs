@@ -242,6 +242,85 @@ mod tests {
     }
 
     #[test]
+    fn task_list_checkboxes_are_themed_markers() {
+        // The checkbox is a marker, not prose: it takes the `task_marker` slot,
+        // which stayed unreachable while the parser option was off.
+        let theme = Theme::default();
+        let sheet = StyleSheet::from_theme(&theme);
+        let lines = to_lines(
+            "- [ ] todo\n- [x] done",
+            40,
+            &theme,
+            &sheet,
+            CodeHighlighter::Plain,
+        );
+        let marker = lines
+            .iter()
+            .flat_map(|l| &l.spans)
+            .find(|s| s.content.contains("[x]"))
+            .expect("checked marker span");
+        assert_eq!(marker.style.fg, sheet.task_marker.to_style().fg);
+        let out: Vec<String> = lines.iter().map(text).collect();
+        assert!(
+            out.iter().any(|l| l.contains("[ ] todo")),
+            "unchecked item: {out:?}"
+        );
+    }
+
+    #[test]
+    fn nested_list_starts_its_own_line() {
+        // A tight item carries no `Paragraph`, so the nested list used to open
+        // while the parent's text was still buffered — gluing the two together
+        // as "• outerinner".
+        let out = plain("- outer\n  - inner", 40);
+        assert!(
+            out.iter().any(|l| l.trim() == "• outer"),
+            "parent item keeps its own line: {out:?}"
+        );
+        assert!(
+            out.iter().any(|l| l.trim() == "• inner"),
+            "nested item keeps its own line: {out:?}"
+        );
+    }
+
+    #[test]
+    fn block_inside_tight_item_follows_the_item_text() {
+        // Same flush, for the other block kinds a tight item can open: the quote
+        // must not join the item's line, and the fence must land after — not
+        // ahead of — the item it belongs to.
+        let out = plain("- item\n  > quoted\n- next\n  ```\n  code\n  ```", 40);
+        let at = |needle: &str| {
+            out.iter()
+                .position(|l| l.contains(needle))
+                .unwrap_or_else(|| panic!("missing {needle:?}: {out:?}"))
+        };
+        assert!(
+            out.iter().any(|l| l.trim() == "• item"),
+            "item text stays on its own line: {out:?}"
+        );
+        assert!(
+            at("quoted") > at("• item"),
+            "quote follows its item: {out:?}"
+        );
+        assert!(at("code") > at("• next"), "fence follows its item: {out:?}");
+    }
+
+    #[test]
+    fn loose_item_keeps_its_marker_on_the_first_paragraph() {
+        // The flush above must not fire on a bare pending marker, or the bullet
+        // would be emitted alone and the paragraph would lose it.
+        let out = plain("- one\n\n  more\n\n- two", 40);
+        assert!(
+            out.iter().any(|l| l.trim() == "• one"),
+            "marker rides the first paragraph: {out:?}"
+        );
+        assert!(
+            !out.iter().any(|l| l.trim() == "•"),
+            "no marker-only line: {out:?}"
+        );
+    }
+
+    #[test]
     fn fenced_code_preserves_indentation_verbatim() {
         // A line-oriented wrapper would eat the leading spaces; code must not.
         let src = "```\n    indented\n```";

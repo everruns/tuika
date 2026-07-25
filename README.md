@@ -101,7 +101,7 @@ component. Linked names below jump straight to their demo.
 | --- | --- |
 | [`Text`](docs/components.md#text) / `Paragraph` | Styled lines / word-wrapped plain text |
 | `Wrap` | Word-wraps pre-styled lines, preserving per-span styles |
-| [`Markdown`](docs/components.md#markdown--markdownstate) (+ `MarkdownState`) | CommonMark → styled lines; `MarkdownState` streams incrementally |
+| [`Markdown`](docs/markdown.md) (+ `MarkdownState`) | CommonMark → styled lines; `MarkdownState` streams incrementally — see the [markdown guide](docs/markdown.md) |
 | [`CodeBlock`](docs/components.md#codeblock) | Themed, framed code block with a pluggable `Highlighter` and optional line-number gutter |
 | `Diff` | Line diff (LCS), unified or side-by-side, with `+`/`-` gutters and line numbers |
 | `AsciiFont` | Large "figlet-style" block-letter banner text |

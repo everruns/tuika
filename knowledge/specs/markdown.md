@@ -57,6 +57,15 @@ unterminated code fence or a list that may still gain items stays in the
 re-parsed tail. Everything before the boundary is retained as computed lines and
 is never re-tokenized or re-highlighted.
 
+The boundary is also only a boundary once the line that carries it is
+*terminated*. A stream arrives token by token, so the buffer routinely ends
+mid-line — and a nested item's indent, or an indented block's, is a
+whitespace-only line until its content lands. Committing there splits a list
+between two independently parsed segments, and the cache makes that permanent:
+the halves become unrelated top-level blocks for the rest of the transcript. The
+invariant that catches this class is that a streamed render must equal the
+one-shot render of the same source, delta size notwithstanding.
+
 Anything positional that the host reads back per frame — block-image placements
 in particular — must therefore be threaded *through* the cache: fixed rows for
 settled blocks, re-derived each frame for the in-flight tail. A frame-local
@@ -122,5 +131,10 @@ host that restyles headings restyles them in markdown too. See
 
 ## Public surface
 
+- [`docs/markdown.md`](../../docs/markdown.md) — the guide. Markdown carries more
+  user-facing surface than one gallery entry holds (streaming, table fitting,
+  the highlighter seam, link policy, images), so it gets a page of its own and
+  [`docs/components.md`](../../docs/components.md) keeps only the gallery entry
+  and points here.
 - [`docs/components.md`](../../docs/components.md)
 - [`README.md`](../../README.md) § Markdown and syntax highlighting

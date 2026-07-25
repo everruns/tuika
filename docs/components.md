@@ -145,9 +145,9 @@ as it resizes.
 ```rust
 use tuika::prelude::*;
 let theme = Theme::default();
+let sheet = StyleSheet::from_theme(&theme);
 let mut md = MarkdownState::new();
 md.push_str(delta);                                  // forward each stream delta
-let sheet = StyleSheet::from_theme(&theme);
 let lines = md.lines(width, &theme, &sheet, CodeHighlighter::Plain);
 view! { node(tuika::components::Text::new(lines)) }
 ```
@@ -178,27 +178,26 @@ The fence is painted directly as Unicode cells:
 #### GFM tables
 
 Pipe tables render with box-drawing borders, a bold header, and per-column
-alignment from the `:---:` markers. Columns size to their content, then shrink
-the widest column (wrapping its cells) to fit the available width; when even
-that won't fit — below `4 * cols + 1` columns — the box is dropped for
-` | `-joined rows that word-wrap. Because layout is width-driven, the same
-source reflows as the view resizes.
+alignment from the `:---:` markers — cells keeping their inline styles, emoji,
+and links. Columns size to their content and are then fitted to the available
+width, so the same source reflows as the view resizes.
+
+<img src="demos/markdown_table.gif" width="880" alt="A rendered GFM table with box-drawing borders: a bold header row; a left-aligned Component column of inline-code names; a centered Status column with ✅ and 🚧 emoji; and a right-aligned Docs column of underlined links.">
 
 ```rust
 use tuika::prelude::*;
 let doc = Markdown::new("\
-| Component | Kind        | Resizes |
-| :-------- | :---------: | ------: |
-| Markdown  | streaming   |     yes |
-| CodeBlock | static      |     yes |
+| Component   |  Status   |                          Docs |
+| :---------- | :-------: | ----------------------------: |
+| `Markdown`  | ✅ stable | [docs.rs](https://docs.rs/tuika) |
+| **Image**   |  🚧 beta  | [features](features.md) |
 ");
-// Wide area: full boxed grid.        Narrow area: same source, boxless fallback.
-// ╭───────────┬───────────┬─────────╮   Component | Kind | Resizes
-// │ Component │    Kind   │ Resizes │   Markdown | streaming | yes
-// │ Markdown  │ streaming │     yes │   CodeBlock | static | yes
-// ╰───────────┴───────────┴─────────╯
 # let _ = doc;
 ```
+
+Markdown has more surface than one gallery entry holds — streaming, tables,
+highlighting, links, and images. The [markdown guide](markdown.md) covers all of
+it.
 
 ### `CodeBlock`
 
@@ -702,5 +701,7 @@ view! { node(FrameBufferView::new(&fb, 64, 16)) }
 - [API documentation](https://docs.rs/tuika) — the complete component reference,
   including helpers without a standalone demo (`Spacer`, `Responsive`,
   `Constrained`, `Wrap`, `KeyHints`).
+- [Markdown guide](markdown.md) — streaming, GFM tables, highlighting, links,
+  and images, in one place.
 - [Runnable examples](../examples/) — enter the alternate screen; quit with `q`/`esc`.
 - [README](../README.md) — the model behind the toolkit.

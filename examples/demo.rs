@@ -224,6 +224,13 @@ const DEMOS: &[Demo] = &[
         scene_markdown,
     ),
     demo(
+        "markdown_table",
+        "GFM table: alignment, emoji, and links",
+        13,
+        false,
+        scene_markdown_table,
+    ),
+    demo(
         "code_block",
         "themed, syntax-highlighted fenced code with a line-number gutter",
         12,
@@ -543,14 +550,25 @@ fn check() -> io::Result<()> {
         }
     }
 
-    // Every demo GIF referenced by a component doc, components.md, or features.md
-    // maps to a scene.
-    let mut sources: Vec<PathBuf> =
-        vec![dir.join("docs/components.md"), dir.join("docs/features.md")];
-    for entry in fs::read_dir(dir.join("src/components"))?.filter_map(Result::ok) {
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) == Some("rs") {
-            sources.push(path);
+    // Every demo GIF referenced by a component doc or a gallery page maps to a
+    // scene.
+    let mut sources: Vec<PathBuf> = vec![
+        dir.join("docs/components.md"),
+        dir.join("docs/features.md"),
+        dir.join("docs/markdown.md"),
+    ];
+    // A component is a file *or* a directory of submodules (markdown is split
+    // into one), and the embed usually rides the view's own file — so descend,
+    // or a component that outgrows a single file silently leaves the check.
+    let mut dirs = vec![dir.join("src/components")];
+    while let Some(next) = dirs.pop() {
+        for entry in fs::read_dir(next)?.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                sources.push(path);
+            }
         }
     }
     // Module-level docs outside `components/` may embed a demo too (e.g. the
@@ -846,6 +864,31 @@ fn scene_markdown(frame: u64, theme: &Theme) -> Element {
         )
         .to_vec();
     element(Text::new(lines))
+}
+
+/// The GFM table the `markdown_table` scene renders.
+///
+/// Deliberately exercises everything a table cell can carry: per-column
+/// alignment from the `:---:` markers, inline code and bold, wide emoji (which
+/// must be measured grapheme-aware or the borders drift), and links whose label
+/// is what gets painted while the destination rides along as OSC 8.
+const MARKDOWN_TABLE_DOC: &str = "\
+| Component   |  Status   |                          Docs |
+| :---------- | :-------: | ----------------------------: |
+| `Markdown`  | ✅ stable | [docs.rs](https://docs.rs/tuika) |
+| `CodeBlock` | ✅ stable | \
+[gallery](https://github.com/everruns/tuika/blob/main/docs/components.md) |
+| **Image**   |  🚧 beta  | \
+[features](https://github.com/everruns/tuika/blob/main/docs/features.md) |
+";
+
+/// A GFM table rendered by the one-shot `Markdown` view.
+///
+/// Column widths come from the content and are fitted to the area, so the same
+/// source reflows on resize rather than being pre-formatted by the host.
+fn scene_markdown_table(frame: u64, theme: &Theme) -> Element {
+    let _ = (frame, theme);
+    element(Markdown::new(MARKDOWN_TABLE_DOC))
 }
 
 /// A single themed, syntax-highlighted fenced block via `CodeBlock`.

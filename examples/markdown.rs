@@ -146,8 +146,12 @@ in as it is typed — see <https://docs.rs/tuika>.
 ## Steps
 
 1. `cargo test --all-features`
+   - and `cargo clippy -- -D warnings`
 2. Rebase onto `origin/main`
 3. Squash & merge
+
+- [x] changelog updated
+- [ ] demos re-recorded
 
 | Stage  | Owner | Gate        |
 | ------ | ----- | ----------- |

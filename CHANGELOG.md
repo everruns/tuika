@@ -112,8 +112,35 @@ Components and the per-module surface (`anim`, `focus`, `framebuffer`,
 styling extras) are no longer flattened to `tuika::`. Reach them through
 `tuika::prelude::*` or their module path.
 
+### Fixed
+
+- **Markdown: a block inside a tight list item no longer swallows the item's
+  text.** A tight list item carries no `Paragraph` of its own, so a nested list,
+  block quote, or code fence opened while the parent item's text was still
+  buffered — rendering `- outer` / `  - inner` as a single `• outerinner` line,
+  and placing a fence *ahead* of the item it follows.
+- **Markdown: streaming no longer splits a block on a half-arrived indent.**
+  `MarkdownState` settles its prefix at the last blank line, and mid-stream a
+  nested item's indent arrives as a whitespace-only *unterminated* line — which
+  looked blank. The prefix was committed there, permanently cutting a list in
+  two so the halves re-parsed as unrelated top-level lists. Only a
+  newline-terminated blank line settles the prefix now, so a streamed render
+  matches the one-shot render character-for-character.
+- **Markdown: `- [ ]` / `- [x]` task lists render as checkboxes.** The renderer
+  had the checkbox handler and a `task_marker` stylesheet slot, but the parser
+  option that emits the event was never enabled, so both were unreachable and
+  the markers rendered as literal text.
+
+  Together these cost ~3% instructions on the markdown render benches — the old
+  counts were cheap because a nested item's line was being dropped rather than
+  laid out — which the committed `benches/iai-baseline.json` absorbs unchanged.
+
 ### What's Changed
 
+* feat(markdown): render GFM task-list checkboxes as themed markers
+* fix(markdown): flush the pending item line before a nested block opens
+* fix(markdown): never settle the streaming prefix on an unterminated blank line
+* docs: add `docs/markdown.md` and a `markdown_table` demo scene
 * refactor: give the crate root, components, and term one job each
 * refactor(term): group the out-of-band escapes under one module
 * refactor(components): move markdown and the image view in with the components

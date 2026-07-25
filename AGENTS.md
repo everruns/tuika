@@ -149,6 +149,9 @@ tuika's own suite covers more:
 - `docs/components.md` — the public component gallery (name, description, demo
   per component). Keep it **presentational only**: no build or regeneration
   instructions belong here (they live in this file).
+- `docs/markdown.md` — the markdown guide: streaming, GFM tables, the
+  highlighter seam, link policy, and images in one page. It reuses the gallery's
+  `DEMOS` recordings, so it is inside the `demo -- check` reference invariant.
 - `docs/demos/*.gif` — the committed demo recordings referenced by
   `components.md` and, via `raw.githubusercontent.com` URLs, inline on the
   relevant type's rustdoc so they render on docs.rs — each component's `struct`
@@ -264,7 +267,7 @@ cargo run --example screenshot -- run     # animate it (what VHS records)
 
 `demo -- check` asserts every scene has a non-empty recording, no orphan GIF
 lingers, every `demos/<name>.gif` referenced by the gallery markdown
-(`components.md`, `features.md`) or a rustdoc embed (component docs plus
+(`components.md`, `features.md`, `markdown.md`) or a rustdoc embed (component docs plus
 module-level docs like `overlay.rs`) maps to a real scene, and no scene is
 clipped by its own frame — it re-renders each one with room to spare and fails on
 any line the recorded height would cut off (`filling_demo` scenes are exempt). It

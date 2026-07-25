@@ -28,7 +28,12 @@ fn stable_boundary(source: &str, from: usize) -> usize {
         let trimmed = line.trim();
         if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
             fence_open = !fence_open;
-        } else if trimmed.is_empty() && !fence_open {
+        } else if trimmed.is_empty() && !fence_open && line.ends_with('\n') {
+            // Only a *terminated* blank line settles the prefix. A trailing line
+            // with no newline yet is still in flight, and mid-stream it is often
+            // whitespace-only for a few deltas — the indent of a nested list item
+            // or an indented block — so treating it as blank would cut the list
+            // in half and cache the halves as separate blocks.
             boundary = pos + line.len();
         }
         pos += line.len();
@@ -405,6 +410,36 @@ mod tests {
 
         let _ = state.lines(20, &theme, &sheet, CodeHighlighter::Plain);
         assert_eq!(calls.get(), 2, "resize must lay out the block again");
+    }
+
+    #[test]
+    fn streaming_an_indented_line_one_char_at_a_time_matches_one_shot() {
+        // A provider streams tokens, so a nested item's indent arrives as its own
+        // partial line: mid-stream the buffer ends in "   ", which *looks* blank.
+        // Committing there settles half a list, and the two halves then parse as
+        // unrelated top-level lists — indent lost, blank lines injected. Only a
+        // newline-terminated blank line may settle the prefix.
+        let full = "## Steps\n\n1. one\n   - nested\n2. two\n";
+        let theme = Theme::default();
+        let sheet = StyleSheet::from_theme(&theme);
+        let one_shot: Vec<String> = to_lines(full, 40, &theme, &sheet, CodeHighlighter::Plain)
+            .iter()
+            .map(text)
+            .collect();
+
+        let mut state = MarkdownState::new();
+        for ch in full.chars() {
+            state.push_str(&ch.to_string());
+            // Render every delta: the cache advances per call, so a bad boundary
+            // is committed permanently rather than only affecting one frame.
+            let _ = state.lines(40, &theme, &sheet, CodeHighlighter::Plain);
+        }
+        let streamed: Vec<String> = state
+            .lines(40, &theme, &sheet, CodeHighlighter::Plain)
+            .iter()
+            .map(text)
+            .collect();
+        assert_eq!(streamed, one_shot);
     }
 
     #[test]

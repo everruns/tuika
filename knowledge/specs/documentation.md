@@ -21,8 +21,13 @@ terminal UI with tuika without requiring knowledge of repository internals.
   for someone who added `tuika` to their `Cargo.toml`:
   - `docs/components.md` — the component gallery. **Presentational only**: no
     build or regeneration instructions.
-  - `docs/features.md`, `docs/keymap.md`, `docs/styling.md`, `docs/themes.md` —
-    focused guides, each with its generated assets in a same-named subdirectory.
+  - `docs/features.md`, `docs/keymap.md`, `docs/markdown.md`, `docs/styling.md`,
+    `docs/themes.md` — focused guides, each with its generated assets in a
+    same-named subdirectory, except `docs/markdown.md`, which reuses the
+    gallery's `DEMOS` scenes rather than owning a second copy of them. A
+    component earns a guide of its own when its surface outgrows a gallery
+    entry; the gallery then keeps the entry and links out, rather than the guide
+    duplicating it.
   - `docs/showcases.md` — applications built on tuika: what each one is, where to
     find it, and a recording of its UI. It exists to answer "what does this look
     like carrying a real product?", which the component gallery cannot. Entries
@@ -100,7 +105,8 @@ staged by hand. The rule is that the *scene registry is the source of truth*:
 
 `cargo run --example demo -- check` is the integrity gate: every scene has a
 non-empty recording, no orphan GIF lingers, every `demos/<name>.gif` referenced
-by the gallery markdown or a rustdoc embed maps to a real scene, and no scene is
+by a gallery page (`components.md`, `features.md`, `markdown.md`) or a rustdoc
+embed maps to a real scene, and no scene is
 clipped by the frame it records into. It runs in CI, so gallery drift fails the
 build instead of shipping a broken image to docs.rs.
 

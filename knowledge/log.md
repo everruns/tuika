@@ -80,6 +80,18 @@ need entries.
 - The files now follow the passes rather than the vocabulary. Submodules stay
   private per [Public API surface](specs/api-surface.md) — the split is an
   implementation detail, and `components::markdown` remains the one path in.
+## 2026-07-25 — Markdown gets a guide of its own
+
+- The component gallery is one entry per component, but markdown's user-facing
+  surface is much larger than one entry: streaming, GFM table fitting, the
+  highlighter seam, link policy, and images. The table renderer in particular
+  had no recording at all, so the feature was documented in prose and ASCII art
+  while every other component had a demo.
+- Added `docs/markdown.md` and recorded a `markdown_table` scene. Recorded the
+  precedent in [Documentation](specs/documentation.md): a component earns a
+  guide when its surface outgrows a gallery entry, the gallery keeps the entry
+  and links out, and such a guide reuses `DEMOS` scenes rather than owning
+  parallel assets — which puts it inside the `demo -- check` reference gate.
 
 ## 2026-07-25 — The crate root becomes a decision, not an accumulation
 

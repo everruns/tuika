@@ -397,6 +397,8 @@ inline placeholder rather than dropping the URL.
 ## See also
 
 - [Component gallery](components.md) — the widgets that paint the grid.
+- [Markdown guide](markdown.md) — where hyperlinks and images meet rendered
+  markdown.
 - [API documentation](https://docs.rs/tuika) — the complete reference for the
   `capabilities`, `hyperlink`, `mouse`, `clipboard`, `native`, and `image`
   modules.

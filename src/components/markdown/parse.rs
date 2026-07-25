@@ -41,6 +41,10 @@ pub(super) fn parse_with(
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_TABLES);
     opts.insert(Options::ENABLE_STRIKETHROUGH);
+    // Without this the parser never emits `TaskListMarker`, so the checkbox
+    // handler below — and the `task_marker` stylesheet slot it reads — were
+    // unreachable and `- [x] done` rendered as literal text.
+    opts.insert(Options::ENABLE_TASKLISTS);
     for event in Parser::new_ext(source, opts) {
         b.event(event);
     }
@@ -132,7 +136,18 @@ impl<'a> Builder<'a> {
 
     /// Insert a blank spacer before a new top-level block (never inside a list
     /// or quote, and never doubling blanks).
+    ///
+    /// Opening a block always ends whatever inline run was in flight: in a
+    /// *tight* list an item's text carries no `Paragraph` of its own, so a nested
+    /// list, quote, or fence starts while the parent item is still buffered.
+    /// Without the flush the child's first line is appended to the parent's
+    /// ("• item onenested item"), or a fence lands ahead of the item it follows.
+    /// Only real content is flushed — a bare pending marker stays pending so a
+    /// loose item's first paragraph still gets its bullet.
     fn separate(&mut self) {
+        if !self.inline.is_empty() {
+            self.flush();
+        }
         if self.nested() {
             return;
         }
