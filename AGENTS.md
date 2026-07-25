@@ -177,8 +177,14 @@ GitHub-only assets: `Cargo.toml`'s `exclude` keeps them (and the repository
 machinery — `knowledge/`, `.agents/`, `.github/`, `scripts/`) out of tuika's
 published `.crate`, and `tests/packaging.rs` guards that split. Only
 `docs/hero.gif` and `docs/demos/image.svg`, which the crates.io README embeds by
-relative path, ship in tuika. The small Mermaid recording ships in the companion
-crate because its own README embeds it.
+relative path, ship in tuika.
+
+Every published member owns the same rule, and how its README embeds a recording
+decides the answer: `tuika-mermaid`'s small recording ships, because its README
+reaches it by relative path and the crates.io page would break without it, while
+`tuika-codeformatters` excludes `docs/*.gif`, because its README embeds by
+absolute URL and no crate consumer can reach the packaged copy.
+`tests/packaging.rs` covers all three crates.
 
 ## Component demos
 

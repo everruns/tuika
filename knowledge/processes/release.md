@@ -41,6 +41,23 @@ their own views. A `ratatui-core` major bump is also breaking, because the
 
 There are no binaries and no package-manager formulae: tuika is a library.
 
+### The tag history starts after the extraction
+
+tuika 0.1.0–0.4.0 and `tuika-codeformatters` 0.1.0–0.2.0 were published from the
+`everruns/yolop` workspace; every one of them predates this repository's first
+commit. So this repository has no tag and no GitHub Release for them, and it must
+stay that way: the published trees do not exist in this history — the extraction
+reworded documentation as it moved the sources — so a tag applied after the fact
+would attest to a tree that was never released.
+
+A tag is a claim about provenance, and `git describe`, release compare links, and
+the tag-pinned demo URLs required in [Highlights](#highlights) all rely on it
+being true. The published sources are already durably archived on crates.io,
+which is the honest reference for anything before the first release cut here.
+
+Tooling must therefore treat "no previous tag" as a legitimate state rather than
+a broken clone. That case is spelled out in the release skill's sync step.
+
 ## Independent crate versions
 
 `tuika`, `tuika-codeformatters`, and `tuika-mermaid` version independently. The

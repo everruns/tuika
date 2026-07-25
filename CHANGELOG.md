@@ -1,8 +1,15 @@
 # Changelog
 
-Notable changes to `tuika`. This file starts with the entry below; releases
-before it are described in their [GitHub
-Releases](https://github.com/everruns/tuika/releases).
+Notable changes to `tuika`. This file starts with the entry below, which will be
+the first release cut from this repository.
+
+Versions 0.1.0 through 0.4.0 were published to crates.io from the
+[`everruns/yolop`](https://github.com/everruns/yolop) workspace, before tuika was
+extracted into its own repository — so this repository holds neither a `vX.Y.Z`
+tag nor a GitHub Release for them, and no commit here is the source of any of
+those `.crate` files. Their sources remain on
+[crates.io](https://crates.io/crates/tuika/versions); the tag and release history
+described in the release process begins with the entry below.
 
 ## [Unreleased]
 

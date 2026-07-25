@@ -5,16 +5,32 @@
 [workspace]
 members = ["crates/tuika-codeformatters", "crates/tuika-mermaid"]
 
+# Identity and toolchain floor are properties of the repository, not of any one
+# package, so they live here and every manifest inherits them — a bumped MSRV or
+# a new author cannot land in one crate and be forgotten in the others.
+#
+# Deliberately *not* inherited: `version` (the crates version independently),
+# `description`/`keywords`/`categories` (they describe different crates), and
+# `readme`/`exclude` — Cargo resolves an inherited `readme` path against the
+# *workspace* root, so a member would advertise tuika's README instead of its own.
+[workspace.package]
+edition = "2024"
+rust-version = "1.88"
+authors = ["Mykhailo Chalyi <mike@chaliy.name>", "Everruns <support@everruns.com>"]
+license = "MIT"
+homepage = "https://github.com/everruns/tuika"
+repository = "https://github.com/everruns/tuika"
+
 [package]
 name = "tuika"
 version = "0.4.0"
-edition = "2024"
-rust-version = "1.88"
-authors = ["Everruns <support@everruns.com>"]
-license = "MIT"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "A composable terminal UI toolkit — flexbox layout, overlays, focus, and safe ratatui interoperability."
-homepage = "https://github.com/everruns/tuika"
-repository = "https://github.com/everruns/tuika"
+homepage.workspace = true
+repository.workspace = true
 readme = "README.md"
 keywords = ["tui", "terminal", "ratatui", "widgets", "layout"]
 categories = ["command-line-interface"]

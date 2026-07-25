@@ -10,16 +10,28 @@
 //! - Repository machinery. tuika is the *root* package of its repo, so the
 //!   internal knowledge bundle, agent skills, CI definitions, and
 //!   asset-generation scripts all sit beside it and would otherwise ship.
+//!   `tuika-codeformatters` has one GitHub-only recording of its own
+//!   (`docs/languages.gif`) under the same rule.
 //!
 //! This test drives the real packaging path (`cargo package --list`) so a stray
 //! asset — or a regression that drops an image the crates.io README needs —
 //! fails loudly instead of silently re-inflating the crate.
+//!
+//! It guards all three published crates. The companions have no test target of
+//! their own — that would make every run pay their tree-sitter and mmdflux
+//! builds — and the rule they need is this one, so the root package checks them
+//! too. Which way it falls for a given recording is decided by how that crate's
+//! README embeds it: an absolute `raw.githubusercontent.com` URL means the
+//! packaged copy is unreachable and must not ship (`tuika-codeformatters`), a
+//! relative path means crates.io renders from the packaged copy and it must
+//! (`tuika-mermaid`, and tuika's own `docs/hero.gif`).
 
 use std::process::Command;
 
-/// Ask cargo which files it would put in tuika's `.crate`, exactly as `publish`
-/// would. `--list` resolves the manifest's `include`/`exclude` without building.
-fn packaged_files() -> Vec<String> {
+/// Ask cargo which files it would put in `package`'s `.crate`, exactly as
+/// `publish` would. `--list` resolves the manifest's `include`/`exclude` without
+/// building, so this stays cheap even for the tree-sitter-heavy member.
+fn packaged_files(package: &str) -> Vec<String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let output = Command::new(cargo)
         .args([
@@ -28,7 +40,7 @@ fn packaged_files() -> Vec<String> {
             "--quiet",
             "--allow-dirty",
             "-p",
-            "tuika",
+            package,
         ])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
@@ -49,7 +61,7 @@ fn packaged_files() -> Vec<String> {
 
 #[test]
 fn heavy_doc_gifs_are_excluded_from_the_package() {
-    let files = packaged_files();
+    let files = packaged_files("tuika");
 
     // No demo/showcase/theme/styling GIF, and no example recording, may ship:
     // those are GitHub-only assets.
@@ -72,7 +84,7 @@ fn heavy_doc_gifs_are_excluded_from_the_package() {
 
 #[test]
 fn repository_machinery_is_excluded_from_the_package() {
-    let files = packaged_files();
+    let files = packaged_files("tuika");
 
     // Internal-only trees that live beside the root package in the repo.
     const INTERNAL_PREFIXES: [&str; 5] =
@@ -108,7 +120,7 @@ fn repository_machinery_is_excluded_from_the_package() {
 
 #[test]
 fn crates_io_readme_assets_and_source_are_kept() {
-    let files = packaged_files();
+    let files = packaged_files("tuika");
     let has = |p: &str| files.iter().any(|f| f == p);
 
     // The two assets the crates.io README embeds by relative path.
@@ -118,6 +130,41 @@ fn crates_io_readme_assets_and_source_are_kept() {
         "README image-protocol asset must ship"
     );
     // Sanity: the crate still carries its source and manifest.
+    assert!(has("src/lib.rs"), "library source must ship");
+    assert!(has("Cargo.toml"), "manifest must ship");
+    assert!(has("README.md"), "README must ship");
+}
+
+#[test]
+fn codeformatters_ships_source_but_not_its_demo_recording() {
+    let files = packaged_files("tuika-codeformatters");
+
+    // `docs/languages.gif` is embedded by absolute raw.githubusercontent.com URL
+    // in the member's README, so no crate consumer can reach the packaged copy.
+    let gifs: Vec<&String> = files.iter().filter(|f| f.ends_with(".gif")).collect();
+    assert!(
+        gifs.is_empty(),
+        "demo recordings must not ship in tuika-codeformatters (see its Cargo.toml `exclude`): {gifs:?}"
+    );
+
+    let has = |p: &str| files.iter().any(|f| f == p);
+    assert!(has("src/lib.rs"), "library source must ship");
+    assert!(has("Cargo.toml"), "manifest must ship");
+    assert!(has("README.md"), "README must ship");
+}
+
+#[test]
+fn mermaid_keeps_the_recording_its_readme_embeds() {
+    let files = packaged_files("tuika-mermaid");
+    let has = |p: &str| files.iter().any(|f| f == p);
+
+    // The inverse of the case above, and the reason this crate has no `exclude`:
+    // its README reaches the recording by *relative* path, so crates.io renders
+    // from the packaged copy and dropping it would break that page.
+    assert!(
+        has("examples/mermaid_markdown/mermaid.gif"),
+        "the recording the crates.io README embeds by relative path must ship"
+    );
     assert!(has("src/lib.rs"), "library source must ship");
     assert!(has("Cargo.toml"), "manifest must ship");
     assert!(has("README.md"), "README must ship");
