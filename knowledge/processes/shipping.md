@@ -21,7 +21,7 @@ is user-invocable so shipping can be requested directly as `/ship`.
 1. Reach the requested goal, not just perform rituals around it.
 2. Match validation depth to the actual risk surface.
 3. Keep affected artifacts in sync (`README.md`, `docs/`, rustdoc, `AGENTS.md`,
-   `knowledge/specs/`, generated demo assets).
+   `knowledge/`, generated demo assets).
 4. Land only from a safe branch state with green CI.
 5. Keep the published history attributable: every commit signed and verified.
 
@@ -137,6 +137,6 @@ Use the smallest set that gives high confidence.
 ## Related
 
 - [testing.md](./testing.md)
-- [documentation.md](./documentation.md)
+- [documentation.md](../specs/documentation.md)
 - [maintenance.md](./maintenance.md)
 - [release.md](./release.md)

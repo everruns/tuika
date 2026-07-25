@@ -10,7 +10,7 @@ user-invocable: true
 
 Goal: land the requested change safely, with evidence, and merge only after CI is green.
 
-This skill implements [`knowledge/specs/shipping.md`](../../../knowledge/specs/shipping.md). Keep operational guidance here. Keep the shipping success bar and constraints in the spec.
+This skill implements [`knowledge/processes/shipping.md`](../../../knowledge/processes/shipping.md). Keep operational guidance here. Keep the shipping success bar and constraints in the spec.
 
 This skill is outcome-oriented. Do not blindly walk a fixed checklist. Start from the goal and changed risk surface, then choose the smallest path that proves the change is ready.
 

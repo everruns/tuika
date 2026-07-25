@@ -65,7 +65,7 @@ optional feature so tuika's dependency tree cannot grow by accident.
 
 tuika is pre-1.0 but published: every `pub` item is public API. Minor releases
 may make deliberate breaking changes, which must be called out in the changelog;
-patch releases may not. See [release.md](./release.md).
+patch releases may not. See [release.md](../processes/release.md).
 
 ## Public surface
 

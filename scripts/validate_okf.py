@@ -5,6 +5,11 @@ Usage: python3 scripts/validate_okf.py <bundle-dir> [--strict] [--check-links]
 
 --strict requires title, description, and timestamp in addition to OKF's
 required type field. --check-links validates local Markdown link targets.
+
+Every concept must also be reachable from the bundle index, so adding, moving,
+or renaming one without updating `index.md` fails rather than leaving a concept
+nobody is routed to. This is the mechanical half of keeping the bundle current;
+whether a change *needed* a concept update is a judgement review still owns.
 """
 
 from __future__ import annotations
@@ -13,7 +18,8 @@ import re
 import sys
 from pathlib import Path
 
-RESERVED = {"index.md", "log.md"}
+INDEX = "index.md"
+RESERVED = {INDEX, "log.md"}
 FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 LINK_RE = re.compile(r"\]\(([^)\s]+)(?:\s+['\"][^)]*['\"])?\)")
 SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
@@ -51,13 +57,34 @@ def local_link_target(root: Path, source: Path, target: str) -> Path | None:
     return source.parent / target
 
 
+def indexed_concepts(root: Path) -> set[str] | None:
+    """Bundle-relative paths the index links to, or None when there is no index."""
+    index = root / INDEX
+    if not index.is_file():
+        return None
+    linked: set[str] = set()
+    text = index.read_text(encoding="utf-8", errors="replace")
+    for target in LINK_RE.findall(text):
+        local = local_link_target(root, index, target)
+        if local is None:
+            continue
+        try:
+            linked.add(local.resolve().relative_to(root.resolve()).as_posix())
+        except ValueError:
+            continue  # links out of the bundle are not concept listings
+    return linked
+
+
 def validate(root: Path, *, strict: bool = False, check_links: bool = False) -> tuple[list[str], int]:
     messages: list[str] = []
     concepts = 0
+    linked = indexed_concepts(root)
     for path in sorted(root.rglob("*.md")):
         rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8", errors="replace")
         if path.name not in RESERVED:
+            if linked is not None and rel not in linked:
+                messages.append(f"{rel}: concept is not listed in {INDEX}")
             frontmatter, error = parse_frontmatter(text)
             if error:
                 messages.append(f"{rel}: {error}")

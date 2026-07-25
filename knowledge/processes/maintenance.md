@@ -40,7 +40,7 @@ That skill is user-invocable so maintenance can be requested directly as
 - Maintenance is risk-proportional, not sweep-proportional.
 - The selected scope must be explained, including what was skipped and why.
 - If maintenance changes code or behavior, affected artifacts must stay in sync:
-  `README.md`, `docs/`, rustdoc, `AGENTS.md`, `knowledge/specs/`, and generated
+  `README.md`, `docs/`, rustdoc, `AGENTS.md`, `knowledge/`, and generated
   demo assets.
 - Maintenance prefers concrete fixes over ceremonial audits when a safe local fix
   exists.
@@ -74,7 +74,7 @@ Deferred items are not failures. Untracked ones are.
 
 A capability is not complete merely because the code exists. tuika's surfaces are
 the public API, rustdoc, `README.md`, the guides in `docs/`, the demo scene
-registry, `knowledge/specs/`, and the test suite. Maintenance should catch:
+registry, `knowledge/`, and the test suite. Maintenance should catch:
 
 - `pub` items with no rustdoc, or rustdoc that no longer matches behavior
   (`#![warn(missing_docs)]` catches absence, not staleness)
@@ -92,7 +92,7 @@ debt" note.
 ## Dependency Discipline
 
 The small dependency set is a designed property, not an accident
-([goal.md](./goal.md)). Maintenance defends it:
+([goal.md](../specs/goal.md)). Maintenance defends it:
 
 - **No new runtime dependency without an explicit justification in the PR.** The
   default answer for a heavy concern is a trait the host implements, or a place
@@ -130,7 +130,7 @@ credentials, so the surface is narrow and specific:
 
 - **Escape emission** — every out-of-band sequence must come from tuika's own
   encoder, never from interpolated caller text. Maintenance verifies that
-  property still holds ([out-of-band.md](./out-of-band.md)).
+  property still holds ([out-of-band.md](../specs/out-of-band.md)).
 - **Untrusted content** — markdown and code passed to `Markdown`/`CodeBlock` must
   degrade rather than panic or allocate unboundedly. The property tests and size
   sweeps are the standing defense; keep them running over the parsers.
@@ -182,5 +182,5 @@ details readable from code. Maintenance should:
 
 - [shipping.md](./shipping.md)
 - [release.md](./release.md)
-- [documentation.md](./documentation.md)
+- [documentation.md](../specs/documentation.md)
 - [testing.md](./testing.md)

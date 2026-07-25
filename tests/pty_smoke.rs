@@ -10,7 +10,7 @@
 //!
 //! This covers the *protocol* a terminal receives. Whether a specific emulator
 //! paints those bytes correctly is the cross-terminal nightly plus the manual
-//! matrix in `knowledge/specs/release.md`.
+//! matrix in `knowledge/processes/release.md`.
 #![cfg(unix)]
 
 use std::io::{Read, Write};

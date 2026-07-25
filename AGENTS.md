@@ -395,7 +395,7 @@ git log --format='%h %G? %s' origin/main..HEAD
   anyway when a change is risky, wants a second opinion, or needs the CI matrix
   before it lands — but routine maintainer work does not need one.
 - Direct-to-`main` work carries the same bar as a PR: signed commits, green CI,
-  and the artifacts in [Shipping](knowledge/specs/shipping.md) kept in sync.
+  and the artifacts in [Shipping](knowledge/processes/shipping.md) kept in sync.
 - **A change lands on `main` as one commit**, whichever path it took: a PR is
   squash-merged, and direct work is squashed locally before it is pushed. The
   work-in-progress history of a branch — fixups, re-recordings, review
@@ -420,13 +420,13 @@ Use `gh` directly for GitHub commands.
   exercises it, gather evidence, perform a security review, open a mergeable PR,
   address every review comment, and merge only after CI is green.
 - When asked to ship, follow [`.agents/skills/ship/SKILL.md`](.agents/skills/ship/SKILL.md)
-  and [`knowledge/specs/shipping.md`](knowledge/specs/shipping.md).
+  and [`knowledge/processes/shipping.md`](knowledge/processes/shipping.md).
 - When asked for maintenance or release readiness, follow
   [`.agents/skills/maintenance/SKILL.md`](.agents/skills/maintenance/SKILL.md)
-  and [`knowledge/specs/maintenance.md`](knowledge/specs/maintenance.md).
+  and [`knowledge/processes/maintenance.md`](knowledge/processes/maintenance.md).
 - When asked to release, cut a version, or publish to crates.io, follow
   [`.agents/skills/release/SKILL.md`](.agents/skills/release/SKILL.md) and
-  [`knowledge/specs/release.md`](knowledge/specs/release.md). `tuika` and
+  [`knowledge/processes/release.md`](knowledge/processes/release.md). `tuika` and
   `tuika-codeformatters` are versioned independently and published in dependency
   order.
 

@@ -76,7 +76,7 @@ host that restyles headings restyles them in markdown too. See
 - The streaming path is benchmarked (`benches/markdown.rs`,
   `benches/markdown_iai.rs`); the instruction-count baseline is a CI gate, so a
   change that re-tokenizes settled blocks fails the build rather than quietly
-  regressing. See [testing.md](./testing.md).
+  regressing. See [testing.md](../processes/testing.md).
 
 ## Non-goals
 

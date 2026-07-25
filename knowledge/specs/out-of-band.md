@@ -85,4 +85,4 @@ see [`SECURITY.md`](../../SECURITY.md).
 
 - [images.md](./images.md)
 - [architecture.md](./architecture.md)
-- [testing.md](./testing.md)
+- [testing.md](../processes/testing.md)

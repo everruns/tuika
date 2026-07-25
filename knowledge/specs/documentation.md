@@ -32,17 +32,22 @@ terminal UI with tuika without requiring knowledge of repository internals.
   is what docs.rs renders as the front page; component demos are embedded inline
   on the relevant type via `raw.githubusercontent.com` URLs so they resolve
   there.
-- `knowledge/specs/` is internal durable memory: intent, constraints, tradeoffs,
-  and architectural decisions for maintainers.
-- `.agents/` and `AGENTS.md` contain contributor and agent workflows, not user
-  guidance.
+- `knowledge/` is internal durable memory: intent, constraints, tradeoffs, and
+  architectural decisions for maintainers, split into `specs/` (the product) and
+  `processes/` (working on it).
+- `.agents/`, `AGENTS.md`, and `CONTRIBUTING.md` are contributor and agent
+  workflow material, not user guidance. `CONTRIBUTING.md` addresses someone
+  changing tuika rather than using it, so it is the one contributor-facing file
+  a reader arrives at without being sent, and it may name internal machinery
+  where a contributor would otherwise be asked for something unexplained.
 
 ## Direction of links
 
 The public documentation boundary is one-way:
 
 - `README.md` and files below `docs/` MUST NOT link to internal documents below
-  `knowledge/` or `.agents/`, or require users to read them.
+  `knowledge/` or `.agents/`, or require users to read them. These two paths are
+  the whole of the restriction, and CI checks exactly them.
 - Public pages MAY link to other public pages, docs.rs, external standards, and
   source files when those links help complete a task.
 - Specs MAY link to public documentation to identify the user-facing surface.
@@ -84,7 +89,7 @@ staged by hand. The rule is that the *scene registry is the source of truth*:
 - The image demo is rendered directly by `examples/image_demo.rs` rather than
   recorded, because VHS captures through `ttyd` + `xterm.js`, which implements
   no graphics protocol and would only ever show the text fallback.
-- Release notes embed demos too — see [Release](./release.md#changelog-format) —
+- Release notes embed demos too — see [Release](../processes/release.md#changelog-format) —
   and they reuse the same `DEMOS` scenes rather than adding one-off assets. They
   are the one place that pins the raw URL to a release tag instead of `main`, so
   a later re-recording cannot rewrite what a past release appeared to ship. That

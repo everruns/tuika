@@ -72,6 +72,13 @@ recordings, and the documentation references stay in sync, and it runs in CI.
   changes are testable without a terminal.
 - tuika is a published library: adding, renaming, or removing a `pub` item is an
   API change. Call it out in the pull request so it lands in the changelog.
+- The template's **Knowledge** section refers to `knowledge/`, this repository's
+  durable record of *why* things are the way they are. A change that alters
+  behavior, intent, architecture, or a project policy updates the affected
+  concept in the same pull request; start from
+  [`knowledge/index.md`](./knowledge/index.md). Most changes need nothing there
+  — answer `No knowledge update required — <reason>` and that is a complete
+  answer, not a skipped step.
 - Pull requests are squash-merged after CI is green.
 
 ## Community
