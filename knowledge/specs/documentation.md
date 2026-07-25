@@ -37,6 +37,13 @@ terminal UI with tuika without requiring knowledge of repository internals.
   is what docs.rs renders as the front page; component demos are embedded inline
   on the relevant type via `raw.githubusercontent.com` URLs so they resolve
   there.
+- docs.rs is a *different build*, not a stricter one: nightly, `--cfg docsrs`,
+  and therefore the only configuration in which the crate's
+  `cfg_attr(docsrs, feature(…))` line exists at all. An ordinary `cargo doc`
+  cannot prove that build works — 0.4.0 published with a since-removed nightly
+  feature gated behind exactly that cfg and rendered no documentation at all,
+  while every local and CI doc build stayed green. CI therefore builds the docs
+  twice: once as a consumer does, once as docs.rs does.
 - `knowledge/` is internal durable memory: intent, constraints, tradeoffs, and
   architectural decisions for maintainers, split into `specs/` (the product) and
   `processes/` (working on it).

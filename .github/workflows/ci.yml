@@ -147,6 +147,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.94.0
 
+      - name: Install nightly for the docs.rs rehearsal
+        uses: dtolnay/rust-toolchain@nightly
+
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
@@ -157,7 +160,20 @@ jobs:
       - name: Build documentation
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --locked --all-features --no-deps --workspace
+        run: cargo +1.94.0 doc --locked --all-features --no-deps --workspace
+
+      # The step above is what a *consumer* sees. docs.rs builds something else:
+      # nightly, with `--cfg docsrs` set, which is the only configuration that
+      # compiles the `cfg_attr(docsrs, feature(…))` line in `src/lib.rs`. A
+      # removed nightly feature is invisible to every other job and cost 0.4.0
+      # its documentation, so rehearse docs.rs's own invocation. Lints are not
+      # capped here the way docs.rs caps them, hence no `-D warnings`: this leg
+      # is guarding against compilation failing, not against nightly's lint
+      # churn.
+      - name: Build documentation the way docs.rs does
+        env:
+          RUSTDOCFLAGS: --cfg docsrs
+        run: cargo +nightly doc --locked --all-features --no-deps --workspace
 
   test:
     name: Build + Tests

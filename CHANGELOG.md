@@ -1,7 +1,7 @@
 # Changelog
 
-Notable changes to `tuika`. This file starts with the entry below, which will be
-the first release cut from this repository.
+Notable changes to `tuika`. This file starts at 0.5.0, the first release cut
+from this repository.
 
 Versions 0.1.0 through 0.4.0 were published to crates.io from the
 [`everruns/yolop`](https://github.com/everruns/yolop) workspace, before tuika was
@@ -11,14 +11,10 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
-## [Unreleased]
+## [0.5.0] - 2026-07-25
 
-### Fixed
-
-- `TerminalSession` now enables and restores enhanced keyboard reporting, so
-  `Shift+Enter` reaches `TextInputState` as a distinct chord instead of being
-  decoded as plain `Enter`. The negotiation handles iTerm2 and tmux's xterm and
-  CSI-u formats; Windows keeps using modifier-aware native console events.
+The first release cut from this repository. Companion crates released alongside
+it: `tuika-codeformatters` 0.3.0 and `tuika-mermaid` 0.1.0 (its first release).
 
 ### Highlights
 
@@ -63,7 +59,56 @@ host-initiated, so nothing changes for an app that does not ask.
 - **New example**: `cargo run --example inherit` (and `-- --probe` to print what
   your terminal answers without taking over the screen).
 
-Additive only — nothing moved or was renamed by this change.
+The palette work is additive only — nothing moved or was renamed by it.
+
+**A dialog, a form, and a scrollable viewport are no longer every host's
+homework.** Three patterns every application rebuilt by hand are components now,
+and a `Scene` owns the base tree plus its overlays so focus and compositing stop
+being hand-wired at the call site.
+
+![primitives demo](https://raw.githubusercontent.com/everruns/tuika/v0.5.0/docs/demos/primitives.gif)
+
+- **New**: `components::Dialog` — a titled, bordered, optionally backdrop-dimmed
+  panel with key hints and an action row, placed by an `OverlaySpec`.
+- **New**: `components::{Form, FormField, FormState, FormOutcome}` — labelled
+  fields with help and error rows, `Tab`/`Shift+Tab` focus, and a responsive
+  `stack_below(width)` breakpoint.
+- **New**: `components::Viewport` — a clipping, panning window over an
+  oversized child, with optional scrollbars on both axes.
+- **New**: `Scene`, `SceneOverlay`, `Backdrop`, and `paint_scene` — one value
+  carrying the root and its overlay stack, with `sync_focus` for the registry.
+- **New**: `DrawView` (alias `CanvasView`) — a `View` from a closure, for
+  one-off custom painting without declaring a type.
+- **New**: `SemanticRole` and `Theme::{semantic_color, semantic_style,
+  success_style, warning_style, danger_style, info_style}` — success / warning /
+  danger / info resolved from the theme instead of hardcoded per host.
+
+**Markdown fenced blocks are extensible.** A fence with an unknown language used
+to render as code and nothing else. A host can now claim any info string and
+paint the block itself — which is how Mermaid diagrams became terminal-native,
+without tuika taking on a diagram engine.
+
+![mermaid demo](https://raw.githubusercontent.com/everruns/tuika/v0.5.0/crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif)
+
+- **New**: `components::markdown::FencedBlockRenderer` — the seam, plus
+  `Markdown::block_renderer`, `MarkdownState::with_block_renderer`, and
+  `markdown::{to_lines_with_renderer, to_linked_lines_with_renderer}`.
+- **New crate**: [`tuika-mermaid`](https://crates.io/crates/tuika-mermaid) —
+  `MermaidRenderer`, an mmdflux-backed implementation for ```` ```mermaid ````
+  fences. Diagram layout stays out of tuika core.
+
+**Long transcripts scroll by item, not by line.** `ItemScroll` scrolls a list of
+laid-out elements — the shape a chat log or an agent transcript actually has —
+and the text input grew the seams a composer needs.
+
+- **New**: `components::ItemScroll` — item-granular scrolling with `windowed`
+  construction, `gap`, `scrollbar`, and `measure_height`.
+- **New**: `components::textinput::{Trigger, TriggerAnchor, Token, TextSpan}`,
+  plus `TextInputState::{tokens, active_token, replace_token}` and
+  `TextInput::{highlights, placeholder}` — `@`/`/` mention and slash-command
+  tokens, and styled spans over the edited text.
+- **New example**: `cargo run --example codex` — a replica of the Codex CLI's UI
+  built entirely from tuika components.
 
 ### Breaking Changes
 
@@ -121,6 +166,18 @@ styling extras) are no longer flattened to `tuika::`. Reach them through
 
 ### Fixed
 
+- **docs.rs builds the crate again.** 0.4.0 documented nothing on docs.rs:
+  `src/lib.rs` gated on `feature(doc_auto_cfg)`, which was merged into
+  `doc_cfg` and removed as a name in Rust 1.92, so rustdoc failed outright on
+  docs.rs's nightly. Nothing else saw it — the attribute compiles only under
+  `--cfg docsrs`, which no local or CI build set. CI now rehearses docs.rs's
+  own invocation (nightly, `--cfg docsrs`) alongside the consumer-facing one.
+- **`Shift+Enter` reaches the text input as its own chord.** `TerminalSession`
+  now enables and restores enhanced keyboard reporting, so the chord arrives at
+  `TextInputState` distinctly instead of being decoded as plain `Enter` — the
+  difference between "insert a newline" and "submit". The negotiation handles
+  iTerm2 and tmux's xterm and CSI-u formats; Windows keeps using modifier-aware
+  native console events.
 - **Markdown: a block inside a tight list item no longer swallows the item's
   text.** A tight list item carries no `Paragraph` of its own, so a nested list,
   block quote, or code fence opened while the parent item's text was still
@@ -144,17 +201,34 @@ styling extras) are no longer flattened to `tuika::`. Reach them through
 
 ### What's Changed
 
+* fix(packaging): trim the companion crates and correct the release history (#12)
 * feat(markdown): render GFM task-list checkboxes as themed markers
 * fix(markdown): flush the pending item line before a nested block opens
 * fix(markdown): never settle the streaming prefix on an unterminated blank line
-* docs: add `docs/markdown.md` and a `markdown_table` demo scene
-* refactor: give the crate root, components, and term one job each
+* docs(markdown): add `docs/markdown.md` and a `markdown_table` demo scene
+* chore(ci): cover the workspace on the macOS and Windows legs (#15)
+* feat(markdown): render extensible fenced blocks through `FencedBlockRenderer`, and add the `tuika-mermaid` companion crate
+* fix(term): enable modified-key reporting so `Shift+Enter` arrives as its own chord (#13)
+* docs(example): follow the stream in the markdown example until the reader scrolls back (#11)
+* refactor(markdown): split the module along its parse/flatten passes (#9)
+* fix(docs): preserve demo colors during recording (#10)
+* feat(themes): inherit the terminal's palette (#8)
+* feat(components): add `Dialog`, `Form`, `Viewport`, `Scene`, and `DrawView` (#7)
+* refactor: give the crate root, components, and term one job each (#6)
 * refactor(term): group the out-of-band escapes under one module
 * refactor(components): move markdown and the image view in with the components
 * refactor: fold `async_runner` into `runner` and rename `ratatui_view` to `interop`
 * refactor(tests): move the crate's test scaffolding under `src/tests`
-* refactor(markdown): split the module along its parse/flatten passes
-* docs(example): follow the stream in the markdown example until the reader scrolls back
 * test: pin the public module layout from outside the crate (`tests/public_api.rs`)
 * docs: add `knowledge/specs/api-surface.md` and a crate-layout section to the README
-* feat(themes): inherit the terminal's palette
+* chore(knowledge): split out process concepts and enforce upkeep (#5)
+* feat(components): add `ItemScroll` and the composer token seams, plus the `codex` example
+* docs: record the showcases at gallery pixel density and point yolop at its product page
+* fix(docs): stop the demo recordings clipping their own scenes
+* docs: add a showcases page with yolop and LLMSim demos (#3)
+* chore(release): show demos in the changelog highlights and drop commit links
+* chore: require signed commits, Doppler-managed secrets, and PRs for external contributions
+* fix(ci): green the pipeline after the yolop extraction
+* docs: add the knowledge bundle and agent workflows
+* ci: add the build, documentation, release, and cross-terminal pipelines
+* test: add a PTY smoke test and guard the published crate contents

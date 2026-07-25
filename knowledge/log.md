@@ -5,6 +5,19 @@ change that makes them — an entry says why the knowledge moved, and that reaso
 is rarely recoverable later. Routine wording, formatting, and link fixes do not
 need entries.
 
+## 2026-07-25 — docs.rs is a build CI has to rehearse, not assume
+
+- 0.4.0 shipped with no documentation on docs.rs: `src/lib.rs` gated on
+  `feature(doc_auto_cfg)`, removed in Rust 1.92, behind `cfg_attr(docsrs, …)`.
+  That attribute exists only under `--cfg docsrs`, which nothing outside docs.rs
+  sets — so `cargo doc` was green everywhere while the one build that matters
+  failed in twelve seconds.
+- [Documentation](specs/documentation.md) now records docs.rs as a *different*
+  build rather than a stricter one, and CI builds the docs twice: once the way a
+  consumer does, once the way docs.rs does. Recorded because the failure mode is
+  silence — a library's documentation surface can be entirely absent while every
+  gate reports success.
+
 ## 2026-07-25 — The tag history starts after the extraction
 
 - tuika 0.1.0–0.4.0 and `tuika-codeformatters` 0.1.0–0.2.0 were all published
