@@ -6,6 +6,13 @@ Releases](https://github.com/everruns/tuika/releases).
 
 ## [Unreleased]
 
+### Fixed
+
+- `TerminalSession` now enables and restores enhanced keyboard reporting, so
+  `Shift+Enter` reaches `TextInputState` as a distinct chord instead of being
+  decoded as plain `Enter`. The negotiation handles iTerm2 and tmux's xterm and
+  CSI-u formats.
+
 ### Highlights
 
 **The crate root is now a decision instead of an accumulation.** `tuika::` had

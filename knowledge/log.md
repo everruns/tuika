@@ -5,6 +5,20 @@ change that makes them — an entry says why the knowledge moved, and that reaso
 is rarely recoverable later. Routine wording, formatting, and link fixes do not
 need entries.
 
+## 2026-07-25 — TerminalSession makes modified keys real
+
+- `TextInputMode` already assigned different behavior to `Enter` and
+  `Shift+Enter`, but the full terminal session never requested a protocol that
+  could distinguish them. The advertised composer behavior therefore did not
+  work end to end.
+- `TerminalSession` now owns enhanced keyboard reporting as part of the same
+  lifecycle as raw mode, mouse capture, and the alternate screen. The transport
+  policy follows the compatibility constraints proven by Codex: suppress event
+  types for iTerm2 and tmux's xterm format, and enable `modifyOtherKeys` for
+  tmux CSI-u.
+- Teardown pops exactly the level tuika pushed instead of globally resetting
+  keyboard reporting, preserving a mode installed by an embedding host.
+
 ## 2026-07-25 — A theme can be inherited from the terminal
 
 - Added a third source for a `Theme`, beside the bundled presets and a host's own
