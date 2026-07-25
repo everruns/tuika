@@ -37,15 +37,11 @@ categories = ["command-line-interface"]
 # Two kinds of file are kept out of the published `.crate`:
 #
 # 1. The demo/showcase/theme/styling GIFs under `docs/` — and the recording
-#    beside the `codex` example — total ~10 MiB and are consumed only by the
-#    GitHub-rendered README and `docs/*.md` (served from the repo, not the
-#    crate). rustdoc/docs.rs references none of them — the crate-level docs live
-#    in a hand-written `//!` header in `lib.rs` — so bundling them just bloats
-#    the tarball. Keep `hero.gif` and `demos/image.svg`: those are the only two
-#    the crates.io README (`README.md`) embeds by relative path. The example
-#    recording is embedded by absolute `raw.githubusercontent.com` URL instead —
-#    the same trick the rustdoc demo embeds use — so it renders everywhere
-#    without shipping.
+#    beside the `codex` example — total ~10 MiB and are consumed only from the
+#    repository by `docs/*.md` or absolute rustdoc URLs. rustdoc/docs.rs
+#    references none of them from its crate front page, so bundling them just
+#    bloats the tarball. Keep `hero.gif` and `demos/image.svg`: those are the only
+#    two the crates.io README (`README.md`) embeds by relative path.
 # 2. Repository machinery. Since tuika is the root package, everything beside it
 #    in the repo would otherwise ship: internal knowledge, agent skills, CI
 #    definitions, and the asset-generation scripts are all repo-only.

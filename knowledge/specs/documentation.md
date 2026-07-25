@@ -96,9 +96,11 @@ staged by hand. The rule is that the *scene registry is the source of truth*:
 - A recording of a whole runnable example is driven against that example's own
   binary under VHS, so it cannot drift from what the example does, and is
   committed beside the example rather than under `docs/` so the example directory
-  stays self-contained. These sit outside the `demo -- check` invariant, which is
-  about single-component scenes and their gallery references. The
-  `tuika-mermaid` recording follows this rule and ships with that companion
+  stays self-contained. The README's runnable-examples section links to the
+  example source instead of embedding the full recording; the recording belongs
+  on the relevant guide or showcase page. These sit outside the `demo -- check`
+  invariant, which is about single-component scenes and their gallery references.
+  The `tuika-mermaid` recording follows this rule and ships with that companion
   crate so its crates.io README can show the integration it documents.
 - The image demo is rendered directly by `examples/image_demo.rs` rather than
   recorded, because VHS captures through `ttyd` + `xterm.js`, which implements
