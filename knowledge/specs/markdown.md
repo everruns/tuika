@@ -32,6 +32,23 @@ a document whose prefix cannot change.
 
 ## Design
 
+### Two passes, split at the width
+
+Rendering is parse-then-flatten, and the two passes are separated by what they
+know: parsing resolves block structure, inline styling, and links at *no
+particular width*; flattening turns that intermediate form into width-fitted
+lines. Nothing width-dependent may leak into the first pass.
+
+That boundary is not tidiness — it is what makes both caching strategies
+possible. The settled-prefix cache below can keep parsed blocks across frames
+only because a parsed block is width-independent, and a resize can re-flatten
+the prefix without re-tokenizing it. A parser that wrapped as it went would make
+every width change a full re-parse.
+
+The module's files follow the passes rather than the vocabulary, so a change has
+one obvious home: the intermediate form, the parse pass, the flatten pass, table
+layout, the streaming cache, the image seam, and the view.
+
 ### The settled-prefix cache
 
 The cache boundary is the last *stable block boundary*, not the last newline: a

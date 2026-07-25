@@ -1,0 +1,524 @@
+//! [`MarkdownState`](super::MarkdownState) and the settled-prefix cache.
+//!
+//! The reason streaming is affordable: everything before the last stable block
+//! boundary is parsed *and* flattened once and kept, so a delta re-parses only
+//! the in-flight tail. Without it a streamed render is O(n²) in transcript
+//! length — see the comments on the cache fields.
+
+use ratatui_core::text::Line;
+
+use crate::highlight::CodeHighlighter;
+use crate::style::{StyleSheet, Theme};
+
+use super::flatten::flatten_into;
+use super::image::{ImageResolver, MarkdownImage};
+use super::item::MdItem;
+use super::parse::parse_with;
+
+/// Byte offset of the last *stable block boundary* in `source[from..]`, in
+/// absolute bytes: the position just past the last blank line that sits outside
+/// an open code fence. Blocks before it are complete and safe to cache; the tail
+/// after it is still in flight.
+fn stable_boundary(source: &str, from: usize) -> usize {
+    let mut fence_open = false;
+    let mut boundary = from;
+    let mut pos = from;
+    for line in source[from..].split_inclusive('\n') {
+        let trimmed = line.trim();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            fence_open = !fence_open;
+        } else if trimmed.is_empty() && !fence_open {
+            boundary = pos + line.len();
+        }
+        pos += line.len();
+    }
+    boundary
+}
+
+/// Incremental markdown renderer for streamed text — the state to hold across
+/// frames for a live transcript.
+///
+/// Feed it deltas with [`push_str`](Self::push_str) (or replace the whole buffer
+/// with [`set`](Self::set)); call [`lines`](Self::lines) each frame for the
+/// current width-fitted rendering. Settled blocks — everything before the last
+/// blank line outside an open code fence — are parsed, highlighted, **and
+/// flattened once** and cached; each delta re-does only the in-flight tail. That
+/// keeps a streamed render linear in the transcript length, instead of
+/// re-tokenizing and re-laying-out the whole settled prefix on every delta.
+///
+/// The parse/highlight cache is width-independent. The flattened-line cache is
+/// per-width: a resize re-wraps the settled prefix once (then reuses it), and a
+/// [`set`](Self::set) or [`Theme`] change discards everything. [`lines`](Self::lines)
+/// returns a borrow of the cached line buffer — clone it with `.to_vec()` to own it.
+///
+/// ```
+/// use tuika::prelude::*;
+/// let theme = Theme::default();
+/// let sheet = StyleSheet::from_theme(&theme);
+/// let mut md = MarkdownState::new();
+/// for delta in ["# Title\n\n", "Some **bo", "ld** text.\n"] {
+///     md.push_str(delta);                                  // forward each stream delta
+///     let _lines = md.lines(80, &theme, &sheet, CodeHighlighter::Plain); // render this frame
+/// }
+/// ```
+#[derive(Default)]
+pub struct MarkdownState {
+    source: String,
+    stable_len: usize,
+    stable: Vec<MdItem>,
+    cached_theme: Option<Theme>,
+    cached_sheet: Option<StyleSheet>,
+    // Settled lines are flattened *once*, as blocks settle, and kept here across
+    // frames — never re-flattened while streaming. Without this, `lines` would
+    // re-flatten (re-wrap, re-lay-out, re-clone) the whole settled prefix every
+    // delta, making a streamed render O(n²) in the transcript length. Returning a
+    // borrow of this buffer also avoids re-materializing the prefix per frame.
+    /// Flattened settled lines followed by the current in-flight tail.
+    rendered: Vec<Line<'static>>,
+    /// Count of leading `rendered` entries that are settled (cached) lines; the
+    /// rest is the per-frame tail, dropped and rebuilt on the next call.
+    settled_lines: usize,
+    /// Count of `stable` items already flattened into the settled prefix.
+    flattened_items: usize,
+    /// Width `rendered` was flattened at; a change re-wraps the whole prefix.
+    rendered_width: Option<u16>,
+    /// Optional host hook turning image URLs into pixels; off ⇒ text placeholders.
+    resolver: Option<Box<dyn ImageResolver>>,
+    /// Block images in the settled prefix, with their absolute `rendered` rows —
+    /// accumulated once as blocks settle, mirroring `settled_lines`.
+    settled_images: Vec<MarkdownImage>,
+    /// Settled + tail images with absolute rows, rebuilt each [`lines`](Self::lines)
+    /// call; returned by [`images`](Self::images).
+    frame_images: Vec<MarkdownImage>,
+}
+
+impl MarkdownState {
+    /// An empty renderer.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Render `![alt](url)` images as real pixels, resolving each URL to
+    /// [`ImageData`](crate::term::image::ImageData) via `resolver` (markdown carries only the URL — see
+    /// [`ImageResolver`]). After each [`lines`](Self::lines) call, read the
+    /// reserved placements from [`images`](Self::images) and paint them.
+    ///
+    /// The resolver may be called repeatedly for an image still in the in-flight
+    /// tail (re-parsed each frame), so a host that decodes lazily should cache.
+    pub fn with_image_resolver(mut self, resolver: Box<dyn ImageResolver>) -> Self {
+        self.resolver = Some(resolver);
+        self.reset_cache();
+        self
+    }
+
+    /// The block images reserved by the last [`lines`](Self::lines) call, with
+    /// rows relative to those lines. Empty unless a resolver is attached (see
+    /// [`with_image_resolver`](Self::with_image_resolver)). Paint each by
+    /// rendering an [`Image`](crate::components::Image) at [`MarkdownImage::rect`] against the same area.
+    pub fn images(&self) -> &[MarkdownImage] {
+        &self.frame_images
+    }
+
+    /// Append a streamed delta to the buffer (the settled-prefix cache is kept).
+    pub fn push_str(&mut self, delta: &str) {
+        self.source.push_str(delta);
+    }
+
+    /// Replace the whole buffer, discarding the cache. Use for a non-streaming
+    /// re-render, or to reset between messages.
+    pub fn set(&mut self, source: impl Into<String>) {
+        self.source = source.into();
+        self.reset_cache();
+    }
+
+    /// The accumulated source so far.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    fn reset_cache(&mut self) {
+        self.stable_len = 0;
+        self.stable.clear();
+        self.rendered.clear();
+        self.settled_lines = 0;
+        self.flattened_items = 0;
+        self.rendered_width = None;
+        self.settled_images.clear();
+        self.frame_images.clear();
+    }
+
+    /// Render the current buffer to final, width-fitted styled lines, advancing
+    /// the settled-prefix cache.
+    ///
+    /// `width` word-wraps prose (code and tables stay verbatim); `theme` supplies
+    /// every color via [`Theme::code`](crate::style::CodeTheme); `highlighter` colors
+    /// fenced code ([`CodeHighlighter::Plain`] for none). Draw the result
+    /// **without** further wrapping (e.g. ratatui `Paragraph` with no `.wrap`).
+    ///
+    /// Returns a borrow of an internally-cached line buffer: settled blocks are
+    /// flattened once and only the in-flight tail is recomputed per call, so a
+    /// streamed render stays linear in the transcript length. The borrow is valid
+    /// until the next mutation of `self`; clone with `.to_vec()` if you need to
+    /// own it (e.g. to move into a ratatui `Text`).
+    pub fn lines(
+        &mut self,
+        width: u16,
+        theme: &Theme,
+        sheet: &StyleSheet,
+        highlighter: CodeHighlighter,
+    ) -> &[Line<'static>] {
+        // A theme or stylesheet change restyles everything, so every cache is
+        // invalid (both feed the styles baked into the cached, parsed spans).
+        if self.cached_theme != Some(*theme) || self.cached_sheet != Some(*sheet) {
+            self.cached_theme = Some(*theme);
+            self.cached_sheet = Some(*sheet);
+            self.reset_cache();
+        }
+        // A width change re-wraps every settled line, but the width-independent
+        // parse cache survives; drop only the flattened lines (and their images,
+        // whose row offsets and sizes are width-dependent).
+        if self.rendered_width != Some(width) {
+            self.rendered_width = Some(width);
+            self.rendered.clear();
+            self.settled_lines = 0;
+            self.flattened_items = 0;
+            self.settled_images.clear();
+        }
+
+        let boundary = stable_boundary(&self.source, self.stable_len);
+        if boundary > self.stable_len {
+            let segment = &self.source[self.stable_len..boundary];
+            let mut items =
+                parse_with(segment, theme, sheet, highlighter, self.resolver.as_deref());
+            // Each segment parses in isolation, so the blank-line separation the
+            // boundary sits on is lost — restore it between committed segments.
+            if !items.is_empty()
+                && !self.stable.is_empty()
+                && !matches!(self.stable.last(), Some(MdItem::Blank))
+            {
+                self.stable.push(MdItem::Blank);
+            }
+            self.stable.append(&mut items);
+            self.stable_len = boundary;
+        }
+
+        // Drop the previous frame's tail (and settled/tail gap), then extend the
+        // settled prefix with any blocks that settled since — flattened once.
+        // `flatten` maps each item independently, so appending the new items'
+        // lines equals re-flattening the whole prefix.
+        self.rendered.truncate(self.settled_lines);
+        if self.flattened_items < self.stable.len() {
+            let base = self.rendered.len() as u16;
+            let mut settled_imgs = Vec::new();
+            let settled = flatten_into(
+                &self.stable[self.flattened_items..],
+                width,
+                theme,
+                &mut settled_imgs,
+            );
+            for mut img in settled_imgs {
+                img.row = img.row.saturating_add(base);
+                self.settled_images.push(img);
+            }
+            self.rendered.extend(settled);
+            self.flattened_items = self.stable.len();
+            self.settled_lines = self.rendered.len();
+        }
+
+        let tail = parse_with(
+            &self.source[self.stable_len..],
+            theme,
+            sheet,
+            highlighter,
+            self.resolver.as_deref(),
+        );
+        let mut tail_imgs = Vec::new();
+        let tail_lines = flatten_into(&tail, width, theme, &mut tail_imgs);
+        // The tail begins just past the boundary's blank line; keep that gap.
+        if !self.rendered.is_empty()
+            && !tail_lines.is_empty()
+            && !is_blank_line(self.rendered.last().unwrap())
+            && !is_blank_line(&tail_lines[0])
+        {
+            self.rendered.push(Line::default());
+        }
+        let tail_base = self.rendered.len() as u16;
+        self.rendered.extend(tail_lines);
+
+        // Republish this frame's placements: the settled prefix (fixed) plus the
+        // in-flight tail, each shifted to its absolute row in `rendered`.
+        self.frame_images.clear();
+        self.frame_images
+            .extend(self.settled_images.iter().cloned());
+        for mut img in tail_imgs {
+            img.row = img.row.saturating_add(tail_base);
+            self.frame_images.push(img);
+        }
+        &self.rendered
+    }
+}
+
+/// Whether a rendered line is visually blank (no spans, or only whitespace).
+fn is_blank_line(line: &Line) -> bool {
+    line.spans.iter().all(|s| s.content.trim().is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::testutil::*;
+    use super::super::to_lines;
+    use super::*;
+
+    use crate::style::StyleBundle;
+
+    use crate::highlight::CodeHighlighter;
+    use crate::style::{StyleSheet, Theme};
+
+    use ratatui_core::text::Line;
+
+    #[test]
+    fn sheet_change_invalidates_stream_cache() {
+        use ratatui_core::style::Color;
+        let theme = Theme::default();
+        let mut state = MarkdownState::new();
+        state.set("A [link](https://ex.com) in prose.");
+
+        let default_sheet = StyleSheet::from_theme(&theme);
+        let link_fg = |lines: &[Line<'static>]| {
+            lines
+                .iter()
+                .flat_map(|l| &l.spans)
+                .find(|s| s.content.contains("link"))
+                .expect("link span")
+                .style
+                .fg
+        };
+        assert_eq!(
+            link_fg(state.lines(60, &theme, &default_sheet, CodeHighlighter::Plain)),
+            Some(theme.code.link)
+        );
+
+        // Same theme, different stylesheet: the cached spans must be rebuilt.
+        let recolored = StyleSheet {
+            link: StyleBundle::new().fg(Color::Green),
+            ..default_sheet
+        };
+        assert_eq!(
+            link_fg(state.lines(60, &theme, &recolored, CodeHighlighter::Plain)),
+            Some(Color::Green),
+            "a stylesheet change must invalidate the stream cache"
+        );
+    }
+
+    #[test]
+    fn streaming_matches_one_shot_render() {
+        let full = "# Heading\n\nA paragraph of text.\n\n```rust\nfn main() {}\n```\n\nDone.";
+        let theme = Theme::default();
+        let one_shot: Vec<String> = to_lines(
+            full,
+            40,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+        )
+        .iter()
+        .map(text)
+        .collect();
+
+        // Feed the same content in awkward chunks.
+        let mut state = MarkdownState::new();
+        let mut streamed = Vec::new();
+        for chunk in [
+            "# Head",
+            "ing\n\nA para",
+            "graph of text.\n\n```rus",
+            "t\nfn main() {}\n```\n\nDone.",
+        ] {
+            state.push_str(chunk);
+            streamed = state
+                .lines(
+                    40,
+                    &theme,
+                    &StyleSheet::from_theme(&theme),
+                    CodeHighlighter::Plain,
+                )
+                .iter()
+                .map(text)
+                .collect();
+        }
+        assert_eq!(streamed, one_shot);
+    }
+
+    #[test]
+    fn streaming_then_resize_matches_one_shot_at_new_width() {
+        // The settled-prefix line cache is width-specific: a width change must
+        // re-wrap the whole prefix, not serve stale lines flattened at the old
+        // width. Settle several blocks at a wide width, then render narrower.
+        let theme = Theme::default();
+        let chunks = [
+            "# A wide head",
+            "ing that wraps when narrow\n\nA para",
+            "graph long enough to wrap differently at 24 columns than at 60.\n\n",
+            "- a bullet that also wraps\n\nDone.",
+        ];
+        let full: String = chunks.concat();
+
+        let mut state = MarkdownState::new();
+        for chunk in chunks {
+            state.push_str(chunk);
+            let _ = state.lines(
+                60,
+                &theme,
+                &StyleSheet::from_theme(&theme),
+                CodeHighlighter::Plain,
+            );
+        }
+        let resized: Vec<String> = state
+            .lines(
+                24,
+                &theme,
+                &StyleSheet::from_theme(&theme),
+                CodeHighlighter::Plain,
+            )
+            .iter()
+            .map(text)
+            .collect();
+        let one_shot: Vec<String> = to_lines(
+            &full,
+            24,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+        )
+        .iter()
+        .map(text)
+        .collect();
+        assert_eq!(
+            resized, one_shot,
+            "resized stream must equal a one-shot render at the new width"
+        );
+    }
+
+    #[test]
+    fn streaming_commits_a_stable_prefix() {
+        let theme = Theme::default();
+        let mut state = MarkdownState::new();
+        state.push_str("First paragraph.\n\nSecond a");
+        let _ = state.lines(
+            40,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+        );
+        // The blank line after the first paragraph is a stable boundary, so its
+        // bytes are committed to the cache and won't be re-parsed.
+        assert!(state.stable_len > 0, "expected a committed prefix");
+        assert!(!state.stable.is_empty());
+    }
+
+    #[test]
+    fn stable_boundary_never_splits_open_code_fence() {
+        // A blank line *inside* an unterminated fence is not a boundary.
+        let src = "```\ncode\n\nmore code";
+        assert_eq!(stable_boundary(src, 0), 0);
+        // Once the fence closes, the trailing blank becomes a boundary.
+        let closed = "```\ncode\n```\n\nafter";
+        assert!(stable_boundary(closed, 0) > 0);
+    }
+
+    #[test]
+    fn theme_change_invalidates_cache() {
+        let mut state = MarkdownState::new();
+        state.push_str("Para one.\n\nPara two.\n\ntail");
+        let a = Theme::default();
+        let _ = state.lines(40, &a, &StyleSheet::from_theme(&a), CodeHighlighter::Plain);
+        assert!(state.stable_len > 0);
+
+        let mut b = Theme::default();
+        b.code.heading = ratatui_core::style::Color::Indexed(200);
+        let _ = state.lines(40, &b, &StyleSheet::from_theme(&b), CodeHighlighter::Plain);
+        // Cache was rebuilt under the new theme; still consistent, no stale panic.
+        assert_eq!(state.cached_theme, Some(b));
+    }
+
+    #[test]
+    fn streaming_state_reports_a_block_image_placement() {
+        let theme = Theme::default();
+        let mut md = MarkdownState::new().with_image_resolver(Box::new(StubResolver));
+        md.set("intro line\n\n![a cat](ok.png)\n\ntail line");
+        let lines = md
+            .lines(
+                40,
+                &theme,
+                &StyleSheet::from_theme(&theme),
+                CodeHighlighter::Plain,
+            )
+            .to_vec();
+        let imgs = md.images();
+        assert_eq!(imgs.len(), 1, "one block image reported");
+        let img = &imgs[0];
+        assert_eq!(img.alt, "a cat");
+        // The reported row is inside the rendered lines and is a reserved blank.
+        assert!((img.row as usize) < lines.len(), "row within lines");
+        assert!(
+            is_blank_line(&lines[img.row as usize]),
+            "reserved row is blank"
+        );
+        // "intro line" is above the image, "tail line" below it.
+        assert!(text(&lines[0]).contains("intro"));
+    }
+
+    #[test]
+    fn streaming_image_row_matches_one_shot() {
+        // Feeding the same document incrementally lands the image on the same row
+        // as parsing it whole — the settled/tail offset bookkeeping is consistent.
+        let theme = Theme::default();
+        let doc = "# Title\n\nbefore\n\n![pic](ok.png)\n\nafter paragraph here";
+
+        let mut whole = MarkdownState::new().with_image_resolver(Box::new(StubResolver));
+        whole.set(doc);
+        let _ = whole.lines(
+            30,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+        );
+        let whole_row = whole.images()[0].row;
+
+        let mut streamed = MarkdownState::new().with_image_resolver(Box::new(StubResolver));
+        for chunk in [
+            "# Title\n\nbe",
+            "fore\n\n![pic](ok",
+            ".png)\n\nafter ",
+            "paragraph here",
+        ] {
+            streamed.push_str(chunk);
+            let _ = streamed.lines(
+                30,
+                &theme,
+                &StyleSheet::from_theme(&theme),
+                CodeHighlighter::Plain,
+            );
+        }
+        assert_eq!(streamed.images().len(), 1);
+        assert_eq!(
+            streamed.images()[0].row,
+            whole_row,
+            "streamed image row matches one-shot"
+        );
+    }
+
+    #[test]
+    fn no_resolver_means_no_streaming_placements() {
+        let theme = Theme::default();
+        let mut md = MarkdownState::new();
+        md.set("![a cat](ok.png)");
+        let _ = md.lines(
+            40,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+        );
+        assert!(md.images().is_empty(), "images() empty without a resolver");
+    }
+}
