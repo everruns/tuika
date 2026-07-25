@@ -1,7 +1,9 @@
 # Built with tuika
 
 Applications whose terminal UI is built on tuika — what they are, and what the
-toolkit looks like once it is carrying a real product.
+toolkit looks like once it is carrying a real product. At the end,
+[one in-repo example](#codex-cli-replica-in-repo-example) that reproduces a
+well-known agent UI rather than shipping a product of its own.
 
 Building something on tuika? Open a PR adding it here.
 
@@ -39,3 +41,30 @@ requests are in flight.
 
 The dashboard above is under ~5 requests/second across four models, with rate
 limit and server-error injection turned on.
+
+## Codex CLI replica (in-repo example)
+
+> **This is a replica, not Codex.** It is an example in *this* repository that
+> reproduces the look and interaction shape of OpenAI's Codex CLI on tuika. It is
+> not the Codex CLI, it is not built or endorsed by OpenAI, and no part of Codex
+> is used or included. "Codex" and "OpenAI" are their owners' marks, referenced
+> here only to say what the UI imitates.
+>
+> Nothing behind the interface is real: there is no model, no network, and no
+> shell. A turn is a scripted sequence chosen from the prompt's keywords and
+> revealed frame by frame, so the recording below is deterministic and offline.
+
+Why it exists: a component gallery shows one widget at a time, and an agent CLI
+is the hardest shape to get right from parts — a transcript of heterogeneous
+history items that must scroll as one, a composer whose `/` and `@` change what
+the keyboard means, a modal escalation prompt, and answers that stream in while
+the user scrolls. Building it surfaced two gaps that became
+[`ItemScroll`](components.md#itemscroll) and the
+[composer token seams](components.md#inline-tokens-mentions-commands-anything).
+
+[`examples/codex/`](../examples/codex) · `cargo run --example codex`
+
+<img src="../examples/codex/codex.gif" width="880" alt="The codex example, a replica of the Codex CLI built on tuika: a slash-command popup filtering as it is typed, an @-file picker completing a path in the composer, then a scripted turn — streamed reasoning, an approval prompt for a destructive command answered from the keyboard, command output, and a streamed markdown answer.">
+
+The example prints its frames as text too — `cargo run --example codex -- --dump`
+— which is how its layout is checked without a recorder.

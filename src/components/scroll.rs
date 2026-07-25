@@ -322,36 +322,44 @@ impl View for Scroll {
         }
 
         if overflow && self.scrollbar && text_width < area.width {
-            self.draw_scrollbar(area, content_h, surface, ctx);
+            draw_scrollbar(area, self.offset, content_h, surface, ctx);
         }
     }
 }
 
-impl Scroll {
-    fn draw_scrollbar(&self, area: Rect, content_h: usize, surface: &mut Surface, ctx: &RenderCtx) {
-        let track_x = area.right() - 1;
-        let track_h = area.height;
-        let track_h_u = track_h as usize;
-        let content_h = content_h.max(1);
-        let max_offset = content_h.saturating_sub(area.height as usize).max(1);
-        // Thumb size proportional to the visible fraction, at least one cell. All
-        // math is `usize` so a > u16::MAX-row transcript can't wrap the ratios;
-        // the final screen positions are bounded by `track_h` and cast back down.
-        let thumb_h = ((track_h_u * track_h_u) / content_h).max(1).min(track_h_u) as u16;
-        let travel = track_h.saturating_sub(thumb_h);
-        let thumb_y = area.y + ((self.offset * travel as usize) / max_offset) as u16;
-        let track_style = Style::default().fg(ctx.theme.dim);
-        let thumb_style = Style::default().fg(ctx.theme.muted);
-        for row in 0..track_h {
-            let y = area.y + row;
-            let within = y >= thumb_y && y < thumb_y.saturating_add(thumb_h);
-            let (glyph, style) = if within {
-                ('█', thumb_style)
-            } else {
-                ('│', track_style)
-            };
-            surface.set(track_x, y, glyph, style);
-        }
+/// Draw the overflow scrollbar in `area`'s last column.
+///
+/// Shared with [`ItemScroll`](crate::ItemScroll) so both viewports show the same
+/// track and thumb; a host that scrolls its own content never sees this.
+pub(crate) fn draw_scrollbar(
+    area: Rect,
+    offset: usize,
+    content_h: usize,
+    surface: &mut Surface,
+    ctx: &RenderCtx,
+) {
+    let track_x = area.right() - 1;
+    let track_h = area.height;
+    let track_h_u = track_h as usize;
+    let content_h = content_h.max(1);
+    let max_offset = content_h.saturating_sub(area.height as usize).max(1);
+    // Thumb size proportional to the visible fraction, at least one cell. All
+    // math is `usize` so a > u16::MAX-row transcript can't wrap the ratios;
+    // the final screen positions are bounded by `track_h` and cast back down.
+    let thumb_h = ((track_h_u * track_h_u) / content_h).max(1).min(track_h_u) as u16;
+    let travel = track_h.saturating_sub(thumb_h);
+    let thumb_y = area.y + ((offset.min(max_offset) * travel as usize) / max_offset) as u16;
+    let track_style = Style::default().fg(ctx.theme.dim);
+    let thumb_style = Style::default().fg(ctx.theme.muted);
+    for row in 0..track_h {
+        let y = area.y + row;
+        let within = y >= thumb_y && y < thumb_y.saturating_add(thumb_h);
+        let (glyph, style) = if within {
+            ('█', thumb_style)
+        } else {
+            ('│', track_style)
+        };
+        surface.set(track_x, y, glyph, style);
     }
 }
 

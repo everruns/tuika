@@ -333,6 +333,29 @@ state.clamp_x(widest_line_w, viewport_w);    // keep the pan within the content
 view! { node(Scroll::new(lines, &state)) }
 ```
 
+### `ItemScroll`
+
+The same viewport over **items** instead of lines: `Vec<Element>`, each measured
+at the render width and stacked with an optional `gap`. Scrolling is by row, not
+by item, so an entry taller than the space left clips at the viewport edge and
+scrolls through it — which is what a chat transcript, a feed, or any history of
+laid-out things needs. Reach for `Scroll` when the content really is lines
+(logs, prose); reach for this when an entry is a panel, a table, a diff, or a
+nested layout. `measure_height` reports the row count so the host can reconcile
+its `ScrollState` before painting, and `windowed` takes just the visible slice
+plus the true height for lists too long to measure every frame.
+[API](https://docs.rs/tuika/latest/tuika/struct.ItemScroll.html)
+
+<img src="demos/item_scroll.gif" width="880" alt="ItemScroll demo">
+
+```rust
+use tuika::{Element, ItemScroll, ScrollState, view};
+let items: Vec<Element> = history.iter().map(|entry| entry.view()).collect();
+let content_h = ItemScroll::measure_height(&items, width, 1, true);
+state.clamp(content_h, viewport_h);          // reconcile before the paint
+view! { node(ItemScroll::new(items, &state).gap(1)) }
+```
+
 ### `SelectList` + `SelectState`
 
 A selectable list; `SelectState` navigates with the arrow keys (wrapping),
@@ -425,7 +448,8 @@ renders a snapshot; the host places the terminal cursor from
 `TextInputState::cursor_screen`. Configure Enter vs Shift+Enter with
 `TextInputMode` (`SubmitOnEnter` by default): the other chord inserts a newline.
 Ctrl+J always inserts a newline (raw-mode LF from terminals without enhanced
-keyboard reporting).
+keyboard reporting). `placeholder` fills an empty buffer, and `highlights` paints
+host-computed `TextSpan` ranges over the text.
 [API](https://docs.rs/tuika/latest/tuika/struct.TextInput.html)
 
 <img src="demos/textinput.gif" width="880" alt="TextInput demo">
@@ -439,6 +463,34 @@ view! {
         node(TextInput::new(&state))
     }
 }
+```
+
+#### Inline tokens: `@mentions`, `/commands`, anything
+
+A composer usually wants more than plain text: a `@` that completes a file, a
+`/` that opens a command palette, a `#` that links an issue. `Trigger` declares
+*where* an opening character counts (`TriggerAnchor::{Anywhere, WordStart,
+LineStart, BufferStart}`) and whether the token stops at whitespace; the state
+finds them. What they **mean** — which popup opens, what completes, how they are
+colored — stays in the host, so any app can define its own set.
+
+```rust
+use tuika::{TextInput, TextInputState, Trigger, TriggerAnchor};
+
+let triggers = [
+    Trigger::new('/').anchor(TriggerAnchor::BufferStart), // a command palette
+    Trigger::new('@'),                                    // a file mention
+];
+
+if let Some(token) = state.active_token(&triggers) {      // cursor inside one?
+    let rows = complete(token.trigger, token.query());    // host's own source
+    // …and on confirm, splice the choice back in:
+    state.replace_token(&token, "@src/lib.rs ");
+}
+
+// Color every token, whether or not the cursor is in it.
+let spans = state.tokens(&triggers).iter().map(|t| t.span(mention_style)).collect();
+view! { node(TextInput::new(&state).highlights(spans)) }
 ```
 
 ## Notifications & console

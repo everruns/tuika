@@ -50,6 +50,173 @@ pub enum TextInputMode {
     SubmitOnShiftEnter,
 }
 
+/// Where a [`Trigger`] character is allowed to open a token.
+///
+/// This is the whole of tuika's opinion about inline tokens: *where* the opening
+/// character may sit. What `@` or `/` (or `#`, or `:`) then **means** — a file
+/// mention, a command, an issue, an emoji — is the host's, and so is what it
+/// shows for one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TriggerAnchor {
+    /// Any position, mid-word included (`foo@bar` opens a token at the `@`).
+    Anywhere,
+    /// Start of a word: the first column, or right after whitespace.
+    #[default]
+    WordStart,
+    /// The first character of a logical line.
+    LineStart,
+    /// The very first character of the buffer — a whole-input mode switch, the
+    /// way a command palette treats a leading `/`.
+    BufferStart,
+}
+
+/// A character that opens an inline token in a [`TextInputState`].
+///
+/// A host declares the triggers it cares about and asks the state for the
+/// [`Token`]s they produce ([`tokens`](TextInputState::tokens),
+/// [`active_token`](TextInputState::active_token)); tuika finds and delimits
+/// them, and does nothing else with them. Popups, completion sources, and
+/// styling stay in the host, so a different app can give `/` and `@` entirely
+/// different semantics — or use neither.
+///
+/// ```
+/// use tuika::{TextInputState, Trigger, TriggerAnchor};
+///
+/// // `/command` only as the whole input's first character; `@mention` anywhere
+/// // a word starts; `#123` mid-word too.
+/// let triggers = [
+///     Trigger::new('/').anchor(TriggerAnchor::BufferStart),
+///     Trigger::new('@'),
+///     Trigger::new('#').anchor(TriggerAnchor::Anywhere),
+/// ];
+///
+/// let state = TextInputState::from_text("review @src/lib.rs for #42");
+/// let tokens = state.tokens(&triggers);
+/// assert_eq!(tokens.len(), 2);
+/// assert_eq!(tokens[0].text, "@src/lib.rs");
+/// assert_eq!(tokens[0].query(), "src/lib.rs");
+/// assert_eq!(tokens[1].text, "#42");
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Trigger {
+    /// The character that opens the token.
+    pub start: char,
+    /// Where that character may appear for it to count.
+    pub anchor: TriggerAnchor,
+    /// End the token at the first whitespace (the default). When false it runs
+    /// to the end of its logical line, so a query can contain spaces —
+    /// `/model gpt 5` as one token rather than three.
+    pub stop_at_whitespace: bool,
+}
+
+impl Trigger {
+    /// A trigger on `start`, anchored at a word start, ending at whitespace.
+    pub fn new(start: char) -> Self {
+        Self {
+            start,
+            anchor: TriggerAnchor::default(),
+            stop_at_whitespace: true,
+        }
+    }
+
+    /// Restrict where the trigger character may appear.
+    pub fn anchor(mut self, anchor: TriggerAnchor) -> Self {
+        self.anchor = anchor;
+        self
+    }
+
+    /// Let the token run to the end of its line instead of stopping at the
+    /// first whitespace.
+    pub fn to_line_end(mut self) -> Self {
+        self.stop_at_whitespace = false;
+        self
+    }
+
+    /// Whether `col` on `line` is a position this trigger may open at.
+    fn anchored_at(&self, chars: &[char], row: usize, col: usize) -> bool {
+        match self.anchor {
+            TriggerAnchor::Anywhere => true,
+            TriggerAnchor::WordStart => {
+                col == 0 || chars.get(col - 1).is_some_and(|c| c.is_whitespace())
+            }
+            TriggerAnchor::LineStart => col == 0,
+            TriggerAnchor::BufferStart => row == 0 && col == 0,
+        }
+    }
+}
+
+/// A token a [`Trigger`] matched: where it sits and what it says.
+///
+/// Positions are **char** indices into the logical line, matching
+/// [`TextInputState::cursor`], so a host can turn a token into a
+/// [`TextSpan`] ([`span`](Token::span)) or replace it
+/// ([`replace_token`](TextInputState::replace_token)) without re-deriving them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Token {
+    /// The trigger character that opened it.
+    pub trigger: char,
+    /// Logical line the token is on.
+    pub row: usize,
+    /// Char index of the trigger character.
+    pub start: usize,
+    /// Char index one past the token's last character.
+    pub end: usize,
+    /// The token including its trigger character (`"@src/lib.rs"`).
+    pub text: String,
+}
+
+impl Token {
+    /// The token without its trigger character — what a host filters on.
+    pub fn query(&self) -> &str {
+        let mut chars = self.text.chars();
+        chars.next();
+        chars.as_str()
+    }
+
+    /// This token as a styled range, for [`TextInput::highlights`].
+    pub fn span(&self, style: Style) -> TextSpan {
+        TextSpan {
+            row: self.row,
+            start: self.start,
+            end: self.end,
+            style,
+        }
+    }
+}
+
+/// A styled char range within one logical line, applied by
+/// [`TextInput::highlights`].
+///
+/// Ranges are host-computed: from [`Token`]s, a regex, a spell checker, a
+/// syntax pass — tuika only paints them. Later spans win where they overlap.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextSpan {
+    /// Logical line the range is on.
+    pub row: usize,
+    /// First char index covered.
+    pub start: usize,
+    /// One past the last char index covered.
+    pub end: usize,
+    /// Style painted over the base text style.
+    pub style: Style,
+}
+
+impl TextSpan {
+    /// A styled range over `start..end` of logical line `row`.
+    pub fn new(row: usize, start: usize, end: usize, style: Style) -> Self {
+        Self {
+            row,
+            start,
+            end,
+            style,
+        }
+    }
+
+    fn covers(&self, row: usize, col: usize) -> bool {
+        self.row == row && col >= self.start && col < self.end
+    }
+}
+
 /// Result of applying an Enter chord to a text input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextInputEvent {
@@ -509,6 +676,78 @@ impl TextInputState {
         }
     }
 
+    /// Every token in the buffer matched by any of `triggers`, in reading order.
+    ///
+    /// Scanning is left to right and the first trigger that matches at a
+    /// position wins, so overlapping declarations resolve by their order in
+    /// `triggers`.
+    pub fn tokens(&self, triggers: &[Trigger]) -> Vec<Token> {
+        let mut out = Vec::new();
+        for (row, line) in self.lines.iter().enumerate() {
+            let chars: Vec<char> = line.chars().collect();
+            let mut col = 0;
+            while col < chars.len() {
+                let Some(trigger) = triggers
+                    .iter()
+                    .find(|t| t.start == chars[col] && t.anchored_at(&chars, row, col))
+                else {
+                    col += 1;
+                    continue;
+                };
+                let mut end = col + 1;
+                if trigger.stop_at_whitespace {
+                    while end < chars.len() && !chars[end].is_whitespace() {
+                        end += 1;
+                    }
+                } else {
+                    end = chars.len();
+                }
+                out.push(Token {
+                    trigger: trigger.start,
+                    row,
+                    start: col,
+                    end,
+                    text: chars[col..end].iter().collect(),
+                });
+                col = end.max(col + 1);
+            }
+        }
+        out
+    }
+
+    /// The token the cursor is inside, if any — what a host opens a completion
+    /// popup for.
+    ///
+    /// The cursor counts as inside from just after the trigger character
+    /// through the token's end, so typing `@s` keeps the popup open and moving
+    /// left onto the `@` itself closes it.
+    pub fn active_token(&self, triggers: &[Trigger]) -> Option<Token> {
+        self.tokens(triggers)
+            .into_iter()
+            .find(|t| t.row == self.row && self.col > t.start && self.col <= t.end)
+    }
+
+    /// Replace `token`'s range with `replacement`, leaving the cursor after it.
+    ///
+    /// This is completion: the host picked a row in its popup and hands back the
+    /// text — `"@src/lib.rs "` for a file, `"/model "` for a command. The
+    /// replacement is inserted verbatim, trailing space included or not, because
+    /// only the host knows whether its token type wants one.
+    pub fn replace_token(&mut self, token: &Token, replacement: &str) {
+        let Some(line) = self.lines.get_mut(token.row) else {
+            return;
+        };
+        let chars: Vec<char> = line.chars().collect();
+        let start = token.start.min(chars.len());
+        let end = token.end.min(chars.len()).max(start);
+        let mut next: String = chars[..start].iter().collect();
+        next.push_str(replacement);
+        next.extend(chars[end..].iter());
+        *line = next;
+        self.row = token.row;
+        self.col = start + replacement.chars().count();
+    }
+
     /// Number of visual rows the text occupies at `width`.
     pub fn visual_height(&self, width: u16) -> u16 {
         wrap_visual_rows(&self.lines, width).len().max(1) as u16
@@ -649,6 +888,10 @@ pub struct TextInput {
     /// Logical cursor `(row, col)`, so a bounded render can scroll to it.
     cursor: (usize, usize),
     style: Style,
+    /// Host-supplied styled ranges painted over `style`.
+    highlights: Vec<TextSpan>,
+    /// Shown, in its own style, while the buffer is empty.
+    placeholder: Option<(String, Style)>,
 }
 
 impl TextInput {
@@ -658,6 +901,8 @@ impl TextInput {
             lines: state.lines.clone(),
             cursor: (state.row, state.col),
             style: Style::default(),
+            highlights: Vec::new(),
+            placeholder: None,
         }
     }
 
@@ -665,6 +910,51 @@ impl TextInput {
     pub fn style(mut self, style: Style) -> Self {
         self.style = style;
         self
+    }
+
+    /// Paint `spans` over the base style — a mention in one color, a command in
+    /// another, an unknown path struck through.
+    ///
+    /// The ranges are the host's to compute; [`Token::span`] turns a trigger
+    /// match into one directly. Where spans overlap, the last one wins.
+    ///
+    /// ```
+    /// use ratatui_core::style::{Color, Style};
+    /// use tuika::{TextInput, TextInputState, Trigger};
+    ///
+    /// let state = TextInputState::from_text("ship @docs/readme.md");
+    /// let mention = Style::default().fg(Color::Cyan);
+    /// let view = TextInput::new(&state).highlights(
+    ///     state.tokens(&[Trigger::new('@')]).iter().map(|t| t.span(mention)).collect(),
+    /// );
+    /// # let _ = view;
+    /// ```
+    pub fn highlights(mut self, spans: Vec<TextSpan>) -> Self {
+        self.highlights = spans;
+        self
+    }
+
+    /// Text drawn in place of an empty buffer, in its own style.
+    ///
+    /// The cursor still sits at the start of the input, so the host places it
+    /// through [`TextInputState::cursor_screen`] exactly as when there is text.
+    pub fn placeholder(mut self, text: impl Into<String>, style: Style) -> Self {
+        self.placeholder = Some((text.into(), style));
+        self
+    }
+
+    /// Style for the char at `(row, col)`: the base, patched by every covering
+    /// highlight in order.
+    fn style_at(&self, row: usize, col: usize) -> Style {
+        self.highlights
+            .iter()
+            .filter(|span| span.covers(row, col))
+            .fold(self.style, |style, span| style.patch(span.style))
+    }
+
+    /// Whether the buffer is a single empty line (so the placeholder shows).
+    fn is_empty(&self) -> bool {
+        self.lines.len() == 1 && self.lines[0].is_empty()
     }
 
     /// Visual-row offset that keeps the cursor on screen in `height` rows.
@@ -685,6 +975,12 @@ impl View for TextInput {
         if area.width == 0 || area.height == 0 {
             return;
         }
+        if let Some((text, style)) = &self.placeholder
+            && self.is_empty()
+        {
+            surface.set_string(area.x, area.y, text, *style);
+            return;
+        }
         let offset = self.scroll_offset(area.width, area.height) as usize;
         for (i, vr) in wrap_visual_rows(&self.lines, area.width)
             .into_iter()
@@ -696,12 +992,12 @@ impl View for TextInput {
                 break;
             }
             let mut x = area.x;
-            for ch in vr.chars {
+            for (n, ch) in vr.chars.into_iter().enumerate() {
                 let w = UnicodeWidthChar::width(ch).unwrap_or(0) as u16;
                 if w == 0 || x >= area.right() {
                     continue;
                 }
-                surface.set(x, y, ch, self.style);
+                surface.set(x, y, ch, self.style_at(vr.logical, vr.start + n));
                 x = x.saturating_add(w);
             }
         }
@@ -712,9 +1008,12 @@ impl View for TextInput {
 mod tests {
     use super::*;
     use crate::event::{Event, Key, KeyCode};
-    use crate::test_support::{render_el, render_view_rows};
-    use crate::view::element;
+    use crate::style::Theme;
+    use crate::surface::Surface;
+    use crate::test_support::{buffer, render_el, render_view_rows};
+    use crate::view::{RenderCtx, element};
     use ratatui_core::layout::Rect;
+    use ratatui_core::style::Color;
 
     fn press(state: &mut TextInputState, code: KeyCode) -> bool {
         matches!(
@@ -1162,5 +1461,106 @@ mod tests {
         assert!(press_ctrl(&mut state, KeyCode::Char('j')));
         assert_eq!(state.text(), "ab\n");
         assert_eq!(state.cursor(), (1, 0));
+    }
+
+    // -- triggers, tokens, and highlighting ---------------------------------
+
+    #[test]
+    fn tokens_respect_each_trigger_anchor() {
+        let state = TextInputState::from_text("/model gpt\nsee @src/lib.rs and me@example.com");
+        let triggers = [
+            Trigger::new('/').anchor(TriggerAnchor::BufferStart),
+            Trigger::new('@'),
+        ];
+        let found = state.tokens(&triggers);
+        // `/` counts only as the buffer's first char; `@` only at a word start,
+        // so the address's `@` is not a mention.
+        assert_eq!(found.len(), 2);
+        assert_eq!((found[0].trigger, found[0].text.as_str()), ('/', "/model"));
+        assert_eq!(
+            (found[1].trigger, found[1].text.as_str(), found[1].row),
+            ('@', "@src/lib.rs", 1)
+        );
+    }
+
+    #[test]
+    fn a_trigger_can_span_a_query_with_spaces() {
+        let state = TextInputState::from_text("/model gpt 5");
+        let to_end = [Trigger::new('/')
+            .anchor(TriggerAnchor::BufferStart)
+            .to_line_end()];
+        let tokens = state.tokens(&to_end);
+        assert_eq!(tokens[0].text, "/model gpt 5");
+        assert_eq!(tokens[0].query(), "model gpt 5");
+    }
+
+    #[test]
+    fn active_token_follows_the_cursor() {
+        let mut state = TextInputState::from_text("ship @doc");
+        let triggers = [Trigger::new('@')];
+        // Cursor at the end, inside the mention.
+        assert_eq!(state.active_token(&triggers).unwrap().query(), "doc");
+
+        // Moving onto the `@` itself leaves the token: a popup would close.
+        state.set_cursor(0, 5);
+        assert!(state.active_token(&triggers).is_none());
+
+        // Just after the trigger, with nothing typed yet, is still inside it.
+        state.set_cursor(0, 6);
+        assert_eq!(state.active_token(&triggers).unwrap().query(), "doc");
+    }
+
+    #[test]
+    fn replace_token_completes_in_place() {
+        let mut state = TextInputState::from_text("ship @doc now");
+        state.set_cursor(0, 9);
+        let token = state.active_token(&[Trigger::new('@')]).unwrap();
+        state.replace_token(&token, "@docs/readme.md");
+        assert_eq!(state.text(), "ship @docs/readme.md now");
+        // Cursor lands after the replacement, ready to keep typing.
+        assert_eq!(state.cursor(), (0, 20));
+    }
+
+    #[test]
+    fn highlights_style_only_their_range() {
+        let state = TextInputState::from_text("hi @you");
+        let mention = Style::default().fg(Color::Blue);
+        let spans: Vec<TextSpan> = state
+            .tokens(&[Trigger::new('@')])
+            .iter()
+            .map(|t| t.span(mention))
+            .collect();
+        let view = TextInput::new(&state)
+            .style(Style::default().fg(Color::White))
+            .highlights(spans);
+
+        let theme = Theme::default();
+        let mut buf = buffer(8, 1);
+        let area = buf.area;
+        let ctx = RenderCtx::new(&theme);
+        view.render(area, &mut Surface::new(&mut buf, area), &ctx);
+        assert_eq!(buf[(0, 0)].fg, Color::White); // 'h'
+        assert_eq!(buf[(3, 0)].fg, Color::Blue); // '@'
+        assert_eq!(buf[(6, 0)].fg, Color::Blue); // 'u'
+    }
+
+    #[test]
+    fn placeholder_shows_only_while_empty() {
+        let mut state = TextInputState::new();
+        let dim = Style::default().fg(Color::DarkGray);
+        let rows = render_view_rows(
+            &TextInput::new(&state).placeholder("Ask me something", dim),
+            18,
+            1,
+        );
+        assert_eq!(rows[0].trim_end(), "Ask me something");
+
+        state.insert_char('x');
+        let rows = render_view_rows(
+            &TextInput::new(&state).placeholder("Ask me something", dim),
+            18,
+            1,
+        );
+        assert_eq!(rows[0].trim_end(), "x");
     }
 }

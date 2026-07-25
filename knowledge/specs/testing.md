@@ -103,6 +103,18 @@ baseline updated in a separate commit hides which change moved the numbers. To
 refresh from CI's exact environment, dispatch the workflow manually and commit
 the uploaded `iai-baseline` artifact.
 
+**Adding code to the library counts as a legitimate shift, even code the
+benchmark never calls.** rustc partitions a crate into codegen units, so a new
+module changes which functions share a unit and therefore which ones get inlined;
+a hot path whose source did not change can move several percent. Adding
+`ItemScroll` and the composer token seams moved the *markdown* benches — whose
+whole measured path was byte-identical — by 3–5%. Before blessing that, confirm
+it is what it looks like: measure the parent commit (it should reproduce the
+committed baseline exactly), then re-add one file at a time until the counts
+move. If the increase tracks the size of unrelated additions rather than any
+change on the measured path, it is codegen layout, not work. A shift that
+survives that isolation is a real regression and needs a fix, not a blessing.
+
 Blessing locally is legitimate when the toolchain matches CI's: counts measured
 on a matching local toolchain have landed bit-identical on the scroll benches and
 inside 0.2% on the markdown and highlighter ones — far under the ±2% tolerance.

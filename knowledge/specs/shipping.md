@@ -72,7 +72,11 @@ suggestions.
 9. **Follow-ups surfaced.** TODOs, partial fixes, declined suggestions, missed
    edges, and spec/doc drift are explicitly listed under **Follow-ups** in the PR
    body (or `"No follow-ups."` if none).
-10. **Safe landing.** CI is green before the change lands. When a PR is used, it
+10. **Safe landing.** CI is green before the change lands, and the change lands
+    as a **single commit** — squash-merged from a PR, or squashed locally before
+    a direct push. A branch's working history is the author's; `main`'s history
+    is one commit per change, which is what makes it bisectable and revertable.
+    When a PR is used, it
     uses the template and every review comment is addressed (via a code change
     when needed), answered inline on its own thread with a written reply, and
     marked resolved before merge — an inline reply is required even when the
@@ -121,7 +125,8 @@ Use the smallest set that gives high confidence.
 - Pull requests are for external contributions. Maintainers may land directly on
   `main`; the bar is unchanged either way.
 - Conventional Commits PR titles under 70 characters.
-- Squash and Merge only.
+- Squash and Merge only; a direct push squashes locally first. Either way `main`
+  gains exactly one commit per change.
 - GitHub Actions is the CI source of truth.
 - Never merge red CI.
 - Every commit reaching `main` is signed. Signatures are not restored by a later

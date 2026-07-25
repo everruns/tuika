@@ -90,9 +90,11 @@ component. Linked names below jump straight to their demo.
 | `Responsive` / `Constrained` | Breakpoint selection and min/max measurement |
 | [`Boxed`](docs/components.md#boxed) | Border + padding + title, focus-aware |
 | `Spacer` | Flexible filler |
-| [`Scroll`](docs/components.md#scroll--scrollstate) (+ `ScrollState`) | Vertical scroll viewport + scrollbar |
+| [`Scroll`](docs/components.md#scroll--scrollstate) (+ `ScrollState`) | Vertical scroll viewport + scrollbar over lines |
+| [`ItemScroll`](docs/components.md#itemscroll) | The same viewport over laid-out items (panels, tables, nested layouts) |
 | [`SelectList`](docs/components.md#selectlist--selectstate) (+ `SelectState`) | Selectable list |
 | `Slider` (+ `SliderState`) | One-row value picker over a numeric range |
+| [`TextInput`](docs/components.md#textinput--textinputstate) (+ `TextInputState`) | Multi-line composer: soft-wrap, placeholder, highlighted ranges, `@`/`/` tokens |
 | [`StatusBar`](docs/components.md#statusbar) | One-row left/right status segments |
 | [`Tabs`](docs/components.md#tabs--tabsstate) / `KeyHints` | Host-state tab navigation and command hints |
 | `TabSelect` (+ `TabSelectState`) | Value-selecting segmented control |
@@ -202,6 +204,21 @@ Each enters the alternate screen; press `q` (or `esc`) to quit.
 | [`async_dashboard`](examples/async_dashboard.rs) | `cargo run --example async_dashboard --features async` | `AsyncRunner` polling on a Tokio runtime, no shared state |
 | [`mouse`](examples/mouse.rs)     | `cargo run --example mouse`      | drag-to-select + highlight + OSC 52 copy, clickable buttons |
 | [`image`](examples/image.rs)     | `cargo run --example image`      | `Image` over reserved cells (Kitty/iTerm2/Sixel), alt-text fallback |
+| [`codex`](examples/codex)        | `cargo run --example codex`      | a whole coding-agent TUI — [demo](docs/showcases.md#codex-cli-replica-in-repo-example) (a UI replica, see below): streaming transcript, composer, `@`/`/` pickers, approval prompt |
+
+Each of the single-topic examples above quits on `q`/`esc`. [`codex`](examples/codex)
+is the composite one — those keys are text there, so it quits with `⌃C` — and it
+prints canned frames without a terminal at all with
+`cargo run --example codex -- --dump`.
+
+It is a **replica of the OpenAI Codex CLI's interface, not the Codex CLI**: an
+example built on tuika, unaffiliated with and unendorsed by OpenAI, with no model,
+network, or shell behind it — a turn is a scripted sequence revealed frame by
+frame. See the [showcase entry](docs/showcases.md#codex-cli-replica-in-repo-example).
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/everruns/tuika/main/examples/codex/codex.gif" width="880" alt="The codex example running: a slash-command popup filtering as it is typed, an @-file picker completing a path in the composer, then a scripted turn — streamed reasoning, an approval prompt for a destructive command answered from the keyboard, command output, and a streamed markdown answer.">
+</p>
 
 
 ## Declarative DSL (`view!`)

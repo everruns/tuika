@@ -76,6 +76,11 @@ staged by hand. The rule is that the *scene registry is the source of truth*:
 - The README hero and the theme gallery come from the shared `scene()` in
   `examples/screenshot.rs`, so hero and themes cannot drift apart.
 - The stylesheet gallery comes from the variant list in `examples/styling.rs`.
+- A recording of a whole runnable example is driven against that example's own
+  binary under VHS, so it cannot drift from what the example does, and is
+  committed beside the example rather than under `docs/` so the example directory
+  stays self-contained. These sit outside the `demo -- check` invariant, which is
+  about single-component scenes and their gallery references.
 - The image demo is rendered directly by `examples/image_demo.rs` rather than
   recorded, because VHS captures through `ttyd` + `xterm.js`, which implements
   no graphics protocol and would only ever show the text fallback.
@@ -135,6 +140,14 @@ Three constraints govern any new showcase scene:
 - **It must be captured at the gallery's pixel density, in real time.** See
   [Capture geometry](#capture-geometry): a showcase sits beside component demos
   on a page, so a softer one reads as a defect.
+- **A replica must be labeled as one, adjacent to the image.** The page also
+  carries an in-repo example that imitates another product's UI (the Codex CLI
+  replica). Imitation is legitimate — it is how the toolkit gets exercised at
+  application scale — but a reader must not be able to mistake the recording for
+  the product, so the entry states plainly that it is a replica, that it is
+  unaffiliated with and unendorsed by the product's owner, and that nothing
+  behind the interface is real. The same disclaimer belongs anywhere the
+  recording is embedded.
 
 ### Capture geometry
 

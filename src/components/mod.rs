@@ -1,9 +1,9 @@
 //! Component library.
 //!
 //! Every component implements [`View`](crate::view::View). Layout
-//! containers ([`Flex`], [`Boxed`]) nest children; leaves ([`Text`],
-//! [`Paragraph`], [`SelectList`], [`Table`], [`Scroll`], [`StatusBar`],
-//! [`Spacer`]) paint content. Interactive leaves pair with a persisted `*State`
+//! containers ([`Flex`], [`Boxed`], [`ItemScroll`]) nest children; leaves
+//! ([`Text`], [`Paragraph`], [`SelectList`], [`Table`], [`Scroll`],
+//! [`StatusBar`], [`Spacer`]) paint content. Interactive leaves pair with a persisted `*State`
 //! (see [`ScrollState`], [`SelectState`] — a [`Table`] reuses `SelectState`)
 //! held by the host. To add a component, drop
 //! a new module here and implement `View`; nothing else needs to change.
@@ -16,6 +16,7 @@ mod constrained;
 mod diff;
 mod flex;
 mod focus_scope;
+mod item_scroll;
 mod key_hints;
 mod loader;
 mod progress_bar;
@@ -47,6 +48,7 @@ pub use constrained::Constrained;
 pub use diff::{Diff, DiffMode, DiffRow, DiffStyle, DiffTag, diff_rows};
 pub use flex::Flex;
 pub use focus_scope::FocusScope;
+pub use item_scroll::ItemScroll;
 pub use key_hints::KeyHints;
 pub use loader::Loader;
 pub use progress_bar::ProgressBar;
@@ -63,5 +65,8 @@ pub use tab_select::{TabSelect, TabSelectOutcome, TabSelectState};
 pub use table::{Column, Table};
 pub use tabs::{Tabs, TabsState};
 pub use text::{Paragraph, Text, Wrap, line_width, wrap_lines};
-pub use textinput::{TextInput, TextInputEvent, TextInputMode, TextInputState};
+pub use textinput::{
+    TextInput, TextInputEvent, TextInputMode, TextInputState, TextSpan, Token, Trigger,
+    TriggerAnchor,
+};
 pub use toast::{DEFAULT_TTL as TOAST_DEFAULT_TTL, ToastLevel, ToastList, Toasts};

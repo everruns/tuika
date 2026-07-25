@@ -70,6 +70,28 @@ Both are cheap-to-clone `Rc<RefCell<…>>` handles, cleared each frame. New
 "the host needs to know where something landed" requirements should reuse this
 shape rather than invent a third.
 
+## Content the host lays out: lines vs items
+
+Two viewport primitives exist on purpose. `Scroll` windows pre-wrapped
+`Line`s — one content row per line, so its arithmetic is trivial and it can
+paint O(viewport) without measuring anything. `ItemScroll` windows `Element`s:
+each entry is measured at the render width and scrolled by row, so an entry
+taller than the space left clips at the edge rather than snapping to an item
+boundary.
+
+The second exists because flattening is lossy. A history whose entries are
+bordered panels, tables, diffs, or nested layouts cannot be expressed as lines
+without the host drawing box glyphs into strings — reimplementing layout in a
+place the solver cannot see. Chat and agent UIs are the archetype.
+
+The cost of measuring items is real, so the ownership split mirrors `Scroll`:
+the owned constructor measures every item every frame; the windowed one takes
+the visible slice plus a host-supplied content height, for a host keeping its
+own height cache. Because item heights depend on width, the scrollbar's column
+is reserved whenever the bar is enabled — not only while content overflows —
+so the appearance of a bar cannot silently re-wrap and re-measure everything
+above it.
+
 ## Input and focus
 
 The host translates crossterm events into tuika's own `Key`/`Mouse` events
@@ -80,6 +102,16 @@ what lets all of it be unit-tested without a PTY.
 Focus is a registry of scopes rather than a flag per component: a `FocusScope`
 claims input ownership for its subtree, so a modal or overlay can take input
 without every component learning about modality.
+
+Inline composer tokens follow the same host-agnostic rule. A `Trigger` declares
+only *where* an opening character counts (`Anywhere`/`WordStart`/`LineStart`/
+`BufferStart`) and where the token ends; `TextInputState` finds and delimits the
+matches and can splice a replacement back in. What `@` or `/` **means** — the
+completion source, the popup, the styling, whether confirming runs a command or
+inserts a path — is the application's, and `TextInput::highlights` paints ranges
+the host computed rather than semantics tuika inferred. A toolkit that shipped
+"mentions" and "slash commands" as features would be encoding one host's product
+decisions; declaring the lexical rule and returning the spans is the seam.
 
 ## Rendering pipeline
 

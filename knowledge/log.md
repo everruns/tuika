@@ -3,6 +3,7 @@
 Significant changes to tuika's durable knowledge are recorded here. Routine
 wording, formatting, and link fixes do not need entries.
 
+<<<<<<< HEAD
 ## 2026-07-24 — Demo recordings can no longer be silently clipped
 
 - Six gallery GIFs (`qr`, `ascii_font`, `diff`, `slider`, `timeline`,
@@ -17,6 +18,38 @@ wording, formatting, and link fixes do not need entries.
   that overflow by design declare it in the registry. `--dump` renders at the
   scene's recorded geometry, so the pre-record preview shows the real framing
   instead of a roomier one. See [Documentation](specs/documentation.md).
+=======
+## 2026-07-25 — Codegen shifts the instruction-count gate
+
+- Landing `ItemScroll` and the composer token seams turned the `iai` gate red on
+  `main`: seven of nine benchmarks up 3.7–5.5%, including the markdown ones,
+  whose measured path (`markdown.rs`, `text.rs`, `style.rs`, `surface.rs`) was
+  byte-identical to the parent commit.
+- Isolating it showed why: the parent reproduced the committed baseline
+  *exactly*, `textinput.rs` alone accounted for ~2.8%, and adding `ItemScroll`
+  took it to ~4.5%. Growing the crate re-partitions its codegen units, so
+  unrelated modules change what gets inlined on a hot path. The `scroll.rs`
+  refactor in the same change cost one instruction.
+- Recorded the isolation procedure in [Testing](specs/testing.md) so the next red
+  gate is diagnosed rather than blessed on a hunch — a shift that survives the
+  isolation is a real regression.
+
+## 2026-07-24 — Element viewports and composer token seams
+
+- Building a coding-agent TUI as an example (`examples/codex/`) surfaced two
+  places where the toolkit forced a host to hand-draw: a transcript could only
+  hold pre-wrapped lines, and a composer could only paint one uniform style with
+  no notion of the `@`/`/` tokens every such app needs.
+- Closed both as *seams*, not features: `ItemScroll` (a viewport over
+  `Element`s, scrolled by row) and `Trigger`/`Token`/`TextSpan` (tuika delimits
+  tokens and paints host-computed ranges; the meaning of a trigger character
+  stays with the application). See [architecture.md](specs/architecture.md).
+- Recorded the constraint that made `ItemScroll`'s API shape non-obvious: item
+  heights depend on the render width, so the scrollbar column is reserved
+  whenever the bar is enabled, and `measure_height` takes the same `scrollbar`
+  flag — otherwise a host's clamp and the paint would disagree about content
+  height.
+>>>>>>> da4f9d8 (feat(components): add ItemScroll and composer token seams)
 
 ## 2026-07-24 — Showcases
 

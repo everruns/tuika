@@ -29,12 +29,12 @@ use ratatui::text::{Line, Span};
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
 use tuika::{
-    AsciiFont, BorderStyle, CodeBlock, CodeTheme, Console, ConsoleLog, Diff, Element, Event,
-    FrameBuffer, FrameBufferView, Highlighter, Key, KeyCode, Loader, MarkdownState, Mouse,
-    MouseKind, Padding, ProgressBar, QrCode, QrEcc, Repeat, Rule, Scroll, ScrollState, SelectList,
-    SelectState, Slider, SliderState, Spinner, SpinnerStyle, StatusBar, TabSelect, TabSelectState,
-    Tabs, TabsState, Text, TextInput, TextInputState, Theme, Timeline, ToastLevel, ToastList,
-    Toasts, element, paint, view,
+    AsciiFont, BorderStyle, Boxed, CodeBlock, CodeTheme, Console, ConsoleLog, Diff, Element, Event,
+    FrameBuffer, FrameBufferView, Highlighter, ItemScroll, Key, KeyCode, Loader, MarkdownState,
+    Mouse, MouseKind, Padding, ProgressBar, QrCode, QrEcc, Repeat, Rule, Scroll, ScrollState,
+    SelectList, SelectState, Slider, SliderState, Spinner, SpinnerStyle, StatusBar, TabSelect,
+    TabSelectState, Tabs, TabsState, Text, TextInput, TextInputState, TextSpan, Theme, Timeline,
+    ToastLevel, ToastList, Toasts, Trigger, element, paint, view,
 };
 
 /// A tiny self-contained Rust highlighter for the `markdown`/`code_block` scenes.
@@ -283,6 +283,13 @@ const DEMOS: &[Demo] = &[
         13,
         true,
         scene_scroll,
+    ),
+    filling_demo(
+        "item_scroll",
+        "the same viewport over laid-out items, not lines",
+        13,
+        true,
+        scene_item_scroll,
     ),
     demo(
         "select",
@@ -938,6 +945,45 @@ fn scene_scroll(frame: u64, theme: &Theme) -> Element {
     }
 }
 
+/// A transcript of *components* — bordered panels beside plain rows — scrolling
+/// by row, so a panel taller than the remaining space clips at the edge instead
+/// of snapping. This is what `Scroll` cannot do: its content is pre-wrapped
+/// lines, so anything laid out has to be flattened by hand first.
+fn scene_item_scroll(frame: u64, theme: &Theme) -> Element {
+    let items: Vec<Element> = (1..=6)
+        .map(|i| {
+            if i % 2 == 0 {
+                element(
+                    Boxed::new(element(Text::new(vec![
+                        Line::from(Span::styled(format!("panel {i}"), theme.text_style())),
+                        Line::from(Span::styled("laid out, not drawn", theme.muted_style())),
+                    ])))
+                    .title(Line::from(Span::styled(" note ", theme.accent_style()))),
+                )
+            } else {
+                element(Text::new(vec![Line::from(Span::styled(
+                    format!("  row {i} — an ordinary line of text"),
+                    theme.text_style(),
+                ))]))
+            }
+        })
+        .collect();
+    let viewport_h = 8usize;
+    let content_h = ItemScroll::measure_height(&items, 60, 1, true);
+    let mut state = ScrollState::new();
+    let reach = tuika::anim::ping_pong(frame, 200);
+    let steps = (reach * (content_h.saturating_sub(viewport_h) as f32 / 3.0 + 1.0)) as u32;
+    let down = Event::Mouse(Mouse::at(MouseKind::ScrollDown, 0, 0));
+    for _ in 0..steps {
+        state.handle(&down, content_h, viewport_h);
+    }
+    view! {
+        col {
+            fixed(8) { node(ItemScroll::new(items, &state).gap(1)) }
+        }
+    }
+}
+
 fn scene_select(frame: u64, theme: &Theme) -> Element {
     let items: Vec<Line<'static>> = ["Open file…", "Save", "Save As…", "Toggle theme", "Quit"]
         .iter()
@@ -994,17 +1040,31 @@ fn scene_status_bar(frame: u64, theme: &Theme) -> Element {
     }
 }
 
+/// Typing into a composer: the placeholder while it is empty, and a `@` token
+/// colored as it is typed. The trigger table is the host's — tuika finds the
+/// token and paints the range it is handed.
 fn scene_textinput(frame: u64, theme: &Theme) -> Element {
-    let _ = theme;
-    let full = "fix(parser): handle trailing commas";
+    let full = "fix @src/parser.rs: trailing commas";
     let n = ((frame / 3) as usize % (full.chars().count() + 12)).min(full.chars().count());
     let typed: String = full.chars().take(n).collect();
     let state = TextInputState::from_text(&typed);
+    let mention = Style::default()
+        .fg(theme.code.link)
+        .add_modifier(Modifier::BOLD);
+    let highlights: Vec<TextSpan> = state
+        .tokens(&[Trigger::new('@')])
+        .iter()
+        .map(|t| t.span(mention))
+        .collect();
     view! {
         col {
             fixed(3) {
                 boxed(title = Line::from(Span::styled(" commit message ", theme.accent_style()))) {
-                    node(TextInput::new(&state))
+                    node(
+                        TextInput::new(&state)
+                            .placeholder("describe the change", Style::default().fg(theme.dim))
+                            .highlights(highlights)
+                    )
                 }
             }
         }
