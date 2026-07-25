@@ -1,0 +1,18 @@
+[package]
+name = "tuika-mermaid"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+authors = ["Everruns <support@everruns.com>"]
+license = "MIT"
+description = "Terminal-native Mermaid fenced blocks for tuika Markdown, powered by mmdflux."
+homepage = "https://github.com/everruns/tuika"
+repository = "https://github.com/everruns/tuika"
+readme = "README.md"
+keywords = ["tui", "mermaid", "markdown", "ratatui", "diagrams"]
+categories = ["command-line-interface", "text-processing"]
+
+[dependencies]
+tuika = { version = "0.4.0", path = "../.." }
+ratatui-core = "0.1"
+mmdflux = { version = "2.6", default-features = false }

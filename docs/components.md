@@ -147,9 +147,33 @@ use tuika::prelude::*;
 let theme = Theme::default();
 let mut md = MarkdownState::new();
 md.push_str(delta);                                  // forward each stream delta
-let lines = md.lines(width, &theme, CodeHighlighter::Plain);
+let sheet = StyleSheet::from_theme(&theme);
+let lines = md.lines(width, &theme, &sheet, CodeHighlighter::Plain);
 view! { node(tuika::components::Text::new(lines)) }
 ```
+
+#### Extensible fenced blocks
+
+`FencedBlockRenderer` can replace a language fence with terminal-native,
+width-aware lines. A renderer returns `None` for languages or inputs it does not
+handle, preserving the normal themed code block. `tuika-mermaid` supplies an
+mmdflux-backed implementation:
+
+```rust
+use tuika::prelude::*;
+use tuika_mermaid::MermaidRenderer;
+
+let mermaid = MermaidRenderer::new();
+let doc = Markdown::new(
+    "```mermaid\nflowchart LR\n  Source --> Parse --> Paint\n```",
+)
+.block_renderer(&mermaid);
+# let _ = doc;
+```
+
+The fence is painted directly as Unicode cells:
+
+<img src="https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif" width="880" alt="Mermaid diagram rendered as Unicode cells inside tuika Markdown">
 
 #### GFM tables
 

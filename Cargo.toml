@@ -1,9 +1,9 @@
-# tuika is the root package of its own workspace; `tuika-codeformatters` (the
-# tree-sitter `Highlighter` impl) lives under `crates/` so tuika core stays
-# grammar-free. Cargo skips nested packages when packaging, so the member's
-# sources never land in tuika's `.crate`.
+# tuika is the root package of its own workspace; companion implementations for
+# tree-sitter highlighting and Mermaid rendering live under `crates/` so tuika
+# core stays grammar- and diagram-engine-free. Cargo skips nested packages when
+# packaging, so the members' sources never land in tuika's `.crate`.
 [workspace]
-members = ["crates/tuika-codeformatters"]
+members = ["crates/tuika-codeformatters", "crates/tuika-mermaid"]
 
 [package]
 name = "tuika"

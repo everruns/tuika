@@ -95,8 +95,8 @@ The small dependency set is a designed property, not an accident
 ([goal.md](../specs/goal.md)). Maintenance defends it:
 
 - **No new runtime dependency without an explicit justification in the PR.** The
-  default answer for a heavy concern is a trait the host implements, or a place
-  in `tuika-codeformatters`.
+  default answer for a heavy concern is a trait the host implements, or a
+  separately published companion crate.
 - The `ratatui-core` / `ratatui-crossterm` / `crossterm` versions must stay
   mutually consistent, and `crossterm` must match what `ratatui-crossterm` pins
   so Cargo dedups it. A split here silently doubles the backend.
@@ -119,7 +119,7 @@ Before tagging a release:
 - the MSRV job passes, and the declared `rust-version` still matches reality
 - `cargo run --example demo -- check` passes and the committed recordings match
   current rendering
-- `cargo publish --dry-run` succeeds for both crates
+- `cargo publish --dry-run` succeeds for the root and every companion crate
 - the iai baseline is current for the released code
 - the README's component table and guide links match the API
 

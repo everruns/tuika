@@ -906,6 +906,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "mmdflux"
+version = "2.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc3d57274846e2bab54eeb7e77e5418c76b8ea3e3ef4c5808daf73e1e68b89a6"
+dependencies = [
+ "pest",
+ "pest_derive",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tracing",
+ "unicode-width",
+]
+
+[[package]]
 name = "nix"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1961,6 +1976,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing"
+version = "0.1.44"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
+dependencies = [
+ "pin-project-lite",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-core"
+version = "0.1.36"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
+dependencies = [
+ "once_cell",
+]
+
+[[package]]
 name = "tree-sitter"
 version = "0.26.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2166,6 +2200,15 @@ dependencies = [
  "tree-sitter-sequel",
  "tree-sitter-typescript",
  "tree-sitter-zig",
+ "tuika",
+]
+
+[[package]]
+name = "tuika-mermaid"
+version = "0.1.0"
+dependencies = [
+ "mmdflux",
+ "ratatui-core",
  "tuika",
 ]
 

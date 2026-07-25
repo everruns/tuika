@@ -25,9 +25,9 @@ repository, so keep it short, factual, and project-specific.
   convenience: the crate root is the framework spine, `components` holds every
   `View`, `term` holds everything that talks to the terminal outside the cell
   grid, and `prelude` is the one-line import. One canonical path per item.
-- Keep the dependency set small. Anything heavy — syntax grammars, image
-  decoders, HTTP — belongs in the host or in `tuika-codeformatters`, behind a
-  trait tuika defines.
+- Keep the dependency set small. Anything heavy — syntax grammars, diagram
+  layout, image decoders, HTTP — belongs in the host or a companion crate
+  (`tuika-codeformatters`, `tuika-mermaid`), behind a trait tuika defines.
 
 ## Knowledge and docs
 
@@ -47,9 +47,10 @@ repository, so keep it short, factual, and project-specific.
 
 ## Local dev and tests
 
-This is a small Cargo **workspace**: the root package is the `tuika` library, and
-`crates/tuika-codeformatters/` is tuika's tree-sitter `Highlighter`
-implementation, published separately so tuika core stays grammar-free.
+This is a small Cargo **workspace**: the root package is the `tuika` library;
+`crates/tuika-codeformatters/` is the tree-sitter `Highlighter`, and
+`crates/tuika-mermaid/` is the mmdflux `FencedBlockRenderer`. Both are published
+separately so tuika core stays grammar- and diagram-engine-free.
 Cargo defaults to the root package only, so pass `--workspace` to cover the
 member too — an API change that breaks `tuika-codeformatters` is otherwise
 invisible locally and fails in CI. For touched code:
@@ -164,13 +165,17 @@ tuika's own suite covers more:
   [`scripts/gen-codex-demo.sh`](scripts/gen-codex-demo.sh), which drives the real
   `codex` binary under VHS so the recording cannot drift from the example. These
   are outside the `demo -- check` invariant, which covers single-component scenes.
+  The `tuika-mermaid` integration recording follows the same pattern at
+  `crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif`; regenerate it
+  with `scripts/gen-mermaid-demo.sh`.
 
-The demo, showcase, example, theme, and styling GIFs are GitHub-only assets:
-`Cargo.toml`'s `exclude` keeps them (and the repository machinery —
-`knowledge/`, `.agents/`, `.github/`, `scripts/`) out of the published `.crate`,
-and `tests/packaging.rs` guards that split. Only `docs/hero.gif` and
-`docs/demos/image.svg`, which the crates.io README embeds by relative path, ship
-in the crate.
+The root package's demo, showcase, example, theme, and styling GIFs are
+GitHub-only assets: `Cargo.toml`'s `exclude` keeps them (and the repository
+machinery — `knowledge/`, `.agents/`, `.github/`, `scripts/`) out of tuika's
+published `.crate`, and `tests/packaging.rs` guards that split. Only
+`docs/hero.gif` and `docs/demos/image.svg`, which the crates.io README embeds by
+relative path, ship in tuika. The small Mermaid recording ships in the companion
+crate because its own README embeds it.
 
 ## Component demos
 
@@ -450,7 +455,7 @@ Use `gh` directly for GitHub commands.
 - When asked to release, cut a version, or publish to crates.io, follow
   [`.agents/skills/release/SKILL.md`](.agents/skills/release/SKILL.md) and
   [`knowledge/processes/release.md`](knowledge/processes/release.md). `tuika` and
-  `tuika-codeformatters` are versioned independently and published in dependency
+  the companion crates are versioned independently and published in dependency
   order.
 
 ## Hosts

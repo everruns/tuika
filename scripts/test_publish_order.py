@@ -7,10 +7,10 @@ from publish_order import publish_order
 
 class PublishOrderTests(unittest.TestCase):
     def test_orders_dependency_before_dependent(self) -> None:
-        # The real shape: `tuika-codeformatters` depends on the root package, so
-        # a traversal rooted at `tuika` alone would never reach it.
+        # The real shape: both companions depend on the root package, so a
+        # traversal rooted at `tuika` alone would never reach them.
         metadata = {
-            "workspace_members": ["tuika-id", "formatter-id"],
+            "workspace_members": ["tuika-id", "formatter-id", "mermaid-id"],
             "packages": [
                 {
                     "id": "formatter-id",
@@ -24,10 +24,19 @@ class PublishOrderTests(unittest.TestCase):
                     "publish": None,
                     "dependencies": [],
                 },
+                {
+                    "id": "mermaid-id",
+                    "name": "tuika-mermaid",
+                    "publish": None,
+                    "dependencies": [{"name": "tuika", "path": ".."}],
+                },
             ],
         }
 
-        self.assertEqual(publish_order(metadata), ["tuika", "tuika-codeformatters"])
+        self.assertEqual(
+            publish_order(metadata),
+            ["tuika", "tuika-codeformatters", "tuika-mermaid"],
+        )
 
     def test_orders_transitive_workspace_dependencies(self) -> None:
         metadata = {

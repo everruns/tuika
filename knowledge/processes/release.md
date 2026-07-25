@@ -1,7 +1,7 @@
 ---
 type: Process Specification
 title: Release Specification
-description: Defines the release contract for publishing tuika and tuika-codeformatters to crates.io.
+description: Defines the release contract for publishing tuika and its companion crates to crates.io.
 ---
 
 # Release Specification
@@ -37,27 +37,27 @@ their own views. A `ratatui-core` major bump is also breaking, because the
 | Target | Surface | How users install |
 | --- | --- | --- |
 | GitHub Release | tag `vX.Y.Z`, source archive | `gh release view vX.Y.Z` |
-| crates.io | `tuika` and `tuika-codeformatters` | `cargo add tuika` |
+| crates.io | `tuika`, `tuika-codeformatters`, and `tuika-mermaid` | `cargo add tuika` |
 
 There are no binaries and no package-manager formulae: tuika is a library.
 
-## Two crates, independent versions
+## Independent crate versions
 
-`tuika` and `tuika-codeformatters` version independently. The repository's tag
-tracks the **root package** (`tuika`), because the tag names the repository
-state, and `release.yml` reads the version from the root `Cargo.toml`.
+`tuika`, `tuika-codeformatters`, and `tuika-mermaid` version independently. The
+repository's tag tracks the **root package** (`tuika`), because the tag names the
+repository state, and `release.yml` reads the version from the root
+`Cargo.toml`.
 
-`tuika-codeformatters` is published as a side effect of a tuika release, only
-when its in-tree version is not already live. Bump it when its own API changes
-*or* when it must track a new tuika range — a tuika bump usually forces a
-formatter bump, because the published formatter pins a compatible tuika version.
-When it does, its `tuika` dependency requirement must be updated in the same
-change, or the published formatter will resolve against the old tuika.
+Each companion is published as a side effect of a tuika release only when its
+in-tree version is not already live. Bump one when its own API changes or when
+it must track a new tuika range — a tuika bump usually forces companion bumps,
+because their published manifests pin a compatible tuika version. Update that
+requirement in the same change or the companion will resolve against old tuika.
 
 `publish.yml` derives the dependency-first order from Cargo metadata
-(`scripts/publish_order.py` — currently `tuika`, then `tuika-codeformatters`) and
-skips versions already live, so a new workspace member cannot be silently
-omitted or published out of order.
+(`scripts/publish_order.py` — currently `tuika`, then the two companions) and
+skips versions already live, so a workspace member cannot be silently omitted
+or published out of order.
 
 ## Release Flow
 
@@ -106,10 +106,10 @@ When asked to release, the agent:
    `scripts/gen-demos.sh <scene>`, adding a `DEMOS` scene first if the feature
    has none.
 
-3. **Bump the versions.** The root `Cargo.toml` for `tuika`; and
-   `crates/tuika-codeformatters/Cargo.toml` when its API changed or it must
-   track a new tuika range — updating its `tuika` dependency requirement to
-   match. Regenerate `Cargo.lock`.
+3. **Bump the versions.** The root `Cargo.toml` for `tuika`; and either
+   companion's `Cargo.toml` when its API changed or it must track a new tuika
+   range — updating its `tuika` dependency requirement to match. Regenerate
+   `Cargo.lock`.
 
 4. **Run local verification:**
    - `cargo fmt --all -- --check`
@@ -121,9 +121,9 @@ When asked to release, the agent:
 5. **Verify publish-readiness** (this catches what local tests do not — the
    packaging step, missing files, version drift):
    - `cargo publish --dry-run -p tuika` must succeed.
-   - `cargo publish --dry-run -p tuika-codeformatters` may fail locally when it
-     requires a tuika version that is not yet live. That is expected, not a
-     broken release: CI publishes tuika first and then the formatter resolves.
+   - A companion `cargo publish --dry-run` may fail locally when it requires a
+     tuika version that is not yet live. That is expected, not a broken release:
+     CI publishes tuika first and then the companion resolves.
    - Confirm `Cargo.toml` and `Cargo.lock` agree on `X.Y.Z`.
    - Confirm `X.Y.Z` is greater than the latest published version
      (`cargo search tuika --limit 1`).
@@ -253,6 +253,7 @@ crates.io serves `X.Y.Z`.
 ```bash
 cargo search tuika --limit 1                        # shows X.Y.Z
 cargo search tuika-codeformatters --limit 1         # if it was part of the release
+cargo search tuika-mermaid --limit 1                # if it was part of the release
 gh release view vX.Y.Z --repo everruns/tuika        # tag + notes present
 ```
 
@@ -364,9 +365,9 @@ cargo yank --version X.Y.Z tuika
 ```
 
 Yanked versions remain usable by existing `Cargo.lock` files but are not selected
-for new resolves. Yanking `tuika` without yanking a `tuika-codeformatters`
-release that requires it leaves the formatter unresolvable for new users — yank
-or supersede both.
+for new resolves. Yanking `tuika` without yanking companion releases that
+require it leaves those companions unresolvable for new users — yank or
+supersede every affected version.
 
 ## Authentication
 

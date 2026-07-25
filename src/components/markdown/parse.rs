@@ -339,14 +339,7 @@ impl<'a> Builder<'a> {
             }
             TagEnd::CodeBlock => {
                 if let Some((lang, body)) = self.code.take() {
-                    let body = body.strip_suffix('\n').unwrap_or(&body);
-                    let lines: Vec<&str> = body.split('\n').collect();
-                    let indent = self.indent();
-                    for line in
-                        code_block_lines(&lang, &lines, self.theme, self.highlighter, true, None)
-                    {
-                        self.items.push(MdItem::Verbatim { line, indent });
-                    }
+                    self.push_code_block(lang, body);
                 }
             }
             TagEnd::List(_) => {
@@ -417,12 +410,21 @@ impl<'a> Builder<'a> {
         // Close any dangling paragraph in truncated (still-streaming) input.
         self.flush();
         if let Some((lang, body)) = self.code.take() {
-            let body = body.strip_suffix('\n').unwrap_or(&body);
-            let lines: Vec<&str> = body.split('\n').collect();
-            for line in code_block_lines(&lang, &lines, self.theme, self.highlighter, true, None) {
-                self.items.push(MdItem::Verbatim { line, indent: 0 });
-            }
+            self.push_code_block(lang, body);
         }
+    }
+
+    fn push_code_block(&mut self, language: String, body: String) {
+        let source = body.strip_suffix('\n').unwrap_or(&body).to_string();
+        let lines: Vec<&str> = source.split('\n').collect();
+        let fallback =
+            code_block_lines(&language, &lines, self.theme, self.highlighter, true, None);
+        self.items.push(MdItem::CodeBlock {
+            language,
+            source,
+            fallback,
+            indent: self.indent(),
+        });
     }
 }
 

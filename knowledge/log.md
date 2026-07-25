@@ -19,6 +19,21 @@ need entries.
 - Teardown pops exactly the level tuika pushed instead of globally resetting
   keyboard reporting, preserving a mode installed by an embedding host.
 
+## 2026-07-25 — Markdown fences can replace source with rich blocks
+
+- Split fenced-block extension into two contracts: `Highlighter` remains
+  line-preserving token styling, while `FencedBlockRenderer` may replace a
+  fence with width-aware styled lines. Conflating them would either break the
+  highlighter invariant or make every syntax highlighter implement diagram
+  layout concerns.
+- Kept parsed fences width-independent by retaining source plus the normal code
+  fallback and invoking rich rendering during flattening. This preserves
+  `MarkdownState`'s settled-prefix cache: a settled diagram renders once per
+  width, while resize correctly relays it out.
+- Added `tuika-mermaid` as a separate mmdflux-backed crate. Mermaid parsing and
+  layout are useful but heavyweight and independently versioned, so they follow
+  the same companion-crate boundary as tree-sitter highlighting.
+
 ## 2026-07-25 — A theme can be inherited from the terminal
 
 - Added a third source for a `Theme`, beside the bundled presets and a host's own
