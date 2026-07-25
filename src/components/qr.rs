@@ -7,7 +7,7 @@
 //! payload too large for version 4 returns `None`; a host that needs bigger codes
 //! can encode with its own library and hand the module matrix to
 //! [`QrCode::from_matrix`] — the same present-a-matrix seam as
-//! [`Image`](crate::Image).
+//! [`Image`](crate::components::Image).
 //!
 //! Rendering packs two module rows into each terminal row with the `▀` half-block
 //! (dark modules black, light modules white by default, for scanner contrast),
@@ -484,7 +484,7 @@ pub fn encode(data: &[u8], ecc: QrEcc) -> Option<Vec<Vec<bool>>> {
 /// A QR code rendered with half-block cells.
 ///
 /// ```no_run
-/// use tuika::{QrCode, QrEcc, Theme};
+/// use tuika::prelude::*;
 /// let theme = Theme::default();
 /// let qr = QrCode::encode("https://everruns.com", QrEcc::Medium).expect("fits in v1-4");
 /// // `qr` is a `View`; paint it or embed it in a `Flex`.

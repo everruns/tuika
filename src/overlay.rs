@@ -6,10 +6,30 @@
 //! it" — none of the inline-viewport chrome-bleed the inline path fights. The
 //! [`OverlaySpec`] resolves a target [`Rect`] from an [`Anchor`] plus size
 //! constraints relative to the screen.
+//!
+//! The two types here are the two halves of one pipeline, which is why they
+//! share a module: an [`OverlaySpec`] says *where* an overlay wants to be and
+//! answers with a `Rect`; an [`Overlay`] pairs that resolved rect with the view
+//! to paint into it, and is what [`paint`](crate::host::paint) consumes.
 
 use ratatui_core::layout::Rect;
 
 use super::geometry::Size;
+use super::view::View;
+
+/// An overlay to composite over the base tree at a resolved rect.
+///
+/// Produced by pairing a view with the `Rect` an [`OverlaySpec`] resolved to,
+/// then handed to [`paint`](crate::host::paint) — overlays are composited in
+/// slice order, so the last one is topmost.
+pub struct Overlay<'a> {
+    /// Rect the overlay is composited into.
+    pub area: Rect,
+    /// View painted within `area`.
+    pub view: &'a dyn View,
+    /// Clear the rect (fill with the theme background) before painting.
+    pub clear: bool,
+}
 
 /// Where an overlay sits relative to the screen.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

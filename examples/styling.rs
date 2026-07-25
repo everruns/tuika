@@ -28,10 +28,7 @@ use ratatui::style::{Color, Modifier};
 use ratatui::text::{Line, Span};
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
-use tuika::{
-    BorderStyle, Element, Markdown, Padding, ProgressBar, Rule, Spinner, SpinnerStyle, StyleBundle,
-    StyleSheet, Text, Theme, element, paint_with_sheet, view,
-};
+use tuika::prelude::*;
 
 /// Grid size (character cells).
 const COLS: u16 = 82;

@@ -29,7 +29,10 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use tuika::{CodeHighlighter, MarkdownState, StyleSheet, Theme, markdown_to_lines};
+use tuika::components::MarkdownState;
+use tuika::components::markdown::to_lines;
+use tuika::highlight::CodeHighlighter;
+use tuika::{StyleSheet, Theme};
 
 use corpus::Shape;
 
@@ -82,7 +85,7 @@ fn one_shot(c: &mut Criterion) {
             group.throughput(Throughput::Bytes(src.len() as u64));
             group.bench_with_input(BenchmarkId::new(shape_name, size_name), &src, |b, src| {
                 b.iter(|| {
-                    black_box(markdown_to_lines(
+                    black_box(to_lines(
                         black_box(src),
                         WIDTH,
                         &theme,
@@ -158,7 +161,7 @@ fn streaming_model(c: &mut Criterion) {
                     let mut acc = String::new();
                     for delta in deltas {
                         acc.push_str(delta);
-                        black_box(markdown_to_lines(
+                        black_box(to_lines(
                             &acc,
                             WIDTH,
                             &theme,

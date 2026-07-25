@@ -9,7 +9,7 @@
 //! Hermes' TUI uses for its streaming markdown.
 //!
 //! Output is width-aware and correct for prose, code, and tables: prose is
-//! word-wrapped (via [`components::wrap_lines`](crate::components::wrap_lines));
+//! word-wrapped (via [`components::wrap_lines`](crate::components::text::wrap_lines));
 //! code is emitted verbatim, because its
 //! indentation is meaningful; and GFM tables are re-laid-out to the width each
 //! frame, with per-column fitting and styled cells (bold headers, links, inline
@@ -17,7 +17,7 @@
 //! (e.g. ratatui's `Paragraph` with no `.wrap`, or tuika's
 //! [`Text`](crate::components::Text)).
 //!
-//! For one-shot (non-streaming) text, [`markdown_to_lines`] renders a whole
+//! For one-shot (non-streaming) text, [`to_lines`] renders a whole
 //! string in one call. The [`Markdown`] view wraps either for direct placement
 //! in a layout.
 
@@ -27,14 +27,15 @@ use ratatui_core::style::{Modifier, Style};
 use ratatui_core::text::{Line, Span};
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::components::Image;
 use crate::components::code_block::code_block_lines;
-use crate::components::line_width;
+use crate::components::text::line_width;
 use crate::geometry::Size;
 use crate::highlight::{CodeHighlighter, Highlighter};
-use crate::hyperlink::{BufferLink, LinkPolicy, apply_buffer_links};
-use crate::image::{Image, ImageData, ImageLayer, ImageSupport};
 use crate::style::{StyleBundle, StyleSheet, Theme};
 use crate::surface::Surface;
+use crate::term::hyperlink::{BufferLink, LinkPolicy, apply_buffer_links};
+use crate::term::image::{ImageData, ImageLayer, ImageSupport};
 use crate::view::{RenderCtx, View};
 use crate::width::grapheme_cols;
 
@@ -332,8 +333,8 @@ impl<'a> Builder<'a> {
     /// Render an inline image as a visible placeholder: a small marker glyph plus
     /// the alt text — or the URL when there is no alt — link-styled, so an image
     /// is never silently dropped. Actually painting the pixels in markdown
-    /// (resolving the URL to [`ImageData`](crate::image::ImageData) and emitting
-    /// through an [`ImageLayer`](crate::image::ImageLayer)) is a later phase; see
+    /// (resolving the URL to [`ImageData`](crate::term::image::ImageData) and emitting
+    /// through an [`ImageLayer`](crate::term::image::ImageLayer)) is a later phase; see
     /// `knowledge/specs/images.md`.
     fn push_image_placeholder(&mut self, url: &str, alt: &str) {
         let label = if alt.trim().is_empty() { url } else { alt };
@@ -1067,23 +1068,23 @@ fn cell_rows_linked(
 ///
 /// For streaming input, prefer [`MarkdownState`], which caches the settled
 /// prefix instead of re-parsing the whole buffer each frame.
-pub fn markdown_to_lines(
+pub fn to_lines(
     source: &str,
     width: u16,
     theme: &Theme,
     sheet: &StyleSheet,
     highlighter: CodeHighlighter,
 ) -> Vec<Line<'static>> {
-    markdown_to_linked_lines(source, width, theme, sheet, highlighter).0
+    to_linked_lines(source, width, theme, sheet, highlighter).0
 }
 
-/// Like [`markdown_to_lines`], but also returns [`BufferLink`]s for every
+/// Like [`to_lines`], but also returns [`BufferLink`]s for every
 /// hyperlink run (labeled `[text](url)` and bare URLs) after wrapping.
 ///
 /// Apply them with [`apply_buffer_links`] after painting the lines so OSC 8 /
 /// Ctrl+click can open the destination even when the visible label is not the
 /// URL. Pass [`LinkPolicy::NONE`] to [`apply_buffer_links`] to skip emission.
-pub fn markdown_to_linked_lines(
+pub fn to_linked_lines(
     source: &str,
     width: u16,
     theme: &Theme,
@@ -1131,7 +1132,7 @@ fn stable_boundary(source: &str, from: usize) -> usize {
 /// returns a borrow of the cached line buffer — clone it with `.to_vec()` to own it.
 ///
 /// ```
-/// use tuika::{MarkdownState, CodeHighlighter, StyleSheet, Theme};
+/// use tuika::prelude::*;
 /// let theme = Theme::default();
 /// let sheet = StyleSheet::from_theme(&theme);
 /// let mut md = MarkdownState::new();
@@ -1230,7 +1231,7 @@ impl MarkdownState {
     /// the settled-prefix cache.
     ///
     /// `width` word-wraps prose (code and tables stay verbatim); `theme` supplies
-    /// every color via [`Theme::code`](crate::CodeTheme); `highlighter` colors
+    /// every color via [`Theme::code`](crate::style::CodeTheme); `highlighter` colors
     /// fenced code ([`CodeHighlighter::Plain`] for none). Draw the result
     /// **without** further wrapping (e.g. ratatui `Paragraph` with no `.wrap`).
     ///
@@ -1361,7 +1362,7 @@ fn is_blank_line(line: &Line) -> bool {
 /// | [`link_policy(p)`](Self::link_policy) | [`LinkPolicy::WEB`] | OSC 8 schemes for links |
 ///
 /// ```no_run
-/// use tuika::Markdown;
+/// use tuika::prelude::*;
 /// let doc = Markdown::new("# Title\n\nSome **bold** prose.");
 /// // `doc` is a `View`: render it via `tuika::paint` or embed it in a `Flex`.
 /// # let _ = doc;
@@ -1510,7 +1511,7 @@ mod tests {
 
     /// The whole render as plain lines, for content assertions.
     fn plain(source: &str, width: u16) -> Vec<String> {
-        markdown_to_lines(
+        to_lines(
             source,
             width,
             &Theme::default(),
@@ -1525,7 +1526,7 @@ mod tests {
     #[test]
     fn heading_is_bold_and_themed() {
         let theme = Theme::default();
-        let lines = markdown_to_lines(
+        let lines = to_lines(
             "# Title",
             40,
             &theme,
@@ -1541,7 +1542,7 @@ mod tests {
     #[test]
     fn emphasis_and_strong_carry_modifiers() {
         let theme = Theme::default();
-        let lines = markdown_to_lines(
+        let lines = to_lines(
             "plain *em* and **bold**",
             60,
             &theme,
@@ -1565,7 +1566,7 @@ mod tests {
     #[test]
     fn inline_code_gets_code_background() {
         let theme = Theme::default();
-        let lines = markdown_to_lines(
+        let lines = to_lines(
             "use `cargo test` now",
             60,
             &theme,
@@ -1627,7 +1628,7 @@ mod tests {
         // row, never reflowed into multiple lines.
         let long = "x".repeat(60);
         let src = format!("```\n{long}\n```");
-        let lines = markdown_to_lines(
+        let lines = to_lines(
             &src,
             20,
             &Theme::default(),
@@ -1666,7 +1667,7 @@ mod tests {
     fn table_header_cells_are_bold_and_themed() {
         let theme = Theme::default();
         let src = "| Name | Kind |\n| --- | --- |\n| a | b |";
-        let lines = markdown_to_lines(
+        let lines = to_lines(
             src,
             40,
             &theme,
@@ -1686,7 +1687,7 @@ mod tests {
     fn table_cell_link_is_styled() {
         let theme = Theme::default();
         let src = "| Site |\n| --- |\n| [yolop](https://everruns.dev) |";
-        let lines = markdown_to_lines(
+        let lines = to_lines(
             src,
             40,
             &theme,
@@ -1706,7 +1707,7 @@ mod tests {
     fn table_cell_bold_and_inline_code_survive() {
         let theme = Theme::default();
         let src = "| Col |\n| --- |\n| **hi** and `cargo` |";
-        let lines = markdown_to_lines(
+        let lines = to_lines(
             src,
             40,
             &theme,
@@ -1731,7 +1732,7 @@ mod tests {
         // A wide emoji is measured grapheme-aware, so every boxed row stays the
         // same rendered width and the borders line up.
         let src = "| Status |\n| --- |\n| ok ✅ |\n| bad |";
-        let lines = markdown_to_lines(
+        let lines = to_lines(
             src,
             40,
             &Theme::default(),
@@ -1754,7 +1755,7 @@ mod tests {
     fn table_falls_back_to_plain_when_too_narrow_and_always_fits() {
         let src = "| Col A | Col B |\n| --- | --- |\n| alpha | beta |";
         for width in [4u16, 8, 12, 20, 48] {
-            let lines = markdown_to_lines(
+            let lines = to_lines(
                 src,
                 width,
                 &Theme::default(),
@@ -1778,7 +1779,7 @@ mod tests {
     #[test]
     fn bare_url_is_linkified() {
         let theme = Theme::default();
-        let lines = markdown_to_lines(
+        let lines = to_lines(
             "see https://example.com now",
             60,
             &theme,
@@ -1799,12 +1800,13 @@ mod tests {
         // Reproduction of the Ghostty Ctrl+click failure: `[label](url)` was
         // only styled — the destination was dropped — so OSC 8 / ctrl_click had
         // nothing to open under the pointer.
-        use crate::{Mouse, MouseButton, MouseKind, apply_buffer_links, ctrl_click_url};
+        use crate::term::hyperlink::{apply_buffer_links, ctrl_click_url};
+        use crate::{Mouse, MouseButton, MouseKind};
         use ratatui_core::buffer::Buffer;
         use ratatui_core::layout::Position;
 
         let theme = Theme::default();
-        let (lines, links) = markdown_to_linked_lines(
+        let (lines, links) = to_linked_lines(
             "See the [docs](https://example.com/api) please.",
             60,
             &theme,
@@ -1865,7 +1867,7 @@ mod tests {
             ..StyleSheet::from_theme(&theme)
         };
         // A markdown link and a bare URL — both resolve the same `link` role.
-        let lines = markdown_to_lines(
+        let lines = to_lines(
             "[docs](https://ex.com) and https://bare.example.com here",
             80,
             &theme,
@@ -1898,7 +1900,7 @@ mod tests {
             heading: StyleBundle::new().fg(Color::Magenta).italic(),
             ..StyleSheet::from_theme(&theme)
         };
-        let lines = markdown_to_lines("# Title", 40, &theme, &sheet, CodeHighlighter::Plain);
+        let lines = to_lines("# Title", 40, &theme, &sheet, CodeHighlighter::Plain);
         let span = &lines[0].spans[0];
         assert_eq!(span.content.as_ref(), "Title");
         assert_eq!(span.style.fg, Some(Color::Magenta));
@@ -1945,7 +1947,7 @@ mod tests {
     fn streaming_matches_one_shot_render() {
         let full = "# Heading\n\nA paragraph of text.\n\n```rust\nfn main() {}\n```\n\nDone.";
         let theme = Theme::default();
-        let one_shot: Vec<String> = markdown_to_lines(
+        let one_shot: Vec<String> = to_lines(
             full,
             40,
             &theme,
@@ -2014,7 +2016,7 @@ mod tests {
             .iter()
             .map(text)
             .collect();
-        let one_shot: Vec<String> = markdown_to_lines(
+        let one_shot: Vec<String> = to_lines(
             &full,
             24,
             &theme,
@@ -2082,7 +2084,7 @@ mod tests {
     #[test]
     fn image_renders_alt_as_a_marked_placeholder() {
         let theme = Theme::default();
-        let lines = markdown_to_lines(
+        let lines = to_lines(
             "look: ![a cat](https://ex.com/cat.png) ok",
             60,
             &theme,

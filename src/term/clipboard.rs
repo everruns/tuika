@@ -1,6 +1,6 @@
 //! System clipboard writes via OSC 52.
 //!
-//! Like [`crate::hyperlink`] (OSC 8) and [`crate::native`] (OSC 9;4), this is an
+//! Like [`crate::term::hyperlink`] (OSC 8) and [`crate::term::progress`] (OSC 9;4), this is an
 //! out-of-band terminal capability: the app writes an escape sequence and the
 //! terminal — not the app — puts the text on the system clipboard. It needs no
 //! platform clipboard library and works over SSH, which is why it's the right
@@ -20,7 +20,7 @@
 use std::io::{self, Write};
 
 /// Maximum length, in bytes, of text a single OSC 52 write will copy. Beyond
-/// this the terminal would truncate the sequence, so [`osc52`] refuses it.
+/// this the terminal would truncate the sequence, so [`encode`] refuses it.
 pub const MAX_LEN: usize = 74_994;
 
 /// String terminator for the OSC sequence: `ESC \`.
@@ -28,7 +28,7 @@ const ST: &str = "\x1b\\";
 
 /// Encode `text` as an OSC 52 clipboard-set sequence, or `None` when `text` is
 /// empty or longer than [`MAX_LEN`]. Pure and allocation-only — no I/O.
-pub fn osc52(text: &str) -> Option<String> {
+pub fn encode(text: &str) -> Option<String> {
     if text.is_empty() || text.len() > MAX_LEN {
         return None;
     }
@@ -38,8 +38,8 @@ pub fn osc52(text: &str) -> Option<String> {
 /// Copy `text` to the system clipboard by writing an OSC 52 sequence to `out`.
 /// Returns `Ok(true)` when a sequence was written, `Ok(false)` when `text` was
 /// empty or too large (see [`MAX_LEN`]).
-pub fn write_clipboard(out: &mut impl Write, text: &str) -> io::Result<bool> {
-    match osc52(text) {
+pub fn write(out: &mut impl Write, text: &str) -> io::Result<bool> {
+    match encode(text) {
         Some(seq) => {
             out.write_all(seq.as_bytes())?;
             out.flush()?;
@@ -94,28 +94,28 @@ mod tests {
     #[test]
     fn osc52_wraps_base64_payload() {
         assert_eq!(
-            osc52("foobar"),
+            encode("foobar"),
             Some("\x1b]52;c;Zm9vYmFy\x1b\\".to_string())
         );
     }
 
     #[test]
     fn osc52_refuses_empty_and_oversized() {
-        assert_eq!(osc52(""), None);
+        assert_eq!(encode(""), None);
         let big = "x".repeat(MAX_LEN + 1);
-        assert_eq!(osc52(&big), None);
+        assert_eq!(encode(&big), None);
         // Exactly at the cap is allowed.
-        assert!(osc52(&"x".repeat(MAX_LEN)).is_some());
+        assert!(encode(&"x".repeat(MAX_LEN)).is_some());
     }
 
     #[test]
     fn write_clipboard_reports_whether_it_wrote() {
         let mut buf: Vec<u8> = Vec::new();
-        assert!(write_clipboard(&mut buf, "hi").expect("write"));
+        assert!(write(&mut buf, "hi").expect("write"));
         assert_eq!(buf, b"\x1b]52;c;aGk=\x1b\\");
 
         let mut empty: Vec<u8> = Vec::new();
-        assert!(!write_clipboard(&mut empty, "").expect("write"));
+        assert!(!write(&mut empty, "").expect("write"));
         assert!(empty.is_empty());
     }
 }

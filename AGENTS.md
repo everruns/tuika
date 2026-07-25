@@ -20,6 +20,11 @@ repository, so keep it short, factual, and project-specific.
 - tuika is pre-1.0, but it is a **published library**: every `pub` item is API. A
   breaking change is allowed in a minor release, and must be called out in the
   changelog rather than slipped in.
+- Where a new public item goes is decided by
+  [`knowledge/specs/api-surface.md`](knowledge/specs/api-surface.md), not by
+  convenience: the crate root is the framework spine, `components` holds every
+  `View`, `term` holds everything that talks to the terminal outside the cell
+  grid, and `prelude` is the one-line import. One canonical path per item.
 - Keep the dependency set small. Anything heavy — syntax grammars, image
   decoders, HTTP — belongs in the host or in `tuika-codeformatters`, behind a
   trait tuika defines.
@@ -45,12 +50,14 @@ repository, so keep it short, factual, and project-specific.
 This is a small Cargo **workspace**: the root package is the `tuika` library, and
 `crates/tuika-codeformatters/` is tuika's tree-sitter `Highlighter`
 implementation, published separately so tuika core stays grammar-free.
-`cargo test`/`clippy` at the root cover both. For touched code:
+Cargo defaults to the root package only, so pass `--workspace` to cover the
+member too — an API change that breaks `tuika-codeformatters` is otherwise
+invisible locally and fails in CI. For touched code:
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
 ```
 
 The MSRV is **1.88** (`rust-version` in `Cargo.toml`) and is enforced by a
@@ -116,12 +123,12 @@ tuika's own suite covers more:
   component rendering, interactive state (scroll/select/focus), keymap dispatch,
   compositor, easing, OSC encoders, and palette (every themed cell pinned to its
   `Theme` slot).
-- **Cross-module integration** (`src/integration.rs`) — checks that span several
+- **Cross-module integration** (`src/tests/integration.rs`) — checks that span several
   modules and have no single owner: composing a real tree, and surviving
   tiny/degenerate screens where scroll and overlay resolution interact.
-- **Property tests** (`src/proptests.rs`, `proptest`) — solver and overlay
+- **Property tests** (`src/tests/proptests.rs`, `proptest`) — solver and overlay
   invariants for *any* input (children stay in bounds, flex fills exactly).
-- **Golden snapshots** (`src/snapshots.rs`) — whole screens diffed against
+- **Golden snapshots** (`src/tests/snapshots.rs`) — whole screens diffed against
   checked-in glyph grids; refresh with `UPDATE_SNAPSHOTS=1`. The grids are
   LF-only (`.gitattributes`), so a CRLF checkout cannot fail them.
 - **Resize / degenerate sizes** — a size sweep from `0×0` up asserts no panic and

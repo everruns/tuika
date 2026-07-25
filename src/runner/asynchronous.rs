@@ -20,7 +20,7 @@
 //! use std::ops::ControlFlow;
 //! use std::time::Duration;
 //!
-//! use tuika::{AsyncRunner, Event, KeyCode, RunnerConfig, Signal, Text, Theme, element};
+//! use tuika::prelude::*;
 //!
 //! # async fn fetch_stats() -> std::io::Result<u64> { Ok(0) }
 //! // Call from inside your own `#[tokio::main]` (or any Tokio runtime).
@@ -84,10 +84,10 @@ pub enum Signal {
 
 /// An asynchronous Crossterm event and rendering loop.
 ///
-/// See the [module documentation](self) for the full picture. Construct one with
+/// See the [module documentation](crate::runner) for the full picture. Construct one with
 /// a [`RunnerConfig`], then drive it with [`run`](Self::run) (real terminal),
 /// [`run_with_backend`](Self::run_with_backend) (caller-supplied backend, such as
-/// [`HyperlinkBackend`](crate::HyperlinkBackend)), or
+/// [`HyperlinkBackend`](crate::term::hyperlink::HyperlinkBackend)), or
 /// [`run_with_events`](Self::run_with_events) (caller-supplied backend *and*
 /// event stream, for tests and hosts that own the terminal lifecycle).
 pub struct AsyncRunner {
@@ -131,7 +131,7 @@ impl AsyncRunner {
     }
 
     /// Run with a caller-provided backend, such as
-    /// [`HyperlinkBackend`](crate::HyperlinkBackend). Otherwise identical to
+    /// [`HyperlinkBackend`](crate::term::hyperlink::HyperlinkBackend). Otherwise identical to
     /// [`run`](Self::run): it owns the [`TerminalSession`] and the
     /// [`EventStream`].
     pub async fn run_with_backend<S, B, V, U>(

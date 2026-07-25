@@ -11,7 +11,7 @@ use crate::components::{Boxed, Flex, Scroll, ScrollState, StatusBar, Text};
 use crate::overlay::OverlaySpec;
 use crate::style::Theme;
 use crate::surface::Surface;
-use crate::test_support::{buffer, row};
+use crate::tests::support::{buffer, row};
 use crate::view::{RenderCtx, View, element};
 
 #[test]

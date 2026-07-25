@@ -21,10 +21,8 @@ use ratatui::style::Style;
 use ratatui::text::Span;
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
-use tuika::{
-    Event, Image, ImageData, ImageLayer, ImageSupport, KeyCode, Padding, Spacer, StatusBar,
-    TerminalSession, Theme, paint, translate_event, view,
-};
+use tuika::prelude::*;
+use tuika::term::image::{ImageData, ImageLayer, ImageSupport};
 
 /// A `w × h` RGBA gradient: red rises left-to-right, green top-to-bottom.
 fn gradient(w: u32, h: u32) -> ImageData {

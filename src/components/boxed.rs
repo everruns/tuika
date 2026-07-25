@@ -20,7 +20,7 @@ use super::text::{aligned_x, line_width};
 /// # Example
 ///
 /// ```
-/// use tuika::{Boxed, Text, Theme, element};
+/// use tuika::prelude::*;
 /// use tuika::testing::{grid, render};
 ///
 /// // Default rounded border with symmetric horizontal padding.
@@ -39,7 +39,7 @@ use super::text::{aligned_x, line_width};
 /// legend, or hint — and defaults to flush-right:
 ///
 /// ```
-/// use tuika::{Boxed, Text, Theme, element};
+/// use tuika::prelude::*;
 /// use tuika::testing::{grid, render};
 ///
 /// let view = Boxed::new(element(Text::raw("hi")))
@@ -94,7 +94,7 @@ impl Boxed {
     /// theme's border role can't express: an accent or danger frame on a modal,
     /// or a specific per-pane color a host resolves itself. The override wins
     /// over both theme and focus. To drive focused/unfocused coloring for a
-    /// subtree instead, wrap it in a [`FocusScope`](crate::FocusScope) and leave
+    /// subtree instead, wrap it in a [`FocusScope`](crate::components::FocusScope) and leave
     /// this unset.
     pub fn border_color(mut self, color: Color) -> Self {
         self.border_color = Some(color);
@@ -258,7 +258,7 @@ mod tests {
     use crate::Surface;
     use crate::components::Text;
     use crate::style::Theme;
-    use crate::test_support::{buffer, rainbow_theme, row};
+    use crate::tests::support::{buffer, rainbow_theme, row};
     use crate::view::{RenderCtx, View, element};
     use ratatui_core::style::Color;
 

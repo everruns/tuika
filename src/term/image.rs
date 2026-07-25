@@ -1,15 +1,16 @@
 //! Terminal image rendering via the Kitty, iTerm2, and Sixel graphics protocols.
 //!
 //! A cell in ratatui's buffer carries one grapheme plus a style and nothing
-//! else, so a picture has no home there — the same wall [`crate::hyperlink`]
-//! (OSC 8), [`crate::clipboard`] (OSC 52), and [`crate::native`] (OSC 9;4) hit.
+//! else, so a picture has no home there — the same wall [`crate::term::hyperlink`]
+//! (OSC 8), [`crate::term::clipboard`] (OSC 52), and [`crate::term::progress`] (OSC 9;4) hit.
 //! Like them, images are emitted out-of-band as an escape sequence, past the
 //! cell buffer. Unlike them, the graphics escape is **not** cursor-neutral — it
 //! paints at the cursor — so emission is split from layout:
 //!
-//! 1. An [`Image`] view reserves a `cols × rows` cell footprint via
-//!    [`View::measure`], so the flex solver lays out around it like any leaf.
-//! 2. On [`View::render`] it records its absolute painted [`Rect`] plus a
+//! 1. An [`Image`](crate::components::Image) view reserves a `cols × rows` cell
+//!    footprint via `View::measure`, so the flex solver lays out around it like
+//!    any leaf.
+//! 2. On `View::render` it records its absolute painted [`Rect`] plus a
 //!    handle to its pixels into a shared [`ImageLayer`] (cheap to clone, cleared
 //!    each frame — the ownership shape of [`RectProbe`](crate::probe::RectProbe)),
 //!    and paints the reserved cells blank (or the alt-text placeholder when the
@@ -28,6 +29,10 @@
 //! unsupported terminal may paint the payload as garbage — so this is the first
 //! tuika feature to gate on real capability detection ([`ImageSupport::detect`]).
 //! See `knowledge/specs/images.md` for the full design and phased plan.
+//!
+//! The view half lives in [`components::image`](crate::components::Image); what
+//! is here is everything that speaks to the terminal rather than to the cell
+//! grid, which is why it sits beside the other out-of-band escapes.
 
 use std::cell::RefCell;
 use std::io::{self, Write};
@@ -35,11 +40,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use ratatui_core::layout::Rect;
-use ratatui_core::style::{Modifier, Style};
-
-use crate::geometry::Size;
-use crate::surface::Surface;
-use crate::view::{RenderCtx, View};
 
 /// String terminator for an APC sequence: `ESC \`.
 const ST: &str = "\x1b\\";
@@ -48,7 +48,7 @@ const ST: &str = "\x1b\\";
 const CHUNK: usize = 4096;
 
 /// Raw RGBA pixels plus their dimensions — the decoded image a host hands to an
-/// [`Image`]. Cheap to clone (the pixel buffer is shared via [`Arc`]), so the
+/// [`Image`](crate::components::Image). Cheap to clone (the pixel buffer is shared via [`Arc`]), so the
 /// same image can back several views or be re-recorded every frame for free.
 #[derive(Clone, Debug)]
 pub struct ImageData {
@@ -97,7 +97,7 @@ impl ImageData {
 /// Which graphics protocol a terminal is believed to speak.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImageSupport {
-    /// No known graphics protocol — [`Image`] renders its text fallback.
+    /// No known graphics protocol — [`Image`](crate::components::Image) renders its text fallback.
     None,
     /// The Kitty graphics protocol (Kitty, Ghostty, WezTerm, Konsole). Transmits
     /// raw RGBA.
@@ -179,8 +179,8 @@ struct Placement {
 /// paints them after the frame is drawn.
 ///
 /// Cheap to clone (a shared handle), the way [`RectProbe`](crate::probe::RectProbe)
-/// is: a host holds one, hands clones to its [`Image`] views via
-/// [`Image::in_layer`], then after `terminal.draw()` calls [`emit`](Self::emit)
+/// is: a host holds one, hands clones to its [`Image`](crate::components::Image) views via
+/// [`Image::in_layer`](crate::components::Image::in_layer), then after `terminal.draw()` calls [`emit`](Self::emit)
 /// and [`clear`](Self::clear) for the next frame.
 #[derive(Clone, Debug, Default)]
 pub struct ImageLayer(Rc<RefCell<Vec<Placement>>>);
@@ -193,7 +193,10 @@ impl ImageLayer {
 
     /// Record an image at its painted cell rect, to be painted with `support`.
     /// Zero-area rects are dropped — a clipped-away image has nothing to paint.
-    fn record(&self, rect: Rect, data: ImageData, support: ImageSupport) {
+    ///
+    /// Crate-internal: the only caller is [`Image`](crate::components::Image)'s
+    /// `render`, which is the one place that knows a rect has been painted.
+    pub(crate) fn record(&self, rect: Rect, data: ImageData, support: ImageSupport) {
         if rect.width == 0 || rect.height == 0 {
             return;
         }
@@ -252,117 +255,11 @@ impl ImageLayer {
     }
 }
 
-/// A view that displays a decoded image over the cells it reserves.
-///
-/// It always reserves `cols × rows` cells (bounded by the area it's given) and
-/// always paints those cells — blank when the image will cover them, or the alt
-/// text when the terminal can't. When [`ImageSupport::Kitty`] and a layer are
-/// both set, it additionally records itself into the layer so the host's
-/// [`ImageLayer::emit`] paints the picture over the reserved cells.
-pub struct Image {
-    data: ImageData,
-    cols: u16,
-    rows: u16,
-    alt: String,
-    support: ImageSupport,
-    layer: Option<ImageLayer>,
-}
-
-impl Image {
-    /// An image occupying `cols × rows` cells. It renders as a text placeholder
-    /// until a graphics [`ImageSupport`] and an [`ImageLayer`] are attached with
-    /// [`support`](Self::support) and [`in_layer`](Self::in_layer).
-    pub fn new(data: ImageData, cols: u16, rows: u16) -> Self {
-        Self {
-            data,
-            cols,
-            rows,
-            alt: String::new(),
-            support: ImageSupport::None,
-            layer: None,
-        }
-    }
-
-    /// Set the graphics protocol to use (usually [`ImageSupport::detect`]).
-    pub fn support(mut self, support: ImageSupport) -> Self {
-        self.support = support;
-        self
-    }
-
-    /// Register this image with a layer so it is emitted after the frame. Without
-    /// a layer the view only ever paints its fallback.
-    pub fn in_layer(mut self, layer: &ImageLayer) -> Self {
-        self.layer = Some(layer.clone());
-        self
-    }
-
-    /// Text shown (dimmed) when the image can't be painted — a supportless
-    /// terminal, or before a layer is attached.
-    pub fn alt(mut self, alt: impl Into<String>) -> Self {
-        self.alt = alt.into();
-        self
-    }
-
-    /// Whether this image will be emitted through a graphics protocol (as
-    /// opposed to falling back to text).
-    fn will_paint(&self) -> bool {
-        matches!(
-            self.support,
-            ImageSupport::Kitty | ImageSupport::ITerm2 | ImageSupport::Sixel
-        ) && self.layer.is_some()
-    }
-}
-
-impl View for Image {
-    fn measure(&self, available: Size) -> Size {
-        Size::new(self.cols, self.rows).clamp_to(available)
-    }
-
-    fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
-        if area.width == 0 || area.height == 0 {
-            return;
-        }
-        if self.will_paint() {
-            // The graphics escape will cover these cells after the frame; keep
-            // them blank so nothing shows through at the image's edges and the
-            // ratatui diff over the region is stable.
-            surface.fill(Style::default().bg(ctx.theme.background));
-            if let Some(layer) = &self.layer {
-                layer.record(area, self.data.clone(), self.support);
-            }
-        } else {
-            self.render_fallback(area, surface, ctx);
-        }
-    }
-}
-
-impl Image {
-    /// Paint the alt-text placeholder centered in `area` — what a terminal
-    /// without graphics support shows.
-    fn render_fallback(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
-        surface.fill(Style::default().bg(ctx.theme.background));
-        let label = if self.alt.is_empty() {
-            "[image]".to_string()
-        } else {
-            format!("[image: {}]", self.alt)
-        };
-        let style = Style::default()
-            .fg(ctx.theme.muted)
-            .add_modifier(Modifier::ITALIC);
-        // Center within the reserved box; truncation is handled by set_string's
-        // clip against the surface.
-        let width = crate::width::str_cols(&label);
-        let x = area.x + area.width.saturating_sub(width) / 2;
-        let y = area.y + area.height / 2;
-        surface.set_string(x, y, &label, style);
-    }
-}
-
 /// Encode `data` as a Kitty graphics protocol command that transmits and
 /// displays the image scaled into `cols × rows` cells.
 ///
 /// Pure and allocation-only — no I/O — so the wire format is unit-testable, the
-/// same as [`crate::hyperlink::osc8`] and [`crate::native::encode`]. The payload
+/// same as [`crate::term::hyperlink::encode`] and [`crate::term::progress::encode`]. The payload
 /// is raw RGBA (`f=32`) with its source pixel dimensions (`s`/`v`), displayed at
 /// the cursor (`a=T`) across `c`/`r` cells, base64-encoded and split into
 /// [`CHUNK`]-sized pieces with the `m` continuation key. `q=2` suppresses the
@@ -645,9 +542,6 @@ fn adler32(data: &[u8]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::style::Theme;
-    use crate::testing::render;
-    use crate::view::element;
 
     /// A tiny solid RGBA image: `w × h` pixels, all the same color.
     fn solid(w: u32, h: u32, rgba: [u8; 4]) -> ImageData {
@@ -740,60 +634,6 @@ mod tests {
             ImageSupport::detect_from(None, None, Some(""), Some("")),
             none
         );
-    }
-
-    #[test]
-    fn image_reserves_its_cell_footprint() {
-        let img = Image::new(solid(2, 2, [0, 0, 0, 255]), 6, 3);
-        assert_eq!(img.measure(Size::new(80, 24)), Size::new(6, 3));
-        // Clamped to the available area.
-        assert_eq!(img.measure(Size::new(4, 2)), Size::new(4, 2));
-    }
-
-    #[test]
-    fn supported_image_records_a_placement_and_leaves_cells_blank() {
-        let theme = Theme::default();
-        let layer = ImageLayer::new();
-        let view = element(
-            Image::new(solid(2, 2, [0, 0, 0, 255]), 4, 2)
-                .support(ImageSupport::Kitty)
-                .in_layer(&layer)
-                .alt("cat"),
-        );
-        let buf = render(&view, 4, 2, &theme);
-        // The reserved cells are blank (the image will cover them post-frame),
-        // so no alt text leaks into the buffer.
-        let text: String = (0..buf.area.width).map(|x| buf[(x, 0)].symbol()).collect();
-        assert!(
-            !text.contains("cat"),
-            "supported image must not paint alt text"
-        );
-        assert_eq!(layer.len(), 1, "a placement was recorded");
-        assert!(!layer.is_empty());
-    }
-
-    #[test]
-    fn unsupported_image_paints_alt_text_and_records_nothing() {
-        let theme = Theme::default();
-        let layer = ImageLayer::new();
-        // Support::None → fallback, even with a layer attached.
-        let view = element(
-            Image::new(solid(2, 2, [0, 0, 0, 255]), 20, 3)
-                .in_layer(&layer)
-                .alt("cat"),
-        );
-        let buf = render(&view, 20, 3, &theme);
-        let mut whole = String::new();
-        for y in 0..buf.area.height {
-            for x in 0..buf.area.width {
-                whole.push_str(buf[(x, y)].symbol());
-            }
-        }
-        assert!(
-            whole.contains("[image: cat]"),
-            "fallback should show alt text"
-        );
-        assert!(layer.is_empty(), "fallback records no placement");
     }
 
     #[test]

@@ -116,7 +116,7 @@ mod tests {
     use super::*;
     use crate::event::{Event, EventFlow, Key, KeyCode};
     use crate::style::Theme;
-    use crate::test_support::row;
+    use crate::tests::support::row;
     use ratatui_core::text::Line;
 
     #[test]

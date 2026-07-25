@@ -218,7 +218,7 @@ impl View for Console<'_> {
 mod tests {
     use super::*;
     use crate::style::Theme;
-    use crate::test_support::row;
+    use crate::tests::support::row;
 
     #[test]
     fn line_capture_and_capacity() {

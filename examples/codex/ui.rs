@@ -12,10 +12,8 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
-use tuika::{
-    BorderStyle, Element, Flex, ItemScroll, Padding, RectProbe, SelectList, Spacer, Spinner,
-    StatusBar, StyleSheet, Text, TextInput, Theme, element, view,
-};
+use tuika::prelude::*;
+use tuika::probe::RectProbe;
 
 use crate::app::{App, Popup};
 

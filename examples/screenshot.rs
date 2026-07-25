@@ -39,11 +39,7 @@ use ratatui::style::{Color, Modifier};
 use ratatui::text::{Line, Span};
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
-use tuika::{
-    BorderStyle, Element, Event, Key, KeyCode, Loader, Padding, ProgressBar, Rule, SelectList,
-    SelectState, Spinner, SpinnerStyle, StatusBar, Tabs, TabsState, Text, TextInput,
-    TextInputState, Theme, element, paint, view,
-};
+use tuika::prelude::*;
 
 /// Grid size (character cells). Chosen to give the gallery room to breathe while
 /// staying a comfortable README width.

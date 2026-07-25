@@ -104,7 +104,7 @@ impl View for StatusBar {
 mod tests {
     use super::*;
     use crate::Surface;
-    use crate::test_support::{buffer, rainbow_theme};
+    use crate::tests::support::{buffer, rainbow_theme};
     use crate::view::{RenderCtx, View};
     use ratatui_core::text::Span;
 

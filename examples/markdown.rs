@@ -17,10 +17,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::Span;
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
-use tuika::{
-    CodeHighlighter, CodeTheme, Event, Highlighter, KeyCode, MarkdownState, Padding, StatusBar,
-    TerminalSession, Text, Theme, paint, translate_event, view,
-};
+use tuika::prelude::*;
 
 /// A tiny self-contained Rust highlighter — enough to satisfy the
 /// [`Highlighter`] seam without a grammar dependency. Real hosts use the

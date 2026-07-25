@@ -46,7 +46,8 @@ use crossterm::event;
 use ratatui::backend::CrosstermBackend;
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
-use tuika::{RectProbe, StyleSheet, TerminalSession, paint, translate_event};
+use tuika::probe::RectProbe;
+use tuika::{StyleSheet, TerminalSession, paint, translate_event};
 
 use crate::app::{App, Flow};
 

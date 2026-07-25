@@ -172,7 +172,7 @@ mod tests {
     use super::*;
     use crate::Surface;
     use crate::style::Theme;
-    use crate::test_support::{buffer, rainbow_theme, row};
+    use crate::tests::support::{buffer, rainbow_theme, row};
     use crate::view::{RenderCtx, View};
     use ratatui_core::style::Color;
 

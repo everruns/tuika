@@ -8,9 +8,9 @@
 use proptest::prelude::*;
 use ratatui_core::layout::Rect;
 
-use super::geometry::{Axis, Padding, Size};
-use super::layout::{Align, Dimension, Direction, Item, Justify, LayoutStyle, solve};
-use super::overlay::{Anchor, Extent, OverlaySpec};
+use crate::geometry::{Axis, Padding, Size};
+use crate::layout::{Align, Dimension, Direction, Item, Justify, LayoutStyle, solve};
+use crate::overlay::{Anchor, Extent, OverlaySpec};
 
 fn dimension_strategy() -> impl Strategy<Value = Dimension> {
     prop_oneof![

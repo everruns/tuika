@@ -20,7 +20,7 @@
 use std::io;
 use std::path::PathBuf;
 
-use tuika::ImageData;
+use tuika::term::image::ImageData;
 
 /// Source resolution of the embedded gradient. Small on purpose — it's a smooth
 /// gradient, so it upscales cleanly and keeps the committed SVG tiny.

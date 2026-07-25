@@ -14,10 +14,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::text::{Line, Span};
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
-use tuika::{
-    CodeBlock, Event, KeyCode, Padding, Tabs, TabsState, TerminalSession, Text, Theme, paint,
-    translate_event, view,
-};
+use tuika::prelude::*;
 use tuika_codeformatters::TreeSitterHighlighter;
 
 /// A `'static` highlighter so the borrowed `CodeBlock` can enter the `view!`

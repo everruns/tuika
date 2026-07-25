@@ -151,7 +151,7 @@ impl Chord {
     }
 
     /// A human-readable label such as `"Ctrl+R"`, `"Shift+Tab"`, or `"Space"`,
-    /// suitable for a [`KeyHints`](crate::KeyHints) row or a help overlay.
+    /// suitable for a [`KeyHints`](crate::components::KeyHints) row or a help overlay.
     pub fn display(&self) -> String {
         let mut out = String::new();
         if self.ctrl {
@@ -535,7 +535,7 @@ impl<C: Clone> Keymap<C> {
     }
 
     /// The bindings currently active (their layer's gate is satisfied),
-    /// suitable for building a [`KeyHints`](crate::KeyHints) row or a help
+    /// suitable for building a [`KeyHints`](crate::components::KeyHints) row or a help
     /// overlay. Higher-priority layers come first.
     pub fn hints(&self) -> Vec<Hint<C>> {
         let mut layers: Vec<&Layer<C>> = self

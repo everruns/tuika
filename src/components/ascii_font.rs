@@ -82,7 +82,7 @@ fn glyph_width(ch: char) -> u16 {
 /// Big block-letter text rendered from the bundled 5-row font.
 ///
 /// ```no_run
-/// use tuika::{AsciiFont, Theme};
+/// use tuika::prelude::*;
 /// let theme = Theme::default();
 /// let banner = AsciiFont::new("HELLO");
 /// // `banner` is a `View` five rows tall; paint it or embed it in a `Flex`.
@@ -178,7 +178,7 @@ impl View for AsciiFont {
 mod tests {
     use super::*;
     use crate::style::Theme;
-    use crate::test_support::{rainbow_theme, row};
+    use crate::tests::support::{rainbow_theme, row};
 
     #[test]
     fn measures_five_rows_and_summed_width() {

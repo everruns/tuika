@@ -82,7 +82,7 @@ mod tests {
     use super::*;
     use crate::Surface;
     use crate::style::Theme;
-    use crate::test_support::{buffer, row};
+    use crate::tests::support::{buffer, row};
     use crate::view::{RenderCtx, View};
 
     #[test]

@@ -34,7 +34,8 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use tuika::{Event, Key, KeyCode, RenderCtx, Scroll, ScrollState, Surface, Theme, View};
+use tuika::components::{Scroll, ScrollState};
+use tuika::{Event, Key, KeyCode, RenderCtx, Surface, Theme, View};
 
 /// Fixed viewport the render benches paint into — a typical terminal transcript
 /// pane. Only these `HEIGHT` rows are ever drawn, whatever the transcript size.

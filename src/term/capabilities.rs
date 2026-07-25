@@ -17,7 +17,7 @@
 //! The `graphics` field reuses [`ImageSupport`], so image support is just
 //! `caps.graphics` (or [`supports_images`](Capabilities::supports_images)). The
 //! `hyperlinks` / `clipboard` / `progress` flags are **advisory only**: those
-//! escapes ([`crate::hyperlink`], [`crate::clipboard`], [`crate::native`]) are
+//! escapes ([`crate::term::hyperlink`], [`crate::term::clipboard`], [`crate::term::progress`]) are
 //! swallowed harmlessly by terminals that don't understand them, so you emit them
 //! regardless — the flag only helps a host decide whether to render UI (a "copy"
 //! hint, a link underline) the terminal can't act on. They lean conservative, so
@@ -25,7 +25,7 @@
 //!
 //! ```no_run
 //! use std::time::Duration;
-//! use tuika::Capabilities;
+//! use tuika::term::capabilities::Capabilities;
 //!
 //! // Instant, advisory (no I/O):
 //! let caps = Capabilities::from_env();
@@ -36,7 +36,7 @@
 //! let caps = Capabilities::query(Duration::from_millis(100));
 //! ```
 
-use crate::image::ImageSupport;
+use crate::term::image::ImageSupport;
 
 /// The Primary Device Attributes request (`ESC [ c`). A terminal replies with
 /// `ESC [ ? <codes> c`; feed that reply to [`DeviceAttributes::parse`].

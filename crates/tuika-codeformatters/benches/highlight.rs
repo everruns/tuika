@@ -14,7 +14,8 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use tuika::{Highlighter, Theme};
+use tuika::Theme;
+use tuika::highlight::Highlighter;
 use tuika_codeformatters::TreeSitterHighlighter;
 
 /// Code sizes, as the repetition count applied to each snippet. The byte size

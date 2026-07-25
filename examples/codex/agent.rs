@@ -9,7 +9,7 @@
 
 use std::collections::VecDeque;
 
-use tuika::MarkdownState;
+use tuika::components::MarkdownState;
 
 use crate::history::{Cell, ExecStatus, Tone};
 

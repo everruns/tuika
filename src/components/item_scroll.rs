@@ -1,6 +1,6 @@
 //! A scroll viewport whose content is **views**, not lines.
 //!
-//! [`Scroll`](crate::Scroll) windows a `Vec<Line>`: one content row per line,
+//! [`Scroll`](crate::components::Scroll) windows a `Vec<Line>`: one content row per line,
 //! which makes its arithmetic trivial and its render O(viewport). That is the
 //! right primitive for logs and prose, but it forces any host whose history
 //! contains *laid-out* things — a bordered panel, a table, a diff, an image, a
@@ -36,9 +36,8 @@ use super::scroll::{ScrollState, draw_scrollbar};
 /// ![item_scroll demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/item_scroll.gif)
 ///
 /// ```
-/// use tuika::{Element, ItemScroll, ScrollState, Text, element};
+/// use tuika::prelude::*;
 /// use tuika::testing::{grid, render};
-/// use tuika::Theme;
 ///
 /// let items: Vec<Element> = vec![
 ///     element(Text::raw("first")),
@@ -306,7 +305,7 @@ mod tests {
     use super::*;
     use crate::components::{Boxed, Text};
     use crate::style::Theme;
-    use crate::test_support::{buffer, row};
+    use crate::tests::support::{buffer, row};
     use crate::view::element;
     use ratatui_core::text::Line;
 

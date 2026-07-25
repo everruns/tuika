@@ -24,7 +24,7 @@ struct Child {
 /// # Example
 ///
 /// ```
-/// use tuika::{Flex, Text, Theme, element};
+/// use tuika::prelude::*;
 /// use tuika::testing::{grid, render};
 ///
 /// // A row of two fixed-width cells, laid left to right.
@@ -131,7 +131,7 @@ impl Flex {
     /// rect per child, in insertion order.
     ///
     /// ```
-    /// use tuika::{Flex, Text, element};
+    /// use tuika::prelude::*;
     /// use ratatui_core::layout::Rect;
     ///
     /// let flex = Flex::row()
@@ -232,7 +232,8 @@ mod tests {
     fn crate_root_reexports_solver_primitives() {
         // `solve` and `Item` are reachable from the crate root, not just
         // `tuika::layout` — build a layout by hand without a Flex.
-        use crate::{Dimension, Item, LayoutStyle, Size, solve};
+        use crate::Size;
+        use crate::layout::{Dimension, Item, LayoutStyle, solve};
         let items = [
             Item::new(Dimension::Fixed(3), Size::new(3, 1)),
             Item::new(Dimension::Flex(1), Size::new(0, 1)),

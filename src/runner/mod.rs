@@ -1,9 +1,24 @@
-//! A small synchronous full-screen runner.
+//! Small full-screen run loops.
 //!
-//! Applications with an existing async runtime can keep their own event loop
-//! and use [`paint`] directly. This runner is for conventional
-//! dashboards and tools that want lifecycle, redraw scheduling, and event
-//! translation in one place.
+//! Both runners tie the same host primitives together — [`TerminalSession`] for
+//! the alternate screen, [`translate_event`] for input, [`paint`] for the frame —
+//! so a host that wants lifecycle, redraw scheduling, and event translation in
+//! one place does not have to assemble them itself.
+//!
+//! [`Runner`] is the synchronous loop and is always available. [`AsyncRunner`]
+//! (`feature = "async"`) is the same loop for hosts already on Tokio; it lives
+//! behind the feature so a sync-only host never pulls a runtime into its build.
+//! They are one module because they are one concept — picking between them is a
+//! question about the host's existing runtime, not about which part of tuika to
+//! reach for.
+//!
+//! A host with its own event loop needs neither: call [`paint`] directly.
+
+#[cfg(feature = "async")]
+mod asynchronous;
+
+#[cfg(feature = "async")]
+pub use asynchronous::{AsyncRunner, Signal};
 
 use std::io;
 use std::ops::ControlFlow;
@@ -14,7 +29,8 @@ use ratatui_core::backend::Backend;
 use ratatui_core::terminal::{Terminal, TerminalOptions, Viewport};
 use ratatui_crossterm::CrosstermBackend;
 
-use crate::{Element, Event, RedrawHandle, TerminalSession, Theme, paint, translate_event};
+use crate::live::RedrawHandle;
+use crate::{Element, Event, TerminalSession, Theme, paint, translate_event};
 
 #[derive(Clone, Copy, Debug)]
 /// Scheduling options for [`Runner`].
@@ -66,7 +82,7 @@ impl Runner {
     }
 
     /// Run with a caller-provided backend, such as
-    /// [`HyperlinkBackend`](crate::HyperlinkBackend).
+    /// [`HyperlinkBackend`](crate::term::hyperlink::HyperlinkBackend).
     pub fn run_with_backend<B>(
         &self,
         theme: &Theme,

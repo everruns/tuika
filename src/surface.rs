@@ -38,7 +38,7 @@ impl<'a> Surface<'a> {
     ///
     /// Prefer [`set_string`](Self::set_string) / [`set`](Self::set) for ordinary
     /// painting — those honor the clip. This escape hatch is for post-process
-    /// passes (e.g. [`crate::apply_buffer_links`]) that rewrite cells already
+    /// passes (e.g. [`crate::term::hyperlink::apply_buffer_links`]) that rewrite cells already
     /// painted inside the clip.
     pub fn buffer_mut(&mut self) -> &mut Buffer {
         self.buffer
@@ -222,7 +222,7 @@ mod tests {
     use super::*;
     use crate::components::{Boxed, Text};
     use crate::style::Theme;
-    use crate::test_support::{buffer, row};
+    use crate::tests::support::{buffer, row};
     use crate::view::{RenderCtx, View, element};
     use ratatui_core::buffer::Buffer;
     use ratatui_core::layout::Rect;

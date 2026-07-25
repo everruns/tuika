@@ -1,8 +1,8 @@
 # tuika themes
 
-Every tuika component styles itself from a [`Theme`](https://docs.rs/tuika/latest/tuika/struct.Theme.html)
+Every tuika component styles itself from a [`Theme`](https://docs.rs/tuika/latest/tuika/style/struct.Theme.html)
 passed through the render context — no component hard-codes a color. Swapping
-the theme handed to [`paint`](https://docs.rs/tuika/latest/tuika/fn.paint.html)
+the theme handed to [`paint`](https://docs.rs/tuika/latest/tuika/host/fn.paint.html)
 restyles the whole tree at once.
 
 A `Theme` is a plain `Copy` struct of colors, so a palette is just data. tuika
@@ -15,7 +15,7 @@ use tuika::themes;
 
 let a = themes::GRUVBOX_DARK;            // the struct
 let b = tuika::Theme::gruvbox_dark();    // named constructor
-let c = tuika::theme_by_name("gruvbox-dark").unwrap(); // config / --theme
+let c = tuika::themes::by_name("gruvbox-dark").unwrap(); // config / --theme
 assert_eq!(a, b);
 assert_eq!(a, c);
 ```

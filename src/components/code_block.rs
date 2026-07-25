@@ -112,8 +112,8 @@ pub(crate) fn code_block_lines(
 ///
 /// ![code_block demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/code_block.gif)
 ///
-/// Colors come entirely from [`Theme::code`](crate::CodeTheme); token classes are
-/// resolved by whatever [`Highlighter`](crate::Highlighter) you plug in (none →
+/// Colors come entirely from [`Theme::code`](crate::style::CodeTheme); token classes are
+/// resolved by whatever [`Highlighter`](crate::highlight::Highlighter) you plug in (none →
 /// plain, theme-colored text).
 ///
 /// # Options
@@ -127,7 +127,7 @@ pub(crate) fn code_block_lines(
 /// | [`start_line(n)`](Self::start_line) | `1` | first gutter line number |
 ///
 /// ```no_run
-/// use tuika::{CodeBlock, Theme};
+/// use tuika::prelude::*;
 /// let theme = Theme::default();
 /// // No highlighter → plain, theme-colored code; hide the label row.
 /// let block = CodeBlock::new("rust", "fn main() {}").label(false);
@@ -231,7 +231,7 @@ impl View for CodeBlock<'_> {
 mod tests {
     use super::*;
     use crate::style::Theme;
-    use crate::test_support::row;
+    use crate::tests::support::row;
 
     #[test]
     fn line_numbers_gutter_counts_and_aligns() {

@@ -20,14 +20,27 @@ the renderer did not expect.
 
 ## What
 
-Four out-of-band capabilities, in two families:
+Five out-of-band capabilities, in two families:
 
-| Capability | Sequence | Emission point |
-| --- | --- | --- |
-| Hyperlinks | OSC 8 | spliced into the drawn cell run by `HyperlinkBackend` |
-| Clipboard | OSC 52 | host-initiated, any time |
-| Native progress | OSC 9;4 | host-initiated, any time |
-| Images | Kitty / iTerm2 / Sixel | after `terminal.draw()` returns |
+| Capability | Sequence | Module | Emission point |
+| --- | --- | --- | --- |
+| Hyperlinks | OSC 8 | `term::hyperlink` | spliced into the drawn cell run by `HyperlinkBackend` |
+| Clipboard | OSC 52 | `term::clipboard` | host-initiated, any time |
+| Native progress | OSC 9;4 | `term::progress` | host-initiated, any time |
+| Pointer shape | OSC 22 | `term::pointer` | host-initiated, any time |
+| Images | Kitty / iTerm2 / Sixel | `term::image` | after `terminal.draw()` returns |
+
+They live together under `term` because they are one kind of thing, and a reader
+who has understood one has understood the shape of all of them. Each exposes a
+pure `encode` that builds the sequence without touching I/O — that is what makes
+the wire format unit-testable without a terminal — plus a thin writer over
+`impl Write`. A capability that needs per-frame state owns a driver instead
+(`term::progress::TerminalProgress`), and `term::capabilities` answers what the
+terminal supports for the one family that must ask before it emits.
+
+Images are the exception that proves the grouping: the *protocol* half is here,
+but the `Image` view is a component like any other, because reserving cells is a
+cell-grid concern. The split is deliberate — see [images.md](./images.md).
 
 ## Design
 

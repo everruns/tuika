@@ -2,15 +2,15 @@
 //! hit-testing, and click detection.
 //!
 //! Terminals don't hand you selection or clickable regions — once an app
-//! enables mouse capture (see [`AltScreen`](crate::AltScreen)) the terminal's
+//! enables mouse capture (see [`AltScreen`](crate::host::AltScreen)) the terminal's
 //! own click-drag selection stops working, and every drag arrives as a
 //! [`Mouse`] event instead. This module rebuilds those affordances *on top of*
 //! the grid the app already rendered:
 //!
 //! - [`SelectionState`] turns a left button `Down -> Drag -> Up` gesture into a
 //!   [`SelectionRange`]; [`selected_text`] reads the text back out of the
-//!   [`Buffer`] and [`highlight`] paints the selection into it. Pair with
-//!   [`crate::clipboard::write_clipboard`] to copy.
+//!   [`Buffer`] and [`paint_selection`] paints the selection into it. Pair with
+//!   [`crate::term::clipboard::write`] to copy.
 //! - [`HitMap`] maps screen regions to values so a click resolves to whatever
 //!   was drawn there (a button, a link, a list row); [`ClickTracker`] turns a
 //!   `Down`/`Up` pair on the same cell into a click (and lets a drag cancel it).
@@ -247,7 +247,7 @@ pub fn selected_text(buffer: &Buffer, area: Rect, sel: SelectionRange) -> String
 
 /// Paint `style` over the selected cells of `buffer` (patching, so glyphs and
 /// foreground survive; typically a reversed or selection-background style).
-pub fn highlight(buffer: &mut Buffer, area: Rect, sel: SelectionRange, style: Style) {
+pub fn paint_selection(buffer: &mut Buffer, area: Rect, sel: SelectionRange, style: Style) {
     for row in sel.start.1..=sel.end.1 {
         let Some((left, right)) = sel.row_span(row, area) else {
             continue;
@@ -511,7 +511,7 @@ mod tests {
         sel.handle(&down(0, 0));
         sel.handle(&drag(2, 0));
         sel.handle(&up(2, 0));
-        highlight(
+        paint_selection(
             &mut buf,
             area,
             sel.range().unwrap(),

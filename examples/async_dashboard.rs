@@ -16,10 +16,7 @@ use std::time::Duration;
 
 use ratatui::layout::Constraint;
 use ratatui::widgets::{Block, Borders, Row, Sparkline, Table, Widget};
-use tuika::{
-    AsyncRunner, Dimension, Element, Event, Flex, KeyCode, KeyHints, RatatuiView, RunnerConfig,
-    Signal, Theme, element,
-};
+use tuika::prelude::*;
 
 /// The dashboard's entire state — owned by the run loop, not shared.
 struct Metrics {

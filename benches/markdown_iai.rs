@@ -17,7 +17,10 @@
 use std::hint::black_box;
 
 use iai_callgrind::{library_benchmark, library_benchmark_group, main};
-use tuika::{CodeHighlighter, MarkdownState, StyleSheet, Theme, markdown_to_lines};
+use tuika::components::MarkdownState;
+use tuika::components::markdown::to_lines;
+use tuika::highlight::CodeHighlighter;
+use tuika::{StyleSheet, Theme};
 
 const WIDTH: u16 = 80;
 
@@ -54,7 +57,7 @@ fn deltas(source: &str) -> Vec<String> {
 fn one_shot(source: String) -> usize {
     let theme = Theme::default();
     let sheet = StyleSheet::from_theme(&theme);
-    black_box(markdown_to_lines(
+    black_box(to_lines(
         black_box(&source),
         WIDTH,
         &theme,

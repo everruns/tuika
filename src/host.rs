@@ -25,6 +25,7 @@ use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
 
 use super::event::{Event, Key, KeyCode, Mouse, MouseButton, MouseKind};
+use super::overlay::Overlay;
 use super::style::{StyleSheet, Theme};
 use super::surface::Surface;
 use super::view::{RenderCtx, View};
@@ -49,7 +50,7 @@ impl AltScreen {
         if self.active {
             let mut out = io::stdout();
             let _ = out.write_all(
-                crate::native::encode_pointer_shape(crate::native::PointerShape::Default)
+                crate::term::pointer::encode(crate::term::pointer::PointerShape::Default)
                     .as_bytes(),
             );
             let _ = execute!(out, DisableMouseCapture, LeaveAlternateScreen);
@@ -107,7 +108,7 @@ impl TerminalSession {
         }
         let mut out = io::stdout();
         let _ = out.write_all(
-            crate::native::encode_pointer_shape(crate::native::PointerShape::Default).as_bytes(),
+            crate::term::pointer::encode(crate::term::pointer::PointerShape::Default).as_bytes(),
         );
         let _ = execute!(out, Show, DisableMouseCapture, LeaveAlternateScreen);
         let _ = out.flush();
@@ -122,16 +123,6 @@ impl Drop for TerminalSession {
     fn drop(&mut self) {
         self.leave();
     }
-}
-
-/// An overlay to composite over the base tree at a resolved rect.
-pub struct Overlay<'a> {
-    /// Rect the overlay is composited into.
-    pub area: Rect,
-    /// View painted within `area`.
-    pub view: &'a dyn View,
-    /// Clear the rect (fill with the theme background) before painting.
-    pub clear: bool,
 }
 
 /// Composite `root` and `overlays` into `buffer` over `area`, using `theme`'s
@@ -260,7 +251,7 @@ mod tests {
     use crate::components::{Boxed, Flex, ProgressBar, Scroll, ScrollState, StatusBar, Text};
     use crate::event::{Event, MouseButton, MouseKind};
     use crate::style::Theme;
-    use crate::test_support::{buffer, rainbow_theme, row};
+    use crate::tests::support::{buffer, rainbow_theme, row};
     use crate::view::{Element, element};
     use ratatui_core::buffer::Buffer;
     use ratatui_core::layout::Rect;

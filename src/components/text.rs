@@ -74,7 +74,7 @@ pub fn line_width(line: &Line) -> u16 {
 /// formatting layer without losing their alignment.
 ///
 /// ```
-/// use tuika::{Text, Theme};
+/// use tuika::prelude::*;
 /// use ratatui_core::text::Line;
 /// # use tuika::testing::render;
 /// let view = Text::new(vec![
@@ -351,7 +351,7 @@ impl View for Wrap {
 mod tests {
     use super::*;
     use crate::style::Theme;
-    use crate::test_support::{buffer, row};
+    use crate::tests::support::{buffer, row};
     use crate::view::{RenderCtx, View};
     use crate::{Size, Surface};
     use ratatui_core::style::{Color, Modifier, Style};

@@ -25,10 +25,10 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
-use tuika::{
-    AltScreen, ClickTracker, Event, HitMap, MouseButton, MouseKind, SelectionState, Theme,
-    highlight, selected_text, translate_event, write_clipboard,
-};
+use tuika::host::AltScreen;
+use tuika::mouse::{ClickTracker, HitMap, SelectionState, paint_selection, selected_text};
+use tuika::prelude::*;
+use tuika::term::clipboard;
 
 const SAMPLE: &[&str] = &[
     "Drag across this text to select it.",
@@ -113,12 +113,12 @@ fn main() -> io::Result<()> {
                 // highlighting (highlight only changes style, so order is cosmetic).
                 if pending_copy {
                     let text = selected_text(f.buffer_mut(), text_area, range);
-                    if let Ok(true) = write_clipboard(&mut io::stdout(), &text) {
+                    if let Ok(true) = clipboard::write(&mut io::stdout(), &text) {
                         status = format!("copied {} chars", text.chars().count());
                     }
                     pending_copy = false;
                 }
-                highlight(f.buffer_mut(), text_area, range, sel_style);
+                paint_selection(f.buffer_mut(), text_area, range, sel_style);
             } else {
                 pending_copy = false;
             }

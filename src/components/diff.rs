@@ -8,7 +8,7 @@
 //! match its palette — over the theme's code background so the block reads like
 //! the rest of a code surface.
 //!
-//! The diff itself ([`diff_rows`]) is a pure function, so classification is
+//! The diff itself ([`rows`]) is a pure function, so classification is
 //! testable without rendering.
 
 use ratatui_core::layout::Rect;
@@ -55,7 +55,7 @@ const LCS_CELL_CAP: usize = 4_000_000;
 /// toward deletes-before-inserts, matching the usual unified-diff ordering. For
 /// very large inputs it falls back to emitting all deletions followed by all
 /// insertions rather than allocate a table whose cell count is unbounded.
-pub fn diff_rows(old: &str, new: &str) -> Vec<DiffRow> {
+pub fn rows(old: &str, new: &str) -> Vec<DiffRow> {
     let old: Vec<&str> = if old.is_empty() {
         Vec::new()
     } else {
@@ -187,12 +187,13 @@ impl Default for DiffStyle {
     }
 }
 
-/// A rendered line-diff view over the rows produced by [`diff_rows`].
+/// A rendered line-diff view over the rows produced by [`rows`].
 ///
 /// ```
-/// use tuika::{Diff, DiffMode, DiffTag, diff_rows};
+/// use tuika::components::diff::rows;
+/// use tuika::prelude::*;
 /// // The pure classifier is usable on its own:
-/// let rows = diff_rows("a\nb\nc", "a\nB\nc");
+/// let rows = rows("a\nb\nc", "a\nB\nc");
 /// assert_eq!(rows[1].tag, DiffTag::Delete);
 /// assert_eq!(rows[2].tag, DiffTag::Insert);
 /// // …or wrap it in a view.
@@ -208,7 +209,7 @@ pub struct Diff {
 impl Diff {
     /// Diff `old` against `new` (each split into lines on `\n`).
     pub fn new(old: &str, new: &str) -> Self {
-        Self::from_rows(diff_rows(old, new))
+        Self::from_rows(rows(old, new))
     }
 
     /// Build a view from pre-computed rows (e.g. from an external differ).
@@ -430,11 +431,11 @@ impl View for Diff {
 mod tests {
     use super::*;
     use crate::style::Theme;
-    use crate::test_support::row;
+    use crate::tests::support::row;
 
     #[test]
     fn classifies_equal_delete_insert() {
-        let rows = diff_rows("a\nb\nc", "a\nB\nc");
+        let rows = rows("a\nb\nc", "a\nB\nc");
         let tags: Vec<DiffTag> = rows.iter().map(|r| r.tag).collect();
         // "b" removed, "B" added, surrounded by equal context.
         assert_eq!(
@@ -455,11 +456,11 @@ mod tests {
 
     #[test]
     fn empty_sides_are_pure_insert_or_delete() {
-        assert!(diff_rows("", "").is_empty());
-        let added = diff_rows("", "x\ny");
+        assert!(rows("", "").is_empty());
+        let added = rows("", "x\ny");
         assert!(added.iter().all(|r| r.tag == DiffTag::Insert));
         assert_eq!(added.len(), 2);
-        let removed = diff_rows("x\ny", "");
+        let removed = rows("x\ny", "");
         assert!(removed.iter().all(|r| r.tag == DiffTag::Delete));
     }
 

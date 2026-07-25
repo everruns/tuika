@@ -12,10 +12,8 @@
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
-use tuika::{
-    Align, BorderStyle, Boxed, CodeHighlighter, Element, Flex, MarkdownState, Padding, StyleSheet,
-    Text, Theme, element, wrap_lines,
-};
+use tuika::components::text::wrap_lines;
+use tuika::prelude::*;
 
 /// Rows of command output kept inline before the middle is elided. Codex shows a
 /// short window and a `… +N lines` marker rather than flooding the transcript.

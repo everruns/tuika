@@ -28,14 +28,8 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
-use tuika::{
-    AsciiFont, BorderStyle, Boxed, CodeBlock, CodeTheme, Console, ConsoleLog, Diff, Element, Event,
-    FrameBuffer, FrameBufferView, Highlighter, ItemScroll, Key, KeyCode, Loader, MarkdownState,
-    Mouse, MouseKind, Padding, ProgressBar, QrCode, QrEcc, Repeat, Rule, Scroll, ScrollState,
-    SelectList, SelectState, Slider, SliderState, Spinner, SpinnerStyle, StatusBar, TabSelect,
-    TabSelectState, Tabs, TabsState, Text, TextInput, TextInputState, TextSpan, Theme, Timeline,
-    ToastLevel, ToastList, Toasts, Trigger, element, paint, view,
-};
+use tuika::framebuffer::{FrameBuffer, FrameBufferView};
+use tuika::prelude::*;
 
 /// A tiny self-contained Rust highlighter for the `markdown`/`code_block` scenes.
 ///
@@ -789,7 +783,7 @@ fn scene_text(frame: u64, theme: &Theme) -> Element {
             theme.muted_style(),
         )),
     ]);
-    let prose = tuika::Paragraph::new(
+    let prose = tuika::components::Paragraph::new(
         "Paragraph word-wraps plain text to the render width in a single style, \
          re-flowing every frame so a resize just re-wraps.",
         theme.text_style(),
@@ -836,7 +830,12 @@ fn scene_markdown(frame: u64, theme: &Theme) -> Element {
     // viewport width so prose re-wraps on resize.
     let sheet = tuika::StyleSheet::from_theme(theme);
     let lines = state
-        .lines(64, theme, &sheet, tuika::CodeHighlighter::With(&HL))
+        .lines(
+            64,
+            theme,
+            &sheet,
+            tuika::highlight::CodeHighlighter::With(&HL),
+        )
         .to_vec();
     element(Text::new(lines))
 }
@@ -901,7 +900,7 @@ fn scene_flex(frame: u64, theme: &Theme) -> Element {
                 .add_modifier(Modifier::BOLD),
         ))]);
         element(
-            tuika::Boxed::new(element(text))
+            tuika::components::Boxed::new(element(text))
                 .border(BorderStyle::Plain)
                 .background(Style::default().bg(color)),
         )
