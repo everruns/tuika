@@ -12,7 +12,7 @@ use crate::view::{RenderCtx, View};
 
 /// A one-line status bar with left- and right-anchored segment groups.
 ///
-/// ![status_bar demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/status_bar.gif)
+/// ![status_bar demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/status_bar.png)
 pub struct StatusBar {
     left: Vec<Span<'static>>,
     right: Vec<Span<'static>>,

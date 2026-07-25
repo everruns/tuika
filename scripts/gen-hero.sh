@@ -25,8 +25,9 @@ echo "Building the screenshot example…"
 cargo build -q --example screenshot
 bin="${repo_root}/target/debug/examples/screenshot"
 
-tape="$(mktemp --suffix=.tape)"
-trap 'rm -f "${tape}"' EXIT
+tapes_dir="$(mktemp -d)"
+trap 'rm -rf "${tapes_dir}"' EXIT
+tape="${tapes_dir}/hero.tape"
 
 # The scene fills the terminal, so the window is sized to yield ~92×30 cells.
 # The theme background matches tuika's own so VHS's padding blends into the app,
@@ -36,10 +37,11 @@ cat >"${tape}" <<EOF
 Output "${repo_root}/docs/hero.gif"
 
 Set Shell bash
-Set FontSize 26
-Set Width 1500
-Set Height 1040
-Set Padding 30
+Set FontSize 31
+Set CursorBlink false
+Set Width 1800
+Set Height 1248
+Set Padding 36
 Set WindowBar Colorful
 Set Theme { "background": "#141214", "foreground": "#ebe6e6" }
 Set Framerate 24
@@ -53,6 +55,6 @@ Sleep 6s
 EOF
 
 echo "Recording docs/hero.gif…"
-vhs "${tape}"
+env -u NO_COLOR vhs "${tape}"
 
 echo "Done. Wrote ${repo_root}/docs/hero.gif ($(du -h "${repo_root}/docs/hero.gif" | cut -f1))."

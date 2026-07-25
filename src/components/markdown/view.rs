@@ -33,7 +33,7 @@ use super::parse::parse_with;
 /// GFM tables are laid out to the render width, cells keeping their inline
 /// styles, emoji, and links:
 ///
-/// ![markdown table demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/markdown_table.gif)
+/// ![markdown table demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/markdown_table.png)
 ///
 /// # Options
 ///

@@ -19,7 +19,7 @@ tuika's layout and host loop.
 [everruns.com/yolop](https://everruns.com/yolop) ·
 [github.com/everruns/yolop](https://github.com/everruns/yolop)
 
-<img src="showcases/yolop.gif" width="880" alt="yolop demo: a question typed into the composer, a tool call listing the examples directory, then a streamed markdown answer with a highlighted bash code block.">
+<img src="showcases/yolop.gif" width="880" alt="yolop demo: a question in the transcript, a tool call listing the examples directory, then a streamed markdown answer with a highlighted bash code block.">
 
 The recorded session is deterministic and offline — the model is a local
 [LLMSim](#llmsim) replaying a scripted turn — so the recording shows the real

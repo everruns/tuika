@@ -25,6 +25,8 @@ fi
 echo "Building the screenshot example…"
 cargo build -q --example screenshot
 bin="${repo_root}/target/debug/examples/screenshot"
+tapes_dir="$(mktemp -d)"
+trap 'rm -rf "${tapes_dir}"' EXIT
 
 # The bundled theme ids, straight from the crate so the script never drifts.
 themes=(solarized-dark solarized-light gruvbox-dark light dracula)
@@ -38,17 +40,18 @@ for name in "${themes[@]}"; do
   case "${name}" in
     solarized-light | light) fg="#1e1e1e" ;;
   esac
-  tape="$(mktemp --suffix=.tape)"
+  tape="${tapes_dir}/theme-${name}.tape"
   # The scene fills the terminal; window sized to yield ~92×30 cells. Padding
   # background matches the theme so VHS's window bar blends into the app.
   cat >"${tape}" <<EOF
 Output "${repo_root}/docs/themes/theme-${name}.gif"
 
 Set Shell bash
-Set FontSize 26
-Set Width 1500
-Set Height 1040
-Set Padding 30
+Set FontSize 31
+Set CursorBlink false
+Set Width 1800
+Set Height 1248
+Set Padding 36
 Set WindowBar Colorful
 Set Theme { "background": "${bg}", "foreground": "${fg}" }
 Set Framerate 24
@@ -61,8 +64,7 @@ Show
 Sleep 6s
 EOF
   echo "Recording theme-${name}.gif (bg ${bg})…"
-  vhs "${tape}"
-  rm -f "${tape}"
+  env -u NO_COLOR vhs "${tape}"
 done
 
 echo "Done. GIFs written to docs/themes/theme-*.gif"

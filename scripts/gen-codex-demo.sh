@@ -33,8 +33,9 @@ echo "Building the codex example…"
 cargo build -q --example codex
 bin="${repo_root}/target/debug/examples/codex"
 
-tape="$(mktemp --suffix=.tape)"
-trap 'rm -f "${tape}"' EXIT
+tapes_dir="$(mktemp -d)"
+trap 'rm -rf "${tapes_dir}"' EXIT
+tape="${tapes_dir}/codex.tape"
 
 # Sized to ~100×28 cells. The VHS theme background matches the example's own
 # palette so the padding blends into the app, and the window bar supplies the
@@ -44,10 +45,11 @@ cat >"${tape}" <<EOF
 Output "${repo_root}/examples/codex/codex.gif"
 
 Set Shell bash
-Set FontSize 22
-Set Width 1400
-Set Height 880
-Set Padding 24
+Set FontSize 28
+Set CursorBlink false
+Set Width 1800
+Set Height 1132
+Set Padding 31
 Set WindowBar Colorful
 Set Theme { "background": "#0d0e10", "foreground": "#dfe2e6" }
 Set Framerate 20
@@ -60,7 +62,7 @@ Sleep 1s
 Show
 Sleep 1500ms
 
-# `/` opens the command palette, filtered as you type…
+# Slash opens the command palette, filtered as you type…
 Type "/"
 Sleep 1200ms
 Type "mo"
@@ -68,7 +70,7 @@ Sleep 1200ms
 Backspace 3
 Sleep 400ms
 
-# …and `@` opens a file picker from the same machinery: a different trigger,
+# …and at-sign opens a file picker from the same machinery: a different trigger,
 # different completions, both colored in the composer as they are typed.
 Type "explain @src"
 Sleep 1500ms
@@ -91,6 +93,6 @@ Sleep 7s
 EOF
 
 echo "Recording examples/codex/codex.gif…"
-vhs "${tape}"
+env -u NO_COLOR vhs "${tape}"
 
 echo "Done. Wrote ${repo_root}/examples/codex/codex.gif ($(du -h "${repo_root}/examples/codex/codex.gif" | cut -f1))."

@@ -89,7 +89,7 @@ pub fn line_width(line: &Line) -> u16 {
 /// assert_eq!(grid(&buffer), "left   \n  mid  \n    end");
 /// ```
 ///
-/// ![text demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/text.gif)
+/// ![text demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/text.png)
 pub struct Text {
     lines: Vec<Line<'static>>,
 }

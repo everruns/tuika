@@ -143,6 +143,8 @@ type Build = fn(u64, &Theme) -> Element;
 /// demo is declared — name, blurb, recording size, and builder.
 struct Demo {
     name: &'static str,
+    /// Public-facing component name shown in the recording.
+    title: &'static str,
     blurb: &'static str,
     /// Frame height in rows, chrome included. The scene is pinned to exactly this
     /// many rows when recorded, so anything taller is cut off — see [`check`].
@@ -156,8 +158,19 @@ struct Demo {
     build: Build,
 }
 
+impl Demo {
+    const fn asset_extension(&self) -> &'static str {
+        if self.animated { "gif" } else { "png" }
+    }
+
+    fn asset_filename(&self) -> String {
+        format!("{}.{}", self.name, self.asset_extension())
+    }
+}
+
 const fn demo(
     name: &'static str,
+    title: &'static str,
     blurb: &'static str,
     rows: u16,
     animated: bool,
@@ -165,6 +178,7 @@ const fn demo(
 ) -> Demo {
     Demo {
         name,
+        title,
         blurb,
         rows,
         animated,
@@ -176,6 +190,7 @@ const fn demo(
 /// A scene that runs to the bottom of its frame by design.
 const fn filling_demo(
     name: &'static str,
+    title: &'static str,
     blurb: &'static str,
     rows: u16,
     animated: bool,
@@ -183,13 +198,14 @@ const fn filling_demo(
 ) -> Demo {
     Demo {
         fills_frame: true,
-        ..demo(name, blurb, rows, animated, build)
+        ..demo(name, title, blurb, rows, animated, build)
     }
 }
 
 const DEMOS: &[Demo] = &[
     demo(
         "spinner",
+        "Spinner",
         "frame-cycled activity glyphs",
         10,
         true,
@@ -197,6 +213,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "progress_bar",
+        "ProgressBar",
         "determinate & indeterminate bars",
         12,
         true,
@@ -204,6 +221,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "loader",
+        "Loader",
         "spinner + message + hint row",
         9,
         true,
@@ -211,6 +229,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "text",
+        "Text",
         "styled lines and word-wrapped prose",
         11,
         false,
@@ -218,6 +237,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "markdown",
+        "Markdown",
         "CommonMark streamed in, only the tail re-parses",
         18,
         true,
@@ -225,6 +245,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "markdown_table",
+        "Markdown table",
         "GFM table: alignment, emoji, and links",
         13,
         false,
@@ -232,13 +253,15 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "code_block",
-        "themed, syntax-highlighted fenced code with a line-number gutter",
+        "CodeBlock",
+        "syntax-highlighted code with line numbers",
         12,
         false,
         scene_code_block,
     ),
     demo(
         "diff",
+        "Diff",
         "unified line diff with +/- gutters and line numbers",
         14,
         false,
@@ -246,6 +269,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "ascii_font",
+        "AsciiFont",
         "large figlet-style block-letter banners",
         12,
         false,
@@ -253,6 +277,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "qr",
+        "QrCode",
         "QR code encoded and drawn with half-blocks",
         24,
         false,
@@ -260,6 +285,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "rule",
+        "Rule",
         "titled horizontal separators",
         12,
         false,
@@ -267,6 +293,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "boxed",
+        "Boxed",
         "borders, titles, and padding",
         12,
         false,
@@ -274,6 +301,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "flex",
+        "Flex",
         "flexbox grow / fixed distribution",
         10,
         false,
@@ -281,6 +309,7 @@ const DEMOS: &[Demo] = &[
     ),
     filling_demo(
         "scroll",
+        "Scroll",
         "viewport + scrollbar over long content",
         13,
         true,
@@ -288,6 +317,7 @@ const DEMOS: &[Demo] = &[
     ),
     filling_demo(
         "item_scroll",
+        "ItemScroll",
         "the same viewport over laid-out items, not lines",
         13,
         true,
@@ -295,6 +325,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "primitives",
+        "Primitives",
         "owned dialog + form + panning custom viewport",
         17,
         true,
@@ -302,14 +333,16 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "select",
+        "SelectList",
         "keyboard-navigable selection list",
         11,
         true,
         scene_select,
     ),
-    demo("tabs", "host-state tab strip", 9, true, scene_tabs),
+    demo("tabs", "Tabs", "host-state tab strip", 9, true, scene_tabs),
     demo(
         "tab_select",
+        "TabSelect",
         "value-selecting segmented control",
         8,
         true,
@@ -317,6 +350,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "slider",
+        "Slider",
         "value picker over a numeric range",
         10,
         true,
@@ -324,6 +358,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "timeline",
+        "Timeline",
         "keyframed easing tracks sampled from the frame counter",
         12,
         true,
@@ -331,6 +366,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "toast",
+        "Toasts",
         "level-colored notification stack",
         9,
         false,
@@ -338,6 +374,7 @@ const DEMOS: &[Demo] = &[
     ),
     filling_demo(
         "console",
+        "Console",
         "captured stdout/log tail overlay",
         11,
         false,
@@ -345,6 +382,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "framebuffer",
+        "FrameBuffer",
         "RGBA canvas + sprite drawn with half-blocks",
         14,
         true,
@@ -352,6 +390,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "status_bar",
+        "StatusBar",
         "left / right status segments",
         7,
         false,
@@ -359,6 +398,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "textinput",
+        "TextInput",
         "multi-line edit model",
         9,
         true,
@@ -366,6 +406,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "hyperlink",
+        "Hyperlink",
         "OSC 8 links — clickable URLs in the transcript",
         12,
         false,
@@ -373,6 +414,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "mouse",
+        "Mouse",
         "drag-to-select, highlight, and clickable regions",
         11,
         true,
@@ -380,6 +422,7 @@ const DEMOS: &[Demo] = &[
     ),
     demo(
         "overlay",
+        "Overlay",
         "anchored dialog composited over the base tree",
         16,
         false,
@@ -424,19 +467,21 @@ fn main() -> io::Result<()> {
 // ---------------------------------------------------------------------------
 // `tapes` — emit a VHS tape per scene from the registry, so the tapes are
 // generated rather than committed. Recorded at ~2× pixel density and displayed
-// at `width="880"`, so the GIFs stay crisp on HiDPI screens. `Output` is relative
-// to the tuika crate dir (the generator cds there); the command is an absolute
-// path to this very binary.
+// at `width="880"`, so the assets stay crisp on HiDPI screens. Motion scenes
+// record as GIF; settled scenes use a full-color PNG screenshot. `Output` is
+// relative to the tuika crate dir (the generator cds there); the command is an
+// absolute path to this very binary.
 // ---------------------------------------------------------------------------
 
 /// Recorded scene width in columns. Every scene records at the same width so the
 /// GIFs line up in the gallery; only the height varies, per `Demo::rows`.
 const RECORD_COLS: u16 = 66;
-/// Upper bounds on the cell size, in pixels, that JetBrains Mono at
-/// `Set FontSize 40` yields in VHS's `xterm.js`. A tape is sized in *pixels* and
-/// the emulator divides by its own cell size, so these are deliberately rounded
-/// up: the terminal is then never smaller than `RECORD_COLS × rows`, and the
-/// leftover row or column is absorbed by the scene pinning in [`run`].
+/// Upper bounds on the cell size, in pixels, that VHS's default monospace at
+/// `Set FontSize 40` yields in `xterm.js` on the reference capture host. A tape
+/// is sized in *pixels* and the emulator divides by its own cell size, so these
+/// are deliberately rounded up: the terminal is then never smaller than
+/// `RECORD_COLS × rows`, and the leftover row or column is absorbed by the scene
+/// pinning in [`run`].
 const CELL_W: u32 = 26;
 const CELL_H: u32 = 55;
 /// The tape's `Set Padding`, applied on every side.
@@ -448,18 +493,32 @@ fn emit_tapes(dir: &Path) -> io::Result<()> {
     let width = u32::from(RECORD_COLS) * CELL_W + PADDING * 2;
     for d in DEMOS {
         let height = u32::from(d.rows) * CELL_H + PADDING * 2;
-        let (hold, fps) = if d.animated {
-            ("4s", 24)
+        let (output, ending, fps) = if d.animated {
+            (
+                format!("Output docs/demos/{}.gif", d.name),
+                "Sleep 4s".to_owned(),
+                24,
+            )
         } else {
-            ("1600ms", 12)
+            // VHS only renders screenshots after the next captured frame. Its
+            // ordinary output is disposable but keeps that frame stream alive.
+            (
+                format!("Output \"{}/{}.gif\"", dir.display(), d.name),
+                format!(
+                    "Sleep 300ms\nScreenshot docs/demos/{}.png\nSleep 100ms",
+                    d.name
+                ),
+                12,
+            )
         };
         let tape = format!(
             "# Generated by `demo -- tapes`; recorded by scripts/gen-demos.sh.\n\
              # Do not edit or commit — regenerate from the scene registry instead.\n\
-             Output docs/demos/{name}.gif\n\
+             {output}\n\
              \n\
              Set Shell bash\n\
              Set FontSize 40\n\
+             Set CursorBlink false\n\
              Set Width {width}\n\
              Set Height {height}\n\
              Set Padding {PADDING}\n\
@@ -470,7 +529,7 @@ fn emit_tapes(dir: &Path) -> io::Result<()> {
              Enter\n\
              Sleep 900ms\n\
              Show\n\
-             Sleep {hold}\n",
+             {ending}\n",
             name = d.name,
             bin = bin.display(),
         );
@@ -482,27 +541,27 @@ fn emit_tapes(dir: &Path) -> io::Result<()> {
 
 // ---------------------------------------------------------------------------
 // `check` — the gallery integrity guard. The scene registry is the source of
-// truth: every scene needs a non-empty recording, no orphan GIF may linger, and
-// every `demos/<name>.gif` referenced by a component doc or `components.md` must
-// map to a real scene. Runs in CI (the MSRV job) and at the end of the generator,
-// so drift fails loudly instead of shipping a broken image to docs.rs.
+// truth: every scene needs a non-empty recording in its declared format, no
+// orphan asset may linger, and every referenced component asset must map to a
+// real scene. Runs in CI (the MSRV job) and at the end of the generator, so
+// drift fails loudly instead of shipping a broken image to docs.rs.
 // ---------------------------------------------------------------------------
 
 fn check() -> io::Result<()> {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let demos = dir.join("docs/demos");
-    let names: BTreeSet<&str> = DEMOS.iter().map(|d| d.name).collect();
     let mut errors: Vec<String> = Vec::new();
 
     // Every scene has a non-empty recording.
-    for name in &names {
-        let gif = demos.join(format!("{name}.gif"));
-        match fs::metadata(&gif) {
+    for d in DEMOS {
+        let asset = demos.join(d.asset_filename());
+        match fs::metadata(&asset) {
             Ok(m) if m.len() > 0 => {}
-            Ok(_) => errors.push(format!("recording {} is empty", gif.display())),
+            Ok(_) => errors.push(format!("recording {} is empty", asset.display())),
             Err(_) => errors.push(format!(
-                "scene `{name}` has no recording at {} (run scripts/gen-demos.sh)",
-                gif.display()
+                "scene `{}` has no recording at {} (run scripts/gen-demos.sh)",
+                d.name,
+                asset.display()
             )),
         }
     }
@@ -541,17 +600,24 @@ fn check() -> io::Result<()> {
         );
     }
 
-    // No orphan recording without a scene.
-    for stem in stems(&demos, "gif") {
-        if !names.contains(stem.as_str()) {
-            errors.push(format!(
-                "docs/demos/{stem}.gif has no matching scene in DEMOS"
-            ));
+    // No orphan or stale-format recording without a matching scene declaration.
+    for extension in ["gif", "png"] {
+        for stem in stems(&demos, extension) {
+            match DEMOS.iter().find(|d| d.name == stem.as_str()) {
+                None => errors.push(format!(
+                    "docs/demos/{stem}.{extension} has no matching scene in DEMOS"
+                )),
+                Some(d) if d.asset_extension() != extension => errors.push(format!(
+                    "docs/demos/{stem}.{extension} is stale; scene `{stem}` uses .{}",
+                    d.asset_extension()
+                )),
+                Some(_) => {}
+            }
         }
     }
 
-    // Every demo GIF referenced by a component doc or a gallery page maps to a
-    // scene.
+    // Every demo asset referenced by a component doc or gallery page maps to a
+    // scene and uses its declared format.
     let mut sources: Vec<PathBuf> = vec![
         dir.join("docs/components.md"),
         dir.join("docs/features.md"),
@@ -580,12 +646,18 @@ fn check() -> io::Result<()> {
         let Ok(text) = fs::read_to_string(&path) else {
             continue;
         };
-        for referenced in referenced_gifs(&text) {
-            if !names.contains(referenced.as_str()) {
-                errors.push(format!(
-                    "{} references demos/{referenced}.gif but there is no such scene",
+        for (referenced, extension) in referenced_assets(&text) {
+            match DEMOS.iter().find(|d| d.name == referenced.as_str()) {
+                None => errors.push(format!(
+                    "{} references demos/{referenced}.{extension} but there is no such scene",
                     path.display()
-                ));
+                )),
+                Some(d) if d.asset_extension() != extension => errors.push(format!(
+                    "{} references demos/{referenced}.{extension}, but scene `{referenced}` uses .{}",
+                    path.display(),
+                    d.asset_extension()
+                )),
+                Some(_) => {}
             }
         }
     }
@@ -593,7 +665,7 @@ fn check() -> io::Result<()> {
     if errors.is_empty() {
         println!(
             "ok: {} scenes, recordings, and references in sync",
-            names.len()
+            DEMOS.len()
         );
         Ok(())
     } else {
@@ -614,7 +686,7 @@ fn lost_to_clipping(d: &Demo, rows: u16) -> Vec<String> {
 
     let theme = Theme::default();
     let at = |rows: u16| {
-        let root = framed(d.name, d.blurb, (d.build)(24, &theme), &theme);
+        let root = framed(d.title, d.blurb, (d.build)(24, &theme), &theme);
         let buffer = tuika::testing::render(root.as_ref(), RECORD_COLS, rows, &theme);
         tuika::testing::grid(&buffer)
             .lines()
@@ -644,23 +716,58 @@ fn stems(dir: &Path, ext: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// Every `demos/<name>.gif` reference in `text` — matches both the relative
-/// `demos/x.gif` in `components.md` and the absolute `.../docs/demos/x.gif`
-/// URLs embedded in component docs.
-fn referenced_gifs(text: &str) -> BTreeSet<String> {
+/// Every `demos/<name>.{gif,png}` reference in `text`, relative or absolute.
+fn referenced_assets(text: &str) -> BTreeSet<(String, String)> {
     const MARKER: &str = "demos/";
     let mut found = BTreeSet::new();
     for (idx, _) in text.match_indices(MARKER) {
         let rest = &text[idx + MARKER.len()..];
-        let Some(end) = rest.find(".gif") else {
+        let Some((end, extension)) = ["gif", "png"]
+            .into_iter()
+            .filter_map(|extension| {
+                rest.find(&format!(".{extension}"))
+                    .map(|end| (end, extension))
+            })
+            .min_by_key(|(end, _)| *end)
+        else {
             continue;
         };
         let stem = &rest[..end];
         if !stem.is_empty() && stem.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
-            found.insert(stem.to_owned());
+            found.insert((stem.to_owned(), extension.to_owned()));
         }
     }
     found
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn referenced_assets_finds_static_and_animated_recordings() {
+        let found =
+            referenced_assets("demos/text.png and https://example.test/docs/demos/spinner.gif");
+
+        assert_eq!(
+            found,
+            BTreeSet::from([
+                ("spinner".to_owned(), "gif".to_owned()),
+                ("text".to_owned(), "png".to_owned()),
+            ])
+        );
+    }
+
+    #[test]
+    fn scene_format_tracks_whether_motion_is_part_of_the_demo() {
+        for demo in DEMOS {
+            assert_eq!(
+                demo.asset_extension(),
+                if demo.animated { "gif" } else { "png" }
+            );
+            assert!(!demo.title.contains('_'));
+        }
+    }
 }
 
 /// Common chrome: a title/blurb header, a rule, then the scene body.
@@ -689,7 +796,7 @@ fn framed(name: &str, blurb: &str, body: Element, theme: &Theme) -> Element {
 /// GIF: content that would be clipped out of the recording is clipped here too.
 fn dump(d: &Demo) -> io::Result<()> {
     let theme = Theme::default();
-    let root = framed(d.name, d.blurb, (d.build)(24, &theme), &theme);
+    let root = framed(d.title, d.blurb, (d.build)(24, &theme), &theme);
     let buffer = tuika::testing::render(root.as_ref(), RECORD_COLS, d.rows, &theme);
     println!("{}", tuika::testing::grid(&buffer));
     Ok(())
@@ -726,7 +833,7 @@ fn run(d: &Demo) -> io::Result<()> {
             };
             f.buffer_mut()
                 .set_style(area, Style::default().bg(theme.background));
-            let root = framed(d.name, d.blurb, (d.build)(frame, &theme), &theme);
+            let root = framed(d.title, d.blurb, (d.build)(frame, &theme), &theme);
             paint(f.buffer_mut(), scene, &theme, root.as_ref(), &[]);
         })?;
         if event::poll(Duration::from_millis(80))?

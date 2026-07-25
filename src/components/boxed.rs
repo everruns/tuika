@@ -55,7 +55,7 @@ use super::text::{aligned_x, line_width};
 /// );
 /// ```
 ///
-/// ![boxed demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/boxed.gif)
+/// ![boxed demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/boxed.png)
 pub struct Boxed {
     child: Element,
     border: BorderStyle,

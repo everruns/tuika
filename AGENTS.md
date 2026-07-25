@@ -116,7 +116,7 @@ tuika's own suite covers more:
   the suite elsewhere — CI's coverage step, notably — has to build the examples
   into that same directory.
 - **Packaging** (`tests/packaging.rs`) — drives `cargo package --list` so the
-  published `.crate` never re-inflates with repo-only files or heavy GIFs.
+  published `.crate` never re-inflates with repo-only files or heavy assets.
 
 ## Docs layout
 
@@ -126,7 +126,7 @@ tuika's own suite covers more:
 - `docs/markdown.md` — the markdown guide: streaming, GFM tables, the
   highlighter seam, link policy, and images in one page. It reuses the gallery's
   `DEMOS` recordings, so it is inside the `demo -- check` reference invariant.
-- `docs/demos/*.gif` — the committed demo recordings referenced by
+- `docs/demos/*.{gif,png}` — the committed demo recordings referenced by
   `components.md` and, via `raw.githubusercontent.com` URLs, inline on the
   relevant type's rustdoc so they render on docs.rs — each component's `struct`
   doc, plus module-level types like `OverlaySpec`.
@@ -147,18 +147,19 @@ tuika's own suite covers more:
   `crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif`; regenerate it
   with `scripts/gen-mermaid-demo.sh`.
 
-The root package's demo, showcase, example, theme, and styling GIFs are
-GitHub-only assets: `Cargo.toml`'s `exclude` keeps them (and the repository
+The root package's demo, showcase, example, theme, and styling assets are
+GitHub-only: `Cargo.toml`'s `exclude` keeps them (and the repository
 machinery — `knowledge/`, `.agents/`, `.github/`, `scripts/`) out of tuika's
 published `.crate`, and `tests/packaging.rs` guards that split. Only
-`docs/hero.gif` and `docs/demos/image.svg`, which the crates.io README embeds by
-relative path, ship in tuika.
+`docs/hero.gif`, `docs/demos/image.svg`, and `docs/demos/split-footer.svg`,
+which the crates.io README embeds by relative path, ship in tuika.
 
 Every published member owns the same rule, and how its README embeds a recording
 decides the answer: `tuika-mermaid`'s small recording ships, because its README
 reaches it by relative path and the crates.io page would break without it, while
 `tuika-codeformatters` excludes `docs/*.gif`, because its README embeds by
-absolute URL and no crate consumer can reach the packaged copy.
+absolute URL and no crate consumer can reach the packaged copy. Regenerate its
+language gallery with `scripts/gen-language-demo.sh`.
 `tests/packaging.rs` covers all three crates.
 
 ## Component demos
@@ -168,6 +169,19 @@ One example is the single source of truth for the gallery:
 scene (name, blurb, recording size, builder); the CLI, the tape generator, and
 the integrity check all read it.
 
+For a complete repository-wide refresh, including the hero, theme and styling
+galleries, generated SVGs, companion-crate recordings, the Codex example, and
+the external showcases:
+
+```bash
+scripts/gen-all-demos.sh
+scripts/gen-all-demos.sh --skip-showcases # complete local-only refresh
+```
+
+The umbrella script is the canonical inventory of committed demo generators.
+Showcases are included by default because “all demos” includes external hosts;
+the opt-out must be explicit.
+
 ```bash
 cargo run --example demo -- list             # list scenes
 cargo run --example demo -- spinner          # interactive (q/esc quits)
@@ -175,7 +189,7 @@ cargo run --example demo -- spinner --dump   # print one frame as text
 cargo run --example demo -- check            # verify the docs assets
 ```
 
-### Regenerating the GIFs
+### Regenerating the assets
 
 [`scripts/gen-demos.sh`](scripts/gen-demos.sh) rebuilds every recording. It asks
 the example to emit one VHS tape per scene into a temp dir — **tapes are
@@ -189,6 +203,8 @@ scripts/gen-demos.sh spinner tabs # just these
 
 Recordings are captured at ~2× pixel density and displayed at `width="880"`
 (rustdoc uses its own `max-width`), so they stay crisp on HiDPI screens.
+Motion scenes are GIFs; settled scenes are full-color PNG screenshots so text
+antialiasing is not reduced to GIF's palette.
 
 A tape is sized in *pixels*; how many rows and columns that buys is up to the
 emulator's font metrics, so the harness pins each scene to `RECORD_COLS × rows`
@@ -209,10 +225,11 @@ bundled theme, from `tuika::themes::PRESETS`) and
    `filling_demo` instead of `demo` only for a scene that runs past the bottom of
    its frame on purpose — a viewport or a log tail.
 2. Confirm it renders: `cargo run --example demo -- <name> --dump`. The dump uses
-   the scene's recorded geometry, so what it prints is what the GIF will show —
+   the scene's recorded geometry, so what it prints is what the asset will show —
    including anything `rows` is too small to fit.
 3. Record it: `scripts/gen-demos.sh <name>`.
-4. Reference `demos/<name>.gif` in `docs/components.md` and inline on the
+4. Reference `demos/<name>.gif` for an animated scene or `demos/<name>.png` for
+   a settled scene in `docs/components.md` and inline on the
    component's `struct` doc (via the `raw.githubusercontent.com/.../main/...`
    URL, so docs.rs resolves it).
 
@@ -246,8 +263,9 @@ cargo run --example screenshot -- run     # animate it (what VHS records)
 
 ### The check invariant
 
-`demo -- check` asserts every scene has a non-empty recording, no orphan GIF
-lingers, every `demos/<name>.gif` referenced by the gallery markdown
+`demo -- check` asserts every scene has a non-empty recording in its declared
+format, no orphan or stale-format asset lingers, every referenced demo asset
+in the gallery markdown
 (`components.md`, `features.md`, `markdown.md`) or a rustdoc embed (component docs plus
 module-level docs like `overlay.rs`) maps to a real scene, and no scene is
 clipped by its own frame — it re-renders each one with room to spare and fails on
@@ -308,7 +326,8 @@ cargo run --example split_footer_demo       # writes docs/demos/split-footer.svg
 cargo run --example split_footer_demo -- --dump   # the frames as text
 ```
 
-Being an `.svg`, it is outside the `.gif`-based `demo -- check` invariant.
+Being a standalone generated asset, it is outside the registry-based
+`demo -- check` invariant.
 
 ## Image demo
 
@@ -319,9 +338,9 @@ text fallback — never the pixels. So, like the offline SVG path for the hero, 
 demo is **generated from the real render** by
 [`examples/image_demo.rs`](examples/image_demo.rs): the picture is the actual
 RGBA `ImageData` the component transmits (embedded as a dependency-free PNG), and
-the fallback panel is the exact placeholder string the component paints. Being an
-`.svg`, it is outside the `.gif`-based `demo -- check` invariant, so it needs no
-`DEMOS` scene.
+the fallback panel is the exact placeholder string the component paints. As a
+standalone generated asset, it is outside the registry-based `demo -- check`
+invariant, so it needs no `DEMOS` scene.
 
 ```bash
 cargo run --example image_demo            # writes docs/demos/image.svg

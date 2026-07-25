@@ -110,7 +110,7 @@ pub(crate) fn code_block_lines(
 /// A themed, syntax-highlighted code block — a language label, a left rail, a
 /// code background, and verbatim (never-reflowed) body lines.
 ///
-/// ![code_block demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/code_block.gif)
+/// ![code_block demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/code_block.png)
 ///
 /// Colors come entirely from [`Theme::code`](crate::style::CodeTheme); token classes are
 /// resolved by whatever [`Highlighter`](crate::highlight::Highlighter) you plug in (none →

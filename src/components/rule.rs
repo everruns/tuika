@@ -17,7 +17,7 @@ use crate::view::{RenderCtx, View};
 
 /// A one-row horizontal rule with an optional leading title.
 ///
-/// ![rule demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/rule.gif)
+/// ![rule demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/rule.png)
 pub struct Rule {
     title: Line<'static>,
     glyph: char,

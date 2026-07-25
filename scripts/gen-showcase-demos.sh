@@ -105,6 +105,19 @@ record_yolop() {
     git clone --quiet "${repo_root}" "${ws}"
   fi
 
+  # The recorder must not inherit a maintainer's personal MCP or extension
+  # configuration. Workspace-disabled entries shadow every enabled global MCP
+  # server, while an empty explicit extension directory isolates packages.
+  # These files live only in the disposable showcase cache.
+  rm -f "${ws}/.mcp.json"
+  while read -r name _; do
+    [[ -z "${name}" ]] && continue
+    "${yolop_bin}" mcp add "${name}" --scope workspace --type http \
+      --url http://127.0.0.1:9 --disabled -C "${ws}" >/dev/null
+  done < <("${yolop_bin}" mcp list --scope global)
+  local extensions_dir="${run}/empty-extensions"
+  mkdir -p "${extensions_dir}"
+
   # The scripted session. Turn one calls a tool (`list_directory` runs in-process,
   # so the scene needs no shell sandbox); turn two is the answer yolop renders
   # through tuika's markdown and code-block components.
@@ -146,19 +159,19 @@ EOF
 
   # Captured at the component gallery's pixel density — ~19 px per cell against a
   # displayed width="880", i.e. more than 2x — so a showcase is as crisp as a demo.
-  # A host needs a real terminal, though, so the grid is ~103x32 cells rather than
-  # the gallery's ~70 columns: yolop's footer and the dashboard's panel grid do not
-  # fit in less. That already puts the frame at ~2.8 Mpx; going further (FontSize
-  # 40 at this grid) outruns what VHS can capture per second, and the recording
-  # then plays back faster than the session really ran. The theme background
-  # matches tuika's so VHS's padding blends into the app.
+  # A host needs a real terminal, though, so yolop uses ~103x24 cells rather than
+  # the gallery's ~70 columns. That is enough for its footer while keeping the
+  # recorded exchange prominent. The dashboard below needs the taller ~32-row
+  # grid for its panels. The theme background matches tuika's so VHS's padding
+  # blends into the app.
   cat >"${run}/yolop.tape" <<EOF
 Output "${out}/yolop.gif"
 
 Set Shell bash
 Set FontSize 32
+Set CursorBlink false
 Set Width 2080
-Set Height 1370
+Set Height 1050
 Set Padding 32
 Set WindowBar Colorful
 Set Theme { "background": "#141214", "foreground": "#ebe6e6" }
@@ -167,19 +180,22 @@ Set Framerate 12
 Hide
 Type "cd ${ws}"
 Enter
-Type "clear && CUSTOM_BASE_URL=http://127.0.0.1:${script_port}/openai/v1 CUSTOM_API_KEY=sim TERM=xterm-256color ${yolop_bin} --provider custom -m gpt-5"
+Type "clear && YOLOP_EXTENSIONS_DIR=${extensions_dir} CUSTOM_BASE_URL=http://127.0.0.1:${script_port}/openai/v1 CUSTOM_API_KEY=sim TERM=xterm-256color ${yolop_bin} --provider custom -m gpt-5 --sandbox --session-dir ${run}/sessions"
 Enter
 Sleep 5s
-Show
-Sleep 800ms
+Type "/clear"
+Enter
+Sleep 700ms
 Type "how do I run the examples?"
 Sleep 700ms
 Enter
-Sleep 13s
+Sleep 7s
+Show
+Sleep 7s
 EOF
 
   echo "Recording docs/showcases/yolop.gif…"
-  vhs "${run}/yolop.tape"
+  env -u NO_COLOR vhs "${run}/yolop.tape"
 }
 
 # ---------------------------------------------------------------------------
@@ -237,6 +253,7 @@ Output "${out}/llmsim.gif"
 
 Set Shell bash
 Set FontSize 32
+Set CursorBlink false
 Set Width 2080
 Set Height 1370
 Set Padding 32
@@ -258,7 +275,7 @@ EOF
   pids+=($!)
 
   echo "Recording docs/showcases/llmsim.gif…"
-  vhs "${run}/llmsim.tape"
+  env -u NO_COLOR vhs "${run}/llmsim.tape"
 }
 
 wait_for_port() {

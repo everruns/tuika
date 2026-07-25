@@ -3,9 +3,9 @@
 //! Two things must stay out of the tarball, and `Cargo.toml`'s `exclude` is the
 //! only thing keeping them out:
 //!
-//! - The demo/showcase/theme/styling GIFs under `docs/`, and the `codex`
-//!   example's own recording, are ~10 MiB and serve only the
-//!   GitHub-rendered README and `docs/*.md`; docs.rs builds from the
+//! - The demo/showcase/theme/styling assets under `docs/`, and the `codex`
+//!   example's own recording, are ~14 MiB and are read only from repository
+//!   docs or absolute rustdoc URLs; docs.rs builds the crate front page from the
 //!   hand-written `//!` header in `lib.rs`, which references no images.
 //! - Repository machinery. tuika is the *root* package of its repo, so the
 //!   internal knowledge bundle, agent skills, CI definitions, and
@@ -24,7 +24,7 @@
 //! README embeds it: an absolute `raw.githubusercontent.com` URL means the
 //! packaged copy is unreachable and must not ship (`tuika-codeformatters`), a
 //! relative path means crates.io renders from the packaged copy and it must
-//! (`tuika-mermaid`, and tuika's own `docs/hero.gif`).
+//! (`tuika-mermaid`, and tuika's three README assets).
 
 use std::process::Command;
 
@@ -60,15 +60,15 @@ fn packaged_files(package: &str) -> Vec<String> {
 }
 
 #[test]
-fn heavy_doc_gifs_are_excluded_from_the_package() {
+fn heavy_doc_assets_are_excluded_from_the_package() {
     let files = packaged_files("tuika");
 
-    // No demo/showcase/theme/styling GIF, and no example recording, may ship:
+    // No demo/showcase/theme/styling asset, and no example recording, may ship:
     // those are GitHub-only assets.
-    let bundled_heavy_gifs: Vec<&String> = files
+    let bundled_heavy_assets: Vec<&String> = files
         .iter()
         .filter(|f| {
-            f.ends_with(".gif")
+            (f.ends_with(".gif") || f.ends_with(".png"))
                 && (f.starts_with("docs/demos/")
                     || f.starts_with("docs/showcases/")
                     || f.starts_with("examples/codex/")
@@ -77,8 +77,8 @@ fn heavy_doc_gifs_are_excluded_from_the_package() {
         })
         .collect();
     assert!(
-        bundled_heavy_gifs.is_empty(),
-        "these GIFs must not ship in the crate (see Cargo.toml `exclude`): {bundled_heavy_gifs:?}"
+        bundled_heavy_assets.is_empty(),
+        "these assets must not ship in the crate (see Cargo.toml `exclude`): {bundled_heavy_assets:?}"
     );
 }
 
