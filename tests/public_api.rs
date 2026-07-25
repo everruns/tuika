@@ -76,8 +76,8 @@ fn components_are_reachable_flat() {
     let _ = Dialog::new("title", element(Text::raw("content")));
 }
 
-/// Owned composition belongs to the framework spine; custom canvases remain an
-/// explicit view-module escape hatch rather than growing the prelude.
+/// Owned and scoped composition belong to the framework spine; custom canvases
+/// remain an explicit view-module escape hatch rather than growing the prelude.
 #[test]
 fn scene_and_custom_drawing_follow_the_surface_policy() {
     use ratatui_core::layout::Rect;
@@ -94,6 +94,12 @@ fn scene_and_custom_drawing_follow_the_surface_policy() {
     let rendered = grid(&render(&scene, 30, 8, &Theme::default()));
     assert!(rendered.contains("title"));
     assert!(rendered.contains("content"));
+
+    let borrowed = Text::raw("borrowed");
+    let scoped =
+        ScopedScene::new(&borrowed).dialog(Dialog::new("scoped", element(Text::raw("overlay"))));
+    assert!(grid(&render(&scoped, 30, 8, &Theme::default())).contains("overlay"));
+
     assert_eq!(
         Theme::default().semantic_style(SemanticRole::Info),
         Theme::default().info_style()

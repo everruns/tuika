@@ -291,7 +291,8 @@ fn read_tmux_extended_keys_format() -> Option<String> {
 
 /// Composite `root` and `overlays` into `buffer` over `area`, using `theme`'s
 /// default [`StyleSheet`]. To centralize styling with a custom stylesheet, use
-/// [`paint_with_sheet`].
+/// [`paint_with_sheet`]. A [`ScopedScene`](crate::ScopedScene) can be passed as
+/// `root` to combine a borrowed application view with owned scene overlays.
 pub fn paint(
     buffer: &mut Buffer,
     area: Rect,

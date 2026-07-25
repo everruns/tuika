@@ -187,7 +187,7 @@ component. Linked names below jump straight to their demo.
 | [`Flex`](docs/components.md#flex) | Flexbox container (the composition primitive) |
 | `Responsive` / `Constrained` | Breakpoint selection and min/max measurement |
 | [`Boxed`](docs/components.md#boxed) | Border + padding + title, focus-aware |
-| `Scene` / `Dialog` | Owned root + anchored overlays; modal composition |
+| `Scene` / `ScopedScene` / `Dialog` | Owned or frame-borrowed root + anchored overlays |
 | `Spacer` | Flexible filler |
 | [`Scroll`](docs/components.md#scroll--scrollstate) (+ `ScrollState`) | Vertical scroll viewport + scrollbar over lines |
 | [`ItemScroll`](docs/components.md#itemscroll) | The same viewport over laid-out items (panels, tables, nested layouts) |
@@ -226,11 +226,11 @@ let root = view! {
 paint(f.buffer_mut(), f.area(), &theme, root.as_ref(), &[]);
 ```
 
-## Owned scenes, dialogs, and forms
+## Owned and scoped scenes, dialogs, and forms
 
 `Scene` owns a root `Element` and ordered `SceneOverlay`s. Each layer retains
 its `OverlaySpec`, so it resolves against the current terminal size inside
-rendering; callers do not retain borrowed views or pre-resolved `Rect`s.
+rendering; callers do not retain pre-resolved `Rect`s.
 `Dialog` composes `Boxed`, `Flex`, and optional `KeyHints` into a centered modal
 with size clamps, clear/dim behavior, and an optional focus-owner id:
 
@@ -248,6 +248,46 @@ let scene = Scene::new(element(base)).dialog(
 scene.sync_focus(&mut focus);
 paint_scene(buffer, area, &theme, &scene);
 ```
+
+`Element` is an owned, boxed view. When the base view reads a large host-owned
+model directly, `ScopedScene` borrows that concrete root for one paint while
+continuing to own ordinary `SceneOverlay`s and `Dialog`s:
+
+```rust
+use ratatui_core::layout::Rect;
+use tuika::prelude::*;
+
+struct Dashboard<'a> {
+    messages: &'a [String],
+}
+
+impl View for Dashboard<'_> {
+    fn measure(&self, available: Size) -> Size {
+        available
+    }
+
+    fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
+        for (row, message) in self.messages.iter().take(area.height as usize).enumerate() {
+            surface.set_string(area.x, area.y + row as u16, message, ctx.theme.text_style());
+        }
+    }
+}
+
+let dashboard = Dashboard { messages: &app.messages };
+let scene = ScopedScene::new(&dashboard).dialog(
+    Dialog::new("Confirm", element(Text::raw("Delete this item?")))
+        .dim_backdrop(true)
+        .focus_owner("confirm"),
+);
+scene.sync_focus(&mut focus);
+paint(buffer, area, &theme, &scene, &[]);
+```
+
+The borrow lasts only as long as the scoped scene, matching Tuika's
+frame-by-frame view model. No transcript clone, leaked allocation, or
+application compositor is needed. Nested component children are still owned
+`Element`s; when a whole borrowed subtree is needed, represent that subtree as
+one concrete `View` and use it as the scoped root.
 
 `Form` lays out arbitrary control `Element`s beside responsive labels, stacking
 on narrow terminals. Help and validation rows are built in; `FormState` owns

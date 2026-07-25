@@ -31,12 +31,17 @@
 //!   anchor over the base tree; the **host** ([`host`]) owns the screen
 //!   ([`screen::ScreenMode`] — the alternate screen, or a split footer over live
 //!   terminal scrollback), translates crossterm input, and composites the frame.
+//! - **Scene composition** is owned with [`Scene`], or borrows a host-state view
+//!   for one frame with [`ScopedScene`]; both use the same ordered overlay and
+//!   focus semantics.
 //!
 //! # Finding things
 //!
 //! The crate root re-exports the **framework**: the view model, layout,
 //! events, styling, and the host seam — the types you compose *with*. The
-//! widgets themselves live in [`components`], and everything that talks to the
+//! widgets themselves live in [`components`]. Owned [`Element`] trees use
+//! [`Scene`]; a concrete root that borrows large application state uses
+//! [`ScopedScene`] without cloning it. Everything that talks to the
 //! terminal outside the cell grid (clipboard, hyperlinks, images, native
 //! progress, capability detection) lives in [`term`].
 //!
@@ -113,7 +118,7 @@ pub use overlay::{Overlay, OverlaySpec};
 #[cfg(feature = "async")]
 pub use runner::{AsyncRunner, Signal};
 pub use runner::{Runner, RunnerConfig};
-pub use scene::{Backdrop, Scene, SceneOverlay};
+pub use scene::{Backdrop, Scene, SceneOverlay, ScopedScene};
 pub use screen::{ScreenMode, Scrollback};
 pub use style::{SemanticRole, StyleSheet, Theme};
 pub use surface::Surface;

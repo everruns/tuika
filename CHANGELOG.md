@@ -15,6 +15,11 @@ described in the release process begins with the entry below.
 
 ### Added
 
+- **Borrowed scene roots.** `ScopedScene<'_, V>` borrows a concrete `View` for
+  one frame while owning the same ordered `SceneOverlay` / `Dialog` stack as
+  `Scene`. Hosts can paint large live models directly without cloning them into
+  a `'static` `Element`; rendering, backdrop, placement, and focus-owner
+  semantics are shared with owned scenes.
 - **Screen modes.** `ScreenMode` picks which part of the terminal a frame owns:
   `Alternate` (the previous, still-default behavior) or `split_footer(rows)`,
   which reserves rows at the bottom of the *main* screen and leaves everything

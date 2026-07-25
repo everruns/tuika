@@ -1,0 +1,53 @@
+//! Consumer-style coverage for painting a borrowed host root and owned dialog
+//! as one view.
+
+use ratatui_core::buffer::Buffer;
+use ratatui_core::layout::Rect;
+use tuika::prelude::*;
+use tuika::testing::grid;
+
+struct Transcript<'data> {
+    messages: &'data [String],
+}
+
+impl View for Transcript<'_> {
+    fn measure(&self, available: Size) -> Size {
+        Size::new(
+            available.width,
+            (self.messages.len() as u16).min(available.height),
+        )
+    }
+
+    fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
+        for (row, message) in self.messages.iter().take(area.height as usize).enumerate() {
+            surface.set_string(area.x, area.y + row as u16, message, ctx.theme.text_style());
+        }
+    }
+}
+
+#[test]
+fn borrowed_transcript_and_owned_dialog_paint_as_one_root() {
+    let messages = vec!["first message".to_owned(), "second message".to_owned()];
+    let transcript = Transcript {
+        messages: &messages,
+    };
+    let scene = ScopedScene::new(&transcript).dialog(
+        Dialog::new("Confirm", element(Text::raw("Delete?")))
+            .size(20, 5)
+            .dim_backdrop(true)
+            .focus_owner("confirm"),
+    );
+    let area = Rect::new(0, 0, 30, 8);
+    let mut buffer = Buffer::empty(area);
+    let mut focus = FocusRegistry::new();
+    focus.register("transcript");
+
+    scene.sync_focus(&mut focus);
+    paint(&mut buffer, area, &Theme::default(), &scene, &[]);
+
+    let painted = grid(&buffer);
+    assert!(painted.contains("Confirm"));
+    assert!(painted.contains("Delete?"));
+    assert_eq!(focus.active(), Some("confirm"));
+    assert_eq!(messages[1], "second message");
+}
