@@ -96,10 +96,15 @@ fn repository_machinery_is_excluded_from_the_package() {
     );
 
     // The workspace member is a package of its own; cargo must not fold it in.
-    let nested: Vec<&String> = files.iter().filter(|f| f.starts_with("crates/")).collect();
+    // Neither may `examples/web/`, which is a detached package (its own
+    // `[workspace]`) that only ever builds for wasm.
+    let nested: Vec<&String> = files
+        .iter()
+        .filter(|f| f.starts_with("crates/") || f.starts_with("examples/web/"))
+        .collect();
     assert!(
         nested.is_empty(),
-        "nested workspace packages must not ship inside tuika's crate: {nested:?}"
+        "nested packages must not ship inside tuika's crate: {nested:?}"
     );
 }
 

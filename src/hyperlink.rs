@@ -21,19 +21,29 @@
 //! transcript line to scrollback with real hyperlinks instead of going through
 //! the cell buffer.
 
-use std::io::{self, Write};
 use std::num::NonZeroU16;
 
+#[cfg(feature = "crossterm")]
+use std::io::{self, Write};
+
+#[cfg(feature = "crossterm")]
 use crossterm::queue;
+#[cfg(feature = "crossterm")]
 use crossterm::style::{
     Attribute, Color as CtColor, Print, ResetColor, SetAttribute, SetBackgroundColor,
     SetForegroundColor,
 };
+#[cfg(feature = "crossterm")]
 use ratatui_core::backend::{Backend, ClearType, WindowSize};
 use ratatui_core::buffer::{Buffer, Cell, CellDiffOption};
-use ratatui_core::layout::{Position, Rect, Size};
+#[cfg(feature = "crossterm")]
+use ratatui_core::layout::Size;
+use ratatui_core::layout::{Position, Rect};
+#[cfg(feature = "crossterm")]
 use ratatui_core::style::{Color, Modifier};
+#[cfg(feature = "crossterm")]
 use ratatui_core::text::{Line, Span};
+#[cfg(feature = "crossterm")]
 use ratatui_crossterm::CrosstermBackend;
 
 /// String terminator for an OSC sequence: `ESC \`.
@@ -122,6 +132,7 @@ pub fn is_web_url(s: &str) -> bool {
 /// Whether `s` is a bare URL (no interior whitespace) whose scheme `policy`
 /// links. Generalizes [`is_web_url`] to the enabled scheme set — the shape a
 /// span must have for [`write_line_with`] to wrap it.
+#[cfg(feature = "crossterm")]
 fn is_linkable(s: &str, policy: LinkPolicy) -> bool {
     if s.chars().any(char::is_whitespace) {
         return false;
@@ -425,6 +436,7 @@ fn find_links(s: &str, policy: LinkPolicy) -> Vec<(usize, usize)> {
 /// [`is_web_url`]) is emitted as a hyperlink to itself; every other span is
 /// printed as plain styled text. Does not emit a trailing newline — the caller
 /// controls line breaks.
+#[cfg(feature = "crossterm")]
 pub fn write_line(out: &mut impl Write, line: &Line<'_>) -> io::Result<()> {
     write_line_with(out, line, LinkPolicy::default())
 }
@@ -432,6 +444,7 @@ pub fn write_line(out: &mut impl Write, line: &Line<'_>) -> io::Result<()> {
 /// [`write_line`] with an explicit [`LinkPolicy`], so a host can decide which
 /// schemes (e.g. `mailto:`) become hyperlinks when it pushes a line to
 /// scrollback.
+#[cfg(feature = "crossterm")]
 pub fn write_line_with(
     out: &mut impl Write,
     line: &Line<'_>,
@@ -444,6 +457,7 @@ pub fn write_line_with(
     Ok(())
 }
 
+#[cfg(feature = "crossterm")]
 fn write_span(out: &mut impl Write, span: &Span<'_>, policy: LinkPolicy) -> io::Result<()> {
     apply_style(out, span)?;
     let content = span.content.as_ref();
@@ -458,6 +472,7 @@ fn write_span(out: &mut impl Write, span: &Span<'_>, policy: LinkPolicy) -> io::
     Ok(())
 }
 
+#[cfg(feature = "crossterm")]
 fn apply_style(out: &mut impl Write, span: &Span<'_>) -> io::Result<()> {
     let style = span.style;
     if let Some(fg) = style.fg {
@@ -484,6 +499,7 @@ fn apply_style(out: &mut impl Write, span: &Span<'_>) -> io::Result<()> {
 /// Map a ratatui color to the crossterm equivalent. `Rgb`/`Indexed` (what the
 /// host's transcript actually uses) map exactly; the named ANSI colors map to
 /// their crossterm counterparts.
+#[cfg(feature = "crossterm")]
 fn to_ct_color(color: Color) -> CtColor {
     match color {
         Color::Reset => CtColor::Reset,
@@ -518,11 +534,13 @@ fn to_ct_color(color: Color) -> CtColor {
 /// and wraps just those cells in the OSC 8 sequence. Non-URL text is forwarded
 /// untouched. When the policy links nothing ([`LinkPolicy::NONE`]) it is a pure
 /// pass-through with no scanning, so a host can gate the feature at zero cost.
+#[cfg(feature = "crossterm")]
 pub struct HyperlinkBackend<W: Write> {
     inner: CrosstermBackend<W>,
     policy: LinkPolicy,
 }
 
+#[cfg(feature = "crossterm")]
 impl<W: Write> HyperlinkBackend<W> {
     /// Wrap `writer`. `enabled` turns OSC 8 emission on under the default
     /// ([`LinkPolicy::WEB`]) policy; when false, `draw` forwards straight to the
@@ -605,6 +623,7 @@ impl<W: Write> HyperlinkBackend<W> {
     }
 }
 
+#[cfg(feature = "crossterm")]
 impl<W: Write> Write for HyperlinkBackend<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.inner.write(buf)
@@ -614,6 +633,7 @@ impl<W: Write> Write for HyperlinkBackend<W> {
     }
 }
 
+#[cfg(feature = "crossterm")]
 impl<W: Write> Backend for HyperlinkBackend<W> {
     type Error = io::Error;
 
@@ -678,6 +698,7 @@ impl<W: Write> Backend for HyperlinkBackend<W> {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "crossterm")]
     fn bytes(line: &Line<'_>) -> String {
         let mut out: Vec<u8> = Vec::new();
         write_line(&mut out, line).expect("write");
@@ -718,6 +739,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "crossterm")]
     fn write_line_hyperlinks_url_spans_only() {
         let line = Line::from(vec![
             Span::raw("see "),
@@ -734,6 +756,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "crossterm")]
     fn write_line_emits_color_and_underline_then_resets() {
         let line = Line::from(Span::styled(
             "https://a.dev",
@@ -754,6 +777,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "crossterm")]
     fn write_line_plain_text_has_no_osc8() {
         let line = Line::from(Span::raw("no links here"));
         let out = bytes(&line);
@@ -867,8 +891,10 @@ mod tests {
 
     /// A `Write` whose buffer we can inspect after the backend consumes it.
     #[derive(Clone)]
+    #[cfg(feature = "crossterm")]
     struct SharedBuf(std::rc::Rc<std::cell::RefCell<Vec<u8>>>);
 
+    #[cfg(feature = "crossterm")]
     impl Write for SharedBuf {
         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
             self.0.borrow_mut().extend_from_slice(buf);
@@ -881,6 +907,7 @@ mod tests {
 
     /// Render a row of single-char cells through a backend built with `policy`
     /// and return the emitted bytes.
+    #[cfg(feature = "crossterm")]
     fn draw_row_with(text: &str, policy: LinkPolicy) -> String {
         use ratatui_core::buffer::Cell;
         let cells: Vec<(u16, u16, Cell)> = text
@@ -903,6 +930,7 @@ mod tests {
 
     /// Render a row through the `enabled`→default-policy mapping of
     /// [`HyperlinkBackend::new`].
+    #[cfg(feature = "crossterm")]
     fn draw_row(text: &str, enabled: bool) -> String {
         let policy = if enabled {
             LinkPolicy::default()
@@ -913,6 +941,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "crossterm")]
     fn backend_wraps_url_runs_in_osc8() {
         let out = draw_row("see https://rust-lang.org now", true);
         assert!(
@@ -926,6 +955,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "crossterm")]
     fn backend_disabled_emits_no_osc8() {
         let out = draw_row("see https://rust-lang.org now", false);
         assert!(
@@ -937,12 +967,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "crossterm")]
     fn backend_plain_row_has_no_osc8() {
         let out = draw_row("just some text", true);
         assert!(!out.contains("\x1b]8;;"));
     }
 
     #[test]
+    #[cfg(feature = "crossterm")]
     fn backend_links_mailto_only_when_policy_allows() {
         let row = "mail me at mailto:a@b.com today";
         // Default (web) policy leaves the mailto as plain text.

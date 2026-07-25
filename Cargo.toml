@@ -64,10 +64,24 @@ rustdoc-args = ["--cfg", "docsrs"]
 bench = false
 
 [features]
+default = ["crossterm"]
+
+# The crossterm-backed terminal host: `TerminalSession`/`AltScreen`,
+# `translate_event`, `Runner`, and the `HyperlinkBackend`/`write_line` writers.
+# On by default — a terminal application wants all of it.
+#
+# Turning it off leaves the *presentation* half of the crate: layout, overlays,
+# focus, the keymap, every component, `paint`, the OSC string builders, and the
+# in-memory testing helpers. That subset has no platform I/O, which is what lets
+# tuika build for `wasm32-unknown-unknown` (crossterm does not compile there) and
+# render through a non-terminal host. See `docs/wasm.md`.
+crossterm = ["dep:crossterm", "dep:ratatui-crossterm"]
+
 # The async runner (`AsyncRunner`). Off by default so sync-only hosts don't pull
 # in a Tokio runtime. Enabling it adds Tokio (timer + `select!` macro), a
 # `StreamExt` for polling the event stream, and crossterm's async `EventStream`.
-async = ["dep:tokio", "dep:tokio-stream", "crossterm/event-stream"]
+# It drives a real terminal, so it implies the `crossterm` feature.
+async = ["crossterm", "dep:tokio", "dep:tokio-stream", "crossterm/event-stream"]
 
 [dependencies]
 # tuika uses only ratatui's cell buffer, style/text/layout primitives, the
@@ -85,8 +99,11 @@ ratatui-core = { version = "0.1", features = ["std", "underline-color"] }
 # `CrosstermBackend` (+ `ClearType`/`WindowSize` impls) — the only piece tuika
 # needs that is not in `ratatui-core`. Default features pin the crossterm 0.29
 # backend, matching the direct `crossterm` dep below so Cargo dedups it.
-ratatui-crossterm = "0.1"
-crossterm = "0.29"
+#
+# Both are optional only so a non-terminal host can drop them (`crossterm`
+# feature, on by default); crossterm has no `wasm32-unknown-unknown` support.
+ratatui-crossterm = { version = "0.1", optional = true }
+crossterm = { version = "0.29", optional = true }
 # Async runner only (feature = "async"). `time` for the tick interval, `macros`
 # for `tokio::select!`; the host application brings its own runtime, so no `rt`.
 tokio = { version = "1", features = ["time", "macros"], optional = true }

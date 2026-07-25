@@ -7,15 +7,26 @@
 //! composites a root view plus any overlays into the frame buffer: background
 //! fill, root, then each overlay last (clearing its rect first), which is why
 //! overlays never leak surrounding chrome here.
+//!
+//! Only the compositor half ([`paint`], [`paint_with_sheet`], [`Overlay`]) is
+//! unconditional. Everything that *touches* a terminal — the session guards and
+//! the crossterm translation — is behind the default-on `crossterm` feature, so
+//! a host on another surface (a browser canvas, say) composites the same frames
+//! without the platform I/O. See `docs/wasm.md`.
 
+#[cfg(feature = "crossterm")]
 use std::io::{self, Write};
 
+#[cfg(feature = "crossterm")]
 use crossterm::cursor::{Hide, Show};
+#[cfg(feature = "crossterm")]
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event as CtEvent, KeyCode as CtKeyCode, KeyEventKind,
     KeyModifiers, MouseButton as CtMouseButton, MouseEventKind as CtMouseKind,
 };
+#[cfg(feature = "crossterm")]
 use crossterm::execute;
+#[cfg(feature = "crossterm")]
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
     is_raw_mode_enabled,
@@ -24,16 +35,19 @@ use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
 
+#[cfg(feature = "crossterm")]
 use super::event::{Event, Key, KeyCode, Mouse, MouseButton, MouseKind};
 use super::style::{StyleSheet, Theme};
 use super::surface::Surface;
 use super::view::{RenderCtx, View};
 
 /// RAII guard for the alternate screen + mouse capture.
+#[cfg(feature = "crossterm")]
 pub struct AltScreen {
     active: bool,
 }
 
+#[cfg(feature = "crossterm")]
 impl AltScreen {
     /// Enter the alternate screen and enable mouse capture. Assumes raw mode is
     /// already enabled by the caller.
@@ -59,6 +73,7 @@ impl AltScreen {
     }
 }
 
+#[cfg(feature = "crossterm")]
 impl Drop for AltScreen {
     fn drop(&mut self) {
         self.leave();
@@ -72,11 +87,13 @@ impl Drop for AltScreen {
 /// unwinding from a panic. Pre-existing raw mode is preserved rather than
 /// disabled. If construction fails partway through, it performs the same
 /// best-effort rollback before returning.
+#[cfg(feature = "crossterm")]
 pub struct TerminalSession {
     active: bool,
     raw_mode_owned: bool,
 }
 
+#[cfg(feature = "crossterm")]
 impl TerminalSession {
     /// Enter a full-screen terminal session, rolling back on failure.
     pub fn enter() -> io::Result<Self> {
@@ -118,6 +135,7 @@ impl TerminalSession {
     }
 }
 
+#[cfg(feature = "crossterm")]
 impl Drop for TerminalSession {
     fn drop(&mut self) {
         self.leave();
@@ -188,6 +206,7 @@ pub fn paint_with_sheet(
 
 /// Translate a crossterm event into a `tuika` event, dropping ones `tuika`
 /// does not model (key-release, unmapped codes).
+#[cfg(feature = "crossterm")]
 pub fn translate_event(event: CtEvent) -> Option<Event> {
     match event {
         CtEvent::Key(k) => {
@@ -246,6 +265,7 @@ pub fn translate_event(event: CtEvent) -> Option<Event> {
     }
 }
 
+#[cfg(feature = "crossterm")]
 fn button(b: CtMouseButton) -> MouseButton {
     match b {
         CtMouseButton::Left => MouseButton::Left,
@@ -258,6 +278,7 @@ fn button(b: CtMouseButton) -> MouseButton {
 mod tests {
     use super::*;
     use crate::components::{Boxed, Flex, ProgressBar, Scroll, ScrollState, StatusBar, Text};
+    #[cfg(feature = "crossterm")]
     use crate::event::{Event, MouseButton, MouseKind};
     use crate::style::Theme;
     use crate::test_support::{buffer, rainbow_theme, row};
@@ -284,6 +305,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "crossterm")]
     fn translate_maps_button_modifiers_and_drag() {
         use crossterm::event::{
             Event as CtEvent, KeyModifiers, MouseButton as CtButton, MouseEvent, MouseEventKind,

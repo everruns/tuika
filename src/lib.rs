@@ -9,7 +9,17 @@
 //! the backend) directly rather than the `ratatui` umbrella — it renders none of
 //! ratatui's own widgets — so `ratatui-widgets` and `ratatui-macros` stay out of
 //! its dependency tree. It otherwise depends only on `crossterm`, `textwrap`,
-//! `unicode-segmentation`, and `unicode-width`.
+//! `unicode-segmentation`, `unicode-width`, and `pulldown-cmark`.
+//!
+//! # Features
+//!
+//! - `crossterm` (default) — the terminal host: [`TerminalSession`],
+//!   [`AltScreen`], [`translate_event`], [`Runner`], and [`HyperlinkBackend`].
+//!   Turning it off leaves the presentation half of the crate — layout,
+//!   overlays, focus, the keymap, components, [`paint`], the OSC string
+//!   builders, and [`testing`] — which has no platform I/O and builds for
+//!   `wasm32-unknown-unknown`. See `docs/wasm.md`.
+//! - `async` — [`AsyncRunner`] for hosts already on Tokio. Implies `crossterm`.
 //!
 //! It was extracted from the [yolop](https://github.com/everruns/yolop) coding
 //! agent, whose full-screen renderer is built on it, but it knows nothing about
@@ -67,6 +77,7 @@ pub mod native;
 pub mod overlay;
 pub mod probe;
 pub mod ratatui_view;
+#[cfg(feature = "crossterm")]
 pub mod runner;
 pub mod style;
 pub mod surface;
@@ -97,11 +108,15 @@ pub use focus::FocusRegistry;
 pub use framebuffer::{FrameBuffer, FrameBufferView, Rgba, Sprite};
 pub use geometry::{Padding, Size};
 pub use highlight::{CodeHighlighter, Highlighter, PlainHighlighter};
-pub use host::{AltScreen, Overlay, TerminalSession, paint, paint_with_sheet, translate_event};
+#[cfg(feature = "crossterm")]
+pub use host::{AltScreen, TerminalSession, translate_event};
+pub use host::{Overlay, paint, paint_with_sheet};
 pub use hyperlink::{
-    BufferLink, HyperlinkBackend, LinkPolicy, apply_buffer_links, ctrl_click_url,
-    ctrl_click_url_with, is_web_url, osc8, osc8_with, write_line, write_line_with,
+    BufferLink, LinkPolicy, apply_buffer_links, ctrl_click_url, ctrl_click_url_with, is_web_url,
+    osc8, osc8_with,
 };
+#[cfg(feature = "crossterm")]
+pub use hyperlink::{HyperlinkBackend, write_line, write_line_with};
 pub use image::{Image, ImageData, ImageLayer, ImageSupport};
 pub use keymap::{Binding, Chord, Dispatch, Hint, KeyParseError, KeySequence, Keymap, Layer};
 pub use layout::{Align, Dimension, Direction, Item, Justify, LayoutStyle, solve};
@@ -115,6 +130,7 @@ pub use native::{
 pub use overlay::{Anchor, Extent, OverlaySpec};
 pub use probe::{Probe, RectProbe};
 pub use ratatui_view::RatatuiView;
+#[cfg(feature = "crossterm")]
 pub use runner::{Runner, RunnerConfig};
 pub use style::{BorderStyle, CodeTheme, Role, StyleBundle, StyleSheet, Theme};
 pub use surface::Surface;

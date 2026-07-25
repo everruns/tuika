@@ -23,7 +23,12 @@ impl RedrawHandle {
         self.requested.store(true, Ordering::Release);
     }
 
-    pub(crate) fn take(&self) -> bool {
+    /// Consume the dirty flag, returning whether a redraw was requested.
+    ///
+    /// [`Runner`](crate::Runner) calls this each iteration; a host driving its
+    /// own loop — including one outside a terminal — calls it to decide whether
+    /// to rebuild the frame.
+    pub fn take(&self) -> bool {
         self.requested.swap(false, Ordering::AcqRel)
     }
 }

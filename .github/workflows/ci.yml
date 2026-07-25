@@ -45,6 +45,7 @@ jobs:
               - '**/*.rs'
               - '**/Cargo.toml'
               - 'Cargo.lock'
+              - 'examples/web/**'
               - 'rust-toolchain.toml'
               - '.github/workflows/ci.yml'
               - 'benches/check_iai.py'
@@ -84,6 +85,43 @@ jobs:
 
       - name: Verify component gallery assets
         run: cargo run --locked --example demo -- check
+
+  wasm:
+    name: wasm32 (no default features)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # tuika's terminal host is a default-on feature, and the rest of the crate
+      # is platform-free. Without this leg, a `use crossterm::…` outside a
+      # `#[cfg(feature = "crossterm")]` block compiles fine everywhere CI looks
+      # and silently breaks every non-terminal host. See docs/wasm.md.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "wasm"
+
+      - name: Check tuika for wasm32 without the terminal host
+        run: cargo check --locked -p tuika --lib --no-default-features --target wasm32-unknown-unknown
+
+      # The library's own tests must also survive the feature being off, so the
+      # `#[cfg]`s on test helpers stay honest.
+      - name: Check the library test suite without the terminal host
+        run: cargo check --locked -p tuika --lib --tests --no-default-features
+
+      # The browser prototype is a detached package (its own `[workspace]`), so
+      # it needs its own build step to be covered at all.
+      - name: Build the browser prototype
+        working-directory: examples/web
+        run: cargo build --release --target wasm32-unknown-unknown
 
   docs-boundary:
     name: Docs boundary

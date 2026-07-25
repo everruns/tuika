@@ -26,9 +26,22 @@
 use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::event::{Mouse, MouseButton, MouseKind};
+
+/// Monotonic elapsed time since the first call, for double-click timing.
+///
+/// Timestamps are a `Duration` from an arbitrary epoch rather than an `Instant`
+/// so a host on a platform `std` has no clock for can supply its own — see
+/// [`SelectionState::handle_at`].
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+fn monotonic_now() -> Duration {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+    static EPOCH: OnceLock<Instant> = OnceLock::new();
+    EPOCH.get_or_init(Instant::now).elapsed()
+}
 
 /// A normalized text selection in reading order: `start` is at or before `end`
 /// ordered by `(row, column)`. Both endpoints are inclusive cells.
@@ -91,7 +104,7 @@ pub struct SelectionState {
     cursor: (u16, u16),
     pressed: bool,
     selecting: bool,
-    last_click: Option<((u16, u16), Instant)>,
+    last_click: Option<((u16, u16), Duration)>,
     pending_word: Option<(u16, u16)>,
 }
 
@@ -103,7 +116,25 @@ impl SelectionState {
 
     /// Feed a mouse event; returns `true` when the selection changed and a
     /// redraw is warranted.
+    ///
+    /// Timestamps the event with a monotonic platform clock. Not available on
+    /// `wasm32-unknown-unknown`, the one supported target where `std` has no
+    /// clock (`Instant::now` panics there, because the browser's clock is a JS
+    /// import `std` cannot assume); such a host calls [`handle_at`](Self::handle_at)
+    /// with its own timestamp instead.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub fn handle(&mut self, m: &Mouse) -> bool {
+        self.handle_at(m, monotonic_now())
+    }
+
+    /// [`handle`](Self::handle) with a caller-supplied timestamp.
+    ///
+    /// `now` is elapsed time from any fixed epoch the caller keeps stable
+    /// across calls — only differences are read, and only to separate a
+    /// double-click from two clicks. A host without a `std` clock (a browser,
+    /// where the epoch is `performance.timeOrigin`) drives selection through
+    /// this entry point.
+    pub fn handle_at(&mut self, m: &Mouse, now: Duration) -> bool {
         match m.kind {
             MouseKind::Down(MouseButton::Left) => {
                 self.anchor = (m.column, m.row);
@@ -129,9 +160,8 @@ impl SelectionState {
                     self.last_click = None;
                 } else {
                     let position = self.cursor;
-                    let now = Instant::now();
                     let is_double = self.last_click.is_some_and(|(previous, at)| {
-                        previous == position && now.duration_since(at) <= DOUBLE_CLICK_INTERVAL
+                        previous == position && now.saturating_sub(at) <= DOUBLE_CLICK_INTERVAL
                     });
                     self.last_click = Some((position, now));
                     self.pending_word = is_double.then_some(position);
@@ -447,6 +477,42 @@ mod tests {
         assert_eq!(range.start, (7, 0));
         assert_eq!(range.end, (17, 0));
         assert_eq!(selected_text(&buf, buf.area, range), "brave_world");
+    }
+
+    /// The double-click window is measured against the caller's timestamps, so
+    /// a host without a `std` clock gets the same behavior on both sides of the
+    /// interval — and the test needs no wall-clock sleep to prove it.
+    #[test]
+    fn handle_at_applies_the_double_click_window_to_supplied_timestamps() {
+        let theme = Theme::default();
+        let buf = crate::testing::render(&Text::raw("hello world"), 11, 1, &theme);
+
+        let click = |sel: &mut SelectionState, at: Duration| {
+            sel.handle_at(&down(2, 0), at);
+            sel.handle_at(&up(2, 0), at);
+        };
+
+        let mut inside = SelectionState::new();
+        click(&mut inside, Duration::from_millis(1_000));
+        click(
+            &mut inside,
+            Duration::from_millis(1_000) + DOUBLE_CLICK_INTERVAL,
+        );
+        assert!(
+            inside.resolve(&buf, buf.area),
+            "a second click exactly at the interval is still a double click"
+        );
+
+        let mut outside = SelectionState::new();
+        click(&mut outside, Duration::from_millis(1_000));
+        click(
+            &mut outside,
+            Duration::from_millis(1_001) + DOUBLE_CLICK_INTERVAL,
+        );
+        assert!(
+            !outside.resolve(&buf, buf.area),
+            "a second click past the interval is two separate clicks"
+        );
     }
 
     #[test]
