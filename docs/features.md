@@ -42,6 +42,94 @@ raw mode, before the event loop reads stdin (Unix ttys only; elsewhere it is jus
 round-trip itself. Kitty and iTerm2 keep their reliable environment detection
 (DA1 doesn't report them).
 
+## Inheriting the terminal's colors
+
+The user already chose a palette — in Ghostty, kitty, WezTerm, wherever they
+work. An application can adopt it instead of imposing its own, so it looks like
+it belongs in the terminal it was launched from.
+[API](https://docs.rs/tuika/latest/tuika/term/palette/index.html)
+
+**This never happens on its own.** tuika ships a default theme and changes it for
+nobody; inheriting is something a host asks for, explicitly, with one of the two
+calls below. Nothing here runs unless you call it.
+
+There are two ways, and they trade accuracy against cost.
+
+### Without asking the terminal anything
+
+`themes::TERMINAL` is a `const Theme` whose every slot is `Color::Reset` or a
+`Color::Indexed` ANSI slot, so the terminal resolves the palette itself:
+
+```rust
+use tuika::themes;
+
+let theme = themes::TERMINAL;   // that's it — no I/O, no timeout, no failure
+```
+
+It cannot be wrong about the user's setup and cannot fail — it works on a
+terminal that answers nothing at all, and on a light background as readily as a
+dark one. The limit is that ANSI has no tone *between* two slots, so tuika's
+raised and faint roles collapse: `surface` and the code background come out as
+the plain background, and `dim`, `border`, and `muted` all land on bright black.
+Panels and rules read flatter than a designed palette.
+
+### By asking
+
+For real 24-bit values — and therefore real in-between tones — ask the terminal
+what its colors are and derive a theme from the answer:
+
+```rust
+use std::time::Duration;
+use tuika::{Theme, themes};
+use tuika::term::capabilities::Capabilities;
+
+// In raw mode, at startup, before the event loop reads stdin:
+let (caps, palette) = Capabilities::query_with_palette(Duration::from_millis(100));
+let theme = Theme::from_terminal(&palette).unwrap_or(themes::TERMINAL);
+```
+
+The queries are the xterm ones: `OSC 10` for the default foreground, `OSC 11` for
+the background, `OSC 4` per ANSI entry. Ghostty, kitty, WezTerm, foot, alacritty,
+contour, iTerm2, and xterm answer them; others answer nothing, and
+`from_terminal` returns `None` so you fall back.
+
+`Theme::from_terminal` uses the reported foreground and background **verbatim** —
+that is the whole point — and derives everything the terminal has no notion of:
+
+- The in-between tones (`surface`, `muted`, `dim`, `border`, the code
+  background) are blends between the foreground and the background, so a light
+  palette and a dark one both work without a special case.
+- The hues (`accent`, and the syntax roles) come from the ANSI palette, taking
+  the bright half on a dark background and the normal half on a light one. Blue
+  leads and cyan follows: a terminal reports no notion of a *brand* color, so
+  tuika takes the conventional interactive hue rather than inventing one.
+- Every derived color is held to a minimum contrast against the background. A
+  user's palette is free to put two colors on top of each other; a UI built out
+  of it is not.
+
+Any ANSI slot the terminal does not report falls back to xterm's default for that
+slot, so a terminal that answers `OSC 10` and `OSC 11` but not `OSC 4` still
+yields a complete theme.
+
+### Why the query is fenced
+
+A terminal that does not implement `OSC 11` does not say so — it stays quiet, and
+a reader cannot tell *not yet* from *never*. So tuika appends the Device
+Attributes request (`DA1_REQUEST`), which every terminal answers, as a **fence**:
+once its reply arrives, every color reply that was ever coming has arrived. The
+probe therefore costs one round-trip rather than one timeout, and because that is
+the same request the capability probe already makes,
+`Capabilities::query_with_palette` answers both questions at once.
+
+Call it **once at startup, in raw mode, before the event loop reads stdin** — the
+replies arrive on stdin, and a running event loop would deliver them to your
+application as keystrokes. The read stops exactly at the fence, so input typed
+behind the replies is left for the application.
+
+The [`inherit`](../examples/inherit.rs) example does all of this end to end —
+including `cargo run --example inherit -- --probe`, which prints what your
+terminal actually answers without taking over the screen.
+
 ## Hyperlinks (OSC 8)
 
 Turn a bare `http(s)` URL — or a markdown `[label](url)` whose visible text is

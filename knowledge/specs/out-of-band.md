@@ -20,7 +20,7 @@ the renderer did not expect.
 
 ## What
 
-Five out-of-band capabilities, in two families:
+Six out-of-band capabilities, in three families:
 
 | Capability | Sequence | Module | Emission point |
 | --- | --- | --- | --- |
@@ -29,14 +29,19 @@ Five out-of-band capabilities, in two families:
 | Native progress | OSC 9;4 | `term::progress` | host-initiated, any time |
 | Pointer shape | OSC 22 | `term::pointer` | host-initiated, any time |
 | Images | Kitty / iTerm2 / Sixel | `term::image` | after `terminal.draw()` returns |
+| Terminal queries | DA1, OSC 10 / 11 / 4 | `term::capabilities`, `term::palette` | host-initiated, once at startup, in raw mode |
 
 They live together under `term` because they are one kind of thing, and a reader
 who has understood one has understood the shape of all of them. Each exposes a
 pure `encode` that builds the sequence without touching I/O — that is what makes
 the wire format unit-testable without a terminal — plus a thin writer over
 `impl Write`. A capability that needs per-frame state owns a driver instead
-(`term::progress::TerminalProgress`), and `term::capabilities` answers what the
-terminal supports for the one family that must ask before it emits.
+(`term::progress::TerminalProgress`).
+
+The last row is the third family, and the one that breaks the shared shape: the
+first five *tell* the terminal something, while a query *asks*, so it is the only
+one with a reply — and the reply lands on stdin. `term::capabilities` asks what
+the terminal supports; `term::palette` asks what colors it was configured with.
 
 Images are the exception that proves the grouping: the *protocol* half is here,
 but the `Image` view is a component like any other, because reserving cells is a
@@ -54,6 +59,29 @@ Graphics escapes are not cursor-neutral — Kitty places the image at the cursor
 so they cannot be spliced. They are emitted after the frame, wrapped in a cursor
 save/restore with an explicit CUP to each image's cell origin, leaving the net
 effect on ratatui's cursor model at nil. See [images.md](./images.md).
+
+### A query is answered on stdin, so it must be fenced and timed
+
+The escapes tuika *tells* the terminal are fire-and-forget. A query is not: the
+answer arrives on stdin, in band with the user's keystrokes, which creates two
+hazards a one-way escape does not have.
+
+The first is that a terminal implementing none of the query says nothing, and
+silence is indistinguishable from *not yet*. Every probe therefore ends with the
+Device Attributes request, which every terminal answers, as a **fence**: its
+reply terminates the read, so an unsupported query costs one round-trip instead
+of one timeout. This is also why the capability probe and the palette probe are
+one request — the fence they need is the same byte sequence.
+
+The second is that a reply read late is a reply delivered to the application as
+input. A probe must therefore run once, at startup, after raw mode is entered and
+before the event loop reads stdin — and it must stop reading exactly at the
+fence, so anything typed behind the replies still reaches the application. The
+PTY suite asserts that boundary directly, by sending a keystroke immediately
+after the replies and requiring the application to act on it.
+
+A probe is always host-initiated. tuika does not query a terminal, or vary a
+default by what terminal it finds itself in, unless a host asks it to.
 
 ### "Unknown escapes are swallowed" holds for three of the four
 

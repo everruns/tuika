@@ -5,6 +5,29 @@ change that makes them — an entry says why the knowledge moved, and that reaso
 is rarely recoverable later. Routine wording, formatting, and link fixes do not
 need entries.
 
+## 2026-07-25 — A theme can be inherited from the terminal
+
+- Added a third source for a `Theme`, beside the bundled presets and a host's own
+  literal: the terminal the application was launched in. [Styling](specs/styling.md)
+  now states where the line falls between what an inherited theme *reports* and
+  what it *derives* — reported colors verbatim, derived tones blended and
+  contrast-guarded, invented hues by convention — because that boundary is the
+  whole design and is not recoverable from the code.
+- Recorded the constraint that reading a terminal's configuration file is out of
+  scope. The escape query is the supported interface; parsing Ghostty's or
+  kitty's config would couple tuika to another project's format and its
+  theme-resolution rules.
+- [Out-of-band escapes](specs/out-of-band.md) gained a third family, and
+  `term::palette` alongside `term::capabilities` to hold it. The other five
+  capabilities *tell* the terminal something; a query is *asked*, and its answer
+  arrives on stdin among the user's keystrokes. That difference carries two rules
+  worth keeping: a probe is fenced by the Device Attributes request so an
+  unsupported query costs a round-trip rather than a timeout, and it must run
+  once at startup and stop reading at the fence so it cannot eat input.
+- Restated a term that now means two things in this repository. The styling
+  non-goal "no cascade, inheritance, or selectors" was about the *rule* layer;
+  terminal inheritance produces a plain `Theme` and involves no cascade.
+
 ## 2026-07-25 — The crate root becomes a decision, not an accumulation
 
 - The public tree had grown by accretion: 30 flat public modules plus 167 names

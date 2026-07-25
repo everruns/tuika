@@ -134,7 +134,7 @@ fn component_modules_own_their_constants_and_free_functions() {
 /// same pure-`encode` shape.
 #[test]
 fn term_groups_the_out_of_band_escapes() {
-    use tuika::term::{capabilities, clipboard, hyperlink, image, pointer, progress};
+    use tuika::term::{capabilities, clipboard, hyperlink, image, palette, pointer, progress};
 
     assert_eq!(clipboard::encode("hi").unwrap(), "\x1b]52;c;aGk=\x1b\\");
     assert!(hyperlink::encode("https://example.com", "link").contains("\x1b]8;;"));
@@ -156,6 +156,16 @@ fn term_groups_the_out_of_band_escapes() {
     let _ = image::ImageLayer::new();
     let _ = image::ImageSupport::detect_from(None, None, None, None);
     let _ = capabilities::Capabilities::from_env();
+
+    // A query is out-of-band too, and the only one with a reply — so the pure
+    // half (build the request, parse the answer) has to be reachable from here.
+    assert!(palette::query_sequence().ends_with(capabilities::DA1_REQUEST));
+    let reported = palette::TerminalPalette::parse(
+        b"\x1b]11;rgb:1c1c/1e1e/2626\x1b\\\x1b]10;rgb:d5d5/d0d0/c8c8\x1b\\",
+    );
+    assert!(!reported.is_empty());
+    assert!(Theme::from_terminal(&reported).is_some());
+    let _ = tuika::themes::TERMINAL;
 }
 
 /// The paths that used to collide at the crate root now name one thing each.

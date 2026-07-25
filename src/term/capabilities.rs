@@ -35,8 +35,13 @@
 //! // event loop reads stdin (Unix ttys only; elsewhere this is just `from_env`).
 //! let caps = Capabilities::query(Duration::from_millis(100));
 //! ```
+//!
+//! The same round-trip can also carry the terminal's *colors*, so a host that
+//! wants both asks once — see [`Capabilities::query_with_palette`] and
+//! [`crate::term::palette`].
 
 use crate::term::image::ImageSupport;
+use crate::term::palette::TerminalPalette;
 
 /// The Primary Device Attributes request (`ESC [ c`). A terminal replies with
 /// `ESC [ ? <codes> c`; feed that reply to [`DeviceAttributes::parse`].
@@ -125,10 +130,39 @@ impl Capabilities {
     /// non-Unix platforms it is exactly [`from_env`](Self::from_env).
     pub fn query(timeout: std::time::Duration) -> Self {
         let caps = Self::from_env();
-        match probe_device_attributes(timeout) {
+        match probe_terminal(DA1_REQUEST, timeout)
+            .as_deref()
+            .and_then(DeviceAttributes::parse)
+        {
             Some(da) => caps.with_device_attributes(&da),
             None => caps,
         }
+    }
+
+    /// Detect capabilities *and* read the terminal's palette in a single
+    /// round-trip.
+    ///
+    /// [`query`](Self::query) and [`TerminalPalette::query`] each cost one
+    /// round-trip; this asks both questions at once, because the color queries
+    /// are fenced by the very Device Attributes request the capability probe
+    /// already makes (see [`crate::term::palette`]). Prefer it when a host wants both
+    /// — which is the usual case, since a host that inherits the terminal's
+    /// colors generally also wants to know what the terminal can draw.
+    ///
+    /// Same rules as [`query`](Self::query): **call once at startup, after
+    /// entering raw mode and before the event loop reads stdin.** On non-ttys
+    /// and non-Unix platforms the capabilities are [`from_env`](Self::from_env)
+    /// and the palette is empty.
+    pub fn query_with_palette(timeout: std::time::Duration) -> (Self, TerminalPalette) {
+        let caps = Self::from_env();
+        let Some(reply) = probe_terminal(&crate::term::palette::query_sequence(), timeout) else {
+            return (caps, TerminalPalette::default());
+        };
+        let caps = match DeviceAttributes::parse(&reply) {
+            Some(da) => caps.with_device_attributes(&da),
+            None => caps,
+        };
+        (caps, TerminalPalette::parse(&reply))
     }
 
     /// Fold a parsed Device Attributes reply into these capabilities: a reported
@@ -188,16 +222,35 @@ impl DeviceAttributes {
     }
 }
 
-/// Write [`DA1_REQUEST`] to the terminal and read the reply, returning the parsed
-/// attributes or `None` on a non-tty, a timeout, or an I/O error.
+/// The most a probe will read before giving up. One Device Attributes reply is
+/// a few dozen bytes, but a full palette query answers with eighteen colors
+/// (~30 bytes each), so the cap has to clear that with room for terminals that
+/// pad their replies — while still bounding what a hostile or broken terminal
+/// can make tuika buffer.
+const PROBE_LIMIT: usize = 1024;
+
+/// Write `request` to the terminal and read everything it answers, returning the
+/// raw reply bytes or `None` on a non-tty, a timeout, or an I/O error.
+///
+/// `request` **must end with [`DA1_REQUEST`]**. Every terminal answers Device
+/// Attributes, so its reply is what terminates the read: any query placed before
+/// it has either already been answered or never will be. Without that fence a
+/// request containing an unsupported query would block for the whole `timeout`.
 ///
 /// Unix only: reads raw bytes from fd 0 (which must be in raw mode) in a helper
 /// thread bounded by `timeout`. A real tty answers DA1 immediately, so the read
 /// completes at once; the timeout only guards exotic terminals that ignore the
-/// query. Borrows fd 0 without owning it, so it never closes stdin, and reads
-/// exactly up to the reply's terminating `c`, so it consumes no input beyond it.
+/// query. Borrows fd 0 without owning it, so it never closes stdin, and stops at
+/// the DA1 reply's terminating `c`, so it consumes no input beyond it.
+///
+/// One caveat, unchanged from when this only asked for Device Attributes: if the
+/// terminal never answers *DA1 itself*, the timeout returns but the reader
+/// thread is still blocked in `read`, and it will consume the next byte typed.
+/// Every terminal answers DA1, which is exactly why it is the fence — but a host
+/// that must be certain should skip the probe on a terminal it does not
+/// recognize rather than rely on the timeout.
 #[cfg(unix)]
-fn probe_device_attributes(timeout: std::time::Duration) -> Option<DeviceAttributes> {
+pub(crate) fn probe_terminal(request: &str, timeout: std::time::Duration) -> Option<Vec<u8>> {
     use std::fs::File;
     use std::io::{IsTerminal, Read, Write, stdin, stdout};
     use std::mem::ManuallyDrop;
@@ -208,9 +261,13 @@ fn probe_device_attributes(timeout: std::time::Duration) -> Option<DeviceAttribu
     if !stdin().is_terminal() || !stdout().is_terminal() {
         return None;
     }
+    debug_assert!(
+        request.ends_with(DA1_REQUEST),
+        "a probe request must end with the DA1 fence, or the read cannot terminate"
+    );
     {
         let mut out = stdout();
-        out.write_all(DA1_REQUEST.as_bytes()).ok()?;
+        out.write_all(request.as_bytes()).ok()?;
         out.flush().ok()?;
     }
 
@@ -221,12 +278,19 @@ fn probe_device_attributes(timeout: std::time::Duration) -> Option<DeviceAttribu
         let mut input = ManuallyDrop::new(unsafe { File::from_raw_fd(0) });
         let mut buf = Vec::new();
         let mut byte = [0u8; 1];
-        while buf.len() < 64 {
+        // Replies to the queries *before* the fence are OSC sequences, which end
+        // in ST or BEL and may legitimately contain a `c` (hex digits do). Only a
+        // `c` that closes a CSI frame is the fence, so track whether one is open
+        // rather than searching the whole buffer.
+        let mut in_csi = false;
+        while buf.len() < PROBE_LIMIT {
             match input.read(&mut byte) {
                 Ok(1) => {
-                    buf.push(byte[0]);
-                    // The reply ends at the `c` that closes the CSI frame.
-                    if byte[0] == b'c' && buf.contains(&b'[') {
+                    let b = byte[0];
+                    buf.push(b);
+                    if b == b'[' && buf.len() >= 2 && buf[buf.len() - 2] == 0x1b {
+                        in_csi = true;
+                    } else if b == b'c' && in_csi {
                         break;
                     }
                 }
@@ -236,13 +300,13 @@ fn probe_device_attributes(timeout: std::time::Duration) -> Option<DeviceAttribu
         let _ = tx.send(buf);
     });
 
-    let buf = rx.recv_timeout(timeout).ok()?;
-    DeviceAttributes::parse(&buf)
+    rx.recv_timeout(timeout).ok()
 }
 
-/// Non-Unix stub: no DA probe, so [`Capabilities::query`] is just `from_env`.
+/// Non-Unix stub: no terminal probe, so [`Capabilities::query`] is just
+/// `from_env` and a palette query comes back empty.
 #[cfg(not(unix))]
-fn probe_device_attributes(_timeout: std::time::Duration) -> Option<DeviceAttributes> {
+pub(crate) fn probe_terminal(_request: &str, _timeout: std::time::Duration) -> Option<Vec<u8>> {
     None
 }
 
