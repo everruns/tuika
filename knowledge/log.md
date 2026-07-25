@@ -5,6 +5,16 @@ change that makes them — an entry says why the knowledge moved, and that reaso
 is rarely recoverable later. Routine wording, formatting, and link fixes do not
 need entries.
 
+## 2026-07-25 — Non-Unix CI covered the workspace, not just the root package
+
+- CI's macOS and Windows legs ran Cargo's default package scope, which quietly
+  exempted `tuika-codeformatters` — the only member that compiles C — from every
+  non-Unix platform it is published for. Scoped both legs to `--workspace`.
+- [Testing](processes/testing.md) gained a *Platform coverage* section recording
+  why: this is the same blind spot as the MSRV, where local development cannot
+  reveal the break and the CI invocation is the entire guarantee. Worth stating
+  because the failure mode is silence — a too-narrow scope reports green.
+
 ## 2026-07-25 — TerminalSession makes modified keys real
 
 - `TextInputMode` already assigned different behavior to `Enter` and

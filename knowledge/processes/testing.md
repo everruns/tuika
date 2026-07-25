@@ -82,6 +82,21 @@ text; the GUI legs (kitty under Xvfb, iTerm2, Windows Terminal) capture
 artifacts best-effort and do not fail the nightly. Promote a best-effort leg to
 asserting once its capture is proven stable on the runner.
 
+## Platform coverage
+
+Cross-terminal checks ask what an emulator paints; this asks what compiles and
+passes off Unix. CI's `cross-platform` job builds and runs the suite on macOS
+and Windows, so a Unix-only assumption fails there rather than in a downstream
+host. `tests/pty_smoke.rs` is `#![cfg(unix)]` and compiles to nothing on
+Windows; the cell-based layers run everywhere.
+
+Those legs must be scoped to the **workspace**, not the root package. Cargo
+defaults to the root, which silently exempts `tuika-codeformatters` — the one
+member that compiles C, through tree-sitter's grammars — from every non-Unix
+platform it is published for. This is the same class of blind spot as the MSRV
+below: local development never reveals it, so the CI invocation is the only
+thing holding the guarantee.
+
 ## Performance: one gate, one archive
 
 Two benchmark families with deliberately different standing:
