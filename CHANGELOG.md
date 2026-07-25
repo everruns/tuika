@@ -18,7 +18,7 @@ preference:
 | --- | --- |
 | `tuika::` | the framework spine — `View`, `Element`, `RenderCtx`, layout, events, `Theme`, `Surface`, the host seam |
 | `tuika::components` | every widget |
-| `tuika::term` | everything out-of-band: `clipboard`, `hyperlink`, `progress`, `pointer`, `image`, `capabilities` |
+| `tuika::term` | everything out-of-band: `clipboard`, `hyperlink`, `progress`, `pointer`, `image`, `capabilities`, `palette` |
 | `tuika::prelude` | the spine and the components in one glob import |
 
 - **New**: `tuika::prelude` — `use tuika::prelude::*;` replaces most import
@@ -27,6 +27,29 @@ preference:
   test, snapshot, and benchmark passes unchanged apart from its imports, and
   `tests/public_api.rs` now pins the layout from outside the crate, the way a
   host sees it.
+
+**A theme can be inherited from the terminal.** An application can adopt the
+palette the user already configured instead of imposing its own — opt-in and
+host-initiated, so nothing changes for an app that does not ask.
+
+- **New**: `themes::TERMINAL` (also `Theme::terminal()`, and a `terminal` entry
+  in `themes::PRESETS`) — a `const Theme` whose every slot is `Color::Reset` or a
+  `Color::Indexed` ANSI slot, so the terminal resolves the palette. No query, no
+  timeout, no failure mode.
+- **New**: `tuika::term::palette` — `TerminalPalette` with `parse`/`query`, plus
+  `QUERY_FOREGROUND`, `QUERY_BACKGROUND`, and `query_sequence()`. Asks the
+  terminal for its colors with the xterm queries (OSC 10 / 11 / 4), fenced by the
+  Device Attributes request so an unsupported query costs a round-trip rather
+  than a timeout.
+- **New**: `Theme::from_terminal(&TerminalPalette)` derives a full theme from the
+  reply — reported foreground and background verbatim, in-between tones blended
+  and contrast-guarded, hues from the ANSI palette.
+- **New**: `Capabilities::query_with_palette(timeout)` answers "what can this
+  terminal do" and "what colors is it using" in one round-trip.
+- **New example**: `cargo run --example inherit` (and `-- --probe` to print what
+  your terminal answers without taking over the screen).
+
+Additive only — nothing moved or was renamed by this change.
 
 ### Breaking Changes
 
@@ -91,3 +114,4 @@ styling extras) are no longer flattened to `tuika::`. Reach them through
 * refactor(tests): move the crate's test scaffolding under `src/tests`
 * test: pin the public module layout from outside the crate (`tests/public_api.rs`)
 * docs: add `knowledge/specs/api-surface.md` and a crate-layout section to the README
+* feat(themes): inherit the terminal's palette

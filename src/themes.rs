@@ -61,6 +61,11 @@ pub const PRESETS: &[NamedTheme] = &[
         label: "Dracula",
         theme: DRACULA,
     },
+    NamedTheme {
+        name: "terminal",
+        label: "Terminal",
+        theme: TERMINAL,
+    },
 ];
 
 /// Look a bundled theme up by its [`NamedTheme::name`], case-insensitively.
@@ -239,6 +244,60 @@ pub const DRACULA: Theme = Theme {
     },
 };
 
+// --- Terminal (inherited) --------------------------------------------------
+// Not a palette at all: a mapping onto the slots the *terminal* resolves. Every
+// other preset names 24-bit colors; this one names ANSI indices and `Reset`, so
+// what the user sees is whatever their terminal was configured with.
+
+/// Terminal — inherit the user's own terminal colors, with no probe.
+///
+/// Every slot is either [`Color::Reset`] (the terminal's default foreground or
+/// background) or a [`Color::Indexed`] ANSI slot, so the terminal resolves the
+/// palette itself. That makes this the one theme that cannot be wrong about the
+/// user's setup and cannot fail: it needs no query, no timeout, and no
+/// capability — it works on a terminal that answers nothing.
+///
+/// The trade is that ANSI has no tone *between* two slots, so tuika's raised and
+/// faint roles collapse: `surface` and the code background are the plain
+/// background, and `dim`, `border`, and `muted` all land on bright black. For
+/// panels and rules that read as distinct, ask the terminal for its actual
+/// colors instead and derive them — see [`Theme::from_terminal`] and
+/// [`crate::term::palette`], which falls back to exactly this theme when the terminal
+/// stays silent.
+///
+/// [`Theme::from_terminal`]: crate::Theme::from_terminal
+pub const TERMINAL: Theme = Theme {
+    background: Color::Reset,
+    // ANSI cannot express a raised fill; a distinct one here would have to be a
+    // real color, which is precisely what this theme refuses to guess.
+    surface: Color::Reset,
+    text: Color::Reset,
+    muted: Color::Indexed(8),
+    dim: Color::Indexed(8),
+    accent: Color::Indexed(4),
+    accent_alt: Color::Indexed(6),
+    border: Color::Indexed(8),
+    border_focused: Color::Indexed(4),
+    // A selection has to paint a real background, so it uses the one pairing
+    // that reads on a light and a dark terminal alike.
+    selection_bg: Color::Indexed(4),
+    selection_fg: Color::Indexed(15),
+    code: CodeTheme {
+        heading: Color::Reset,
+        link: Color::Indexed(4),
+        background: Color::Reset,
+        text: Color::Reset,
+        label: Color::Indexed(8),
+        keyword: Color::Indexed(5),
+        function: Color::Indexed(4),
+        type_name: Color::Indexed(6),
+        constant: Color::Indexed(3),
+        string: Color::Indexed(2),
+        comment: Color::Indexed(8),
+        punctuation: Color::Indexed(8),
+    },
+};
+
 impl Theme {
     /// The [`SOLARIZED_DARK`] preset.
     pub const fn solarized_dark() -> Theme {
@@ -263,6 +322,11 @@ impl Theme {
     /// The [`DRACULA`] preset.
     pub const fn dracula() -> Theme {
         DRACULA
+    }
+
+    /// The [`TERMINAL`] preset — inherit the terminal's own colors.
+    pub const fn terminal() -> Theme {
+        TERMINAL
     }
 }
 
@@ -289,6 +353,45 @@ mod tests {
         assert_eq!(Theme::gruvbox_dark(), by_name("gruvbox-dark").unwrap());
         assert_eq!(Theme::light(), by_name("light").unwrap());
         assert_eq!(Theme::dracula(), by_name("dracula").unwrap());
+        assert_eq!(Theme::terminal(), by_name("terminal").unwrap());
+    }
+
+    /// Every other preset is a fixed palette; this one must resolve entirely at
+    /// the terminal, so a literal color anywhere in it would be a bug.
+    #[test]
+    fn the_terminal_preset_names_no_color_of_its_own() {
+        let t = TERMINAL;
+        let slots = [
+            t.background,
+            t.surface,
+            t.text,
+            t.muted,
+            t.dim,
+            t.accent,
+            t.accent_alt,
+            t.border,
+            t.border_focused,
+            t.selection_bg,
+            t.selection_fg,
+            t.code.heading,
+            t.code.link,
+            t.code.background,
+            t.code.text,
+            t.code.label,
+            t.code.keyword,
+            t.code.function,
+            t.code.type_name,
+            t.code.constant,
+            t.code.string,
+            t.code.comment,
+            t.code.punctuation,
+        ];
+        for slot in slots {
+            assert!(
+                matches!(slot, Color::Reset | Color::Indexed(0..=15)),
+                "{slot:?} is not something the terminal resolves"
+            );
+        }
     }
 
     #[test]

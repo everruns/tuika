@@ -79,7 +79,7 @@ Four places, so you can guess where something is:
 | --- | --- |
 | `tuika::` | the framework spine — `View`, `Element`, `RenderCtx`, layout, events, `Theme`, `Surface`, the host seam |
 | `tuika::components` | every widget: `Flex`, `Boxed`, `Text`, `Scroll`, `Markdown`, `Table`, … |
-| `tuika::term` | everything out-of-band: `clipboard` (OSC 52), `hyperlink` (OSC 8), `progress` (OSC 9;4), `pointer` (OSC 22), `image`, `capabilities` |
+| `tuika::term` | everything out-of-band: `clipboard` (OSC 52), `hyperlink` (OSC 8), `progress` (OSC 9;4), `pointer` (OSC 22), `image`, `capabilities`, `palette` (the terminal's own colors) |
 | `tuika::prelude` | the spine and the components in one glob import |
 
 Application code usually wants the prelude:
@@ -254,6 +254,13 @@ let c = tuika::themes::by_name("gruvbox-dark").unwrap(); // config / --theme
 See the [theme gallery](docs/themes.md) for a screenshot of each bundled
 palette, or `themes::PRESETS` to enumerate them for a picker.
 
+An app can also inherit the palette the user already configured in their
+terminal, rather than bringing its own — either implicitly with `themes::TERMINAL`
+(ANSI slots, no I/O) or by asking the terminal for its actual colors and deriving
+a full theme from the reply. It is opt-in: tuika never probes unless a host asks
+it to. The query lives with the other out-of-band escapes, in `term::palette`. See
+[inheriting the terminal's colors](docs/features.md#inheriting-the-terminals-colors).
+
 Where a `Theme` is the color *tokens*, a `StyleSheet` is the *rules* — a mapping
 from a semantic role (heading, link, inline code, a panel's border and fill, …)
 onto the style it draws with. Override a role in one place and every element with
@@ -275,6 +282,7 @@ Each enters the alternate screen; press `q` (or `esc`) to quit.
 | [`async_dashboard`](examples/async_dashboard.rs) | `cargo run --example async_dashboard --features async` | `AsyncRunner` polling on a Tokio runtime, no shared state |
 | [`mouse`](examples/mouse.rs)     | `cargo run --example mouse`      | drag-to-select + highlight + OSC 52 copy, clickable buttons |
 | [`image`](examples/image.rs)     | `cargo run --example image`      | `Image` over reserved cells (Kitty/iTerm2/Sixel), alt-text fallback |
+| [`inherit`](examples/inherit.rs) | `cargo run --example inherit`    | adopting the terminal's own palette — probe, derive, and the no-I/O fallback |
 | [`codex`](examples/codex)        | `cargo run --example codex`      | a whole coding-agent TUI — [demo](docs/showcases.md#codex-cli-replica-in-repo-example) (a UI replica, see below): streaming transcript, composer, `@`/`/` pickers, approval prompt |
 
 Each of the single-topic examples above quits on `q`/`esc`. [`codex`](examples/codex)

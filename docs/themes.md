@@ -70,6 +70,27 @@ The widely-ported dark theme — purple/pink accents on a slate background.
 
 <img src="themes/theme-dracula.gif" width="880" alt="Dracula theme">
 
+## `terminal`
+
+The one preset with no colors of its own. Every slot is `Color::Reset` or a
+`Color::Indexed` ANSI slot, so the **terminal** resolves the palette — the app
+adopts whatever the user already configured, with no query and no failure mode.
+[struct](https://docs.rs/tuika/latest/tuika/themes/constant.TERMINAL.html)
+
+It has no recording here for the same reason it has no colors: what it looks like
+is whatever terminal you run it in, so a GIF of it would only ever be a picture
+of the recorder's palette. Run it yourself instead:
+
+```text
+cargo run --example inherit
+```
+
+Because ANSI has no tone between two slots, the raised and faint roles collapse
+(`surface` reads as the background; `dim`, `border`, and `muted` all land on
+bright black). To keep those distinct, ask the terminal for its actual colors and
+derive them — `Theme::from_terminal` — which is covered in
+[terminal features](features.md#inheriting-the-terminals-colors).
+
 ## Rolling your own
 
 The bundled palettes are a starting point, not a ceiling. Construct a `Theme`

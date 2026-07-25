@@ -21,14 +21,21 @@
 //! | [`progress`] | OSC 9;4 | lights its own progress bar or taskbar |
 //! | [`mod@pointer`] | OSC 22 | changes the mouse pointer shape |
 //! | [`capabilities`] | DA1 | answers what it supports |
+//! | [`palette`] | OSC 10 / 11 / 4 | reports the colors it was configured with |
 //!
 //! Terminals silently swallow an OSC they do not understand, so emitting one is
 //! safe everywhere; [`capabilities`] exists for the cases where the host wants to
 //! know before it commits to a richer rendering path (pixels versus text).
+//!
+//! The last two are a shape of their own: they *ask* rather than tell, so their
+//! answer arrives on stdin among the user's keystrokes. That is why both are
+//! host-initiated, run once at startup in raw mode, and share a single fenced
+//! round-trip — see [`capabilities::Capabilities::query_with_palette`].
 
 pub mod capabilities;
 pub mod clipboard;
 pub mod hyperlink;
 pub mod image;
+pub mod palette;
 pub mod pointer;
 pub mod progress;
