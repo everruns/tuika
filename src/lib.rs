@@ -58,8 +58,11 @@
 
 #![warn(missing_docs)]
 // On docs.rs (nightly, `--cfg docsrs`) annotate feature-gated items with the
-// feature that enables them. A no-op on stable builds.
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+// feature that enables them. A no-op on stable builds. `doc_auto_cfg` was
+// merged into `doc_cfg` in 1.92 and removed as a name, so gating on the old
+// one is a hard rustdoc error on current nightly — which is what silently
+// left 0.4.0 undocumented on docs.rs.
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod anim;
 pub mod components;
