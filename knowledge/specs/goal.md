@@ -1,7 +1,7 @@
 ---
 type: Product Specification
 title: Product Goal
-description: Defines what tuika is for and the boundary it defends against host-specific and heavyweight concerns.
+description: Defines what tuika is for, the default-framework ambition it is positioned around, and the boundary it defends against host-specific and heavyweight concerns.
 ---
 
 # Product Goal
@@ -14,6 +14,29 @@ declarative keymap, an alternate-screen host, and a component set — while
 leaving `ratatui` in charge of the cell buffer and its diff against the
 terminal. A host should be able to describe a screen declaratively and get
 correct layout, focus, and terminal lifecycle without writing a reconciler.
+
+## Positioning
+
+The ambition is to be **the default framework for building terminal
+applications in Rust** — the answer a developer reaches for after deciding to
+build a TUI, the way a web developer reaches for a framework rather than a
+drawing API. Public material leads with that claim: the README states it as a
+banner above the fold, and the crates.io description and keywords say
+*application framework*, not *widget collection*.
+
+The claim is earned by scope and by adoption evidence, never by overstatement:
+
+- **Scope.** What a TUI application needs beyond drawing — layout, overlays,
+  focus, keymap, theming, terminal lifecycle, screen modes, and a component set
+  covering the modern expectations (streaming markdown, images, mouse and
+  clipboard, native progress) — is in the box.
+- **Additive, never a replacement.** Positioning above ratatui must not read as
+  competing with it. tuika depends on ratatui's buffer and composes its widgets;
+  "default framework" means the layer applications sit on, with ratatui still
+  underneath.
+- **Evidence over adjectives.** Public claims point at runnable examples and the
+  [showcases](../../docs/showcases.md) — real applications on tuika — rather
+  than asserting popularity the project does not yet have.
 
 ## Design goals
 
