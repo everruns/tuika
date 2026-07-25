@@ -5,6 +5,21 @@ change that makes them — an entry says why the knowledge moved, and that reaso
 is rarely recoverable later. Routine wording, formatting, and link fixes do not
 need entries.
 
+## 2026-07-25 — Demo format follows whether motion carries information
+
+- Component recordings treated GIF as a universal container even when a scene
+  never moved. That needlessly quantized font antialiasing and themed colors to
+  a 256-color palette. Settled scenes now use full-color PNG screenshots; motion
+  scenes remain GIFs because their transitions demonstrate behavior.
+- The scene registry declares the format through its existing `animated`
+  property, and the integrity check rejects both stale formats and references
+  that disagree with the registry. Capture geometry uses VHS's own default
+  monospace rather than a locally installed font, and every generator clears
+  `NO_COLOR`; neither choice changes tuika's palette or host-agnostic boundary.
+- Added one repository-wide regeneration entry point so “all demos” includes
+  generated SVGs, companion crates, the Codex example, and external showcases,
+  rather than meaning only the component registry by accident.
+
 ## 2026-07-25 — Positioned as the default Rust TUI application framework
 
 - The project's goal is to become the default framework Rust developers build

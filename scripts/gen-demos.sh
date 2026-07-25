@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# Regenerate the tuika component demo GIFs under docs/demos/.
+# Regenerate the tuika component demo assets under docs/demos/.
 #
 # The scene registry in examples/demo.rs is the single source of
 # truth. This script asks the example to emit one VHS tape per scene into a temp
 # dir (tapes are generated, not committed), records each, and verifies the
-# result. GIFs are recorded at 2x pixel density and displayed at half width, so
-# they stay crisp on HiDPI screens.
+# result. Motion scenes are GIFs; settled scenes are full-color PNG screenshots.
+# Both are recorded at 2x pixel density and displayed at half width.
 #
 # Requirements: vhs (https://github.com/charmbracelet/vhs), which needs ttyd and
 # ffmpeg on PATH. Run from anywhere:
@@ -46,4 +46,4 @@ done
 echo "Verifying gallery assets…"
 cargo run -q --example demo -- check
 
-echo "Done. GIFs written to docs/demos/"
+echo "Done. Assets written to docs/demos/"

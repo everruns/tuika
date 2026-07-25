@@ -173,7 +173,7 @@ style — so tuika emits the link by writing the OSC 8 sequence around the run
 [`apply_buffer_links`] for explicit destinations from the markdown renderer).
 [API](https://docs.rs/tuika/latest/tuika/term/hyperlink/index.html)
 
-<img src="demos/hyperlink.gif" width="880" alt="Hyperlink demo: a transcript line with 'https://docs.rs/tuika' and a markdown link label both shown in an underlined link color; unsupported terminals would render the same text without the link.">
+<img src="demos/hyperlink.png" width="880" alt="Hyperlink demo: a transcript line with 'https://docs.rs/tuika' and a markdown link label both shown in an underlined link color; unsupported terminals would render the same text without the link.">
 
 There are two entry points:
 

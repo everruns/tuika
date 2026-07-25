@@ -36,7 +36,7 @@ struct Child {
 /// assert_eq!(grid(&buffer), "abcxyz");
 /// ```
 ///
-/// ![flex demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/flex.gif)
+/// ![flex demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/flex.png)
 pub struct Flex {
     style: LayoutStyle,
     children: Vec<Child>,

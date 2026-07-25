@@ -28,6 +28,8 @@ cargo build -q --example styling
 bin="${repo_root}/target/debug/examples/styling"
 out_dir="${repo_root}/docs/styling"
 mkdir -p "${out_dir}"
+tapes_dir="$(mktemp -d)"
+trap 'rm -rf "${tapes_dir}"' EXIT
 
 bg="$("${bin}" bg)"
 fg="#ebe6e6"
@@ -39,15 +41,16 @@ records=("default:run default" "vivid:run vivid" "mono:run mono" "cycle:run")
 record() {
   local name="$1" cmd="$2" sleep_for="$3"
   local tape
-  tape="$(mktemp --suffix=.tape)"
+  tape="${tapes_dir}/styling-${name}.tape"
   cat >"${tape}" <<EOF
 Output "${out_dir}/styling-${name}.gif"
 
 Set Shell bash
-Set FontSize 24
-Set Width 1480
-Set Height 940
-Set Padding 28
+Set FontSize 29
+Set CursorBlink false
+Set Width 1800
+Set Height 1140
+Set Padding 34
 Set WindowBar Colorful
 Set Theme { "background": "${bg}", "foreground": "${fg}" }
 Set Framerate 24
@@ -60,8 +63,7 @@ Show
 Sleep ${sleep_for}
 EOF
   echo "Recording styling-${name}.gif…"
-  vhs "${tape}"
-  rm -f "${tape}"
+  env -u NO_COLOR vhs "${tape}"
 }
 
 for entry in "${records[@]}"; do

@@ -84,7 +84,7 @@ to invalidate by hand.
 
 ## GFM tables
 
-<img src="demos/markdown_table.gif" width="880" alt="A rendered GFM table with box-drawing borders: a bold header row; a left-aligned Component column of inline-code names; a centered Status column with ✅ and 🚧 emoji; and a right-aligned Docs column of underlined links.">
+<img src="demos/markdown_table.png" width="880" alt="A rendered GFM table with box-drawing borders: a bold header row; a left-aligned Component column of inline-code names; a centered Status column with ✅ and 🚧 emoji; and a right-aligned Docs column of underlined links.">
 
 Pipe tables render with box-drawing borders, a bold header, and per-column
 alignment taken from the `:---:` markers. Cells keep their inline styles — bold,
@@ -122,7 +122,7 @@ terminal size — the host never pre-formats a table for the pane it lands in.
 
 ## Fenced code
 
-<img src="demos/code_block.gif" width="880" alt="CodeBlock demo: a themed Rust snippet with a language label, a left rail, a line-number gutter, and syntax coloring.">
+<img src="demos/code_block.png" width="880" alt="CodeBlock demo: a themed Rust snippet with a language label, a left rail, a line-number gutter, and syntax coloring.">
 
 A fenced block is emitted **verbatim** — indentation is meaningful, so it is
 never word-wrapped — and framed by the same renderer as the standalone

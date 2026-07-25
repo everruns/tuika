@@ -90,6 +90,7 @@ staged by hand. The rule is that the *scene registry is the source of truth*:
 
 - Component demos come from the `DEMOS` registry in `examples/demo.rs`; VHS
   tapes are generated per scene into a temp dir and are **not committed**.
+  Motion scenes are GIFs; settled scenes are full-color PNG screenshots.
 - The README hero and the theme gallery come from the shared `scene()` in
   `examples/screenshot.rs`, so hero and themes cannot drift apart.
 - The stylesheet gallery comes from the variant list in `examples/styling.rs`.
@@ -102,6 +103,13 @@ staged by hand. The rule is that the *scene registry is the source of truth*:
   invariant, which is about single-component scenes and their gallery references.
   The `tuika-mermaid` recording follows this rule and ships with that companion
   crate so its crates.io README can show the integration it documents.
+- `tuika-codeformatters` follows the same example-driven rule for its language
+  gallery; `scripts/gen-language-demo.sh` records the real `languages` example.
+- `scripts/gen-all-demos.sh` is the repository-wide inventory and regeneration
+  entry point. A default run includes component assets, the hero, theme and
+  styling galleries, generated SVGs, companion-crate galleries, the Codex
+  example, and external showcases. Local-only work may explicitly pass
+  `--skip-showcases`; it must not be described as refreshing the showcases.
 - The image demo is rendered directly by `examples/image_demo.rs` rather than
   recorded, because VHS captures through `ttyd` + `xterm.js`, which implements
   no graphics protocol and would only ever show the text fallback.
@@ -113,18 +121,18 @@ staged by hand. The rule is that the *scene registry is the source of truth*:
   gate: shipped history may name a scene that no longer exists.
 
 `cargo run --example demo -- check` is the integrity gate: every scene has a
-non-empty recording, no orphan GIF lingers, every `demos/<name>.gif` referenced
-by a gallery page (`components.md`, `features.md`, `markdown.md`) or a rustdoc
-embed maps to a real scene, and no scene is
-clipped by the frame it records into. It runs in CI, so gallery drift fails the
-build instead of shipping a broken image to docs.rs.
+non-empty recording in the format declared by the registry, no orphan or
+stale-format asset lingers, every demo asset referenced by a gallery page
+(`components.md`, `features.md`, `markdown.md`) or a rustdoc embed maps to a real
+scene, and no scene is clipped by the frame it records into. It runs in CI, so
+gallery drift fails the build instead of shipping a broken image to docs.rs.
 
 The clipping assertion exists because a scene's recorded height is a hand-picked
 number in the registry, and nothing about a too-small frame *looks* wrong from
 inside the harness — the terminal just paints fewer rows. Several demos shipped
 with their bottoms cut off before it was added. The check re-renders each scene
 with room to spare and compares: any line the taller frame shows and the recorded
-one does not is a line the GIF loses. Scenes that overflow deliberately — a
+one does not is a line the recording loses. Scenes that overflow deliberately — a
 scroll viewport, a log tail — declare it in the registry rather than being
 special-cased in the check.
 
@@ -179,7 +187,12 @@ against displayed pixels per cell.** The component gallery sets the bar — 66
 columns at `FontSize 40`, so ~26 px cells in a ~1800 px window, a little over 2×
 the display width — and every other recording is held to it. A capture that packs
 more columns into the same 880 px must scale its font up to compensate, not leave
-the glyphs at a size that was only ever legible at full resolution.
+the glyphs at a size that was only ever legible at full resolution. Generators
+pin font size, window geometry, and a non-blinking cursor. They deliberately
+leave the family at VHS's default monospace: naming a font would make the output
+depend on what the recording host has installed and can silently fall back to a
+different face. Generators also clear `NO_COLOR` so a maintainer's shell policy
+cannot erase the scene's own palette.
 
 Resolution trades against a second, non-negotiable property: **playback must run
 at the speed the session really ran.** VHS captures frames through a headless
@@ -196,21 +209,23 @@ GIF's duration must match the tape's, not merely look sharp in a still.
 
 ### The crate/GitHub asset split
 
-The root package's demo, showcase, theme, and styling GIFs total ~14 MiB and are
+The root package's demo, showcase, theme, and styling assets total ~14 MiB and are
 consumed only by the GitHub-rendered README and `docs/*.md`. docs.rs renders the
 hand-written `//!` header, which references none of them, so bundling them only
 bloats the published `.crate`. Root `Cargo.toml`'s `exclude` keeps them — and the
 repository machinery (`knowledge/`, `.agents/`, `.github/`, `scripts/`) — out
-of that tarball; only `docs/hero.gif` and `docs/demos/image.svg`, which its
-crates.io README embeds by relative path, ship.
+of that tarball; only `docs/hero.gif`, `docs/demos/image.svg`, and
+`docs/demos/split-footer.svg`, which its crates.io README embeds by relative
+path, ship.
 
 The split is per **published crate**, not per repository, and the deciding
 question is how that crate's own README reaches the asset — because that is what
 determines whether the packaged copy is ever read:
 
 - **Relative path** — crates.io renders the page from the tarball, so the asset
-  must ship. tuika's `docs/hero.gif`, and `tuika-mermaid`'s ~32 KiB recording
-  beside its example, are here.
+  must ship. tuika's README assets (`docs/hero.gif`, `docs/demos/image.svg`, and
+  `docs/demos/split-footer.svg`) and `tuika-mermaid`'s ~32 KiB recording beside
+  its example are here.
 - **Absolute `raw.githubusercontent.com` URL** — the packaged copy is
   unreachable from inside the `.crate` and is pure weight, so it is excluded
   wherever it lives. `tuika-codeformatters`' `docs/languages.gif` was shipping

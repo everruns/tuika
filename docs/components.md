@@ -92,7 +92,7 @@ centered empty-state messages built by an existing formatting layer render as
 intended; `Wrap` carries a line's alignment onto every reflowed row.
 `Paragraph` takes one alignment for the whole block via `.alignment(..)`.
 
-<img src="demos/text.gif" width="880" alt="Text demo">
+<img src="demos/text.png" width="880" alt="Text demo">
 
 ```rust
 use ratatui::layout::Alignment;
@@ -117,7 +117,7 @@ view! {
 A one-row horizontal separator: optional leading title, then a fill glyph out to
 the width. [API](https://docs.rs/tuika/latest/tuika/components/struct.Rule.html)
 
-<img src="demos/rule.gif" width="880" alt="Rule demo">
+<img src="demos/rule.png" width="880" alt="Rule demo">
 
 ```rust
 use tuika::prelude::*;
@@ -182,7 +182,7 @@ alignment from the `:---:` markers — cells keeping their inline styles, emoji,
 and links. Columns size to their content and are then fitted to the available
 width, so the same source reflows as the view resizes.
 
-<img src="demos/markdown_table.gif" width="880" alt="A rendered GFM table with box-drawing borders: a bold header row; a left-aligned Component column of inline-code names; a centered Status column with ✅ and 🚧 emoji; and a right-aligned Docs column of underlined links.">
+<img src="demos/markdown_table.png" width="880" alt="A rendered GFM table with box-drawing borders: a bold header row; a left-aligned Component column of inline-code names; a centered Status column with ✅ and 🚧 emoji; and a right-aligned Docs column of underlined links.">
 
 ```rust
 use tuika::prelude::*;
@@ -208,7 +208,7 @@ optional line-number gutter (`line_numbers(true)` / `start_line(n)`) rides to th
 left of the rail.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.CodeBlock.html)
 
-<img src="demos/code_block.gif" width="880" alt="CodeBlock demo">
+<img src="demos/code_block.png" width="880" alt="CodeBlock demo">
 
 ```rust
 use tuika::prelude::*;
@@ -225,7 +225,7 @@ conventional green/red (overridable via `DiffStyle`). The pure `diff::rows(old,
 new)` classifier is reusable on its own.
 [API](https://docs.rs/tuika/latest/tuika/components/diff/struct.Diff.html)
 
-<img src="demos/diff.gif" width="880" alt="Diff demo">
+<img src="demos/diff.png" width="880" alt="Diff demo">
 
 ```rust
 use tuika::prelude::*;
@@ -243,7 +243,7 @@ leftover space by weight, `fixed(n)` reserve exact size, with `gap` and
 `padding`. It *is* the `view!` DSL's `row`/`col`.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.Flex.html)
 
-<img src="demos/flex.gif" width="880" alt="Flex demo">
+<img src="demos/flex.png" width="880" alt="Flex demo">
 
 ```rust
 use tuika::prelude::*;
@@ -282,7 +282,7 @@ hint. Both titles honor their `Line` alignment; unset, the top title is
 flush-left and the bottom title flush-right.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.Boxed.html)
 
-<img src="demos/boxed.gif" width="880" alt="Boxed demo">
+<img src="demos/boxed.png" width="880" alt="Boxed demo">
 
 ```rust
 use tuika::prelude::*;
@@ -317,7 +317,7 @@ view! {
 One row with left- and right-anchored segment groups.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.StatusBar.html)
 
-<img src="demos/status_bar.gif" width="880" alt="StatusBar demo">
+<img src="demos/status_bar.png" width="880" alt="StatusBar demo">
 
 ```rust
 use tuika::prelude::*;
@@ -619,7 +619,7 @@ zero. Four severity levels select the bar color and glyph. Place a `ToastList`
 in a corner overlay.
 [API](https://docs.rs/tuika/latest/tuika/components/toast/struct.Toasts.html)
 
-<img src="demos/toast.gif" width="880" alt="Toasts demo">
+<img src="demos/toast.png" width="880" alt="Toasts demo">
 
 ```rust
 use tuika::{ToastLevel, ToastList, Toasts, view};
@@ -637,7 +637,7 @@ implements `std::io::Write`, so it drops straight into a logging pipeline; the
 `Console` view tails the most recent lines.
 [API](https://docs.rs/tuika/latest/tuika/components/console/struct.ConsoleLog.html)
 
-<img src="demos/console.gif" width="880" alt="Console demo">
+<img src="demos/console.png" width="880" alt="Console demo">
 
 ```rust
 use tuika::{Console, ConsoleLog, view};
@@ -654,7 +654,7 @@ Large "figlet-style" block-letter banners from an embedded 5-row font (A–Z, 0�
 punctuation; case-insensitive). Themed accent by default, overridable.
 [API](https://docs.rs/tuika/latest/tuika/components/ascii_font/struct.AsciiFont.html)
 
-<img src="demos/ascii_font.gif" width="880" alt="AsciiFont demo">
+<img src="demos/ascii_font.png" width="880" alt="AsciiFont demo">
 
 ```rust
 use tuika::{AsciiFont, view};
@@ -669,7 +669,7 @@ Reed-Solomon, interleaving, and masking; larger payloads can be encoded elsewher
 and handed to `QrCode::from_matrix`.
 [API](https://docs.rs/tuika/latest/tuika/components/qr/struct.QrCode.html)
 
-<img src="demos/qr.gif" width="880" alt="QrCode demo">
+<img src="demos/qr.png" width="880" alt="QrCode demo">
 
 ```rust
 use tuika::{QrCode, QrEcc, view};

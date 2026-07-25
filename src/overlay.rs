@@ -92,7 +92,7 @@ impl Extent {
 /// assert_eq!((rect.x, rect.y), (25, 12));
 /// ```
 ///
-/// ![overlay demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/overlay.gif)
+/// ![overlay demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/overlay.png)
 #[derive(Clone, Copy, Debug)]
 pub struct OverlaySpec {
     /// Where the resolved rect sits within the screen.

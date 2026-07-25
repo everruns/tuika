@@ -350,7 +350,7 @@ fn render_svg(frames: &[Frame]) -> String {
     let mut s = String::new();
     s.push_str(&format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" \
-viewBox=\"0 0 {width:.0} {height:.0}\" font-family=\"'JetBrains Mono','SFMono-Regular',\
+viewBox=\"0 0 {width:.0} {height:.0}\" font-family=\"ui-monospace,'SFMono-Regular',\
 'Cascadia Code',Menlo,Consolas,'Liberation Mono',monospace\" role=\"img\" \
 aria-label=\"A tuika split footer: a pinned status box on the last rows of a terminal \
 while published output accumulates above it as ordinary scrollback, and remains after \

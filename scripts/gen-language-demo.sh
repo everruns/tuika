@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Record the tuika-mermaid integration example beside its source.
+# Regenerate the tuika-codeformatters language gallery recording.
 #
 # Requirements: vhs (https://github.com/charmbracelet/vhs), which needs ttyd
 # and ffmpeg on PATH. Run from anywhere:
-#   scripts/gen-mermaid-demo.sh
+#   scripts/gen-language-demo.sh
 
 set -euo pipefail
 
@@ -16,24 +16,24 @@ if ! command -v vhs >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "Building the Mermaid Markdown example…"
-cargo build -q -p tuika-mermaid --example mermaid_markdown
-bin="${repo_root}/target/debug/examples/mermaid_markdown"
-output="${repo_root}/crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif"
+echo "Building the language gallery example…"
+cargo build -q -p tuika-codeformatters --example languages
+bin="${repo_root}/target/debug/examples/languages"
+output="${repo_root}/crates/tuika-codeformatters/docs/languages.gif"
 
 tapes_dir="$(mktemp -d)"
 trap 'rm -rf "${tapes_dir}"' EXIT
-tape="${tapes_dir}/mermaid.tape"
+tape="${tapes_dir}/languages.tape"
 
 cat >"${tape}" <<EOF
 Output "${output}"
 
 Set Shell bash
-Set FontSize 31
+Set FontSize 30
 Set CursorBlink false
 Set Width 1800
-Set Height 744
-Set Padding 36
+Set Height 1000
+Set Padding 32
 Set WindowBar Colorful
 Set Theme { "background": "#141214", "foreground": "#ebe6e6" }
 Set Framerate 12
@@ -41,12 +41,22 @@ Set Framerate 12
 Hide
 Type "clear; TERM=xterm-256color ${bin}"
 Enter
-Sleep 500ms
+Sleep 900ms
 Show
-Sleep 3s
+Sleep 1200ms
+Right
+Sleep 900ms
+Right
+Sleep 900ms
+Right
+Sleep 900ms
+Right
+Sleep 900ms
+Right
+Sleep 1200ms
 EOF
 
-echo "Recording Mermaid Markdown demo…"
+echo "Recording language gallery demo…"
 env -u NO_COLOR vhs "${tape}"
 
 echo "Done. Wrote ${output} ($(du -h "${output}" | cut -f1))."
