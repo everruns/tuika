@@ -302,23 +302,13 @@ Each takes over the terminal — the alternate screen, or a pinned footer for
 | [`image`](examples/image.rs)     | `cargo run --example image`      | `Image` over reserved cells (Kitty/iTerm2/Sixel), alt-text fallback |
 | [`inherit`](examples/inherit.rs) | `cargo run --example inherit`    | adopting the terminal's own palette — probe, derive, and the no-I/O fallback |
 | [`split_footer`](examples/split_footer.rs) | `cargo run --example split_footer` | a pinned footer over live terminal scrollback, published through `Scrollback` |
-| [`codex`](examples/codex)        | `cargo run --example codex`      | a whole coding-agent TUI — [demo](docs/showcases.md#codex-cli-replica-in-repo-example) (a UI replica, see below): streaming transcript, composer, `@`/`/` pickers, approval prompt |
+| [`codex`](examples/codex)        | `cargo run --example codex`      | a scripted Codex CLI interface replica: streaming transcript, composer, `@`/`/` pickers, approval prompt |
 | [`codex --split-footer`](examples/codex) | `cargo run --example codex -- --split-footer` | the same agent UI with its transcript published into the terminal's own scrollback |
 
 Each of the single-topic examples above quits on `q`/`esc`. [`codex`](examples/codex)
 is the composite one — those keys are text there, so it quits with `⌃C` — and it
 prints canned frames without a terminal at all with
 `cargo run --example codex -- --dump`.
-
-It is a **replica of the OpenAI Codex CLI's interface, not the Codex CLI**: an
-example built on tuika, unaffiliated with and unendorsed by OpenAI, with no model,
-network, or shell behind it — a turn is a scripted sequence revealed frame by
-frame. See the [showcase entry](docs/showcases.md#codex-cli-replica-in-repo-example).
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/everruns/tuika/main/examples/codex/codex.gif" width="880" alt="The codex example running: a slash-command popup filtering as it is typed, an @-file picker completing a path in the composer, then a scripted turn — streamed reasoning, an approval prompt for a destructive command answered from the keyboard, command output, and a streamed markdown answer.">
-</p>
-
 
 ## Declarative DSL (`view!`)
 

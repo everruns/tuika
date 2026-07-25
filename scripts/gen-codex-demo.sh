@@ -38,8 +38,8 @@ trap 'rm -f "${tape}"' EXIT
 
 # Sized to ~100×28 cells. The VHS theme background matches the example's own
 # palette so the padding blends into the app, and the window bar supplies the
-# chrome. Recorded larger than displayed (width="880" in the README) so it stays
-# crisp on HiDPI screens.
+# chrome. Recorded larger than displayed (width="880" in docs/showcases.md) so
+# it stays crisp on HiDPI screens.
 cat >"${tape}" <<EOF
 Output "${repo_root}/examples/codex/codex.gif"
 
