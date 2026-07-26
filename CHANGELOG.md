@@ -11,7 +11,23 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
-## [Unreleased]
+## [0.6.0] - 2026-07-25
+
+Released alongside `tuika-codeformatters` 0.3.1 and `tuika-mermaid` 0.1.1,
+which update their tuika dependency requirement for 0.6 compatibility.
+
+### Highlights
+
+**Split-footer terminal mode.** Hosts can keep a live footer pinned to the bottom
+of the terminal while completed content moves into native scrollback, then return
+every reserved row cleanly on exit.
+
+![split-footer demo](https://raw.githubusercontent.com/everruns/tuika/v0.6.0/docs/demos/split-footer.svg)
+
+**Borrowed scene roots.** `ScopedScene` renders and dispatches events through a
+borrowed `View`, so hosts can keep application state outside the scene without
+requiring `'static` ownership.
+
 
 ### Added
 
@@ -42,8 +58,19 @@ described in the release process begins with the entry below.
 ### Changed
 
 - **Breaking**: `RunnerConfig` gains a `screen_mode` field. Struct literals need
-  `..RunnerConfig::default()`:
-  `RunnerConfig { tick_rate, .. }` → `RunnerConfig { tick_rate, ..RunnerConfig::default() }`.
+  a default update:
+
+  Before:
+
+  ```rust
+  RunnerConfig { tick_rate }
+  ```
+
+  After:
+
+  ```rust
+  RunnerConfig { tick_rate, ..RunnerConfig::default() }
+  ```
 - `ScreenMode` and `Scrollback` join the crate root and the prelude.
 
 ## [0.5.0] - 2026-07-25
@@ -267,3 +294,5 @@ styling extras) are no longer flattened to `tuika::`. Reach them through
 * docs: add the knowledge bundle and agent workflows
 * ci: add the build, documentation, release, and cross-terminal pipelines
 * test: add a PTY smoke test and guard the published crate contents
+
+[0.6.0]: https://github.com/everruns/tuika/releases/tag/v0.6.0
