@@ -1,3 +1,7 @@
+---
+okf_version: "0.2"
+---
+
 # tuika Knowledge
 
 This directory is tuika's Open Knowledge Format (OKF) bundle: the durable

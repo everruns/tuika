@@ -1,11 +1,12 @@
 # Knowledge Log
 
-Significant changes to tuika's durable knowledge are recorded here, in the same
-change that makes them — an entry says why the knowledge moved, and that reason
-is rarely recoverable later. Routine wording, formatting, and link fixes do not
-need entries.
+## 2026-07-25
 
-## 2026-07-25 — Demo format follows whether motion carries information
+- **OKF v0.2 compliance**: Declared the bundle version, normalized this log
+  into date groups, and extended the validator to enforce reserved-file
+  structure.
+
+- **Demo format follows whether motion carries information**
 
 - Component recordings treated GIF as a universal container even when a scene
   never moved. That needlessly quantized font antialiasing and themed colors to
@@ -20,7 +21,7 @@ need entries.
   generated SVGs, companion crates, the Codex example, and external showcases,
   rather than meaning only the component registry by accident.
 
-## 2026-07-25 — Borrowing stops at the scene root
+- **Borrowing stops at the scene root**
 
 - `Element = Box<dyn View>` deliberately remains owned and `'static`, but that
   forced a live application root either to clone large host models each frame or
@@ -34,7 +35,7 @@ need entries.
   borrowing policy even though the motivating state naturally belongs at the
   frame root.
 
-## 2026-07-25 — Positioned as the default Rust TUI application framework
+- **Positioned as the default Rust TUI application framework**
 
 - The project's goal is to become the default framework Rust developers build
   terminal *applications* on, but public material described a "small composable
@@ -45,7 +46,7 @@ need entries.
   keep the claim honest: additive to ratatui rather than competing with it, and
   backed by runnable examples and the showcases rather than asserted popularity.
 
-## 2026-07-25 — Screen modes: a split footer over live scrollback
+- **Screen modes: a split footer over live scrollback**
 
 - tuika could only own the whole terminal. That rules out the shape a
   long-running CLI wants: a live footer over output the user keeps — scrollable,
@@ -69,7 +70,7 @@ need entries.
   now runs the suite on the default feature set too, which it previously only
   compiled.
 
-## 2026-07-25 — docs.rs is a build CI has to rehearse, not assume
+- **docs.rs is a build CI has to rehearse, not assume**
 
 - 0.4.0 shipped with no documentation on docs.rs: `src/lib.rs` gated on
   `feature(doc_auto_cfg)`, removed in Rust 1.92, behind `cfg_attr(docsrs, …)`.
@@ -83,7 +84,7 @@ need entries.
   gate reports success.
 
 
-## 2026-07-25 — The tag history starts after the extraction
+- **The tag history starts after the extraction**
 
 - tuika 0.1.0–0.4.0 and `tuika-codeformatters` 0.1.0–0.2.0 were all published
   from the yolop workspace: every publish timestamp on crates.io precedes this
@@ -107,7 +108,7 @@ need entries.
   "every member excludes its GIFs", which would have been wrong for the very next
   member added.
 
-## 2026-07-25 — Non-Unix CI covered the workspace, not just the root package
+- **Non-Unix CI covered the workspace, not just the root package**
 
 - CI's macOS and Windows legs ran Cargo's default package scope, which quietly
   exempted `tuika-codeformatters` — the only member that compiles C — from every
@@ -117,7 +118,7 @@ need entries.
   reveal the break and the CI invocation is the entire guarantee. Worth stating
   because the failure mode is silence — a too-narrow scope reports green.
 
-## 2026-07-25 — TerminalSession makes modified keys real
+- **TerminalSession makes modified keys real**
 
 - `TextInputMode` already assigned different behavior to `Enter` and
   `Shift+Enter`, but the full terminal session never requested a protocol that
@@ -131,7 +132,7 @@ need entries.
 - Teardown pops exactly the level tuika pushed instead of globally resetting
   keyboard reporting, preserving a mode installed by an embedding host.
 
-## 2026-07-25 — Markdown fences can replace source with rich blocks
+- **Markdown fences can replace source with rich blocks**
 
 - Split fenced-block extension into two contracts: `Highlighter` remains
   line-preserving token styling, while `FencedBlockRenderer` may replace a
@@ -146,7 +147,7 @@ need entries.
   layout are useful but heavyweight and independently versioned, so they follow
   the same companion-crate boundary as tree-sitter highlighting.
 
-## 2026-07-25 — A theme can be inherited from the terminal
+- **A theme can be inherited from the terminal**
 
 - Added a third source for a `Theme`, beside the bundled presets and a host's own
   literal: the terminal the application was launched in. [Styling](specs/styling.md)
@@ -169,7 +170,7 @@ need entries.
   non-goal "no cascade, inheritance, or selectors" was about the *rule* layer;
   terminal inheritance produces a plain `Theme` and involves no cascade.
 
-## 2026-07-25 — Markdown's two passes become its file layout
+- **Markdown's two passes become its file layout**
 
 - Splitting the 2293-line markdown module surfaced the invariant that made the
   split obvious: rendering is parse-then-flatten, separated by *what they know
@@ -182,7 +183,7 @@ need entries.
 - The files now follow the passes rather than the vocabulary. Submodules stay
   private per [Public API surface](specs/api-surface.md) — the split is an
   implementation detail, and `components::markdown` remains the one path in.
-## 2026-07-25 — Markdown gets a guide of its own
+- **Markdown gets a guide of its own**
 
 - The component gallery is one entry per component, but markdown's user-facing
   surface is much larger than one entry: streaming, GFM table fitting, the
@@ -195,7 +196,7 @@ need entries.
   and links out, and such a guide reuses `DEMOS` scenes rather than owning
   parallel assets — which puts it inside the `demo -- check` reference gate.
 
-## 2026-07-25 — The crate root becomes a decision, not an accumulation
+- **The crate root becomes a decision, not an accumulation**
 
 - The public tree had grown by accretion: 30 flat public modules plus 167 names
   re-exported to the crate root, so nearly every type had two equally valid
@@ -215,7 +216,7 @@ need entries.
   test scaffolding moved out of the crate root into `src/tests/`
   ([Testing](processes/testing.md)).
 
-## 2026-07-25 — The bundle now states and enforces its own upkeep
+- **The bundle now states and enforces its own upkeep**
 
 - The rule that concepts are updated by the change that invalidates them lived in
   `AGENTS.md`, three skills, and the pull-request template — everywhere except
@@ -236,7 +237,7 @@ need entries.
   `README.md` and `docs/` and nothing else — previously that scope was only
   discoverable by reading the CI grep.
 
-## 2026-07-25 — Process concepts split out of `specs/`
+- **Process concepts split out of `specs/`**
 
 - The bundle mixed two kinds of knowledge under one directory: what tuika *is*
   (goal, architecture, and the capability concepts) and how maintainers *work on
@@ -253,7 +254,7 @@ need entries.
   bundle recursively and does not care about directory names, so the split is a
   readability contract rather than a tooling one.
 
-## 2026-07-25 — Codegen shifts the instruction-count gate
+- **Codegen shifts the instruction-count gate**
 
 - Landing `ItemScroll` and the composer token seams turned the `iai` gate red on
   `main`: seven of nine benchmarks up 3.7–5.5%, including the markdown ones,
@@ -268,7 +269,9 @@ need entries.
   next red gate is diagnosed rather than blessed on a hunch — a shift that
   survives the isolation is a real regression.
 
-## 2026-07-24 — Element viewports and composer token seams
+## 2026-07-24
+
+- **Element viewports and composer token seams**
 
 - Building a coding-agent TUI as an example (`examples/codex/`) surfaced two
   places where the toolkit forced a host to hand-draw: a transcript could only
@@ -284,7 +287,7 @@ need entries.
   flag — otherwise a host's clamp and the paint would disagree about content
   height.
 
-## 2026-07-24 — Owned composition primitives
+- **Owned composition primitives**
 
 - Added owned scenes and dialogs, arbitrary-child two-axis viewports,
   responsive forms, and a closure-backed drawing view. Persistent input and
@@ -295,7 +298,7 @@ need entries.
   public `Theme` struct. The roles derive from each theme's existing syntax
   colors, preserving source compatibility for downstream struct literals.
 
-## 2026-07-24 — Demo recordings can no longer be silently clipped
+- **Demo recordings can no longer be silently clipped**
 
 - Six gallery GIFs (`qr`, `ascii_font`, `diff`, `slider`, `timeline`,
   `hyperlink`) shipped with content cut off: each scene's recorded height is a
@@ -310,7 +313,7 @@ need entries.
   scene's recorded geometry, so the pre-record preview shows the real framing
   instead of a roomier one. See [Documentation](specs/documentation.md).
 
-## 2026-07-24 — Showcases
+- **Showcases**
 
 - Added `docs/showcases.md`: applications built on tuika (yolop, LLMSim), each
   with a recording of its real UI. It answers a question the component gallery
@@ -323,7 +326,7 @@ need entries.
   scenes are driven by a local LLMSim, so no provider key or live model is
   involved.
 
-## 2026-07-24 — Changelog format: demos in, commit links out
+- **Changelog format: demos in, commit links out**
 
 - Release notes now **show** the release: `### Highlights` embeds a VHS
   recording of the one or two most TUI-centric features. The recordings are
@@ -343,7 +346,7 @@ need entries.
   @handle` appears only for authors other than @chaliy, since the maintainer is
   the default and repeating it is noise.
 
-## 2026-07-24 — Signed history, signing identities, PR policy
+- **Signed history, signing identities, PR policy**
 
 - Rewrote the repository's history so every commit is signed and verifies.
   Signing is now a hard requirement rather than a convention; a rewrite that
@@ -357,7 +360,7 @@ need entries.
   way, so the shipping outcomes were reworded around "landing" rather than
   "merging" a PR.
 
-## 2026-07-24 — First green CI after extraction
+- **First green CI after extraction**
 
 - The `iai-baseline.json` files carried over from yolop measured yolop's copy of
   the code, not this repository's: the scroll benches sat 15–80% above them at
@@ -369,7 +372,7 @@ need entries.
   (see [Testing](processes/testing.md)), and the PTY smoke needs the `gallery`
   example built inside the coverage run's instrumented target directory.
 
-## 2026-07-24 — Extraction from yolop
+- **Extraction from yolop**
 
 - tuika and `tuika-codeformatters` moved out of the `everruns/yolop` workspace
   into this repository. tuika is now the root package of its own workspace; yolop
