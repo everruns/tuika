@@ -2158,7 +2158,7 @@ dependencies = [
 
 [[package]]
 name = "tuika"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "criterion",
  "crossterm",
@@ -2179,7 +2179,7 @@ dependencies = [
 
 [[package]]
 name = "tuika-codeformatters"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "criterion",
  "crossterm",
@@ -2205,7 +2205,7 @@ dependencies = [
 
 [[package]]
 name = "tuika-mermaid"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "mmdflux",
  "ratatui-core",
