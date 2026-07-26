@@ -39,6 +39,92 @@ class ValidateOkfTests(unittest.TestCase):
             self.assertEqual(concepts, 0)
             self.assertEqual(messages, ["index.md: broken link -> specs/missing.md"])
 
+    def test_accepts_root_index_version_and_date_grouped_log(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "index.md").write_text(
+                '---\nokf_version: "0.2"\n---\n\n# Index\n'
+            )
+            (root / "log.md").write_text(
+                "# Knowledge Log\n\n## 2026-07-25\n\n- **Update**: Current.\n"
+                "\n## 2026-07-24\n\n- **Creation**: Initial.\n"
+            )
+            messages, concepts = validate(root)
+            self.assertEqual(messages, [])
+            self.assertEqual(concepts, 0)
+
+    def test_rejects_decorated_log_date_heading(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "log.md").write_text(
+                "# Knowledge Log\n\n"
+                "## 2026-07-25 — Update\n\n- First.\n\n"
+                "## 2026-07-25\n\n- Second.\n"
+            )
+            messages, _ = validate(root)
+            self.assertIn(
+                "log.md: log date heading is not ISO 8601 `YYYY-MM-DD`: "
+                "2026-07-25 — Update",
+                messages,
+            )
+
+    def test_rejects_repeated_log_date_groups(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "log.md").write_text(
+                "# Knowledge Log\n\n"
+                "## 2026-07-25\n\n- First.\n\n"
+                "## 2026-07-25\n\n- Second.\n"
+            )
+            messages, _ = validate(root)
+            self.assertEqual(
+                messages,
+                ["log.md: log entries for the same date must share one date group"],
+            )
+
+    def test_rejects_impossible_log_date(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "log.md").write_text(
+                "# Knowledge Log\n\n## 2026-02-30\n\n- Impossible.\n"
+            )
+            messages, _ = validate(root)
+            self.assertEqual(
+                messages,
+                [
+                    "log.md: log date heading is not ISO 8601 `YYYY-MM-DD`: "
+                    "2026-02-30"
+                ],
+            )
+
+    def test_rejects_nested_index_frontmatter(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "group").mkdir()
+            (root / "group" / "index.md").write_text(
+                '---\nokf_version: "0.2"\n---\n\n# Group\n'
+            )
+            messages, _ = validate(root)
+            self.assertEqual(
+                messages,
+                [
+                    "group/index.md: frontmatter is only permitted in the "
+                    "bundle-root index.md"
+                ],
+            )
+
+    def test_rejects_log_groups_that_are_not_newest_first(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "log.md").write_text(
+                "# Knowledge Log\n\n## 2026-07-24\n\n- Old.\n"
+                "\n## 2026-07-25\n\n- New.\n"
+            )
+            messages, _ = validate(root)
+            self.assertEqual(
+                messages, ["log.md: log date groups are not newest first"]
+            )
+
     def test_rejects_concept_the_index_does_not_list(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -73,7 +159,9 @@ class ValidateOkfTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "index.md").write_text("# Index\n")
-            (root / "log.md").write_text("# Log\n\n[Concept](specs/concept.md)\n")
+            (root / "log.md").write_text(
+                "# Log\n\n## 2026-07-25\n\n- [Concept](specs/concept.md)\n"
+            )
             (root / "specs").mkdir()
             (root / "specs" / "concept.md").write_text("---\ntype: Policy\n---\n")
             messages, _ = validate(root)

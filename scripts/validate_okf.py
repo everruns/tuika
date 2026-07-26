@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Validate an Open Knowledge Format bundle using only the standard library.
+"""Validate an Open Knowledge Format v0.2 bundle using only the standard library.
 
 Usage: python3 scripts/validate_okf.py <bundle-dir> [--strict] [--check-links]
 
---strict requires title, description, and timestamp in addition to OKF's
-required type field. --check-links validates local Markdown link targets.
+--strict requires the recommended title and description fields in addition to
+OKF's required type field. --check-links validates local Markdown link targets.
 
 Every concept must also be reachable from the bundle index, so adding, moving,
 or renaming one without updating `index.md` fails rather than leaving a concept
@@ -16,13 +16,18 @@ from __future__ import annotations
 
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 INDEX = "index.md"
-RESERVED = {INDEX, "log.md"}
+LOG = "log.md"
+RESERVED = {INDEX, LOG}
 FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 LINK_RE = re.compile(r"\]\(([^)\s]+)(?:\s+['\"][^)]*['\"])?\)")
 SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+HEADING_RE = re.compile(r"^#\s+\S", re.MULTILINE)
+LOG_DATE_RE = re.compile(r"^##\s+(\S.*)$", re.MULTILINE)
+ISO_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str | None]:
@@ -75,6 +80,65 @@ def indexed_concepts(root: Path) -> set[str] | None:
     return linked
 
 
+def validate_index(path: Path, root: Path, text: str) -> list[str]:
+    messages: list[str] = []
+    body = text
+    if text.startswith("---"):
+        if path != root / INDEX:
+            messages.append("frontmatter is only permitted in the bundle-root index.md")
+            return messages
+        frontmatter, error = parse_frontmatter(text)
+        if error:
+            messages.append(error)
+            return messages
+        unknown = set(frontmatter) - {"okf_version"}
+        if unknown:
+            messages.append(
+                "frontmatter contains fields other than `okf_version`: "
+                + ", ".join(sorted(unknown))
+            )
+        if not frontmatter.get("okf_version"):
+            messages.append("frontmatter has no non-empty `okf_version` field")
+        elif frontmatter["okf_version"] != "0.2":
+            messages.append(
+                f"validator supports `okf_version: \"0.2\"`, got "
+                f"{frontmatter['okf_version']!r}"
+            )
+        match = FRONTMATTER_RE.match(text)
+        assert match
+        body = text[match.end() :]
+    if not HEADING_RE.search(body):
+        messages.append("index body has no section heading")
+    return messages
+
+
+def validate_log(text: str) -> list[str]:
+    if text.startswith("---"):
+        return ["log.md must not contain frontmatter"]
+    headings = LOG_DATE_RE.findall(text)
+    if not headings:
+        return ["log.md has no date-group headings"]
+    messages: list[str] = []
+    valid_dates: list[str] = []
+    for heading in headings:
+        if ISO_DATE_RE.fullmatch(heading):
+            try:
+                date.fromisoformat(heading)
+            except ValueError:
+                pass
+            else:
+                valid_dates.append(heading)
+                continue
+        messages.append(
+            f"log date heading is not ISO 8601 `YYYY-MM-DD`: {heading}"
+        )
+    if len(valid_dates) != len(set(valid_dates)):
+        messages.append("log entries for the same date must share one date group")
+    if valid_dates != sorted(valid_dates, reverse=True):
+        messages.append("log date groups are not newest first")
+    return messages
+
+
 def validate(root: Path, *, strict: bool = False, check_links: bool = False) -> tuple[list[str], int]:
     messages: list[str] = []
     concepts = 0
@@ -82,7 +146,11 @@ def validate(root: Path, *, strict: bool = False, check_links: bool = False) -> 
     for path in sorted(root.rglob("*.md")):
         rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8", errors="replace")
-        if path.name not in RESERVED:
+        if path.name == INDEX:
+            messages.extend(f"{rel}: {message}" for message in validate_index(path, root, text))
+        elif path.name == LOG:
+            messages.extend(f"{rel}: {message}" for message in validate_log(text))
+        else:
             if linked is not None and rel not in linked:
                 messages.append(f"{rel}: concept is not listed in {INDEX}")
             frontmatter, error = parse_frontmatter(text)
@@ -93,7 +161,7 @@ def validate(root: Path, *, strict: bool = False, check_links: bool = False) -> 
             if not frontmatter.get("type"):
                 messages.append(f"{rel}: frontmatter has no non-empty `type` field")
             if strict:
-                for required in ("title", "description", "timestamp"):
+                for required in ("title", "description"):
                     if not frontmatter.get(required):
                         messages.append(f"{rel}: --strict requires `{required}`")
         if check_links:
