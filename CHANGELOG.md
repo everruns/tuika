@@ -54,6 +54,10 @@ block-HTML seam.
 - `KeyHints::from_keymap`, priority-aware whole-hint fitting, and `KeymapHelp`
   so one labeled keymap declaration drives dispatch, responsive footer hints,
   and a complete help view.
+- `SingleLineInputState` for search/command fields, with newline normalization,
+  Enter/Ctrl+J submission, and allocation-free borrowed text access.
+- `tuika::ui` re-exports `Rect`, `Color`, `Style`, `Modifier`, `Line`, and `Span`
+  for custom views without a direct `ratatui-core` dependency.
 
 ### Changed
 

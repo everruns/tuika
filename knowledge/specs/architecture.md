@@ -38,6 +38,9 @@ rather than beside it.
 - **Key bindings are the help source of truth**: active labeled bindings expose
   layer priority, and component adapters derive responsive footer hints and
   complete help rows from the same declarations used for dispatch.
+- **Single-line input is a state invariant**: search/command inputs normalize
+  line boundaries at every public mutation boundary and expose borrowed text;
+  hosts do not repair multiline editor state during rendering.
 - **Owned scenes are frame descriptions, not retained UI.** `Scene` owns the
   root and overlay elements for one frame and resolves each overlay's
   `OverlaySpec` while rendering. This removes borrowed compositor plumbing

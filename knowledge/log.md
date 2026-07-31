@@ -15,6 +15,12 @@
 - Per-frame focus rings discard ids that disappeared and commit the fallback at
   the following frame boundary. Dynamic component trees therefore cannot keep
   routing input to a stale target or resurrect it when it later returns.
+- **Single-line input and custom-view vocabulary**
+  - Search/command state normalizes newline-bearing setters, paste, and key input
+    and exposes borrowed text, keeping render paths allocation-free and pure.
+  - `tuika::ui` provides the backend value types required to implement `View`,
+    avoiding an otherwise redundant direct host dependency.
+
 - **Keymap-derived responsive help**
   - Active labeled bindings drive whole-item, priority-aware footer fitting and
     a complete scrollable help view.

@@ -250,12 +250,13 @@ scene.sync_focus(&mut focus);
 paint_scene(buffer, area, &theme, &scene);
 ```
 
+Custom views can import `Rect`, `Color`, `Style`, `Modifier`, `Line`, and `Span` from `tuika::ui` or the prelude without adding `ratatui-core` directly.
+
 `Element` is an owned, boxed view. When the base view reads a large host-owned
 model directly, `ScopedScene` borrows that concrete root for one paint while
 continuing to own ordinary `SceneOverlay`s and `Dialog`s:
 
 ```rust
-use ratatui_core::layout::Rect;
 use tuika::prelude::*;
 
 struct Dashboard<'a> {

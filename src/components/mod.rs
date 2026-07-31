@@ -86,8 +86,8 @@ pub use table::{Column, Table};
 pub use tabs::{Tabs, TabsState};
 pub use text::{Paragraph, Text, Wrap};
 pub use textinput::{
-    TextInput, TextInputEvent, TextInputMode, TextInputState, TextSpan, Token, Trigger,
-    TriggerAnchor,
+    SingleLineInputState, TextInput, TextInputEvent, TextInputMode, TextInputState, TextSpan,
+    Token, Trigger, TriggerAnchor,
 };
 pub use toast::{ToastLevel, ToastList, Toasts};
 pub use viewport::Viewport;
