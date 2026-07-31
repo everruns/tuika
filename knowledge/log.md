@@ -15,6 +15,12 @@
 - Per-frame focus rings discard ids that disappeared and commit the fallback at
   the following frame boundary. Dynamic component trees therefore cannot keep
   routing input to a stale target or resurrect it when it later returns.
+- **Configurable selection behavior**
+  - Selection state now supports opt-in terminal-picker aliases, explicit mouse
+    hit-testing, and a separate multiple-selection state.
+  - Policies and bounds remain host inputs so reusable state does not assume a
+    particular keymap or layout.
+
 - **Synchronous runner state and invalidation model**
   - `Runner` now mirrors the asynchronous runner's owned-state split: immutable
     view construction and mutable signal updates.

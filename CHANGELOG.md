@@ -48,6 +48,9 @@ block-HTML seam.
   applying the scroll window.
 - `Table::selection_style` and `SelectList::selection_style` allow per-instance
   selection foreground, background, and modifiers.
+- `SelectNavigation` policies for optional j/k, Ctrl+N/P, Tab/Shift+Tab, and
+  numeric selection aliases; explicit mouse hit-testing on `SelectState`; and
+  `MultiSelectState` for toggleable multiple-selection workflows.
 
 ### Changed
 

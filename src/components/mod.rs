@@ -74,7 +74,9 @@ pub use qr::{QrCode, QrEcc};
 pub use responsive::Responsive;
 pub use rule::Rule;
 pub use scroll::{Scroll, ScrollState};
-pub use select::{SelectList, SelectOutcome, SelectState};
+pub use select::{
+    MultiSelectOutcome, MultiSelectState, SelectList, SelectNavigation, SelectOutcome, SelectState,
+};
 pub use slider::{Slider, SliderState};
 pub use spacer::Spacer;
 pub use spinner::{Spinner, SpinnerStyle};

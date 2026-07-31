@@ -10,10 +10,39 @@ use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
 use ratatui_core::text::Line;
 
-use crate::event::{Event, EventFlow, KeyCode};
+use crate::event::{Event, EventFlow, KeyCode, MouseButton, MouseKind};
 use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
+
+/// Optional navigation bindings for [`SelectState`].
+///
+/// [`Default`] preserves the original arrow/Enter/Escape behavior. Use
+/// [`common`](Self::common) for the aliases commonly expected by terminal
+/// pickers, then disable individual groups as needed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SelectNavigation {
+    /// Enable `j` and `k` as Down and Up.
+    pub vim: bool,
+    /// Enable Ctrl+N and Ctrl+P as Down and Up.
+    pub ctrl_n_p: bool,
+    /// Enable Tab and Shift+Tab as Down and Up.
+    pub tab: bool,
+    /// Enable `1` through `9` as direct activation shortcuts.
+    pub numeric: bool,
+}
+
+impl SelectNavigation {
+    /// Enable all common terminal-picker aliases.
+    pub const fn common() -> Self {
+        Self {
+            vim: true,
+            ctrl_n_p: true,
+            tab: true,
+            numeric: true,
+        }
+    }
+}
 
 /// Result of feeding an event to a [`SelectState`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,26 +108,48 @@ impl SelectState {
 
     /// Navigate with arrow keys (wrapping), confirm with Enter, cancel on Esc.
     pub fn handle(&mut self, event: &Event, len: usize) -> SelectOutcome {
+        self.handle_with(event, len, SelectNavigation::default())
+    }
+
+    /// Handle keyboard input with a configurable navigation policy.
+    pub fn handle_with(
+        &mut self,
+        event: &Event,
+        len: usize,
+        navigation: SelectNavigation,
+    ) -> SelectOutcome {
         if len == 0 {
             return SelectOutcome::Moved(EventFlow::Ignored);
         }
         let Event::Key(k) = event else {
             return SelectOutcome::Moved(EventFlow::Ignored);
         };
+
+        if navigation.ctrl_n_p && k.ctrl && !k.alt && !k.shift {
+            return match k.code {
+                KeyCode::Char('n') => self.step_down(len),
+                KeyCode::Char('p') => self.step_up(len),
+                _ => SelectOutcome::Moved(EventFlow::Ignored),
+            };
+        }
         if !k.plain() {
             return SelectOutcome::Moved(EventFlow::Ignored);
         }
         match k.code {
-            KeyCode::Up => {
-                self.selected = Some(match self.selected {
-                    Some(0) | None => len - 1,
-                    Some(selected) => selected - 1,
-                });
-                SelectOutcome::Moved(EventFlow::Consumed)
-            }
-            KeyCode::Down => {
-                self.selected = Some(self.selected.map_or(0, |selected| (selected + 1) % len));
-                SelectOutcome::Moved(EventFlow::Consumed)
+            KeyCode::Up => self.step_up(len),
+            KeyCode::Down => self.step_down(len),
+            KeyCode::Char('k') if navigation.vim => self.step_up(len),
+            KeyCode::Char('j') if navigation.vim => self.step_down(len),
+            KeyCode::Tab if navigation.tab => self.step_down(len),
+            KeyCode::BackTab if navigation.tab => self.step_up(len),
+            KeyCode::Char(digit @ '1'..='9') if navigation.numeric => {
+                let index = digit as usize - '1' as usize;
+                if index < len {
+                    self.selected = Some(index);
+                    SelectOutcome::Confirmed(index)
+                } else {
+                    SelectOutcome::Moved(EventFlow::Ignored)
+                }
             }
             KeyCode::Enter => self.selected.map_or(
                 SelectOutcome::Moved(EventFlow::Ignored),
@@ -106,6 +157,160 @@ impl SelectState {
             ),
             KeyCode::Esc => SelectOutcome::Cancelled,
             _ => SelectOutcome::Moved(EventFlow::Ignored),
+        }
+    }
+
+    /// Hit-test a plain left-button press against visible list rows.
+    ///
+    /// `bounds` is the rendered list body and `first_visible` is the item shown
+    /// on its first row. Supplying the scroll offset explicitly keeps mouse
+    /// selection correct for viewported lists.
+    pub fn handle_mouse(
+        &mut self,
+        event: &Event,
+        len: usize,
+        bounds: Rect,
+        first_visible: usize,
+    ) -> SelectOutcome {
+        let Event::Mouse(mouse) = event else {
+            return SelectOutcome::Moved(EventFlow::Ignored);
+        };
+        if !mouse.plain()
+            || mouse.kind != MouseKind::Down(MouseButton::Left)
+            || mouse.column < bounds.x
+            || mouse.column >= bounds.right()
+            || mouse.row < bounds.y
+            || mouse.row >= bounds.bottom()
+        {
+            return SelectOutcome::Moved(EventFlow::Ignored);
+        }
+        let index = first_visible.saturating_add(usize::from(mouse.row - bounds.y));
+        if index >= len {
+            return SelectOutcome::Moved(EventFlow::Ignored);
+        }
+        self.selected = Some(index);
+        SelectOutcome::Confirmed(index)
+    }
+
+    fn step_up(&mut self, len: usize) -> SelectOutcome {
+        self.selected = Some(match self.selected {
+            Some(0) | None => len - 1,
+            Some(selected) => selected - 1,
+        });
+        SelectOutcome::Moved(EventFlow::Consumed)
+    }
+
+    fn step_down(&mut self, len: usize) -> SelectOutcome {
+        self.selected = Some(self.selected.map_or(0, |selected| (selected + 1) % len));
+        SelectOutcome::Moved(EventFlow::Consumed)
+    }
+}
+
+/// Outcome from [`MultiSelectState`] input handling.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MultiSelectOutcome {
+    /// The cursor moved; event consumed status in `.0`.
+    Moved(EventFlow),
+    /// The given item changed checked state.
+    Toggled(usize),
+    /// Escape cancelled the interaction.
+    Cancelled,
+}
+
+/// Cursor and checked-item state for a multiple-selection list.
+#[derive(Clone, Debug, Default)]
+pub struct MultiSelectState {
+    cursor: SelectState,
+    selected: std::collections::BTreeSet<usize>,
+}
+
+impl MultiSelectState {
+    /// Create state with the first row highlighted and no checked items.
+    pub fn new() -> Self {
+        Self {
+            cursor: SelectState::new(),
+            selected: std::collections::BTreeSet::new(),
+        }
+    }
+
+    /// Cursor state used to render a [`SelectList`].
+    pub fn cursor(&self) -> &SelectState {
+        &self.cursor
+    }
+
+    /// Mutable cursor state for direct host control.
+    pub fn cursor_mut(&mut self) -> &mut SelectState {
+        &mut self.cursor
+    }
+
+    /// Whether `index` is checked.
+    pub fn contains(&self, index: usize) -> bool {
+        self.selected.contains(&index)
+    }
+
+    /// Checked indices in ascending order.
+    pub fn selected(&self) -> impl Iterator<Item = usize> + '_ {
+        self.selected.iter().copied()
+    }
+
+    /// Clear every checked item.
+    pub fn clear(&mut self) {
+        self.selected.clear();
+    }
+
+    /// Navigate and toggle with Enter or Space.
+    pub fn handle(
+        &mut self,
+        event: &Event,
+        len: usize,
+        navigation: SelectNavigation,
+    ) -> MultiSelectOutcome {
+        if let Event::Key(key) = event
+            && key.plain()
+            && key.code == KeyCode::Char(' ')
+        {
+            return self.toggle_cursor(len);
+        }
+        match self.cursor.handle_with(event, len, navigation) {
+            SelectOutcome::Moved(flow) => MultiSelectOutcome::Moved(flow),
+            SelectOutcome::Confirmed(index) => {
+                self.toggle(index);
+                MultiSelectOutcome::Toggled(index)
+            }
+            SelectOutcome::Cancelled => MultiSelectOutcome::Cancelled,
+        }
+    }
+
+    /// Hit-test and toggle a visible row on a plain left click.
+    pub fn handle_mouse(
+        &mut self,
+        event: &Event,
+        len: usize,
+        bounds: Rect,
+        first_visible: usize,
+    ) -> MultiSelectOutcome {
+        match self.cursor.handle_mouse(event, len, bounds, first_visible) {
+            SelectOutcome::Confirmed(index) => {
+                self.toggle(index);
+                MultiSelectOutcome::Toggled(index)
+            }
+            SelectOutcome::Moved(flow) => MultiSelectOutcome::Moved(flow),
+            SelectOutcome::Cancelled => MultiSelectOutcome::Cancelled,
+        }
+    }
+
+    fn toggle_cursor(&mut self, len: usize) -> MultiSelectOutcome {
+        self.cursor.clamp(len);
+        let Some(index) = self.cursor.selected() else {
+            return MultiSelectOutcome::Moved(EventFlow::Ignored);
+        };
+        self.toggle(index);
+        MultiSelectOutcome::Toggled(index)
+    }
+
+    fn toggle(&mut self, index: usize) {
+        if !self.selected.remove(&index) {
+            self.selected.insert(index);
         }
     }
 }
@@ -321,6 +526,104 @@ mod tests {
         assert_eq!(s.handle(&enter, 3), SelectOutcome::Confirmed(0));
         let esc = Event::Key(Key::new(KeyCode::Esc));
         assert_eq!(s.handle(&esc, 3), SelectOutcome::Cancelled);
+    }
+
+    #[test]
+    fn common_navigation_supports_vim_ctrl_tab_and_numbers() {
+        let policy = SelectNavigation::common();
+        let mut state = SelectState::new();
+        assert_eq!(
+            state.handle_with(&Event::Key(Key::new(KeyCode::Char('j'))), 4, policy),
+            SelectOutcome::Moved(EventFlow::Consumed)
+        );
+        assert_eq!(state.selected(), Some(1));
+        assert_eq!(
+            state.handle_with(
+                &Event::Key(Key {
+                    code: KeyCode::Char('p'),
+                    ctrl: true,
+                    alt: false,
+                    shift: false
+                }),
+                4,
+                policy
+            ),
+            SelectOutcome::Moved(EventFlow::Consumed)
+        );
+        assert_eq!(state.selected(), Some(0));
+        assert_eq!(
+            state.handle_with(&Event::Key(Key::new(KeyCode::BackTab)), 4, policy),
+            SelectOutcome::Moved(EventFlow::Consumed)
+        );
+        assert_eq!(state.selected(), Some(3));
+        assert_eq!(
+            state.handle_with(&Event::Key(Key::new(KeyCode::Char('2'))), 4, policy),
+            SelectOutcome::Confirmed(1)
+        );
+        assert_eq!(state.selected(), Some(1));
+    }
+
+    #[test]
+    fn default_navigation_does_not_claim_optional_aliases() {
+        let mut state = SelectState::new();
+        for code in [KeyCode::Char('j'), KeyCode::Tab, KeyCode::Char('1')] {
+            assert_eq!(
+                state.handle_with(&Event::Key(Key::new(code)), 3, SelectNavigation::default()),
+                SelectOutcome::Moved(EventFlow::Ignored)
+            );
+        }
+        assert_eq!(state.selected(), Some(0));
+    }
+
+    #[test]
+    fn mouse_hit_testing_respects_bounds_and_scroll_offset() {
+        let mut state = SelectState::new();
+        let bounds = Rect::new(10, 5, 20, 3);
+        let click = Event::Mouse(crate::event::Mouse::at(
+            MouseKind::Down(MouseButton::Left),
+            12,
+            6,
+        ));
+        assert_eq!(
+            state.handle_mouse(&click, 10, bounds, 4),
+            SelectOutcome::Confirmed(5)
+        );
+        assert_eq!(state.selected(), Some(5));
+
+        let outside = Event::Mouse(crate::event::Mouse::at(
+            MouseKind::Down(MouseButton::Left),
+            9,
+            6,
+        ));
+        assert_eq!(
+            state.handle_mouse(&outside, 10, bounds, 4),
+            SelectOutcome::Moved(EventFlow::Ignored)
+        );
+    }
+
+    #[test]
+    fn multi_select_toggles_without_losing_cursor_navigation() {
+        let mut state = MultiSelectState::new();
+        let policy = SelectNavigation::common();
+        assert_eq!(
+            state.handle(&Event::Key(Key::new(KeyCode::Char(' '))), 3, policy),
+            MultiSelectOutcome::Toggled(0)
+        );
+        assert!(state.contains(0));
+        assert_eq!(
+            state.handle(&Event::Key(Key::new(KeyCode::Char('j'))), 3, policy),
+            MultiSelectOutcome::Moved(EventFlow::Consumed)
+        );
+        assert_eq!(
+            state.handle(&Event::Key(Key::new(KeyCode::Enter)), 3, policy),
+            MultiSelectOutcome::Toggled(1)
+        );
+        assert_eq!(state.selected().collect::<Vec<_>>(), vec![0, 1]);
+        assert_eq!(
+            state.handle(&Event::Key(Key::new(KeyCode::Char('1'))), 3, policy),
+            MultiSelectOutcome::Toggled(0)
+        );
+        assert_eq!(state.selected().collect::<Vec<_>>(), vec![1]);
     }
 
     #[test]

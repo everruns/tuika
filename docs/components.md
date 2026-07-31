@@ -443,7 +443,11 @@ let chart = DrawView::new(
 A selectable list; `SelectState` navigates with the arrow keys (wrapping),
 confirms on Enter, cancels on Esc. Selection is optional:
 `state.select(None)` draws neither caret nor highlight. `.selection_style(style)`
-overrides the theme selection style for one list.
+overrides the theme selection style for one list. `handle_with` accepts a
+`SelectNavigation` policy; `SelectNavigation::common()` enables j/k, Ctrl+N/P,
+Tab/Shift+Tab, and numeric shortcuts. `handle_mouse` hit-tests explicit list
+bounds and a viewport offset. `MultiSelectState` adds Enter/Space/click toggling
+for pickers that retain several checked items.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.SelectList.html)
 
 <img src="demos/select.gif" width="880" alt="SelectList demo">
