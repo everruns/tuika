@@ -68,21 +68,9 @@ use ratatui_crossterm::CrosstermBackend;
 use tokio::time::{MissedTickBehavior, interval};
 use tokio_stream::{Stream, StreamExt};
 
+use super::Signal;
 use crate::screen::{Scrollback, close_footer, pin_footer};
 use crate::{Element, Event, RunnerConfig, TerminalSession, Theme, paint, translate_event};
-
-/// A tick or an input event delivered to an [`AsyncRunner`]'s update callback.
-#[derive(Clone, Debug)]
-pub enum Signal {
-    /// The periodic tick fired. Its interval is [`RunnerConfig::tick_rate`]; the
-    /// first tick fires immediately after the initial frame is painted, so a
-    /// data-polling app loads on start without a special case.
-    Tick,
-    /// An input event arrived, already translated to a tuika [`Event`]. Events
-    /// crossterm reports but tuika does not model (key-release, unmapped codes)
-    /// are dropped before they reach here.
-    Event(Event),
-}
 
 /// An asynchronous Crossterm event and rendering loop.
 ///

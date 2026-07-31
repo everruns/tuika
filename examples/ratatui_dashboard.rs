@@ -4,7 +4,6 @@
 //! terminal runner, and semantic key hints. Run with:
 //! `cargo run --example ratatui_dashboard`.
 
-use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -117,14 +116,15 @@ fn main() -> std::io::Result<()> {
     let live_view = metrics.clone();
     let result = runner.run(
         &Theme::default(),
-        move |_| element(LiveView::new(live_view.clone(), dashboard)),
-        |event| match event {
-            Event::Key(key)
+        &mut (),
+        move |(), _frame| element(LiveView::new(live_view.clone(), dashboard)),
+        |(), signal| match signal {
+            Signal::Event(Event::Key(key))
                 if key.plain() && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
             {
-                ControlFlow::Break(())
+                UpdateResult::Exit
             }
-            _ => ControlFlow::Continue(()),
+            _ => UpdateResult::Clean,
         },
     );
 

@@ -25,7 +25,6 @@
 //! ```
 
 use std::io;
-use std::ops::ControlFlow;
 use std::time::Duration;
 
 use ratatui::style::{Color, Style};
@@ -33,7 +32,9 @@ use ratatui::text::{Line, Span};
 
 use tuika::components::{Flex, Rule, Text};
 use tuika::term::capabilities::Capabilities;
-use tuika::{Event, KeyCode, Padding, Runner, RunnerConfig, Theme, themes, view};
+use tuika::{
+    Event, KeyCode, Padding, Runner, RunnerConfig, Signal, Theme, UpdateResult, themes, view,
+};
 
 /// How long to wait for the terminal to answer. A real tty replies to the
 /// Device Attributes fence immediately, so this is only reached on a terminal
@@ -161,12 +162,15 @@ fn main() -> io::Result<()> {
     let runner = Runner::new(RunnerConfig::default());
     runner.run(
         &theme,
-        |_frame| build(&theme, source),
-        |event| match event {
-            Event::Key(key) if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) => {
-                ControlFlow::Break(())
+        &mut (),
+        |(), _frame| build(&theme, source),
+        |(), signal| match signal {
+            Signal::Event(Event::Key(key))
+                if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
+            {
+                UpdateResult::Exit
             }
-            _ => ControlFlow::Continue(()),
+            _ => UpdateResult::Clean,
         },
     )
 }

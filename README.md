@@ -578,24 +578,16 @@ intentionally own raw mode, keyboard modes, and cursor visibility themselves.
 
 `Runner` is an optional synchronous event loop for dashboards and small tools.
 It owns `TerminalSession`, frame scheduling, Crossterm event translation, and
-data-driven redraw checks.
-
-`AsyncRunner` (behind `features = ["async"]`) is the same loop for applications
-that already have a Tokio runtime — anything doing network or disk I/O. It ties
-`TerminalSession`, `paint`, and `translate_event` to crossterm's async
-`EventStream` and a tick timer in one `tokio::select!`, so the host keeps a
-single event loop instead of bolting `spawn_blocking` + a shared `Live` +
-`Notify` + a stop flag onto the synchronous `Runner` to feed it. The loop threads
-one owned `state` value through a `view` closure (`&state` → the frame) and an
-`async` `update` closure (`&mut state` on each `Signal` — a tick or an event —
-and it may `.await`):
+state-driven redraws. It threads one state value through a pure `view(&State)`
+and an `update(&mut State, Signal)` function. The initial frame is painted once;
+a tick or input only repaints when update returns `UpdateResult::Dirty`, while a
+`RedrawHandle` can wake the loop from another thread:
 
 ```rust,ignore
-use std::ops::ControlFlow;
 use std::time::Duration;
 use tuika::prelude::*;
 
-let runner = AsyncRunner::new(RunnerConfig {
+let runner = Runner::new(RunnerConfig {
     tick_rate: Duration::from_secs(2),
     ..RunnerConfig::default()
 });
@@ -604,19 +596,27 @@ runner.run(
     &Theme::default(),
     &mut stats,
     |stats, _frame| element(Text::raw(stats.summary())),
-    async |stats, signal| match signal {
-        Signal::Tick => { stats.ingest(fetch(&url).await?); ControlFlow::Continue(()) }
+    |stats, signal| match signal {
+        Signal::Tick if stats.refresh() => UpdateResult::Dirty,
         Signal::Event(Event::Key(k)) if k.plain() && k.code == KeyCode::Char('q') =>
-            ControlFlow::Break(()),
-        _ => ControlFlow::Continue(()),
+            UpdateResult::Exit,
+        _ => UpdateResult::Clean,
     },
-).await?;
+)?;
 ```
+
+`AsyncRunner` (behind `features = ["async"]`) uses the same state/view/signal
+model for applications that already have a Tokio runtime — anything doing
+network or disk I/O — and lets its update closure `.await`. It ties
+`TerminalSession`, `paint`, and `translate_event` to crossterm's async
+`EventStream` and a tick timer in one `tokio::select!`, so the host keeps a
+single event loop. Its update closure returns `ControlFlow<()>`; asynchronous
+updates currently repaint after every delivered signal.
 
 Enabling `async` adds Tokio (timer + `select!`) and crossterm's `event-stream`
 feature; it stays off by default so sync-only hosts pull in no runtime. The
-[`async_dashboard`](examples/async_dashboard.rs) example is the runnable
-counterpart to `ratatui_dashboard` with no shared state at all.
+[`async_dashboard`](examples/async_dashboard.rs) example demonstrates that
+variant with no shared state at all.
 
 ## Native terminal progress
 

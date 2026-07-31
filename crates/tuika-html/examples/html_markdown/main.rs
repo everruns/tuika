@@ -10,8 +10,6 @@
 //! bold header — and a plain-text dump throws every bit of that away.
 //! `scripts/gen-html-demo.sh` records this same binary.
 
-use std::ops::ControlFlow;
-
 use tuika::components::Markdown;
 use tuika::prelude::*;
 use tuika::testing::{grid, render};
@@ -61,12 +59,15 @@ fn main() -> std::io::Result<()> {
     let runner = Runner::new(RunnerConfig::default());
     runner.run(
         &theme,
-        |_frame| scene(),
-        |event| match event {
-            Event::Key(key) if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) => {
-                ControlFlow::Break(())
+        &mut (),
+        |(), _frame| scene(),
+        |(), signal| match signal {
+            Signal::Event(Event::Key(key))
+                if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
+            {
+                UpdateResult::Exit
             }
-            _ => ControlFlow::Continue(()),
+            _ => UpdateResult::Clean,
         },
     )
 }

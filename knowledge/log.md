@@ -15,6 +15,12 @@
 - Per-frame focus rings discard ids that disappeared and commit the fallback at
   the following frame boundary. Dynamic component trees therefore cannot keep
   routing input to a stale target or resurrect it when it later returns.
+- **Synchronous runner state and invalidation model**
+  - `Runner` now mirrors the asynchronous runner's owned-state split: immutable
+    view construction and mutable signal updates.
+  - Repainting is explicit (`UpdateResult::Dirty`) or externally requested;
+    periodic ticks alone no longer repaint. This keeps rendering pure and makes
+    idle CPU/terminal work proportional to actual changes.
 
 - **Internal follow-ups stay out of GitHub issues**
 

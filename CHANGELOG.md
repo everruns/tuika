@@ -61,6 +61,13 @@ block-HTML seam.
 - `FocusRegistry` immediately falls back to the first current registration when
   a focused id disappears from a dynamic frame, and commits that fallback at
   the next frame boundary instead of retaining or resurrecting a stale target.
+- **Breaking:** synchronous `Runner::run` and `run_with_backend` now mirror the
+  state/view/update shape of `AsyncRunner`: pass `&mut State`, render through
+  `view(&State, frame)`, and handle `Signal` in `update(&mut State, Signal)`.
+  Updates return `UpdateResult::{Clean, Dirty, Exit}` instead of
+  `ControlFlow<()>`; ticks no longer repaint unless the update is dirty or a
+  `RedrawHandle` fires.
+
 - **Breaking**: `SelectState::selected()` now returns `Option<usize>`, and
   `SelectState::select` takes `Option<usize>`, so lists and tables can render
   without a selected row. Migrate `state.select(index)` to

@@ -20,10 +20,9 @@
 mod asynchronous;
 
 #[cfg(feature = "async")]
-pub use asynchronous::{AsyncRunner, Signal};
+pub use asynchronous::AsyncRunner;
 
 use std::io;
-use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
 use crossterm::event;
@@ -52,6 +51,27 @@ impl Default for RunnerConfig {
             screen_mode: ScreenMode::default(),
         }
     }
+}
+
+/// A signal delivered to a runner update function.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Signal {
+    /// The configured tick interval elapsed.
+    Tick,
+    /// A translated terminal input event arrived.
+    Event(Event),
+}
+
+/// What a runner should do after an update.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum UpdateResult {
+    /// Keep waiting without rebuilding or repainting the view.
+    #[default]
+    Clean,
+    /// Rebuild and repaint the view from the updated state.
+    Dirty,
+    /// Stop the runner without painting another frame.
+    Exit,
 }
 
 /// A synchronous Crossterm event and rendering loop.
@@ -88,27 +108,39 @@ impl Runner {
         self.redraw.clone()
     }
 
-    /// Run until `on_event` returns [`ControlFlow::Break`].
-    pub fn run(
-        &self,
-        theme: &Theme,
-        build: impl FnMut(u64) -> Element,
-        on_event: impl FnMut(Event) -> ControlFlow<()>,
-    ) -> io::Result<()> {
-        self.run_with_backend(theme, CrosstermBackend::new(io::stdout()), build, on_event)
+    /// Run until `update` returns [`UpdateResult::Exit`].
+    ///
+    /// The runner paints once initially. It then delivers input and periodic
+    /// [`Signal::Tick`] values to `update`, repainting only when `update`
+    /// returns [`UpdateResult::Dirty`] or a [`RedrawHandle`] requests it.
+    pub fn run<S, V, U>(&self, theme: &Theme, state: &mut S, view: V, update: U) -> io::Result<()>
+    where
+        V: FnMut(&S, u64) -> Element,
+        U: FnMut(&mut S, Signal) -> UpdateResult,
+    {
+        self.run_with_backend(
+            theme,
+            CrosstermBackend::new(io::stdout()),
+            state,
+            view,
+            update,
+        )
     }
 
     /// Run with a caller-provided backend, such as
     /// [`HyperlinkBackend`](crate::term::hyperlink::HyperlinkBackend).
-    pub fn run_with_backend<B>(
+    pub fn run_with_backend<S, B, V, U>(
         &self,
         theme: &Theme,
         backend: B,
-        mut build: impl FnMut(u64) -> Element,
-        mut on_event: impl FnMut(Event) -> ControlFlow<()>,
+        state: &mut S,
+        mut view: V,
+        mut update: U,
     ) -> io::Result<()>
     where
         B: Backend<Error = io::Error>,
+        V: FnMut(&S, u64) -> Element,
+        U: FnMut(&mut S, Signal) -> UpdateResult,
     {
         let mode = self.config.screen_mode;
         let split = !mode.is_alternate();
@@ -120,54 +152,56 @@ impl Runner {
             },
         )?;
         let mut frame = 0u64;
-        let mut last_draw = Instant::now();
-        self.redraw.request();
+        let mut last_tick = Instant::now();
 
-        loop {
+        if split {
+            pin_footer(&mut terminal)?;
+        }
+        draw(&mut terminal, theme, &mut view, state, &mut frame)?;
+
+        'running: loop {
+            let mut dirty = self.redraw.take();
             if split {
-                // Publishing scrolls the terminal and (on the portable path)
-                // clears the viewport, so a block that went out means the footer
-                // owes a repaint on this iteration rather than at the next tick.
-                if self.scrollback.flush(&mut terminal, theme)? {
-                    self.redraw.request();
-                }
+                // Publishing scrolls the terminal and may clear the viewport,
+                // so a committed block always makes the footer dirty.
+                dirty |= self.scrollback.flush(&mut terminal, theme)?;
             } else {
                 self.scrollback.clear();
             }
 
-            let due = last_draw.elapsed() >= self.config.tick_rate;
-            let requested = self.redraw.take();
-            if due || requested {
+            if last_tick.elapsed() >= self.config.tick_rate {
+                last_tick = Instant::now();
+                if apply_update(update(state, Signal::Tick), &mut dirty) {
+                    break;
+                }
+            }
+
+            if dirty {
                 if split {
-                    // Resolve any resize first so the footer is pinned against
-                    // the new screen height, not the previous one.
                     terminal.autoresize()?;
                     pin_footer(&mut terminal)?;
                 }
-                terminal.draw(|terminal_frame| {
-                    let area = terminal_frame.area();
-                    let root = build(frame);
-                    paint(terminal_frame.buffer_mut(), area, theme, root.as_ref(), &[]);
-                })?;
-                frame = frame.wrapping_add(1);
-                last_draw = Instant::now();
+                draw(&mut terminal, theme, &mut view, state, &mut frame)?;
             }
 
-            let timeout = self.config.tick_rate.saturating_sub(last_draw.elapsed());
+            let timeout = self.config.tick_rate.saturating_sub(last_tick.elapsed());
             if event::poll(timeout)?
                 && let Some(event) = translate_event(event::read()?)
-                && on_event(event).is_break()
             {
-                break;
+                let mut event_dirty = false;
+                if apply_update(update(state, Signal::Event(event)), &mut event_dirty) {
+                    break 'running;
+                }
+                if event_dirty {
+                    self.redraw.request();
+                }
             }
         }
 
         // Some terminal emulators do not answer the cursor-position query used
         // by `clear`. Session restoration must still succeed and a cosmetic
         // cleanup failure must not turn a completed run into an application
-        // error. A split footer gives its rows back instead: the scrollback
-        // above it is the user's, and only the reserved region is ours to
-        // clear.
+        // error.
         if split {
             let _ = close_footer(&mut terminal);
         } else {
@@ -177,9 +211,62 @@ impl Runner {
     }
 }
 
+fn apply_update(result: UpdateResult, dirty: &mut bool) -> bool {
+    match result {
+        UpdateResult::Clean => false,
+        UpdateResult::Dirty => {
+            *dirty = true;
+            false
+        }
+        UpdateResult::Exit => true,
+    }
+}
+
+/// Paint one frame from immutable state and advance the animation frame.
+fn draw<S, B, V, Er>(
+    terminal: &mut Terminal<B>,
+    theme: &Theme,
+    view: &mut V,
+    state: &S,
+    frame: &mut u64,
+) -> Result<(), Er>
+where
+    B: Backend<Error = Er>,
+    V: FnMut(&S, u64) -> Element,
+{
+    terminal.draw(|terminal_frame| {
+        let area = terminal_frame.area();
+        let root = view(state, *frame);
+        paint(terminal_frame.buffer_mut(), area, theme, root.as_ref(), &[]);
+    })?;
+    *frame = frame.wrapping_add(1);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clean_updates_do_not_request_a_repaint() {
+        let mut dirty = false;
+        assert!(!apply_update(UpdateResult::Clean, &mut dirty));
+        assert!(!dirty);
+    }
+
+    #[test]
+    fn dirty_updates_request_a_repaint() {
+        let mut dirty = false;
+        assert!(!apply_update(UpdateResult::Dirty, &mut dirty));
+        assert!(dirty);
+    }
+
+    #[test]
+    fn exit_updates_stop_without_forcing_a_repaint() {
+        let mut dirty = false;
+        assert!(apply_update(UpdateResult::Exit, &mut dirty));
+        assert!(!dirty);
+    }
 
     #[test]
     fn zero_tick_rate_is_clamped() {
