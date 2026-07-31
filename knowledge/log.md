@@ -16,6 +16,45 @@
   These details are part of the interoperability promise, not cosmetic
   preferences.
 
+- **Inline HTML renders; HTML documents remain a non-goal**
+
+- Raw HTML in markdown was dropped whole, so `<b>bold</b>` rendered flat and
+  `a<br>b` silently joined two lines — the markup *and* its meaning were lost.
+- A fixed whitelist of presentational inline tags now resolves the same
+  `StyleSheet` roles as the markdown constructs it mirrors. This adds no
+  dependency and no DOM: it is tag-name matching over the string pulldown-cmark
+  already isolated, so the crate stays a markdown renderer.
+- The markdown non-goal was narrowed rather than deleted. Block-level HTML and
+  document layout (DOM, CSS) stay out of core; a host that wants them supplies
+  the parser behind a seam, as `FencedBlockRenderer` already allows for a
+  fenced `html` block.
+- Inline-HTML scopes close at every block end. That is both the sane reading of
+  an unclosed tag and what keeps the settled-prefix cache honest — a scope
+  outliving a block boundary broke the streamed-equals-one-shot invariant in
+  *styles* while the text still matched, which the streaming test now covers.
+
+- **Block HTML renders through a seam, with tuika-html behind it**
+
+- The inline whitelist left `<details>`, `<table>`, and `<div>` blocks dropped,
+  which is the majority of the HTML that actually appears in READMEs.
+- `HtmlBlockRenderer` follows `FencedBlockRenderer`'s shape but also carries the
+  `StyleSheet`, so an implementation resolves the same roles the surrounding
+  markdown does rather than inventing colors. `Renderers` bundles both block
+  seams so the free functions did not grow a second renderer argument each.
+- `tuika-html` is the implementation: html5ever for the tree, tuika's own
+  wrapping and stylesheet for the presentation, plus a standalone `Html` view.
+  It is a fourth published crate rather than an optional feature, for the same
+  reason the other two are.
+- Its example runs as a real app rather than printing a rendered grid: styling
+  is half of what the crate does, and a plain-text dump discards all of it. The
+  recording is a screenshot, since the scene is settled.
+- Bounding a *parser* means bounding its input, not its traversal. html5ever
+  builds and drops its tree recursively, so deeply nested markup overflows the
+  stack before any traversal begins — a capped walk is no defense. Nesting is
+  therefore measured on the source bytes and over-nested fragments are refused.
+  Found by the shipping security review, not by the test suite, which had only
+  probed nesting the input-size bound already rejected.
+
 ## 2026-07-25
 
 - **OKF v0.2 compliance**: Declared the bundle version, normalized this log

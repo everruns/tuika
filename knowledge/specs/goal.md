@@ -63,15 +63,22 @@ a trait the host implements:
 | --- | --- | --- |
 | Syntax highlighting | framing, background, gutter, wrapping (`CodeBlock`) | token spans, via `Highlighter` |
 | Rich fenced blocks | width-aware placement and code fallback (`Markdown`) | parsing and terminal-native rendering, via `FencedBlockRenderer` |
+| Block-level HTML | placement, indentation, and the drop fallback (`Markdown`) | parsing and layout, via `HtmlBlockRenderer` |
 | Images | protocol encoding, cell reservation, alt fallback | decoding bytes to RGBA, via `ImageResolver` |
 | Live data | reading shared state at render time | producing it, and requesting redraws |
 | Input | translation to tuika events, keymap dispatch | the event source and the command semantics |
 
 The companion crates exist because of this rule: `tuika-codeformatters`
-supplies tree-sitter grammars behind `Highlighter`, while `tuika-mermaid`
-supplies mmdflux parsing and layout behind `FencedBlockRenderer`. They are
-separately published rather than optional tuika features so the core dependency
-tree cannot grow by accident.
+supplies tree-sitter grammars behind `Highlighter`, `tuika-mermaid` supplies
+mmdflux parsing and layout behind `FencedBlockRenderer`, and `tuika-html`
+supplies html5ever behind `HtmlBlockRenderer`. They are separately published
+rather than optional tuika features so the core dependency tree cannot grow by
+accident.
+
+`tuika-html` also shows where the line falls *inside* one capability: the
+presentational inline tags need no parser, so they are in the crate, while
+block-level HTML needs a tree builder and is therefore a seam. The test is the
+dependency, not the topic.
 
 ## Non-goals
 

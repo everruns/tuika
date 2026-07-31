@@ -29,6 +29,11 @@ pub(super) enum MdItem {
     },
     /// A GFM table, laid out to the available width when flattened.
     Table { table: TableData, indent: u16 },
+    /// A raw block-level HTML run, kept verbatim for an
+    /// [`HtmlBlockRenderer`](super::HtmlBlockRenderer) to lay out at flatten
+    /// time. With no renderer attached it renders as nothing, which is what
+    /// markdown did with all HTML before the seam existed.
+    Html { source: String, indent: u16 },
     /// A resolved block image: reserves rows at flatten time and is painted by an
     /// [`Image`](crate::components::Image) overlay in the view (see [`ImageResolver`]).
     Image {

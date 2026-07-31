@@ -16,10 +16,10 @@ use crate::term::hyperlink::{BufferLink, LinkPolicy, apply_buffer_links};
 use crate::term::image::{ImageLayer, ImageSupport};
 use crate::view::{RenderCtx, View};
 
-use super::FencedBlockRenderer;
 use super::flatten::flatten_linked_into;
 use super::image::{ImageResolver, MarkdownImage};
 use super::parse::parse_with;
+use super::{FencedBlockRenderer, HtmlBlockRenderer, Renderers};
 
 /// A view that renders a static markdown string to its area — word-wrapping
 /// prose to the width and drawing code and tables verbatim.
@@ -29,6 +29,14 @@ use super::parse::parse_with;
 /// For a *streaming* transcript, hold a [`MarkdownState`](super::MarkdownState) and draw its
 /// [`lines`](super::MarkdownState::lines) directly (that is what the demo above does);
 /// this view is the one-shot convenience for static markdown placed in a layout.
+///
+/// The presentational inline HTML tags render through the same style roles as the
+/// markdown they mirror, so a document that carries `<b>`, `<kbd>`, `<a>`, or
+/// `<sub>` loses nothing:
+///
+/// ![markdown inline HTML demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/markdown_html.png)
+///
+/// Block-level HTML is a seam — see [`html_renderer`](Self::html_renderer).
 ///
 /// GFM tables are laid out to the render width, cells keeping their inline
 /// styles, emoji, and links:
@@ -42,6 +50,7 @@ use super::parse::parse_with;
 /// | [`new(source)`](Self::new) | — | the markdown source to render |
 /// | [`highlighter(&h)`](Self::highlighter) | plain | syntax-highlight fenced code |
 /// | [`block_renderer(&r)`](Self::block_renderer) | off | replace recognized fences with rendered blocks |
+/// | [`html_renderer(&r)`](Self::html_renderer) | off | lay out raw block-level HTML |
 /// | [`images(&r, s, &l)`](Self::images) | off | render `![alt](url)` as real pixels |
 /// | [`link_policy(p)`](Self::link_policy) | [`LinkPolicy::WEB`] | OSC 8 schemes for links |
 ///
@@ -55,6 +64,7 @@ pub struct Markdown<'a> {
     source: String,
     highlighter: CodeHighlighter<'a>,
     block_renderer: Option<&'a dyn FencedBlockRenderer>,
+    html_renderer: Option<&'a dyn HtmlBlockRenderer>,
     resolver: Option<&'a dyn ImageResolver>,
     image_support: ImageSupport,
     image_layer: Option<ImageLayer>,
@@ -70,6 +80,7 @@ impl<'a> Markdown<'a> {
             source: source.into(),
             highlighter: CodeHighlighter::Plain,
             block_renderer: None,
+            html_renderer: None,
             resolver: None,
             image_support: ImageSupport::None,
             image_layer: None,
@@ -89,6 +100,16 @@ impl<'a> Markdown<'a> {
     /// a fence in the ordinary themed code-block presentation.
     pub fn block_renderer(mut self, renderer: &'a dyn FencedBlockRenderer) -> Self {
         self.block_renderer = Some(renderer);
+        self
+    }
+
+    /// Render raw block-level HTML (`<details>`, `<table>`, `<div>`, …) through
+    /// `renderer`.
+    ///
+    /// Without one, block HTML is dropped; the presentational *inline* tags
+    /// (`<b>`, `<a>`, `<br>`, …) render either way and need no renderer.
+    pub fn html_renderer(mut self, renderer: &'a dyn HtmlBlockRenderer) -> Self {
+        self.html_renderer = Some(renderer);
         self
     }
 
@@ -131,8 +152,15 @@ impl<'a> Markdown<'a> {
     ) -> (Vec<Line<'static>>, Vec<MarkdownImage>, Vec<BufferLink>) {
         let items = parse_with(&self.source, theme, sheet, self.highlighter, self.resolver);
         let mut images = Vec::new();
+        let mut renderers = Renderers::new();
+        if let Some(r) = self.block_renderer {
+            renderers = renderers.fenced(r);
+        }
+        if let Some(r) = self.html_renderer {
+            renderers = renderers.html(r);
+        }
         let (lines, links) =
-            flatten_linked_into(&items, width, theme, self.block_renderer, &mut images);
+            flatten_linked_into(&items, width, theme, sheet, renderers, &mut images);
         (lines, images, links)
     }
 }

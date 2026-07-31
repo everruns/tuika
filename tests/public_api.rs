@@ -160,6 +160,34 @@ fn component_modules_own_their_constants_and_free_functions() {
             .content,
         "rendered"
     );
+
+    // Both seams reach markdown through one `Renderers` value.
+    struct Html;
+    impl HtmlBlockRenderer for Html {
+        fn render(
+            &self,
+            _source: &str,
+            _width: u16,
+            _theme: &Theme,
+            _sheet: &StyleSheet,
+        ) -> Option<Vec<ratatui_core::text::Line<'static>>> {
+            Some(vec![ratatui_core::text::Line::raw("html")])
+        }
+    }
+    let lines = markdown::to_lines_with(
+        "```demo\nsource\n```\n\n<div>x</div>",
+        20,
+        &theme,
+        &sheet,
+        plain,
+        markdown::Renderers::new().fenced(&Blocks).html(&Html),
+    );
+    let rendered: Vec<String> = lines
+        .iter()
+        .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+        .collect();
+    assert!(rendered.iter().any(|l| l == "rendered"), "{rendered:?}");
+    assert!(rendered.iter().any(|l| l == "html"), "{rendered:?}");
 }
 
 /// Everything out-of-band lives under `term`, and each escape module exposes the

@@ -9,11 +9,11 @@ use ratatui_core::style::Style;
 use ratatui_core::text::{Line, Span};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::style::Theme;
+use crate::style::{StyleSheet, Theme};
 use crate::term::hyperlink::BufferLink;
 use crate::width::grapheme_cols;
 
-use super::FencedBlockRenderer;
+use super::Renderers;
 use super::image::{MarkdownImage, image_cell_size};
 use super::item::{MdItem, RichSpan};
 use super::table::render_table_linked;
@@ -45,10 +45,11 @@ pub(super) fn flatten_linked(
     items: &[MdItem],
     width: u16,
     theme: &Theme,
-    block_renderer: Option<&dyn FencedBlockRenderer>,
+    sheet: &StyleSheet,
+    renderers: Renderers<'_>,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let mut images = Vec::new();
-    flatten_linked_into(items, width, theme, block_renderer, &mut images)
+    flatten_linked_into(items, width, theme, sheet, renderers, &mut images)
 }
 
 /// Flatten into lines and collect the block images reserved, with the row each
@@ -58,24 +59,33 @@ pub(super) fn flatten_into(
     items: &[MdItem],
     width: u16,
     theme: &Theme,
-    block_renderer: Option<&dyn FencedBlockRenderer>,
+    sheet: &StyleSheet,
+    renderers: Renderers<'_>,
     images: &mut Vec<MarkdownImage>,
 ) -> Vec<Line<'static>> {
-    flatten_linked_into(items, width, theme, block_renderer, images).0
+    flatten_linked_into(items, width, theme, sheet, renderers, images).0
 }
 
 pub(super) fn flatten_linked_into(
     items: &[MdItem],
     width: u16,
     theme: &Theme,
-    block_renderer: Option<&dyn FencedBlockRenderer>,
+    sheet: &StyleSheet,
+    renderers: Renderers<'_>,
     images: &mut Vec<MarkdownImage>,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let mut out = Vec::new();
     let mut links = Vec::new();
     for item in items {
         match item {
-            MdItem::Blank => out.push(Line::default()),
+            // A blank only separates: when the block it was separating rendered
+            // nothing — a dropped HTML block, with no renderer attached — it
+            // must not leave a gap at the top or a double gap in the middle.
+            MdItem::Blank => {
+                if !out.last().is_some_and(is_spacer) {
+                    out.push(Line::default());
+                }
+            }
             MdItem::Prose { spans, indent } => {
                 let avail = width.saturating_sub(*indent).max(1);
                 for (row, row_links) in wrap_rich(spans, avail) {
@@ -97,7 +107,8 @@ pub(super) fn flatten_linked_into(
                 indent,
             } => {
                 let avail = width.saturating_sub(*indent).max(1);
-                let rendered = block_renderer
+                let rendered = renderers
+                    .fenced
                     .and_then(|renderer| renderer.render(language, source, avail, theme));
                 for line in rendered.as_ref().unwrap_or(fallback) {
                     out.push(prefix_rendered_line(*indent, line));
@@ -115,6 +126,19 @@ pub(super) fn flatten_linked_into(
                         links.push(bl);
                     }
                     out.push(line);
+                }
+            }
+            // No renderer means the block is dropped — markdown's behavior for
+            // all HTML before the seam existed.
+            MdItem::Html { source, indent } => {
+                let avail = width.saturating_sub(*indent).max(1);
+                if let Some(rendered) = renderers
+                    .html
+                    .and_then(|renderer| renderer.render(source, avail, theme, sheet))
+                {
+                    for line in &rendered {
+                        out.push(prefix_rendered_line(*indent, line));
+                    }
                 }
             }
             MdItem::Image { data, alt, indent } => {
@@ -294,4 +318,14 @@ pub(super) fn link_runs(spans: &[RichSpan], col_offset: u16) -> Vec<BufferLink> 
         }
     }
     links
+}
+
+/// True for a spacer line — one this pass emitted for [`MdItem::Blank`].
+///
+/// Deliberately an emptiness check on the span list rather than a scan for
+/// whitespace: the only lines that need collapsing are the ones emitted right
+/// here, this runs once per blank in every reflow, and the reflow benchmark is
+/// an instruction-count gate.
+fn is_spacer(line: &Line<'static>) -> bool {
+    line.spans.is_empty()
 }

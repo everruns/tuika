@@ -368,6 +368,30 @@ Run the complete integration demo with
 Images use the same host-extension pattern: supply an `ImageResolver` and
 `![alt](url)` renders as real pixels (see [Images](#images)).
 
+Block-level HTML is a seam of its own. Attach an `HtmlBlockRenderer` and raw
+`<details>`, `<table>`, and `<div>` blocks lay out instead of being dropped;
+[`tuika-html`](crates/tuika-html/) is the ready-made implementation, and also
+offers a standalone `Html` view for a fragment that is not inside markdown.
+
+```rust
+use tuika::prelude::*;
+use tuika_html::HtmlRenderer;
+
+let html = HtmlRenderer::new();
+let document = Markdown::new("<details><summary>Notes</summary>Body</details>")
+    .html_renderer(&html);
+# let _ = document;
+```
+
+<img src="https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-html/examples/html_markdown/html.png" width="880" alt="HTML blocks rendered inside tuika Markdown: a details summary with a bullet list, a box-drawn table, and a quoted line with Unicode subscript and superscript">
+
+Markdown in the wild carries HTML, so the presentational inline tags render too
+— `<b>`, `<em>`, `<code>`, `<kbd>`, `<mark>`, `<a href>`, `<img>`, `<br>`, and
+`<sub>`/`<sup>` — each through the same `StyleSheet` role as the markdown it
+mirrors. It is a fixed whitelist, not an HTML parser: block-level HTML and
+anything unrecognized is dropped rather than printed. See
+[the markdown guide](docs/markdown.md#inline-html).
+
 ## Theming
 
 Every component styles itself from a `Theme` passed through the render context —
@@ -768,8 +792,10 @@ The separately published companion crates live in this repository:
   tree-sitter `Highlighter`.
 - [`tuika-mermaid`](crates/tuika-mermaid/) renders Mermaid fences as Unicode
   terminal diagrams through mmdflux.
+- [`tuika-html`](crates/tuika-html/) lays out block-level HTML — in Markdown, or
+  standalone through its own `Html` view — with html5ever.
 
-Both keep their heavier parsers and grammars out of tuika core.
+All three keep their heavier parsers and grammars out of tuika core.
 
 ## License
 

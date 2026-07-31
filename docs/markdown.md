@@ -9,6 +9,7 @@ This page covers all of it in one place.
 
 - [The two entry points](#the-two-entry-points)
 - [What renders](#what-renders)
+- [Inline HTML](#inline-html)
 - [Streaming](#streaming)
 - [GFM tables](#gfm-tables)
 - [Fenced code](#fenced-code)
@@ -63,9 +64,57 @@ or code indentation and table borders will be re-flowed into nonsense.
 | Tables | GFM pipe tables, boxed and fitted to the width |
 | Links | Label painted, destination emitted as an OSC 8 hyperlink |
 | Images | `![alt](url)` — real pixels via a host resolver, alt text otherwise |
+| Inline HTML | A whitelist of presentational tags — see [below](#inline-html) |
 
 Every one of these is measured in *cells*, not chars, so wide CJK glyphs and
 multi-scalar emoji keep the layout honest.
+
+## Inline HTML
+
+<img src="demos/markdown_html.png" width="880" alt="Inline HTML in markdown: strong, emphasis, struck and underlined text, a highlighted run, keyboard keys, a link, Unicode subscript and superscript, and a line broken by a br tag">
+
+Markdown in the wild carries HTML, so the presentational inline tags render
+instead of disappearing:
+
+| Tag | Renders as |
+| :-- | :--------- |
+| `<b>` `<strong>` | the `strong` role |
+| `<i>` `<em>` `<var>` `<cite>` `<dfn>` | the `emphasis` role |
+| `<code>` `<kbd>` `<samp>` `<tt>` | the `inline_code` role |
+| `<s>` `<del>` `<strike>` | the `strikethrough` role |
+| `<u>` `<ins>` | underlined |
+| `<mark>` | reverse video |
+| `<a href>` | the `link` role, destination kept for OSC 8 / Ctrl+click |
+| `<img src alt>` | the same path as `![alt](src)`, resolver and all |
+| `<br>` | a line break (a space inside a table cell) |
+| `<sub>` `<sup>` | Unicode subscript / superscript — `H<sub>2</sub>O` → `H₂O` |
+
+Because each tag resolves a [`StyleSheet`](styling.md) role rather than a color,
+restyling `strong` restyles `<b>` with it.
+
+Everything else — `<div>`, `<details>`, `<script>`, block-level HTML, and any
+attribute not listed above — is dropped, never printed as literal markup. tuika
+does not parse HTML: this is a fixed tag whitelist, so untrusted markdown cannot
+reach anything but these styles. Unbalanced tags (`<b>` with no `</b>`, a stray
+`</i>`) degrade quietly, and no tag styles past the block it opened in.
+
+Block-level HTML is a *seam* rather than a feature, for the same reason syntax
+highlighting is: an HTML parser is a dependency tuika will not carry. Attach an
+`HtmlBlockRenderer` and `<details>`, `<table>`, and the rest lay out too —
+[`tuika-html`](https://crates.io/crates/tuika-html) is the ready-made one.
+
+```rust
+use tuika::prelude::*;
+use tuika_html::HtmlRenderer;
+
+let html = HtmlRenderer::new();
+let doc = Markdown::new("<details><summary>Notes</summary>Body</details>")
+    .html_renderer(&html);
+# let _ = doc;
+```
+
+`<sub>`/`<sup>` transliterate only when *every* character has a Unicode form —
+digits and `+ - = ( )`. `4<sup>th</sup>` renders `4th` rather than half-shifted.
 
 ## Streaming
 

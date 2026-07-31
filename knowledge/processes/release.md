@@ -37,7 +37,7 @@ their own views. A `ratatui-core` major bump is also breaking, because the
 | Target | Surface | How users install |
 | --- | --- | --- |
 | GitHub Release | tag `vX.Y.Z`, source archive | `gh release view vX.Y.Z` |
-| crates.io | `tuika`, `tuika-codeformatters`, and `tuika-mermaid` | `cargo add tuika` |
+| crates.io | `tuika`, `tuika-codeformatters`, `tuika-mermaid`, and `tuika-html` | `cargo add tuika` |
 
 There are no binaries and no package-manager formulae: tuika is a library.
 
@@ -60,7 +60,8 @@ a broken clone. That case is spelled out in the release skill's sync step.
 
 ## Independent crate versions
 
-`tuika`, `tuika-codeformatters`, and `tuika-mermaid` version independently. The
+`tuika`, `tuika-codeformatters`, `tuika-mermaid`, and `tuika-html` version
+independently. The
 repository's tag tracks the **root package** (`tuika`), because the tag names the
 repository state, and `release.yml` reads the version from the root
 `Cargo.toml`.
@@ -72,7 +73,7 @@ because their published manifests pin a compatible tuika version. Update that
 requirement in the same change or the companion will resolve against old tuika.
 
 `publish.yml` derives the dependency-first order from Cargo metadata
-(`scripts/publish_order.py` — currently `tuika`, then the two companions) and
+(`scripts/publish_order.py` — currently `tuika`, then its three companions) and
 skips versions already live, so a workspace member cannot be silently omitted
 or published out of order.
 
