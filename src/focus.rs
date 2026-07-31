@@ -24,8 +24,18 @@ impl FocusRegistry {
         Self::default()
     }
 
-    /// Begin a frame: clear the per-frame focus ring. Registrations follow.
+    /// Begin a frame: reconcile focus against the preceding frame, then clear
+    /// the per-frame focus ring. Registrations for the new frame follow.
     pub fn begin_frame(&mut self) {
+        if self.order.is_empty() {
+            self.focused = None;
+        } else if !self
+            .focused
+            .as_ref()
+            .is_some_and(|focused| self.order.contains(focused))
+        {
+            self.focused = self.order.first().cloned();
+        }
         self.order.clear();
     }
 
@@ -48,9 +58,18 @@ impl FocusRegistry {
         self.owner = None;
     }
 
+    fn ring_focus(&self) -> Option<&str> {
+        self.focused
+            .as_deref()
+            .filter(|focused| self.order.iter().any(|id| id == focused))
+            .or_else(|| self.order.first().map(String::as_str))
+    }
+
     /// The id that should receive input: the owner if any, else the focused id.
+    /// If a focused region disappeared this frame, the first current
+    /// registration is used immediately.
     pub fn active(&self) -> Option<&str> {
-        self.owner.as_deref().or(self.focused.as_deref())
+        self.owner.as_deref().or_else(|| self.ring_focus())
     }
 
     /// Whether `id` is the active input target.
@@ -60,7 +79,7 @@ impl FocusRegistry {
 
     /// Whether `id` holds focus in the base ring (ignores overlay ownership).
     pub fn is_focused(&self, id: &str) -> bool {
-        self.focused.as_deref() == Some(id)
+        self.ring_focus() == Some(id)
     }
 
     fn advance(&mut self, delta: isize) {
@@ -69,9 +88,8 @@ impl FocusRegistry {
         }
         let len = self.order.len() as isize;
         let current = self
-            .focused
-            .as_ref()
-            .and_then(|f| self.order.iter().position(|id| id == f))
+            .ring_focus()
+            .and_then(|focused| self.order.iter().position(|id| id == focused))
             .map(|p| p as isize)
             .unwrap_or(0);
         let next = ((current + delta) % len + len) % len;
@@ -137,5 +155,25 @@ mod tests {
         assert_eq!(f.handle(&tab), EventFlow::Ignored);
         f.clear_owner();
         assert!(f.is_active("composer"));
+    }
+
+    #[test]
+    fn removed_focus_target_falls_back_to_the_current_ring() {
+        let mut f = FocusRegistry::new();
+        f.begin_frame();
+        f.register("old");
+        assert_eq!(f.active(), Some("old"));
+
+        f.begin_frame();
+        f.register("new");
+        assert_eq!(f.active(), Some("new"));
+        assert!(f.is_focused("new"));
+
+        // Starting another frame commits the fallback, so reintroducing the old
+        // target cannot steal focus back.
+        f.begin_frame();
+        f.register("old");
+        f.register("new");
+        assert_eq!(f.active(), Some("new"));
     }
 }

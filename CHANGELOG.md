@@ -51,6 +51,16 @@ block-HTML seam.
 
 ### Changed
 
+- `Flex` measures padded children against their actual inner box and reports
+  fixed/percent child dimensions when the container itself is auto-sized, so
+  nested measurement matches the rects assigned during rendering.
+- `TextInputState` preserves grapheme clusters during cursor motion and
+  deletion. Text input wrapping, rendering, and terminal cursor placement now
+  share terminal-cell width, fixing CJK and multi-scalar emoji alignment while
+  keeping public cursor and span coordinates as char indices.
+- `FocusRegistry` immediately falls back to the first current registration when
+  a focused id disappears from a dynamic frame, and commits that fallback at
+  the next frame boundary instead of retaining or resurrecting a stale target.
 - **Breaking**: `SelectState::selected()` now returns `Option<usize>`, and
   `SelectState::select` takes `Option<usize>`, so lists and tables can render
   without a selected row. Migrate `state.select(index)` to

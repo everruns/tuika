@@ -48,7 +48,10 @@ rather than beside it.
 size in whole cells so the solver can allocate, `render` paints into the clipped
 region it was given. Sizes are whole cells throughout — there is no sub-cell
 layout — which is why image sizing is quantized to cells rather than driven by
-pixel geometry.
+pixel geometry. A container measures children against the content box they will
+actually receive after its own padding. When a `Flex` is itself measured, its
+declared fixed and percent dimensions contribute their resolved main-axis sizes;
+the child's intrinsic size is the basis only for auto and flexible children.
 
 ## Why the `ratatui-core` seam, not the umbrella
 
@@ -118,7 +121,17 @@ tuika types, which is what lets all of it be unit-tested without a PTY.
 
 Focus is a registry of scopes rather than a flag per component: a `FocusScope`
 claims input ownership for its subtree, so a modal or overlay can take input
-without every component learning about modality.
+without every component learning about modality. At each frame boundary the
+host calls `begin_frame`, registers the complete current ring, and then queries
+or routes focus. A focused id absent from that ring falls back immediately to
+its first registration; the next frame boundary commits that fallback, so a
+temporarily removed id cannot steal focus if it later returns.
+
+Text-input positions exposed to hosts remain char indices, matching token and
+highlight spans. Editing nevertheless moves and deletes by grapheme boundary,
+and soft-wrap plus cursor placement use grapheme display width in terminal
+cells. Keeping one cell-width model across measurement, painting, and cursor
+math prevents CJK and multi-scalar emoji from drifting apart.
 
 Inline composer tokens follow the same host-agnostic rule. A `Trigger` declares
 only *where* an opening character counts (`Anywhere`/`WordStart`/`LineStart`/

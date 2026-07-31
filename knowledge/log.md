@@ -1,5 +1,21 @@
 # Knowledge Log
 
+## 2026-07-31
+
+- **Component geometry uses the grid's real constraints**
+
+- Padded flex containers now measure children against the same inner box they
+  later assign, and a flex container's own intrinsic measurement respects its
+  declared fixed and percent dimensions. This restores one measure/solve
+  contract instead of letting padding and nesting create a second geometry.
+- Text input now shares the crate's grapheme-aware terminal-width model for
+  wrapping, painting, and cursor placement. Its public coordinates stay as char
+  indices, while cursor motion and deletion snap to grapheme boundaries so an
+  editing operation cannot split a visible cell.
+- Per-frame focus rings discard ids that disappeared and commit the fallback at
+  the following frame boundary. Dynamic component trees therefore cannot keep
+  routing input to a stale target or resurrect it when it later returns.
+
 ## 2026-07-30
 
 - **Render-time facts stay in render-time components**
