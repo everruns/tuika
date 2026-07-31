@@ -10,11 +10,11 @@ use ratatui_core::text::Line;
 use crate::highlight::CodeHighlighter;
 use crate::style::{StyleSheet, Theme};
 
-use super::FencedBlockRenderer;
 use super::flatten::flatten_into;
 use super::image::{ImageResolver, MarkdownImage};
 use super::item::MdItem;
 use super::parse::parse_with;
+use super::{FencedBlockRenderer, HtmlBlockRenderer, Renderers};
 
 /// Byte offset of the last *stable block boundary* in `source[from..]`, in
 /// absolute bytes: the position just past the last blank line that sits outside
@@ -92,6 +92,8 @@ pub struct MarkdownState {
     resolver: Option<Box<dyn ImageResolver>>,
     /// Optional host hook replacing recognized fenced blocks with rendered lines.
     block_renderer: Option<Box<dyn FencedBlockRenderer>>,
+    /// Optional host hook laying out raw block-level HTML.
+    html_renderer: Option<Box<dyn HtmlBlockRenderer>>,
     /// Block images in the settled prefix, with their absolute `rendered` rows —
     /// accumulated once as blocks settle, mirroring `settled_lines`.
     settled_images: Vec<MarkdownImage>,
@@ -127,6 +129,30 @@ impl MarkdownState {
         self.block_renderer = Some(renderer);
         self.reset_cache();
         self
+    }
+
+    /// Lay out raw block-level HTML through `renderer`.
+    ///
+    /// Without one, block HTML is dropped; the presentational *inline* tags
+    /// render either way. Like a fenced block, a settled HTML block is laid out
+    /// once per width, while one still in the streaming tail is re-rendered each
+    /// frame.
+    pub fn with_html_renderer(mut self, renderer: Box<dyn HtmlBlockRenderer>) -> Self {
+        self.html_renderer = Some(renderer);
+        self.reset_cache();
+        self
+    }
+
+    /// The renderers this state consults, as flatten wants them.
+    fn renderers(&self) -> Renderers<'_> {
+        let mut renderers = Renderers::new();
+        if let Some(r) = self.block_renderer.as_deref() {
+            renderers = renderers.fenced(r);
+        }
+        if let Some(r) = self.html_renderer.as_deref() {
+            renderers = renderers.html(r);
+        }
+        renderers
     }
 
     /// The block images reserved by the last [`lines`](Self::lines) call, with
@@ -232,7 +258,8 @@ impl MarkdownState {
                 &self.stable[self.flattened_items..],
                 width,
                 theme,
-                self.block_renderer.as_deref(),
+                sheet,
+                self.renderers(),
                 &mut settled_imgs,
             );
             for mut img in settled_imgs {
@@ -252,13 +279,7 @@ impl MarkdownState {
             self.resolver.as_deref(),
         );
         let mut tail_imgs = Vec::new();
-        let tail_lines = flatten_into(
-            &tail,
-            width,
-            theme,
-            self.block_renderer.as_deref(),
-            &mut tail_imgs,
-        );
+        let tail_lines = flatten_into(&tail, width, theme, sheet, self.renderers(), &mut tail_imgs);
         // The tail begins just past the boundary's blank line; keep that gap.
         if !self.rendered.is_empty()
             && !tail_lines.is_empty()
@@ -291,7 +312,7 @@ fn is_blank_line(line: &Line) -> bool {
 #[cfg(test)]
 mod tests {
     use super::super::testutil::*;
-    use super::super::to_lines;
+    use super::super::{to_lines, to_lines_with};
     use super::*;
 
     use crate::style::StyleBundle;
@@ -440,6 +461,93 @@ mod tests {
             .map(text)
             .collect();
         assert_eq!(streamed, one_shot);
+    }
+
+    #[test]
+    fn streaming_inline_html_one_char_at_a_time_matches_one_shot() {
+        // The cache commits at block boundaries, so an inline-HTML scope that
+        // outlived its block would style the tail while the tail is still being
+        // re-parsed, and stop once it settled — a render that changes after the
+        // stream ends. A tag also arrives in pieces (`<`, `b`, `>`), which must
+        // not leave a half-open scope behind.
+        let full = "Intro <b>bold <i>both</i></b> tail.\n\n\
+                    <a href=\"https://ex.com\">link</a> then H<sub>2</sub>O.\n\n\
+                    <b>never closed\n\nplain after.\n";
+        let theme = Theme::default();
+        let sheet = StyleSheet::from_theme(&theme);
+        // Compare the *styles* too: a leaked scope changes how the tail is
+        // painted without changing a single character of it.
+        let styled = |lines: &[Line<'static>]| -> Vec<(String, ratatui_core::style::Style)> {
+            lines
+                .iter()
+                .flat_map(|l| &l.spans)
+                .map(|s| (s.content.to_string(), s.style))
+                .collect()
+        };
+        let one_shot = styled(&to_lines(full, 40, &theme, &sheet, CodeHighlighter::Plain));
+
+        let mut state = MarkdownState::new();
+        for ch in full.chars() {
+            state.push_str(&ch.to_string());
+            let _ = state.lines(40, &theme, &sheet, CodeHighlighter::Plain);
+        }
+        let streamed = styled(state.lines(40, &theme, &sheet, CodeHighlighter::Plain));
+        assert_eq!(streamed, one_shot);
+    }
+
+    #[test]
+    fn streaming_html_blocks_match_one_shot_and_cache_settled_ones() {
+        // pulldown-cmark ends an HTML block at a blank line, so a `<details>`
+        // with blank lines inside is several blocks — in one shot as much as
+        // while streaming. That is what lets the cache settle an HTML block at
+        // all: the framing does not depend on how much source has arrived.
+        struct CountingHtml(Rc<Cell<usize>>);
+        impl HtmlBlockRenderer for CountingHtml {
+            fn render(
+                &self,
+                source: &str,
+                _: u16,
+                _: &Theme,
+                _: &StyleSheet,
+            ) -> Option<Vec<Line<'static>>> {
+                self.0.set(self.0.get() + 1);
+                Some(vec![Line::from(source.trim().to_string())])
+            }
+        }
+
+        let full = "intro\n\n<details>\n<summary>more</summary>\n</details>\n\ndone\n";
+        let theme = Theme::default();
+        let sheet = StyleSheet::from_theme(&theme);
+        let one_shot: Vec<String> = to_lines_with(
+            full,
+            40,
+            &theme,
+            &sheet,
+            CodeHighlighter::Plain,
+            Renderers::new().html(&CountingHtml(Rc::new(Cell::new(0)))),
+        )
+        .iter()
+        .map(text)
+        .collect();
+
+        let calls = Rc::new(Cell::new(0));
+        let mut state =
+            MarkdownState::new().with_html_renderer(Box::new(CountingHtml(Rc::clone(&calls))));
+        for ch in full.chars() {
+            state.push_str(&ch.to_string());
+            let _ = state.lines(40, &theme, &sheet, CodeHighlighter::Plain);
+        }
+        let streamed: Vec<String> = state
+            .lines(40, &theme, &sheet, CodeHighlighter::Plain)
+            .iter()
+            .map(text)
+            .collect();
+        assert_eq!(streamed, one_shot);
+
+        // Once settled, the block is not re-rendered on further frames.
+        let settled = calls.get();
+        let _ = state.lines(40, &theme, &sheet, CodeHighlighter::Plain);
+        assert_eq!(calls.get(), settled, "a settled HTML block stays flattened");
     }
 
     #[test]

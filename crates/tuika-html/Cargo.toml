@@ -1,0 +1,32 @@
+[package]
+name = "tuika-html"
+version = "0.1.0"
+# Identity, MSRV, and license come from `[workspace.package]` in the root
+# manifest — see the comment there for what is and isn't shared.
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Terminal-native HTML rendering for tuika: a Markdown block seam and a standalone Html view."
+homepage.workspace = true
+repository.workspace = true
+# The README embeds `examples/html_markdown/html.png` by *relative* path, so the
+# crates.io page needs the packaged copy — same rule as `tuika-mermaid`'s
+# recording and tuika's own `docs/hero.gif`. `tests/packaging.rs` pins it.
+readme = "README.md"
+keywords = ["tui", "html", "markdown", "ratatui", "terminal"]
+categories = ["command-line-interface", "text-processing"]
+
+[dependencies]
+# This requirement tracks the *published* tuika, so it stays at the in-tree
+# version and is bumped by the release that carries the seam this crate
+# implements — `HtmlBlockRenderer` does not exist in 0.6.0, so tuika-html cannot
+# be published until then. `publish_order.py` already publishes tuika first, and
+# the release process owns the bump; see `knowledge/processes/release.md`.
+tuika = { version = "0.6.0", path = "../.." }
+ratatui-core = "0.1"
+# html5ever is the whole point of this crate existing separately: a spec
+# compliant tree builder (implied end tags, `<tbody>` insertion, malformed-input
+# recovery) is exactly the dependency tuika core will not carry.
+html5ever = "0.39"
+markup5ever_rcdom = "0.39"

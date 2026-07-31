@@ -32,6 +32,7 @@
 //! | --- | --- |
 //! | `item` | the intermediate form both passes speak: `MdItem`, `RichSpan`, `TableData` |
 //! | `parse` | pass one — pulldown-cmark events to `MdItem`s, including inline styling and link detection |
+//! | `html` | the inline-HTML whitelist pass one consults for `<b>`, `<br>`, `<a>`, … |
 //! | `flatten` | pass two — `MdItem`s to width-fitted `Line`s: wrapping, indentation, hyperlink runs |
 //! | `table` | table layout, called from `flatten`; big enough to drown the rest of pass two |
 //! | `stream` | [`MarkdownState`] and the settled-prefix cache that makes streaming O(delta) |
@@ -48,6 +49,7 @@ use crate::style::{StyleSheet, Theme};
 use crate::term::hyperlink::BufferLink;
 
 mod flatten;
+mod html;
 mod image;
 mod item;
 mod parse;
@@ -87,6 +89,77 @@ pub trait FencedBlockRenderer {
     ) -> Option<Vec<Line<'static>>>;
 }
 
+/// Lays out a raw block-level HTML run (`<details>`, `<table>`, `<div>`, …).
+///
+/// Markdown's own HTML support stops at the presentational *inline* tags, which
+/// need no parser. Block HTML does need one, and an HTML parser is exactly the
+/// kind of dependency tuika keeps out of the crate — so it is a seam, like
+/// [`FencedBlockRenderer`] and [`ImageResolver`] before it. `source` is the
+/// verbatim run pulldown-cmark reported, `width` the columns available at this
+/// block's indentation. Returning `None` drops the block, which is what markdown
+/// did with all block HTML before a renderer could be attached.
+///
+/// Implementations should be deterministic for `(source, width, theme, sheet)`, must
+/// not perform I/O, and are handed **untrusted** markup: bound the work and the
+/// output, and never emit control bytes into the cells.
+/// [`tuika-html`](https://crates.io/crates/tuika-html) is the batteries-included
+/// implementation.
+///
+/// Note that pulldown-cmark ends an HTML block at a blank line, so one element
+/// with blank lines inside arrives as several calls.
+pub trait HtmlBlockRenderer {
+    /// Render a block of raw HTML, or return `None` to drop it.
+    ///
+    /// `sheet` is the active stylesheet, so an implementation resolves its
+    /// headings, links, and code through the same roles the surrounding markdown
+    /// does instead of inventing colors.
+    fn render(
+        &self,
+        source: &str,
+        width: u16,
+        theme: &Theme,
+        sheet: &StyleSheet,
+    ) -> Option<Vec<Line<'static>>>;
+}
+
+/// The host-supplied renderers a markdown render may consult.
+///
+/// Both are optional and independent; the default consults neither, which is
+/// the plain CommonMark rendering.
+///
+/// ```
+/// # use tuika::components::markdown::Renderers;
+/// # fn f(fenced: &dyn tuika::components::FencedBlockRenderer) {
+/// let renderers = Renderers::new().fenced(fenced);
+/// # let _ = renderers;
+/// # }
+/// ```
+#[derive(Default, Clone, Copy)]
+pub struct Renderers<'a> {
+    fenced: Option<&'a dyn FencedBlockRenderer>,
+    html: Option<&'a dyn HtmlBlockRenderer>,
+}
+
+impl<'a> Renderers<'a> {
+    /// No renderers: fenced blocks keep the themed code presentation, and block
+    /// HTML is dropped.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Render recognized fenced blocks through `renderer`.
+    pub fn fenced(mut self, renderer: &'a dyn FencedBlockRenderer) -> Self {
+        self.fenced = Some(renderer);
+        self
+    }
+
+    /// Render raw block-level HTML through `renderer`.
+    pub fn html(mut self, renderer: &'a dyn HtmlBlockRenderer) -> Self {
+        self.html = Some(renderer);
+        self
+    }
+}
+
 /// Render a whole markdown string to width-fitted styled lines in one call.
 ///
 /// For streaming input, prefer [`MarkdownState`], which caches the settled
@@ -113,7 +186,27 @@ pub fn to_lines_with_renderer(
     highlighter: CodeHighlighter,
     block_renderer: &dyn FencedBlockRenderer,
 ) -> Vec<Line<'static>> {
-    to_linked_lines_with_renderer(source, width, theme, sheet, highlighter, block_renderer).0
+    to_lines_with(
+        source,
+        width,
+        theme,
+        sheet,
+        highlighter,
+        Renderers::new().fenced(block_renderer),
+    )
+}
+
+/// Render markdown with any combination of host-supplied [`Renderers`] — a
+/// fenced-block renderer, an HTML-block renderer, or both.
+pub fn to_lines_with(
+    source: &str,
+    width: u16,
+    theme: &Theme,
+    sheet: &StyleSheet,
+    highlighter: CodeHighlighter,
+    renderers: Renderers<'_>,
+) -> Vec<Line<'static>> {
+    to_linked_lines_with(source, width, theme, sheet, highlighter, renderers).0
 }
 
 /// Like [`to_lines`], but also returns [`BufferLink`]s for every
@@ -129,8 +222,7 @@ pub fn to_linked_lines(
     sheet: &StyleSheet,
     highlighter: CodeHighlighter,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
-    let items = parse(source, theme, sheet, highlighter);
-    flatten_linked(&items, width, theme, None)
+    to_linked_lines_with(source, width, theme, sheet, highlighter, Renderers::new())
 }
 
 /// Like [`to_linked_lines`], with a host-supplied [`FencedBlockRenderer`].
@@ -142,8 +234,28 @@ pub fn to_linked_lines_with_renderer(
     highlighter: CodeHighlighter,
     block_renderer: &dyn FencedBlockRenderer,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
+    to_linked_lines_with(
+        source,
+        width,
+        theme,
+        sheet,
+        highlighter,
+        Renderers::new().fenced(block_renderer),
+    )
+}
+
+/// Like [`to_linked_lines`], with any combination of host-supplied
+/// [`Renderers`].
+pub fn to_linked_lines_with(
+    source: &str,
+    width: u16,
+    theme: &Theme,
+    sheet: &StyleSheet,
+    highlighter: CodeHighlighter,
+    renderers: Renderers<'_>,
+) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let items = parse(source, theme, sheet, highlighter);
-    flatten_linked(&items, width, theme, Some(block_renderer))
+    flatten_linked(&items, width, theme, sheet, renderers)
 }
 
 #[cfg(test)]
@@ -553,6 +665,309 @@ mod tests {
         assert!(span.style.add_modifier.contains(Modifier::ITALIC));
         // The default heading was bold; this rule doesn't set bold, so it's gone.
         assert!(!span.style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    /// The span carrying `needle`, for style assertions.
+    fn span_with<'a>(lines: &'a [Line<'static>], needle: &str) -> &'a Span<'static> {
+        lines
+            .iter()
+            .flat_map(|l| &l.spans)
+            .find(|s| s.content.contains(needle))
+            .unwrap_or_else(|| panic!("missing {needle:?} span"))
+    }
+
+    fn render(source: &str, width: u16) -> Vec<Line<'static>> {
+        let theme = Theme::default();
+        to_lines(
+            source,
+            width,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+        )
+    }
+
+    #[test]
+    fn inline_html_resolves_the_same_roles_as_markdown_markup() {
+        let theme = Theme::default();
+        let sheet = StyleSheet::from_theme(&theme);
+        let lines = render(
+            "<b>bee</b> <i>eye</i> <code>see</code> <u>you</u> <mark>em</mark>",
+            60,
+        );
+        assert!(
+            span_with(&lines, "bee")
+                .style
+                .add_modifier
+                .contains(Modifier::BOLD)
+        );
+        assert!(
+            span_with(&lines, "eye")
+                .style
+                .add_modifier
+                .contains(Modifier::ITALIC)
+        );
+        assert_eq!(
+            span_with(&lines, "see").style.bg,
+            sheet.inline_code.to_style().bg
+        );
+        assert!(
+            span_with(&lines, "you")
+                .style
+                .add_modifier
+                .contains(Modifier::UNDERLINED)
+        );
+        assert!(
+            span_with(&lines, "em")
+                .style
+                .add_modifier
+                .contains(Modifier::REVERSED)
+        );
+    }
+
+    #[test]
+    fn inline_html_follows_a_restyled_role() {
+        // The point of routing tags through the stylesheet: a host that restyles
+        // `strong` restyles `<b>` with it, without knowing HTML exists.
+        use ratatui_core::style::Color;
+        let theme = Theme::default();
+        let sheet = StyleSheet {
+            strong: StyleBundle::new().fg(Color::Green),
+            ..StyleSheet::from_theme(&theme)
+        };
+        let lines = to_lines("<b>tagged</b>", 40, &theme, &sheet, CodeHighlighter::Plain);
+        assert_eq!(span_with(&lines, "tagged").style.fg, Some(Color::Green));
+    }
+
+    #[test]
+    fn br_breaks_the_line_and_collapses_inside_a_cell() {
+        let out: Vec<String> = render("one<br>two", 40).iter().map(text).collect();
+        assert!(out.iter().any(|l| l.trim() == "one"), "{out:?}");
+        assert!(out.iter().any(|l| l.trim() == "two"), "{out:?}");
+
+        // A cell cannot become two blocks, so the break collapses to a space —
+        // the same treatment a markdown hard break gets there.
+        let cell: Vec<String> = render("| h |\n| --- |\n| a<br>b |", 40)
+            .iter()
+            .map(text)
+            .collect();
+        assert!(cell.iter().any(|l| l.contains("a b")), "{cell:?}");
+    }
+
+    #[test]
+    fn anchor_keeps_its_label_and_destination() {
+        let theme = Theme::default();
+        let (lines, links) = to_linked_lines(
+            r#"see <a href="https://example.com/x">the docs</a> now"#,
+            60,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+        );
+        let plain: String = lines.iter().map(text).collect();
+        assert!(plain.contains("the docs"), "{plain:?}");
+        assert!(!plain.contains("example.com"), "label, not URL: {plain:?}");
+        assert!(
+            links.iter().any(|l| l.url == "https://example.com/x"),
+            "anchor must yield a BufferLink: {links:?}"
+        );
+    }
+
+    #[test]
+    fn img_tag_takes_the_markdown_image_path() {
+        let out: Vec<String> = render(r#"before <img src="p.png" alt="a cat"> after"#, 60)
+            .iter()
+            .map(text)
+            .collect();
+        assert!(
+            out.iter().any(|l| l.contains("🖼 a cat")),
+            "unresolved `<img>` shows the alt placeholder: {out:?}"
+        );
+    }
+
+    #[test]
+    fn sub_and_sup_become_unicode_when_every_character_maps() {
+        let out: Vec<String> = render("H<sub>2</sub>O and x<sup>-9</sup>", 40)
+            .iter()
+            .map(text)
+            .collect();
+        assert!(out.iter().any(|l| l.contains("H₂O")), "{out:?}");
+        assert!(out.iter().any(|l| l.contains("x⁻⁹")), "{out:?}");
+
+        // No form for letters, so the text renders unchanged rather than partly
+        // transliterated.
+        let mixed: Vec<String> = render("4<sup>th</sup>", 40).iter().map(text).collect();
+        assert!(mixed.iter().any(|l| l.contains("4th")), "{mixed:?}");
+    }
+
+    /// Renders any HTML block as one line quoting its source and the width.
+    struct EchoHtml;
+
+    impl HtmlBlockRenderer for EchoHtml {
+        fn render(
+            &self,
+            source: &str,
+            width: u16,
+            theme: &Theme,
+            _: &StyleSheet,
+        ) -> Option<Vec<Line<'static>>> {
+            let text = source.split_whitespace().collect::<Vec<_>>().join(" ");
+            (!text.is_empty()).then(|| {
+                vec![Line::from(Span::styled(
+                    format!("[{width}] {text}"),
+                    ratatui_core::style::Style::default().fg(theme.accent),
+                ))]
+            })
+        }
+    }
+
+    fn with_html(source: &str, width: u16) -> Vec<String> {
+        let theme = Theme::default();
+        to_lines_with(
+            source,
+            width,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+            Renderers::new().html(&EchoHtml),
+        )
+        .iter()
+        .map(text)
+        .collect()
+    }
+
+    #[test]
+    fn html_block_renderer_lays_out_raw_html() {
+        let out = with_html(
+            "before\n\n<details><summary>S</summary>body</details>\n\nafter",
+            40,
+        );
+        assert!(
+            out.iter()
+                .any(|l| l == "[40] <details><summary>S</summary>body</details>"),
+            "{out:?}"
+        );
+        // The surrounding markdown is untouched, blank spacers included.
+        assert!(out.iter().any(|l| l == "before"), "{out:?}");
+        assert!(out.iter().any(|l| l == "after"), "{out:?}");
+    }
+
+    #[test]
+    fn html_block_is_indented_by_its_container() {
+        // A block inside a quote gets the quote's indentation, like a fence
+        // does, and the renderer is asked for the *remaining* width.
+        let out = with_html("> quoted\n>\n> <div>x</div>", 40);
+        let block = out
+            .iter()
+            .find(|l| l.contains("<div>"))
+            .unwrap_or_else(|| panic!("{out:?}"));
+        assert!(block.starts_with("  ["), "indented: {block:?}");
+        assert!(block.contains("[38]"), "width less the indent: {block:?}");
+    }
+
+    #[test]
+    fn html_block_without_a_renderer_is_dropped() {
+        let out: Vec<String> = render("a\n\n<div>x</div>\n\nb", 40)
+            .iter()
+            .map(text)
+            .collect();
+        assert!(!out.join("\n").contains('x'), "{out:?}");
+    }
+
+    #[test]
+    fn html_renderer_returning_none_drops_the_block() {
+        struct Decline;
+        impl HtmlBlockRenderer for Decline {
+            fn render(
+                &self,
+                _: &str,
+                _: u16,
+                _: &Theme,
+                _: &StyleSheet,
+            ) -> Option<Vec<Line<'static>>> {
+                None
+            }
+        }
+        let theme = Theme::default();
+        let out: Vec<String> = to_lines_with(
+            "a\n\n<div>x</div>\n\nb",
+            40,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+            Renderers::new().html(&Decline),
+        )
+        .iter()
+        .map(text)
+        .collect();
+        assert!(!out.join("\n").contains('x'), "{out:?}");
+        assert!(out.iter().any(|l| l == "a"), "{out:?}");
+    }
+
+    #[test]
+    fn both_renderers_compose() {
+        let theme = Theme::default();
+        let out: Vec<String> = to_lines_with(
+            "```diagram\nA --> B\n```\n\n<div>html</div>",
+            37,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+            Renderers::new().fenced(&DiagramRenderer).html(&EchoHtml),
+        )
+        .iter()
+        .map(text)
+        .collect();
+        assert!(out.iter().any(|l| l.contains("rendered at 37")), "{out:?}");
+        assert!(out.iter().any(|l| l.contains("[37] <div>html")), "{out:?}");
+    }
+
+    #[test]
+    fn unrecognized_html_is_dropped_as_before() {
+        // Block HTML and non-whitelisted tags keep the old behavior: the markup
+        // never reaches the screen as literal text.
+        let out: Vec<String> = render("<div>\n<p>block</p>\n</div>\n\nafter <span>x</span>", 40)
+            .iter()
+            .map(text)
+            .collect();
+        let joined = out.join("\n");
+        assert!(!joined.contains('<'), "no raw markup rendered: {out:?}");
+        assert!(joined.contains("after x"), "{out:?}");
+    }
+
+    #[test]
+    fn unbalanced_html_cannot_leak_past_its_block() {
+        // An open tag with no close, a close with no open, and crossed nesting:
+        // none may panic, and none may style the blocks that follow.
+        let lines = render("<b>open\n\n</i>stray\n\n<b><i>crossed</b>tail", 40);
+        for needle in ["stray", "tail"] {
+            assert!(
+                !span_with(&lines, needle)
+                    .style
+                    .add_modifier
+                    .contains(Modifier::BOLD),
+                "{needle} must not inherit an unclosed scope"
+            );
+        }
+    }
+
+    #[test]
+    fn deeply_nested_html_is_bounded_and_renders_its_text() {
+        let source = format!("{}deep{}", "<b>".repeat(500), "</b>".repeat(500));
+        let out: Vec<String> = render(&source, 40).iter().map(text).collect();
+        assert!(out.iter().any(|l| l.contains("deep")), "{out:?}");
+    }
+
+    #[test]
+    fn html_inside_a_code_fence_stays_literal() {
+        let out: Vec<String> = render("```html\n<b>x</b>\n```", 40)
+            .iter()
+            .map(text)
+            .collect();
+        assert!(
+            out.iter().any(|l| l.contains("<b>x</b>")),
+            "code is verbatim: {out:?}"
+        );
     }
 
     #[test]

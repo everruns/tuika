@@ -13,8 +13,35 @@ described in the release process begins with the entry below.
 
 ## Unreleased
 
+Released alongside `tuika-html` 0.1.0, the new companion crate behind the
+block-HTML seam.
+
 ### Added
 
+- **Inline HTML in markdown.** The presentational inline tags render instead of
+  being dropped: `<b>`/`<strong>`, `<i>`/`<em>`/`<var>`/`<cite>`/`<dfn>`,
+  `<code>`/`<kbd>`/`<samp>`/`<tt>`, `<s>`/`<del>`/`<strike>`, `<u>`/`<ins>`,
+  `<mark>`, `<a href>`, `<img src alt>`, `<br>`, and `<sub>`/`<sup>`. Each
+  resolves the same `StyleSheet` role as the markdown construct it mirrors, so a
+  host that restyles `strong` restyles `<b>` with it; `<a>` and `<img>` take the
+  existing hyperlink and `ImageResolver` paths. No new dependency and no HTML
+  parser: this is a fixed tag whitelist, so anything outside it — block-level
+  HTML, `<script>`, unlisted attributes — is dropped as before, and never echoed
+  as literal markup.
+- **`HtmlBlockRenderer`, the block-HTML seam.** Raw block-level HTML
+  (`<details>`, `<table>`, `<div>`) is handed to a host-supplied renderer with
+  the source, the available width, the theme, and the active `StyleSheet`;
+  returning `None` drops the block, which is the previous behavior. The parser
+  stays out of tuika — [`tuika-html`](https://crates.io/crates/tuika-html) is
+  the ready-made implementation. Reachable as `Markdown::html_renderer`,
+  `MarkdownState::with_html_renderer`, and `markdown::Renderers`.
+- `tuika-html` bounds nesting on the source before parsing, so a fragment deep
+  enough to overflow html5ever's recursive tree building is refused rather than
+  crashing the host.
+- **`markdown::Renderers`** bundles the fenced-block and HTML-block seams into
+  one value, with `markdown::to_lines_with` / `to_linked_lines_with` taking it.
+  The existing `to_lines_with_renderer` / `to_linked_lines_with_renderer` are
+  unchanged.
 - `ProgressBar::label` draws a centered, clipped caption over determinate and
   indeterminate bars.
 - `Scroll::wrap(true)` reflows owned styled lines at render width before
@@ -30,6 +57,15 @@ described in the release process begins with the entry below.
   `state.select(Some(index))`; use `state.select(None)` or
   `SelectState::default()` for no selection. `SelectState::new()` still selects
   the first row.
+- **Markdown output changes where the source contains inline HTML.** Text inside
+  the whitelisted tags is now styled, `<br>` starts a new line, `<img>` becomes
+  an image or an alt-text placeholder, and `<sub>`/`<sup>` digits become Unicode
+  (`H<sub>2</sub>O` → `H₂O`). Markdown without HTML renders identically.
+- Consecutive blank lines no longer appear in markdown output when a block
+  renders nothing (a block-HTML run with no renderer attached), so a dropped
+  block leaves no gap where it was.
+- New gallery demo for inline HTML (`docs/demos/markdown_html.png`), referenced
+  from the component gallery, the markdown guide, and `Markdown`'s rustdoc.
 - `Table` now windows rows to its assigned render height by default.
   `Table::viewport(rows)` remains an optional upper bound.
 - ratatui `Line` styles are composed underneath their `Span` styles in text,

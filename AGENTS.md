@@ -27,7 +27,8 @@ repository, so keep it short, factual, and project-specific.
   grid, and `prelude` is the one-line import. One canonical path per item.
 - Keep the dependency set small. Anything heavy — syntax grammars, diagram
   layout, image decoders, HTTP — belongs in the host or a companion crate
-  (`tuika-codeformatters`, `tuika-mermaid`), behind a trait tuika defines.
+  (`tuika-codeformatters`, `tuika-mermaid`, `tuika-html`), behind a trait tuika
+  defines.
 
 ## Knowledge and docs
 
@@ -48,9 +49,11 @@ repository, so keep it short, factual, and project-specific.
 ## Local dev and tests
 
 This is a small Cargo **workspace**: the root package is the `tuika` library;
-`crates/tuika-codeformatters/` is the tree-sitter `Highlighter`, and
-`crates/tuika-mermaid/` is the mmdflux `FencedBlockRenderer`. Both are published
-separately so tuika core stays grammar- and diagram-engine-free.
+`crates/tuika-codeformatters/` is the tree-sitter `Highlighter`,
+`crates/tuika-mermaid/` is the mmdflux `FencedBlockRenderer`, and
+`crates/tuika-html/` is the html5ever `HtmlBlockRenderer` (plus its own `Html`
+view). All three are published separately so tuika core stays grammar-,
+diagram-engine-, and HTML-parser-free.
 Cargo defaults to the root package only, so pass `--workspace` to cover the
 member too — an API change that breaks `tuika-codeformatters` is otherwise
 invisible locally and fails in CI. For touched code:
@@ -146,6 +149,12 @@ tuika's own suite covers more:
   The `tuika-mermaid` integration recording follows the same pattern at
   `crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif`; regenerate it
   with `scripts/gen-mermaid-demo.sh`.
+  `tuika-html`'s demo follows it as well, at
+  `crates/tuika-html/examples/html_markdown/html.png`, regenerated with
+  `scripts/gen-html-demo.sh`. It is a *screenshot* rather than a GIF because the
+  scene is settled, the same rule the component gallery applies — and the
+  example runs as a real app rather than printing a grid, because a plain-text
+  dump would throw away the styling that is half of what the crate does.
 
 The root package's demo, showcase, example, theme, and styling assets are
 GitHub-only: `Cargo.toml`'s `exclude` keeps them (and the repository
@@ -160,7 +169,7 @@ reaches it by relative path and the crates.io page would break without it, while
 `tuika-codeformatters` excludes `docs/*.gif`, because its README embeds by
 absolute URL and no crate consumer can reach the packaged copy. Regenerate its
 language gallery with `scripts/gen-language-demo.sh`.
-`tests/packaging.rs` covers all three crates.
+`tests/packaging.rs` covers all four crates.
 
 ## Component demos
 

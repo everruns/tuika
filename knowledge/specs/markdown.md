@@ -29,6 +29,8 @@ a document whose prefix cannot change.
   already-computed highlighting.
 - Inline images (`![alt](url)`) are promoted to block images when the host
   supplies a resolver; see [images.md](./images.md).
+- A fixed whitelist of *inline* HTML tags renders through the same style roles as
+  the markdown constructs they mirror; everything else is dropped.
 
 ## Design
 
@@ -102,6 +104,59 @@ diagram grammars outside tuika core. The adapter bounds source and output size,
 disables ANSI output, and strips control bytes before creating cells; a diagram
 fence is untrusted markdown, not permission to emit terminal commands.
 
+### Inline HTML is a whitelist, not a parser
+
+pulldown-cmark hands raw HTML back verbatim, and dropping it is lossy twice
+over: the markup goes *and* so does its meaning, so `a<br>b` silently joins two
+lines. Rendering the presentational inline tags — emphasis, code, links, images,
+breaks, sub/sup — recovers the intent for the HTML that actually appears in
+transcripts and READMEs.
+
+What keeps this from becoming an HTML renderer is that it is a **tag-name
+whitelist over a string pulldown already isolated**. There is no DOM, no
+attribute model beyond `href`/`src`/`alt`, and no new dependency. Every
+recognized tag resolves a `StyleSheet` role that markdown already uses, so
+`<b>` cannot look different from `**bold**` and a host restyling one restyles
+both. Anything unrecognized keeps the old behavior — dropped, never echoed as
+literal markup, which would let untrusted input paint arbitrary text.
+
+Two invariants bound the failure modes. Each open tag records the stack depths
+it pushed, so an unbalanced or crossed tag can only fail to unwind, never
+corrupt the parser's style and link stacks; and nesting is capped. Scopes are
+closed at the end of every block, which is both the sane reading of an unclosed
+tag and what keeps the settled-prefix cache honest: a scope that outlived a
+block boundary would style the tail only while the tail was still being
+re-parsed, breaking the streamed-equals-one-shot invariant *in styles while the
+text matched*.
+
+`<sub>`/`<sup>` transliterate to Unicode all-or-nothing. Partial coverage
+(`4ᵗh`) depends on which characters a word happens to use, which is a worse
+result than leaving the text alone.
+
+### Block HTML is a seam for the same reason highlighting is
+
+The presentational inline tags need no parser. Block HTML does — a tree builder
+that recovers implied end tags, inserts the `<tbody>` nobody wrote, and survives
+malformed input is exactly the dependency [goal.md](./goal.md) keeps out. So
+`HtmlBlockRenderer` takes the raw run, the available width, the theme, *and the
+stylesheet*: an implementation resolves the same roles the surrounding markdown
+does, or HTML in one document would look like it came from another. With no
+renderer attached the block is dropped, which is what markdown did with all HTML
+before the seam existed, so attaching one is purely additive.
+
+`tuika-html` is that implementation, and it is also where the line inside this
+capability shows: the same crate serves the fenced-`html` seam, and adds a
+standalone `Html` view for fragments that are not inside markdown at all.
+
+One consequence of pulldown-cmark's framing is worth stating, because it looks
+like a bug: an HTML block ends at a blank line, so an element whose content is
+separated by blank lines arrives as several independent blocks. That framing is
+identical whether the source is streamed or rendered in one shot, which is
+precisely what lets the settled-prefix cache hold an HTML block at all. Joining
+adjacent blocks before rendering would be nicer to look at and would break that
+— the halves can straddle a cache boundary — so the framing stands and the
+renderer is told about it.
+
 ### Styling is role-driven
 
 Markdown parts (headings, links, inline code, block quotes, rules) resolve their
@@ -124,7 +179,11 @@ host that restyles headings restyles them in markdown too. See
 
 ## Non-goals
 
-- No HTML rendering or raw-HTML passthrough.
+- No HTML *document* rendering: no DOM, no CSS, no block-level HTML layout.
+  Block HTML (`<div>`, `<details>`, `<table>`) is dropped in core; a host that
+  wants it supplies the parser behind a seam, the way `FencedBlockRenderer`
+  already lets a ` ```html ` fence be rendered by a companion crate.
+- No raw-HTML passthrough: unrecognized markup is never echoed as literal text.
 - No markdown *authoring* or round-tripping — rendering only.
 - No document-level layout beyond a linear block sequence (no columns, no
   floats).

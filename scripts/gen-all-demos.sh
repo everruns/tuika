@@ -35,8 +35,10 @@ cargo run -q --example split_footer_demo
 echo "Generating image SVG…"
 cargo run -q --example image_demo
 
+
 scripts/gen-codex-demo.sh
 scripts/gen-mermaid-demo.sh
+scripts/gen-html-demo.sh
 scripts/gen-language-demo.sh
 
 if [[ "${skip_showcases}" == false ]]; then

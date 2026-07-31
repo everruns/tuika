@@ -13,6 +13,7 @@ use crate::highlight::CodeHighlighter;
 use crate::style::{StyleBundle, StyleSheet, Theme};
 
 use super::flatten::trim_spans;
+use super::html::{self, Script};
 use super::image::ImageResolver;
 use super::item::{Cell, INDENT, MdItem, RichSpan, TableData};
 
@@ -74,12 +75,24 @@ struct Builder<'a> {
     // Fenced/indented code block being collected.
     code: Option<(String, String)>, // (language tag, body)
 
+    // Raw block-level HTML being collected, verbatim, between `HtmlBlock` tags.
+    // pulldown-cmark ends an HTML block at a blank line, so one `<details>` with
+    // blank lines inside arrives as several — that is the parser's framing, and
+    // it is the same whether the source is streamed or rendered in one shot.
+    html_block: Option<String>,
+
     // Table being collected. Cells reuse the shared `inline` accumulator, so
     // they pick up the same styling as prose; each cell drains `inline` on its
     // `TableCell` end. Header vs body rows are routed by which End event
     // (`TableHead` / `TableRow`) closes the accumulated cells.
     table: Option<TableData>,
     cur_row: Vec<Cell>,
+
+    /// Scopes opened by inline HTML (`<b>`, `<a href>`, `<sub>`), innermost last.
+    /// Each records how deep the markdown stacks were when it opened, so its end
+    /// tag unwinds exactly what it pushed — and an unbalanced or stray tag can
+    /// only fail to unwind, never corrupt the stacks. See [`html`](super::html).
+    html: Vec<HtmlScope>,
 
     // Inline image being collected: (dest URL, alt-text accumulator). Set on
     // `Tag::Image`, drained on `TagEnd::Image` into a placeholder or, when the
@@ -88,6 +101,14 @@ struct Builder<'a> {
 
     // Host hook resolving image URLs to pixels; `None` keeps the text placeholder.
     resolver: Option<&'a dyn ImageResolver>,
+}
+
+/// One open inline-HTML scope: what closes it, and the stack depths to restore.
+struct HtmlScope {
+    name: &'static str,
+    style_len: usize,
+    link_len: usize,
+    script: Option<Script>,
 }
 
 impl<'a> Builder<'a> {
@@ -109,8 +130,10 @@ impl<'a> Builder<'a> {
             quote_depth: 0,
             pending_marker: None,
             code: None,
+            html_block: None,
             table: None,
             cur_row: Vec::new(),
+            html: Vec::new(),
             image: None,
             resolver,
         }
@@ -180,6 +203,16 @@ impl<'a> Builder<'a> {
             alt.push_str(text);
             return;
         }
+        // `<sub>`/`<sup>` content becomes Unicode when every character has a
+        // form; otherwise it falls through and renders as ordinary text.
+        if let Some(script) = self.cur_script()
+            && let Some(mapped) = html::transliterate(text, script)
+        {
+            let style = self.cur_style();
+            self.inline
+                .push(RichSpan::styled(mapped, style, self.cur_href()));
+            return;
+        }
         let style = self.cur_style();
         let href = self.cur_href();
         // Only linkify bare URLs in plain body text, not inside links/headings.
@@ -216,8 +249,111 @@ impl<'a> Builder<'a> {
         ));
     }
 
+    /// The transliteration in force, from the innermost `<sub>`/`<sup>` scope.
+    fn cur_script(&self) -> Option<Script> {
+        self.html.iter().rev().find_map(|s| s.script)
+    }
+
+    /// Apply one raw inline-HTML tag. Everything outside the whitelist is
+    /// dropped, which is what markdown did with all of it before.
+    fn html_tag(&mut self, raw: &str) {
+        // Inside a fence the tag is code; inside an image it is part of the alt
+        // text. Both are already captured verbatim by `push_text`.
+        if self.code.is_some() || self.image.is_some() {
+            self.push_text(raw);
+            return;
+        }
+        match html::classify(raw) {
+            html::Effect::Open(scope) => {
+                if self.html.len() >= html::MAX_NESTING {
+                    return;
+                }
+                let style_len = self.style_stack.len();
+                let link_len = self.link_stack.len();
+                let mut style = self.cur_style();
+                if let Some(role) = scope.role {
+                    style = self.sheet.resolve(role).apply(style);
+                }
+                style = style.add_modifier(scope.modifier);
+                self.style_stack.push(style);
+                if let Some(href) = scope.href {
+                    self.link_stack.push(href);
+                }
+                self.html.push(HtmlScope {
+                    name: scope.name,
+                    style_len,
+                    link_len,
+                    script: scope.script,
+                });
+            }
+            // Unwind to the matching open tag, dropping any scope left open
+            // inside it (`<b><i>x</b>`); a close with no open is ignored.
+            html::Effect::Close(name) => {
+                if let Some(at) = self.html.iter().rposition(|s| s.name == name) {
+                    let scope = &self.html[at];
+                    self.style_stack.truncate(scope.style_len);
+                    self.link_stack.truncate(scope.link_len);
+                    self.html.truncate(at);
+                }
+            }
+            // Same split as a markdown hard break: a cell cannot become two
+            // blocks, so there it collapses to a space.
+            html::Effect::Break => {
+                if self.table.is_some() {
+                    self.inline
+                        .push(RichSpan::styled(" ", self.cur_style(), self.cur_href()));
+                } else {
+                    self.flush();
+                }
+            }
+            html::Effect::Image { src, alt } => self.push_image(&src, &alt),
+            html::Effect::None => {}
+        }
+    }
+
+    /// Close every open inline-HTML scope, restoring the markdown stacks.
+    ///
+    /// Called where a block of inline content ends. An unclosed `<b>` must not
+    /// style the rest of the document — and must not *stream* differently than
+    /// it renders in one shot: [`MarkdownState`](super::MarkdownState) caches at
+    /// block boundaries, so a scope that survived one would style the tail only
+    /// while the tail is still being re-parsed.
+    fn close_html_scopes(&mut self) {
+        if let Some(first) = self.html.first() {
+            self.style_stack.truncate(first.style_len);
+            self.link_stack.truncate(first.link_len);
+            self.html.clear();
+        }
+    }
+
+    /// Render `![alt](url)` — or `<img src alt>` — as pixels when the host's
+    /// resolver has them, and as a visible placeholder otherwise.
+    fn push_image(&mut self, url: &str, alt: &str) {
+        match self.resolver.and_then(|r| r.resolve(url)) {
+            // Resolved: promote to a block image on its own rows. Any inline run
+            // so far is flushed first so the image stands apart from surrounding
+            // text.
+            Some(data) => {
+                self.flush();
+                let indent = self.indent();
+                self.items.push(MdItem::Image {
+                    data,
+                    alt: alt.to_string(),
+                    indent,
+                });
+            }
+            None => self.push_image_placeholder(url, alt),
+        }
+    }
+
     fn event(&mut self, event: Event<'a>) {
         match event {
+            Event::InlineHtml(raw) => self.html_tag(&raw),
+            Event::Html(raw) => {
+                if let Some(buf) = self.html_block.as_mut() {
+                    buf.push_str(&raw);
+                }
+            }
             Event::Start(tag) => self.start(tag),
             Event::End(tag) => self.end(tag),
             Event::Text(t) => self.push_text(&t),
@@ -289,6 +425,10 @@ impl<'a> Builder<'a> {
                 };
                 self.code = Some((lang, String::new()));
             }
+            Tag::HtmlBlock => {
+                self.separate();
+                self.html_block = Some(String::new());
+            }
             Tag::List(start) => {
                 self.separate();
                 self.lists.push(start);
@@ -342,6 +482,19 @@ impl<'a> Builder<'a> {
     }
 
     fn end(&mut self, tag: TagEnd) {
+        // Inline HTML never outlives the block it opened in; see
+        // `close_html_scopes`. Ends that only close an *inline* markdown span
+        // (emphasis, links) are excluded — an `<b>` may legitimately wrap one.
+        if matches!(
+            tag,
+            TagEnd::Paragraph
+                | TagEnd::Heading(_)
+                | TagEnd::Item
+                | TagEnd::TableCell
+                | TagEnd::BlockQuote(_)
+        ) {
+            self.close_html_scopes();
+        }
         match tag {
             TagEnd::Paragraph => self.flush(),
             TagEnd::Heading(_) => {
@@ -357,6 +510,14 @@ impl<'a> Builder<'a> {
                     self.push_code_block(lang, body);
                 }
             }
+            TagEnd::HtmlBlock => {
+                if let Some(source) = self.html_block.take()
+                    && !source.trim().is_empty()
+                {
+                    let indent = self.indent();
+                    self.items.push(MdItem::Html { source, indent });
+                }
+            }
             TagEnd::List(_) => {
                 self.lists.pop();
             }
@@ -370,17 +531,7 @@ impl<'a> Builder<'a> {
             }
             TagEnd::Image => {
                 if let Some((url, alt)) = self.image.take() {
-                    match self.resolver.and_then(|r| r.resolve(&url)) {
-                        // Resolved: promote to a block image on its own rows. Any
-                        // inline run so far is flushed first so the image stands
-                        // apart from surrounding text.
-                        Some(data) => {
-                            self.flush();
-                            let indent = self.indent();
-                            self.items.push(MdItem::Image { data, alt, indent });
-                        }
-                        None => self.push_image_placeholder(&url, &alt),
-                    }
+                    self.push_image(&url, &alt);
                 }
             }
             TagEnd::TableCell => {
@@ -424,8 +575,17 @@ impl<'a> Builder<'a> {
         }
         // Close any dangling paragraph in truncated (still-streaming) input.
         self.flush();
+        self.close_html_scopes();
         if let Some((lang, body)) = self.code.take() {
             self.push_code_block(lang, body);
+        }
+        // A still-open HTML block at end of input (truncated, still streaming)
+        // is handed over as far as it got, exactly like a dangling fence.
+        if let Some(source) = self.html_block.take()
+            && !source.trim().is_empty()
+        {
+            let indent = self.indent();
+            self.items.push(MdItem::Html { source, indent });
         }
     }
 

@@ -252,6 +252,14 @@ const DEMOS: &[Demo] = &[
         scene_markdown_table,
     ),
     demo(
+        "markdown_html",
+        "Markdown inline HTML",
+        "tags styled through the markdown roles",
+        18,
+        false,
+        scene_markdown_html,
+    ),
+    demo(
         "code_block",
         "CodeBlock",
         "syntax-highlighted code with line numbers",
@@ -996,6 +1004,27 @@ const MARKDOWN_TABLE_DOC: &str = "\
 fn scene_markdown_table(frame: u64, theme: &Theme) -> Element {
     let _ = (frame, theme);
     element(Markdown::new(MARKDOWN_TABLE_DOC))
+}
+
+const MARKDOWN_HTML_DOC: &str = "\
+### Inline HTML
+
+Markdown in the wild carries HTML, so the presentational inline
+tags render instead of being dropped — each resolving the same
+`StyleSheet` role as the markdown it mirrors.
+
+- <b>strong</b> and <em>emphasis</em>, <s>struck</s>, <u>underlined</u>
+- <mark>highlighted</mark>, <kbd>Ctrl</kbd>+<kbd>C</kbd>, <a href=\"https://docs.rs/tuika\">a link</a>
+- H<sub>2</sub>O and 3&times;10<sup>8</sup> m/s
+
+A line<br>broken by a tag.
+";
+
+/// Inline HTML inside markdown: every tag resolves a `StyleSheet` role, so
+/// `<b>` cannot look different from `**bold**`.
+fn scene_markdown_html(frame: u64, theme: &Theme) -> Element {
+    let _ = (frame, theme);
+    element(Markdown::new(MARKDOWN_HTML_DOC))
 }
 
 /// A single themed, syntax-highlighted fenced block via `CodeBlock`.
