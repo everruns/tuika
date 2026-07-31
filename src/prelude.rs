@@ -22,9 +22,9 @@
 //! pair. When that happens, import the two you need by path instead; the glob is
 //! a convenience, never a requirement.
 //!
-//! Both ownership forms of frame composition are included: [`Scene`] owns its
-//! root, while [`ScopedScene`] borrows a concrete root that reads host-owned
-//! data for the duration of one paint.
+//! Both ownership forms of frame composition are included: [`Element`] owns a
+//! boxed view, [`ScopedElement`] may borrow data anywhere in a base subtree,
+//! and [`ScopedScene`] composes such a tree with owned overlays for one paint.
 
 pub use crate::anim::{Easing, Repeat, Timeline};
 pub use crate::components::*;
@@ -41,9 +41,9 @@ pub use crate::view;
 pub use crate::{
     Align, Backdrop, Dimension, Direction, Element, Event, EventFlow, Justify, Key, KeyCode,
     LayoutStyle, Mouse, MouseButton, MouseKind, Overlay, OverlaySpec, Padding, RenderCtx, Runner,
-    RunnerConfig, Scene, SceneOverlay, ScopedScene, ScreenMode, Scrollback, SemanticRole, Signal,
-    Size, StyleSheet, Surface, TerminalSession, Theme, UpdateResult, View, element, paint,
-    paint_scene, paint_with_sheet, translate_event,
+    RunnerConfig, Scene, SceneOverlay, ScopedElement, ScopedScene, ScreenMode, Scrollback,
+    SemanticRole, Signal, Size, StyleSheet, Surface, TerminalSession, Theme, UpdateResult, View,
+    element, paint, paint_scene, paint_with_sheet, translate_event,
 };
 
 #[cfg(feature = "async")]

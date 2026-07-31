@@ -154,7 +154,7 @@ Four places, so you can guess where something is:
 
 | Path | Holds |
 | --- | --- |
-| `tuika::` | the framework spine — `View`, `Element`, `RenderCtx`, layout, events, `Theme`, `Surface`, the host seam |
+| `tuika::` | the framework spine — `View`, `Element`, `ScopedElement`, `RenderCtx`, layout, events, `Theme`, `Surface`, the host seam |
 | `tuika::components` | every widget: `Flex`, `Boxed`, `Text`, `Scroll`, `Markdown`, `Table`, … |
 | `tuika::term` | everything out-of-band: `clipboard` (OSC 52), `hyperlink` (OSC 8), `progress` (OSC 9;4), `pointer` (OSC 22), `image`, `capabilities`, `palette` (the terminal's own colors) |
 | `tuika::prelude` | the spine and the components in one glob import |
@@ -252,9 +252,10 @@ paint_scene(buffer, area, &theme, &scene);
 
 Custom views can import `Rect`, `Color`, `Style`, `Modifier`, `Line`, and `Span` from `tuika::ui` or the prelude without adding `ratatui-core` directly.
 
-`Element` is an owned, boxed view. When the base view reads a large host-owned
-model directly, `ScopedScene` borrows that concrete root for one paint while
-continuing to own ordinary `SceneOverlay`s and `Dialog`s:
+`Element` is an owned, boxed view. `ScopedElement<'_>` is its frame-borrowed
+counterpart: `element(view)` chooses the lifetime from `view`, and containers
+accept it at any depth. `ScopedScene` borrows the resulting root for one paint
+while continuing to own ordinary `SceneOverlay`s and `Dialog`s:
 
 ```rust
 use tuika::prelude::*;
@@ -286,10 +287,9 @@ paint(buffer, area, &theme, &scene, &[]);
 ```
 
 The borrow lasts only as long as the scoped scene, matching Tuika's
-frame-by-frame view model. No transcript clone, leaked allocation, or
-application compositor is needed. Nested component children are still owned
-`Element`s; when a whole borrowed subtree is needed, represent that subtree as
-one concrete `View` and use it as the scoped root.
+frame-by-frame view model. No transcript clone, leaked allocation, custom
+wrapper view, or application compositor is needed. The `view!` macro preserves
+the same lifetime through nested `Flex` and `Boxed` containers.
 
 `Form` lays out arbitrary control `Element`s beside responsive labels, stacking
 on narrow terminals. Help and validation rows are built in; `FormState` owns
@@ -475,8 +475,10 @@ Grammar (each keyword consumes exactly one node):
   ```
 
 `node(...)` accepts any type that already implements Tuika's `View`; it does
-not make a Ratatui `Widget` implement `View`. Use `RatatuiView` for Ratatui
-widgets. The `tuika-gallery` demo is built entirely with `view!`.
+not make a Ratatui `Widget` implement `View`. A node may borrow frame data; the
+macro returns `ScopedElement<'_>` in that case and naturally coerces an
+all-owned tree to `Element`. Use `RatatuiView` for Ratatui widgets. The
+`tuika-gallery` demo is built entirely with `view!`.
 
 ## Ratatui interoperability
 

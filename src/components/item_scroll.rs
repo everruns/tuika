@@ -27,7 +27,7 @@ use ratatui_core::layout::Rect;
 
 use crate::geometry::Size;
 use crate::surface::Surface;
-use crate::view::{Element, RenderCtx, View};
+use crate::view::{Element, RenderCtx, ScopedElement, View};
 
 use super::scroll::{ScrollState, draw_scrollbar};
 
@@ -51,10 +51,10 @@ use super::scroll::{ScrollState, draw_scrollbar};
 /// let buffer = render(&view, 6, 2, &Theme::default());
 /// assert_eq!(grid(&buffer), "first \nsecond");
 /// ```
-pub struct ItemScroll {
+pub struct ItemScroll<V: View = Element> {
     /// The items this view holds: all of them in [`new`](Self::new), or only the
     /// visible window in [`windowed`](Self::windowed).
-    items: Vec<Element>,
+    items: Vec<V>,
     /// Blank rows between two consecutive items.
     gap: u16,
     /// Content row of `items[0]`'s top edge. Zero for `new`.
@@ -70,11 +70,8 @@ pub struct ItemScroll {
     heights: RefCell<Option<(u16, Vec<u16>)>>,
 }
 
-impl ItemScroll {
-    /// A viewport over the whole `items`, painting the rows visible at `state`'s
-    /// offset. Every item is measured each frame; for a very long list prefer
-    /// [`windowed`](Self::windowed).
-    pub fn new(items: Vec<Element>, state: &ScrollState) -> Self {
+impl<V: View> ItemScroll<V> {
+    fn build(items: Vec<V>, state: &ScrollState) -> Self {
         Self {
             items,
             gap: 0,
@@ -94,8 +91,8 @@ impl ItemScroll {
     /// This is the O(viewport) path: the host keeps its own per-item height
     /// cache (heights only change when an item or the width changes) and hands
     /// over the slice, instead of tuika measuring every item every frame.
-    pub fn windowed(
-        window: Vec<Element>,
+    fn build_windowed(
+        window: Vec<V>,
         window_start_row: usize,
         content_height: usize,
         state: &ScrollState,
@@ -124,22 +121,6 @@ impl ItemScroll {
         self
     }
 
-    /// Total rows `items` occupy in a viewport `width` columns wide, including
-    /// `gap` rows between them.
-    ///
-    /// A host calls this **before** building the view, to reconcile its
-    /// [`ScrollState`] against the content it is about to paint (the state is
-    /// snapshotted into the view at construction, so clamping afterwards would
-    /// apply a frame late).
-    ///
-    /// `scrollbar` must match [`scrollbar`](Self::scrollbar) on the view: the
-    /// bar reserves the last column, and unlike a list of pre-wrapped lines, a
-    /// column of width changes where items wrap — and so how tall they are.
-    pub fn measure_height(items: &[Element], width: u16, gap: u16, scrollbar: bool) -> usize {
-        let heights = measure_items(items, content_width(width, scrollbar));
-        total_height(&heights, gap)
-    }
-
     /// Item heights at `width`, measuring (and memoizing) on first use.
     fn with_heights<R>(&self, width: u16, f: impl FnOnce(&[u16]) -> R) -> R {
         let mut cache = self.heights.borrow_mut();
@@ -160,6 +141,52 @@ impl ItemScroll {
     }
 }
 
+impl ItemScroll<Element> {
+    /// A viewport over all owned `items`, painting rows visible at `state`'s offset.
+    pub fn new(items: Vec<Element>, state: &ScrollState) -> Self {
+        Self::build(items, state)
+    }
+
+    /// A viewport over borrowed or owned items for the current frame.
+    pub fn scoped<'view>(
+        items: Vec<ScopedElement<'view>>,
+        state: &ScrollState,
+    ) -> ItemScroll<ScopedElement<'view>> {
+        ItemScroll::build(items, state)
+    }
+
+    /// An owned viewport that already holds only the visible item window.
+    pub fn windowed(
+        window: Vec<Element>,
+        window_start_row: usize,
+        content_height: usize,
+        state: &ScrollState,
+    ) -> Self {
+        Self::build_windowed(window, window_start_row, content_height, state)
+    }
+
+    /// A frame-borrowed viewport that already holds only the visible item window.
+    pub fn scoped_windowed<'view>(
+        window: Vec<ScopedElement<'view>>,
+        window_start_row: usize,
+        content_height: usize,
+        state: &ScrollState,
+    ) -> ItemScroll<ScopedElement<'view>> {
+        ItemScroll::build_windowed(window, window_start_row, content_height, state)
+    }
+
+    /// Total rows `items` occupy at `width`, including `gap` rows.
+    pub fn measure_height(items: &[Element], width: u16, gap: u16, scrollbar: bool) -> usize {
+        Self::measure_views(items, width, gap, scrollbar)
+    }
+
+    /// Total rows any owned or borrowed view slice occupies at `width`.
+    pub fn measure_views<V: View>(items: &[V], width: u16, gap: u16, scrollbar: bool) -> usize {
+        let heights = measure_items(items, content_width(width, scrollbar));
+        total_height(&heights, gap)
+    }
+}
+
 /// Columns left for content once the scrollbar has its column.
 ///
 /// The column is reserved whenever the bar is enabled, not only while the
@@ -174,7 +201,7 @@ fn content_width(width: u16, scrollbar: bool) -> u16 {
     }
 }
 
-fn measure_items(items: &[Element], width: u16) -> Vec<u16> {
+fn measure_items<V: View>(items: &[V], width: u16) -> Vec<u16> {
     items
         .iter()
         .map(|item| item.measure(Size::new(width, u16::MAX)).height)
@@ -187,7 +214,7 @@ fn total_height(heights: &[u16], gap: u16) -> usize {
     rows + gaps
 }
 
-impl View for ItemScroll {
+impl<V: View> View for ItemScroll<V> {
     fn measure(&self, available: Size) -> Size {
         // `Size` is a cell extent (`u16`); a transcript can be taller than that,
         // so saturate exactly as `Scroll` does.
@@ -261,8 +288,8 @@ impl View for ItemScroll {
 /// child does) would otherwise allocate a buffer of tens of megabytes to paint a
 /// handful of visible rows.
 #[allow(clippy::too_many_arguments)]
-fn render_scrolled(
-    item: &Element,
+fn render_scrolled<V: View>(
+    item: &V,
     x: u16,
     y: u16,
     width: u16,

@@ -18,6 +18,9 @@ block-HTML seam.
 
 ### Added
 
+- `ScopedElement<'view>`, the boxed frame-borrowed counterpart to owned
+  `Element`, for heterogeneous component subtrees that read host state without
+  cloning it.
 - **Inline HTML in markdown.** The presentational inline tags render instead of
   being dropped: `<b>`/`<strong>`, `<i>`/`<em>`/`<var>`/`<cite>`/`<dfn>`,
   `<code>`/`<kbd>`/`<samp>`/`<tt>`, `<s>`/`<del>`/`<strike>`, `<u>`/`<ins>`,
@@ -61,6 +64,9 @@ block-HTML seam.
 
 ### Changed
 
+- `element`, `view!`, and composition containers now preserve borrowed child
+  views at any depth. Existing owned trees continue to use `Element`; borrowed
+  trees use the same builders and are bounded to their frame lifetime.
 - `Flex` measures padded children against their actual inner box and reports
   fixed/percent child dimensions when the container itself is auto-sized, so
   nested measurement matches the rects assigned during rendering.

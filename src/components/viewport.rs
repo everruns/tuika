@@ -19,8 +19,8 @@ use super::ScrollState;
 /// [`ScrollState`].
 ///
 /// ![viewport demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/primitives.gif)
-pub struct Viewport {
-    child: Element,
+pub struct Viewport<V: View = Element> {
+    child: V,
     content: Size,
     offset: usize,
     x_offset: usize,
@@ -28,9 +28,9 @@ pub struct Viewport {
     horizontal_scrollbar: bool,
 }
 
-impl Viewport {
+impl<V: View> Viewport<V> {
     /// Create a viewport for `child` with its full un-clipped `content` extent.
-    pub fn new(child: Element, content: Size, state: &ScrollState) -> Self {
+    pub fn new(child: V, content: Size, state: &ScrollState) -> Self {
         Self {
             child,
             content,
@@ -95,7 +95,7 @@ impl Viewport {
     }
 }
 
-impl View for Viewport {
+impl<V: View> View for Viewport<V> {
     fn measure(&self, available: Size) -> Size {
         Size::new(
             self.content.width.min(available.width),

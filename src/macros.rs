@@ -35,8 +35,11 @@
 //! `MyWidget { … }` syntax for external components; the `node(expr)` escape
 //! hatch covers that case today.
 
-/// Build a tuika [`Element`](crate::view::Element) tree from a declarative,
-/// top-down layout description.
+/// Build a boxed view tree from a declarative, top-down layout description.
+///
+/// The returned [`ScopedElement`](crate::view::ScopedElement) keeps any borrows
+/// used by `node(expr)`, while a tree containing only owned views naturally
+/// coerces to [`Element`](crate::view::Element).
 ///
 /// Each keyword consumes exactly one node: `col`/`row` open flex containers
 /// (with optional `gap`/`padding`/`align`/`justify`/`background` attrs and a
@@ -57,13 +60,13 @@ macro_rules! view {
 
     // ---- @one: parse one node into an Element -------------------------------
     (@one col $(( $($attr:tt)* ))? { $($kids:tt)* }) => {{
-        let __flex = $crate::components::Flex::column();
+        let __flex = $crate::components::Flex::scoped_column();
         let __flex = $crate::view!(@attrs __flex; $($($attr)*)?);
         let __flex = $crate::view!(@kids __flex; $($kids)*);
         $crate::element(__flex)
     }};
     (@one row $(( $($attr:tt)* ))? { $($kids:tt)* }) => {{
-        let __flex = $crate::components::Flex::row();
+        let __flex = $crate::components::Flex::scoped_row();
         let __flex = $crate::view!(@attrs __flex; $($($attr)*)?);
         let __flex = $crate::view!(@kids __flex; $($kids)*);
         $crate::element(__flex)
@@ -239,5 +242,38 @@ mod tests {
         };
         let out = render_el(&tree, 5, 2);
         assert!(out[0].contains('★'), "foreign view should render: {out:?}");
+    }
+
+    struct BorrowedLabel<'a>(&'a str);
+
+    impl View for BorrowedLabel<'_> {
+        fn measure(&self, available: Size) -> Size {
+            Size::new(
+                (self.0.len() as u16).min(available.width),
+                available.height.min(1),
+            )
+        }
+
+        fn render(&self, area: Rect, surface: &mut Surface, _ctx: &RenderCtx) {
+            surface.set_string(area.x, area.y, self.0, Style::default());
+        }
+    }
+
+    #[test]
+    fn view_macro_preserves_borrows_through_nested_containers() {
+        let label = String::from("borrowed");
+        let tree = crate::view! {
+            boxed(title = " frame ") {
+                col {
+                    node(BorrowedLabel(&label))
+                }
+            }
+        };
+
+        let rendered = crate::testing::render(&tree, 14, 3, &crate::Theme::default());
+        assert!(
+            crate::testing::grid(&rendered).contains("borrowed"),
+            "a borrow must survive node -> Flex -> Boxed composition"
+        );
     }
 }

@@ -40,8 +40,8 @@
 //! The crate root re-exports the **framework**: the view model, layout,
 //! events, styling, and the host seam — the types you compose *with*. The
 //! widgets themselves live in [`components`]. Owned [`Element`] trees use
-//! [`Scene`]; a concrete root that borrows large application state uses
-//! [`ScopedScene`] without cloning it. Everything that talks to the
+//! [`Scene`]; [`ScopedElement`] trees may borrow application state at any depth
+//! and use [`ScopedScene`] without cloning it. Everything that talks to the
 //! terminal outside the cell grid (clipboard, hyperlinks, images, native
 //! progress, capability detection) lives in [`term`].
 //!
@@ -58,7 +58,8 @@
 //! # Extending
 //!
 //! Add a component by implementing [`view::View`] in a new module under
-//! [`components`]. No registration step; containers accept any boxed `View`.
+//! [`components`]. No registration step; containers accept owned or
+//! frame-borrowed views.
 //!
 //! Existing ratatui widgets should normally be wrapped in
 //! [`RatatuiView`](interop::RatatuiView), which preserves Tuika clipping without
@@ -132,7 +133,7 @@ pub use scene::{Backdrop, Scene, SceneOverlay, ScopedScene};
 pub use screen::{ScreenMode, Scrollback};
 pub use style::{SemanticRole, StyleSheet, Theme};
 pub use surface::Surface;
-pub use view::{Element, RenderCtx, View, element};
+pub use view::{Element, RenderCtx, ScopedElement, View, element};
 
 #[cfg(test)]
 mod tests;
