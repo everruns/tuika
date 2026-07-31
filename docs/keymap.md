@@ -124,15 +124,21 @@ overlay layer can shadow a global binding while it is up.
 ## Querying for help
 
 `hints()` lists the currently-active bindings — key label, optional help text,
-and command — ready to feed a [`KeyHints`](components.md) row or a help overlay.
-Because activation is data-driven, the hints always reflect the current mode:
+command, layer name, and layer priority. The component adapters consume the same
+declarations directly, so dispatch, a responsive footer, and a complete help
+screen cannot drift apart:
 
 ```rust
-for hint in keymap.hints() {
-    println!("{:<8} {}", hint.keys, hint.label.as_deref().unwrap_or(""));
-    // e.g.  "Ctrl+R   search"
-}
+use tuika::components::{KeyHints, KeymapHelp};
+
+let footer = KeyHints::from_keymap(&keymap);
+let help = KeymapHelp::from_keymap(&keymap);
 ```
+
+`KeyHints` fits only complete hints: it keeps higher-priority layer bindings
+first on narrow screens and never clips halfway through a key/action pair.
+`KeymapHelp::offset` supports a vertically scrollable help overlay. Because both
+query active bindings, changing keymap runtime data updates the displayed mode.
 
 ## Testing
 

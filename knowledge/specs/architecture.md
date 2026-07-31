@@ -35,6 +35,9 @@ rather than beside it.
   checked-item transitions, while aliases and mouse geometry are explicit
   inputs. Hosts can share picker behavior without inheriting hard-coded keys or
   layout assumptions.
+- **Key bindings are the help source of truth**: active labeled bindings expose
+  layer priority, and component adapters derive responsive footer hints and
+  complete help rows from the same declarations used for dispatch.
 - **Owned scenes are frame descriptions, not retained UI.** `Scene` owns the
   root and overlay elements for one frame and resolves each overlay's
   `OverlaySpec` while rendering. This removes borrowed compositor plumbing

@@ -51,6 +51,9 @@ block-HTML seam.
 - `SelectNavigation` policies for optional j/k, Ctrl+N/P, Tab/Shift+Tab, and
   numeric selection aliases; explicit mouse hit-testing on `SelectState`; and
   `MultiSelectState` for toggleable multiple-selection workflows.
+- `KeyHints::from_keymap`, priority-aware whole-hint fitting, and `KeymapHelp`
+  so one labeled keymap declaration drives dispatch, responsive footer hints,
+  and a complete help view.
 
 ### Changed
 

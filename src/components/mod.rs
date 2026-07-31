@@ -63,7 +63,7 @@ pub use focus_scope::FocusScope;
 pub use form::{Form, FormField, FormOutcome, FormState};
 pub use image::Image;
 pub use item_scroll::ItemScroll;
-pub use key_hints::KeyHints;
+pub use key_hints::{KeyHint, KeyHints, KeymapHelp};
 pub use loader::Loader;
 pub use markdown::{
     FencedBlockRenderer, HtmlBlockRenderer, ImageResolver, Markdown, MarkdownImage, MarkdownState,
