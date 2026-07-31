@@ -27,7 +27,7 @@ use ratatui_core::layout::Rect;
 
 use crate::geometry::Size;
 use crate::surface::Surface;
-use crate::view::{Element, RenderCtx, View, element};
+use crate::view::{Element, RenderCtx, ScopedElement, View, element};
 
 /// A shared handle that receives the screen [`Rect`] tuika assigned to a
 /// [`Probe`]-wrapped view during the last paint. Cheap to clone (shared cell);
@@ -51,7 +51,7 @@ impl RectProbe {
 
     /// Wrap `view` so its painted rect is reported here. Shorthand for
     /// [`Probe::new`].
-    pub fn wrap(&self, view: Element) -> Element {
+    pub fn wrap<'view, V: View + 'view>(&self, view: V) -> ScopedElement<'view> {
         element(Probe::new(view, self))
     }
 
@@ -63,14 +63,14 @@ impl RectProbe {
 /// A view that records the area it is painted into via a [`RectProbe`], then
 /// renders its inner view unchanged. Layout-transparent: it measures and draws
 /// exactly as the wrapped view does.
-pub struct Probe {
-    inner: Element,
+pub struct Probe<V: View = Element> {
+    inner: V,
     probe: RectProbe,
 }
 
-impl Probe {
+impl<V: View> Probe<V> {
     /// Wrap `inner` so its painted rect is reported to `probe`.
-    pub fn new(inner: Element, probe: &RectProbe) -> Self {
+    pub fn new(inner: V, probe: &RectProbe) -> Self {
         Self {
             inner,
             probe: probe.clone(),
@@ -78,7 +78,7 @@ impl Probe {
     }
 }
 
-impl View for Probe {
+impl<V: View> View for Probe<V> {
     fn measure(&self, available: Size) -> Size {
         self.inner.measure(available)
     }

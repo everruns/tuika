@@ -5,15 +5,15 @@ use ratatui_core::layout::Rect;
 use crate::{Element, RenderCtx, Size, Surface, View};
 
 /// Clamp a child's measured size without changing its rendering contract.
-pub struct Constrained {
-    child: Element,
+pub struct Constrained<V: View = Element> {
+    child: V,
     min: Size,
     max: Size,
 }
 
-impl Constrained {
+impl<V: View> Constrained<V> {
     /// Wrap `child` with unconstrained defaults.
-    pub fn new(child: Element) -> Self {
+    pub fn new(child: V) -> Self {
         Self {
             child,
             min: Size::ZERO,
@@ -34,7 +34,7 @@ impl Constrained {
     }
 }
 
-impl View for Constrained {
+impl<V: View> View for Constrained<V> {
     fn measure(&self, available: Size) -> Size {
         let measured = self.child.measure(available);
         Size::new(

@@ -12,10 +12,10 @@ use ratatui_core::style::Style;
 use crate::geometry::Size;
 use crate::layout::{Dimension, Item, LayoutStyle, solve};
 use crate::surface::Surface;
-use crate::view::{Element, RenderCtx, View};
+use crate::view::{Element, RenderCtx, ScopedElement, View};
 
-struct Child {
-    view: Element,
+struct Child<V: View> {
+    view: V,
     dimension: Dimension,
 }
 
@@ -37,30 +37,19 @@ struct Child {
 /// ```
 ///
 /// ![flex demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/flex.png)
-pub struct Flex {
+pub struct Flex<V: View = Element> {
     style: LayoutStyle,
-    children: Vec<Child>,
+    children: Vec<Child<V>>,
     background: Option<Style>,
 }
 
-impl Flex {
-    /// An empty flex container with the given layout style.
-    pub fn new(style: LayoutStyle) -> Self {
+impl<V: View> Flex<V> {
+    fn empty(style: LayoutStyle) -> Self {
         Self {
             style,
             children: Vec::new(),
             background: None,
         }
-    }
-
-    /// An empty container laying children left-to-right along the horizontal axis.
-    pub fn row() -> Self {
-        Self::new(LayoutStyle::row())
-    }
-
-    /// An empty container stacking children top-to-bottom along the vertical axis.
-    pub fn column() -> Self {
-        Self::new(LayoutStyle::column())
     }
 
     /// Fill the container area with `style` before drawing children.
@@ -94,23 +83,23 @@ impl Flex {
     }
 
     /// Add a child with an explicit main-axis dimension.
-    pub fn child(mut self, dimension: Dimension, view: Element) -> Self {
+    pub fn child(mut self, dimension: Dimension, view: V) -> Self {
         self.children.push(Child { view, dimension });
         self
     }
 
     /// Add an auto-sized child (sizes to its measured content).
-    pub fn auto(self, view: Element) -> Self {
+    pub fn auto(self, view: V) -> Self {
         self.child(Dimension::Auto, view)
     }
 
     /// Add a flexible child that grows to share leftover space.
-    pub fn grow(self, weight: u16, view: Element) -> Self {
+    pub fn grow(self, weight: u16, view: V) -> Self {
         self.child(Dimension::Flex(weight), view)
     }
 
     /// Add a fixed-size child.
-    pub fn fixed(self, cells: u16, view: Element) -> Self {
+    pub fn fixed(self, cells: u16, view: V) -> Self {
         self.child(Dimension::Fixed(cells), view)
     }
 
@@ -197,7 +186,39 @@ impl Flex {
     }
 }
 
-impl View for Flex {
+impl Flex<Element> {
+    /// An empty owned flex container with the given layout style.
+    pub fn new(style: LayoutStyle) -> Self {
+        Self::empty(style)
+    }
+
+    /// An empty owned row, laying children left-to-right.
+    pub fn row() -> Self {
+        Self::new(LayoutStyle::row())
+    }
+
+    /// An empty owned column, stacking children top-to-bottom.
+    pub fn column() -> Self {
+        Self::new(LayoutStyle::column())
+    }
+
+    /// An empty frame-borrowed flex container with the given layout style.
+    pub fn scoped<'view>(style: LayoutStyle) -> Flex<ScopedElement<'view>> {
+        Flex::empty(style)
+    }
+
+    /// An empty frame-borrowed row.
+    pub fn scoped_row<'view>() -> Flex<ScopedElement<'view>> {
+        Self::scoped(LayoutStyle::row())
+    }
+
+    /// An empty frame-borrowed column.
+    pub fn scoped_column<'view>() -> Flex<ScopedElement<'view>> {
+        Self::scoped(LayoutStyle::column())
+    }
+}
+
+impl<V: View> View for Flex<V> {
     fn measure(&self, available: Size) -> Size {
         // Sum children on the main axis, max on the cross axis, plus gaps and
         // padding. Used when this Flex is itself an Auto child.

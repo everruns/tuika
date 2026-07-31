@@ -8,12 +8,11 @@
 //! painting. The borrowed root does not need to clone that state or become a
 //! boxed `'static` [`Element`].
 //!
-//! Only the root is borrowed. Overlay views remain owned [`Element`]s, so all
-//! existing components, [`Dialog`](crate::components::Dialog) compositions, and
-//! scene focus behavior work unchanged. If a nested container itself needs
-//! borrowed children, implement a concrete [`View`] for that borrowed subtree
-//! and use it as the scoped root; `Element` and existing component APIs remain
-//! deliberately non-generic over lifetimes.
+//! Overlay views remain owned [`Element`]s, so dialogs and scene focus behavior
+//! stay independent of the root borrow. The base tree may contain borrowed
+//! views at any depth: [`element`](crate::element) preserves the borrow as a
+//! [`ScopedElement`](crate::ScopedElement), and composition containers accept
+//! that scoped element without requiring a custom wrapper view.
 //!
 //! # Borrowed application data with an owned dialog
 //!

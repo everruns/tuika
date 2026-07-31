@@ -5,7 +5,7 @@ use ratatui_core::layout::Rect;
 use crate::event::{Event, EventFlow, KeyCode};
 use crate::geometry::Size;
 use crate::surface::Surface;
-use crate::view::{Element, RenderCtx, View};
+use crate::view::{Element, RenderCtx, ScopedElement, View};
 use crate::width::str_cols;
 
 /// Result of routing a form-level navigation event.
@@ -75,16 +75,16 @@ impl FormState {
 }
 
 /// One labeled control in a [`Form`].
-pub struct FormField {
+pub struct FormField<V: View = Element> {
     label: String,
-    control: Element,
+    control: V,
     help: Option<String>,
     error: Option<String>,
 }
 
-impl FormField {
+impl<V: View> FormField<V> {
     /// Create a labeled field around any control view.
-    pub fn new(label: impl Into<String>, control: Element) -> Self {
+    pub fn new(label: impl Into<String>, control: V) -> Self {
         Self {
             label: label.into(),
             control,
@@ -113,17 +113,16 @@ impl FormField {
 /// Responsive composition of labeled control views.
 ///
 /// ![form demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/primitives.gif)
-pub struct Form {
-    fields: Vec<FormField>,
+pub struct Form<V: View = Element> {
+    fields: Vec<FormField<V>>,
     focused: usize,
     stack_below: u16,
     gap: u16,
-    actions: Option<Element>,
+    actions: Option<V>,
 }
 
-impl Form {
-    /// Build a form and mirror the host-owned focused index from `state`.
-    pub fn new(fields: Vec<FormField>, state: &FormState) -> Self {
+impl<V: View> Form<V> {
+    fn build(fields: Vec<FormField<V>>, state: &FormState) -> Self {
         Self {
             fields,
             focused: state.focused(),
@@ -146,7 +145,7 @@ impl Form {
     }
 
     /// Add an actions row after all fields.
-    pub fn actions(mut self, actions: Element) -> Self {
+    pub fn actions(mut self, actions: V) -> Self {
         self.actions = Some(actions);
         self
     }
@@ -175,7 +174,22 @@ impl Form {
     }
 }
 
-impl View for Form {
+impl Form<Element> {
+    /// Build an owned form and mirror the host-owned focused index from `state`.
+    pub fn new(fields: Vec<FormField>, state: &FormState) -> Self {
+        Self::build(fields, state)
+    }
+
+    /// Build a form whose controls may borrow data for the current frame.
+    pub fn scoped<'view>(
+        fields: Vec<FormField<ScopedElement<'view>>>,
+        state: &FormState,
+    ) -> Form<ScopedElement<'view>> {
+        Form::build(fields, state)
+    }
+}
+
+impl<V: View> View for Form<V> {
     fn measure(&self, available: Size) -> Size {
         let stacked = self.stacked(available.width);
         let label_width = self.label_width(available.width);

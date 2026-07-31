@@ -56,8 +56,8 @@ use super::text::{aligned_x, line_width};
 /// ```
 ///
 /// ![boxed demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/boxed.png)
-pub struct Boxed {
-    child: Element,
+pub struct Boxed<V: View = Element> {
+    child: V,
     border: BorderStyle,
     border_color: Option<Color>,
     padding: Padding,
@@ -66,9 +66,9 @@ pub struct Boxed {
     background: Option<Style>,
 }
 
-impl Boxed {
+impl<V: View> Boxed<V> {
     /// Wrap `child` with default rounded border and symmetric horizontal padding.
-    pub fn new(child: Element) -> Self {
+    pub fn new(child: V) -> Self {
         Self {
             child,
             border: BorderStyle::Rounded,
@@ -164,7 +164,7 @@ impl Boxed {
     }
 }
 
-impl View for Boxed {
+impl<V: View> View for Boxed<V> {
     fn measure(&self, available: Size) -> Size {
         let chrome = self.chrome();
         let inner_avail = Size::new(

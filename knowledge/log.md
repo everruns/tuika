@@ -2,6 +2,13 @@
 
 ## 2026-07-31
 
+- **Borrowed views compose inside ordinary component trees**
+
+- `Element` remains the owned default, while `ScopedElement` carries a frame
+  borrow through the same `element`, `view!`, Flex, Boxed, form, viewport, and
+  collection composition paths. Hosts no longer need a custom root `View` just
+  to nest a borrowed renderer or large model reference.
+
 - **Component geometry uses the grid's real constraints**
 
 - Padded flex containers now measure children against the same inner box they
@@ -153,6 +160,9 @@
   Lifetime-generic elements would make every container and component carry the
   borrowing policy even though the motivating state naturally belongs at the
   frame root.
+- Superseded on 2026-07-31 by `ScopedElement`: containers now stay generic over
+  their child type, so borrowed subtrees compose without forcing lifetime
+  parameters onto the ordinary owned `Element` path.
 
 - **Positioned as the default Rust TUI application framework**
 

@@ -71,14 +71,17 @@ pub trait View {
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx);
 }
 
-/// Boxed `'static` view, the element type stored by owned containers.
+/// A boxed view that may borrow data for `'view`.
 ///
-/// For a frame root that borrows host state, keep the concrete view on the
-/// stack and compose it with [`ScopedScene`](crate::ScopedScene) instead of
-/// cloning the state into an `Element`.
-pub type Element = Box<dyn View>;
+/// Composition containers are generic over their child view type and default
+/// to owned [`Element`]s. Use `ScopedElement<'_>` when a heterogeneous subtree
+/// contains frame-borrowed views.
+pub type ScopedElement<'view> = Box<dyn View + 'view>;
 
-impl View for Element {
+/// Boxed owned view used by retained values and cross-thread host seams.
+pub type Element = ScopedElement<'static>;
+
+impl View for Box<dyn View + '_> {
     fn measure(&self, available: Size) -> Size {
         (**self).measure(available)
     }
@@ -88,8 +91,11 @@ impl View for Element {
     }
 }
 
-/// Convenience to box any view into an [`Element`].
-pub fn element<V: View + 'static>(view: V) -> Element {
+/// Box a view while preserving any data it borrows.
+///
+/// A `'static` view naturally produces an owned [`Element`]. A borrowed view
+/// produces a [`ScopedElement`] whose lifetime cannot escape the current frame.
+pub fn element<'view, V: View + 'view>(view: V) -> ScopedElement<'view> {
     Box::new(view)
 }
 

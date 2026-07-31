@@ -39,29 +39,29 @@ use crate::view::{Element, RenderCtx, View};
 /// let buffer = render(&panes, 24, 3, &Theme::default());
 /// # let _ = buffer;
 /// ```
-pub struct FocusScope {
+pub struct FocusScope<V: View = Element> {
     focused: bool,
-    child: Element,
+    child: V,
 }
 
-impl FocusScope {
+impl<V: View> FocusScope<V> {
     /// Render `child` with the given `focused` flag.
-    pub fn new(focused: bool, child: Element) -> Self {
+    pub fn new(focused: bool, child: V) -> Self {
         Self { focused, child }
     }
 
     /// Render `child` as focused. Shorthand for `FocusScope::new(true, child)`.
-    pub fn focused(child: Element) -> Self {
+    pub fn focused(child: V) -> Self {
         Self::new(true, child)
     }
 
     /// Render `child` as unfocused. Shorthand for `FocusScope::new(false, child)`.
-    pub fn unfocused(child: Element) -> Self {
+    pub fn unfocused(child: V) -> Self {
         Self::new(false, child)
     }
 }
 
-impl View for FocusScope {
+impl<V: View> View for FocusScope<V> {
     fn measure(&self, available: Size) -> Size {
         self.child.measure(available)
     }

@@ -202,7 +202,9 @@ view! {
 
 The flexbox container and composition primitive — `grow(n)` children share
 leftover space by weight, `fixed(n)` reserve exact size, with `gap` and
-`padding`. It *is* the `view!` DSL's `row`/`col`.
+`padding`. It *is* the `view!` DSL's `row`/`col`. `element` and `view!` preserve
+frame borrows through nested Flex and Boxed containers as `ScopedElement<'_>`;
+owned trees continue to use `Element` without lifetime annotations.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.Flex.html)
 
 <img src="demos/flex.png" width="880" alt="Flex demo">

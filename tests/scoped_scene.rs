@@ -51,3 +51,20 @@ fn borrowed_transcript_and_owned_dialog_paint_as_one_root() {
     assert_eq!(focus.active(), Some("confirm"));
     assert_eq!(messages[1], "second message");
 }
+
+#[test]
+fn borrowed_view_composes_through_macro_flex_and_boxed() {
+    let source = String::from("# nested borrow");
+    let highlighter = PlainHighlighter;
+    let root: ScopedElement<'_> = view! {
+        boxed(title = " transcript ") {
+            col {
+                node(Markdown::new(&source).highlighter(&highlighter))
+            }
+        }
+    };
+    let scene = ScopedScene::new(root.as_ref());
+    let rendered = tuika::testing::render(&scene, 24, 3, &Theme::default());
+
+    assert!(grid(&rendered).contains("nested borrow"));
+}

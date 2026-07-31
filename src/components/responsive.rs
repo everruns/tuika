@@ -9,15 +9,15 @@ use crate::{Element, RenderCtx, Size, Surface, View};
 /// Each branch is a normal view tree, so an application can switch from a row
 /// to a column, omit secondary content, or choose a shorter status component
 /// without embedding breakpoint logic in individual leaves.
-pub struct Responsive {
+pub struct Responsive<V: View = Element> {
     breakpoint: u16,
-    compact: Element,
-    wide: Element,
+    compact: V,
+    wide: V,
 }
 
-impl Responsive {
+impl<V: View> Responsive<V> {
     /// Use `compact` below `breakpoint` columns and `wide` otherwise.
-    pub fn new(breakpoint: u16, compact: Element, wide: Element) -> Self {
+    pub fn new(breakpoint: u16, compact: V, wide: V) -> Self {
         Self {
             breakpoint,
             compact,
@@ -25,7 +25,7 @@ impl Responsive {
         }
     }
 
-    fn select(&self, width: u16) -> &Element {
+    fn select(&self, width: u16) -> &V {
         if width < self.breakpoint {
             &self.compact
         } else {
@@ -34,7 +34,7 @@ impl Responsive {
     }
 }
 
-impl View for Responsive {
+impl<V: View> View for Responsive<V> {
     fn measure(&self, available: Size) -> Size {
         self.select(available.width).measure(available)
     }
