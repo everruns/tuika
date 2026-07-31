@@ -10,6 +10,7 @@ This page covers all of it in one place.
 - [The two entry points](#the-two-entry-points)
 - [What renders](#what-renders)
 - [Inline HTML](#inline-html)
+- [Block HTML](#block-html)
 - [Streaming](#streaming)
 - [GFM tables](#gfm-tables)
 - [Fenced code](#fenced-code)
@@ -98,12 +99,22 @@ does not parse HTML: this is a fixed tag whitelist, so untrusted markdown cannot
 reach anything but these styles. Unbalanced tags (`<b>` with no `</b>`, a stray
 `</i>`) degrade quietly, and no tag styles past the block it opened in.
 
-Block-level HTML is a *seam* rather than a feature, for the same reason syntax
-highlighting is: an HTML parser is a dependency tuika will not carry. Attach an
-`HtmlBlockRenderer` and `<details>`, `<table>`, and the rest lay out too —
-[`tuika-html`](https://crates.io/crates/tuika-html) is the ready-made one, and
-it also ships an [`Html` view](../crates/tuika-html/#standalone) for markup that
-is not inside markdown at all.
+`<sub>`/`<sup>` transliterate only when *every* character has a Unicode form —
+digits and `+ - = ( )`. `4<sup>th</sup>` renders `4th` rather than half-shifted.
+
+## Block HTML
+
+`<div>`, `<details>`, `<table>` — block-level HTML is a *seam* rather than a
+feature, for the same reason syntax highlighting is: an HTML parser is a
+dependency tuika will not carry. Without a renderer attached the block is
+dropped, exactly as before the seam existed, so adding one is purely additive.
+
+<img src="../crates/tuika-html/examples/html_markdown/html.png" width="880" alt="HTML blocks rendered inside tuika Markdown: a details summary with a bullet list, a box-drawn table, and a quoted line with Unicode subscript and superscript">
+
+The `<details>` above, the `<ul>` nested in it, and the `<table>` are all raw
+HTML in an otherwise ordinary markdown document.
+[`tuika-html`](https://crates.io/crates/tuika-html) is the ready-made renderer;
+one value serves both block HTML and ` ```html ` fences:
 
 ```rust
 use tuika::prelude::*;
@@ -111,12 +122,27 @@ use tuika_html::HtmlRenderer;
 
 let html = HtmlRenderer::new();
 let doc = Markdown::new("<details><summary>Notes</summary>Body</details>")
-    .html_renderer(&html);
+    .html_renderer(&html)
+    .block_renderer(&html);
 # let _ = doc;
 ```
 
-`<sub>`/`<sup>` transliterate only when *every* character has a Unicode form —
-digits and `+ - = ( )`. `4<sup>th</sup>` renders `4th` rather than half-shifted.
+A streaming host attaches it once, with
+`MarkdownState::with_html_renderer(Box::new(HtmlRenderer::new()))`; a settled
+block is then laid out once per width, like a fenced block.
+
+Implementing the seam yourself means `HtmlBlockRenderer`: it receives the raw
+run, the available width, the theme, and the active `StyleSheet` — so headings,
+links, and code resolve the same roles the surrounding markdown does. Returning
+`None` drops the block.
+
+One framing detail is worth knowing, because it looks like a bug: pulldown-cmark
+ends an HTML block at a blank line, so an element whose content is separated by
+blank lines reaches the renderer as several independent blocks. Keep an
+element's markup contiguous and it lays out as one.
+
+For HTML that is not inside markdown at all, the same crate ships the
+[`Html`](components.md#html) component.
 
 ## Streaming
 

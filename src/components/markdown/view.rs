@@ -108,6 +108,8 @@ impl<'a> Markdown<'a> {
     ///
     /// Without one, block HTML is dropped; the presentational *inline* tags
     /// (`<b>`, `<a>`, `<br>`, …) render either way and need no renderer.
+    ///
+    /// ![HTML blocks in markdown](https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-html/examples/html_markdown/html.png)
     pub fn html_renderer(mut self, renderer: &'a dyn HtmlBlockRenderer) -> Self {
         self.html_renderer = Some(renderer);
         self

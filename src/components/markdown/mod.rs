@@ -107,6 +107,49 @@ pub trait FencedBlockRenderer {
 ///
 /// Note that pulldown-cmark ends an HTML block at a blank line, so one element
 /// with blank lines inside arrives as several calls.
+///
+/// With [`tuika-html`](https://crates.io/crates/tuika-html) attached, the
+/// `<details>`, its nested `<ul>`, and the `<table>` below are raw HTML inside
+/// an otherwise ordinary markdown document:
+///
+/// ![HTML blocks in markdown](https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-html/examples/html_markdown/html.png)
+///
+/// ```
+/// use ratatui_core::text::{Line, Span};
+/// use tuika::components::HtmlBlockRenderer;
+/// use tuika::style::{StyleSheet, Theme};
+///
+/// /// A renderer that shows `<details>` as a collapsed summary line.
+/// struct Details;
+///
+/// impl HtmlBlockRenderer for Details {
+///     fn render(
+///         &self,
+///         source: &str,
+///         _width: u16,
+///         _theme: &Theme,
+///         sheet: &StyleSheet,
+///     ) -> Option<Vec<Line<'static>>> {
+///         let summary = source.split("<summary>").nth(1)?.split('<').next()?;
+///         let style = sheet.heading.to_style();
+///         Some(vec![Line::from(Span::styled(format!("▸ {summary}"), style))])
+///     }
+/// }
+///
+/// let theme = Theme::default();
+/// let sheet = StyleSheet::from_theme(&theme);
+/// let lines = tuika::components::markdown::to_lines_with(
+///     "<details><summary>Notes</summary>Body</details>",
+///     40,
+///     &theme,
+///     &sheet,
+///     tuika::highlight::CodeHighlighter::Plain,
+///     tuika::components::Renderers::new().html(&Details),
+/// );
+/// assert_eq!(lines[0].spans[0].content, "▸ Notes");
+/// ```
+///
+/// See the [markdown guide](https://github.com/everruns/tuika/blob/main/docs/markdown.md#block-html).
 pub trait HtmlBlockRenderer {
     /// Render a block of raw HTML, or return `None` to drop it.
     ///

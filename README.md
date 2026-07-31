@@ -180,6 +180,7 @@ component. Linked names below jump straight to their demo.
 | `Wrap` | Word-wraps pre-styled lines, preserving per-span styles |
 | [`Markdown`](docs/markdown.md) (+ `MarkdownState`) | CommonMark → styled lines; `MarkdownState` streams incrementally — see the [markdown guide](docs/markdown.md) |
 | [`CodeBlock`](docs/components.md#codeblock) | Themed, framed code block with a pluggable `Highlighter` and optional line-number gutter |
+| [`Html`](docs/components.md#html) | HTML fragment → styled lines (companion crate [`tuika-html`](crates/tuika-html/)) |
 | `Diff` | Line diff (LCS), unified or side-by-side, with `+`/`-` gutters and line numbers |
 | `AsciiFont` | Large "figlet-style" block-letter banner text |
 | `QrCode` (+ `QrEcc`) | QR code (byte-mode v1–4 encoder) rendered with half-blocks |
@@ -368,42 +369,17 @@ Run the complete integration demo with
 Images use the same host-extension pattern: supply an `ImageResolver` and
 `![alt](url)` renders as real pixels (see [Images](#images)).
 
-Block-level HTML is a seam of its own. Attach an `HtmlBlockRenderer` and raw
-`<details>`, `<table>`, and `<div>` blocks lay out instead of being dropped;
-[`tuika-html`](crates/tuika-html/) is the ready-made implementation.
-
-```rust
-use tuika::prelude::*;
-use tuika_html::HtmlRenderer;
-
-let html = HtmlRenderer::new();
-let document = Markdown::new("<details><summary>Notes</summary>Body</details>")
-    .html_renderer(&html);
-# let _ = document;
-```
-
-<img src="https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-html/examples/html_markdown/html.png" width="880" alt="HTML blocks rendered inside tuika Markdown: a details summary with a bullet list, a box-drawn table, and a quoted line with Unicode subscript and superscript">
-
-The same crate carries [`Html`](crates/tuika-html/#standalone), a `View` for
-markup that is not inside markdown at all — the HTML counterpart to `Markdown`,
-placed in a layout the same way. Run it with
-`cargo run -p tuika-html --example html_view`.
-
-```rust
-use tuika_html::Html;
-
-let page = Html::new("<h1>Release notes</h1><ul><li>Faster</li></ul>");
-# let _ = page;
-```
-
-<img src="https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-html/examples/html_view/html_view.png" width="880" alt="The Html view filling a bordered pane: a heading, wrapped prose with bold and italic runs, a definition list, a box-drawn table, a block quote, a pre block on a code background, a rule, and a footer line with a link, keyboard keys and a highlighted run">
-
-Markdown in the wild carries HTML, so the presentational inline tags render too
-— `<b>`, `<em>`, `<code>`, `<kbd>`, `<mark>`, `<a href>`, `<img>`, `<br>`, and
-`<sub>`/`<sup>` — each through the same `StyleSheet` role as the markdown it
-mirrors. It is a fixed whitelist, not an HTML parser: block-level HTML and
-anything unrecognized is dropped rather than printed. See
-[the markdown guide](docs/markdown.md#inline-html).
+Markdown in the wild carries HTML. The presentational inline tags — `<b>`,
+`<em>`, `<code>`, `<kbd>`, `<mark>`, `<a>`, `<br>`, `<sub>`/`<sup>` — render in
+tuika itself, each through the same `StyleSheet` role as the markdown it
+mirrors. Block-level HTML is a seam, for the same reason highlighting is: an
+HTML parser is a dependency tuika will not carry. Attach an `HtmlBlockRenderer`
+and `<details>`, `<table>`, and `<div>` lay out too.
+[`tuika-html`](crates/tuika-html/) is the ready-made one, and it also supplies
+the [`Html`](docs/components.md#html) component for markup that is not inside
+markdown at all. See the markdown guide for
+[inline HTML](docs/markdown.md#inline-html) and
+[block HTML](docs/markdown.md#block-html).
 
 ## Theming
 
@@ -807,7 +783,7 @@ The separately published companion crates live in this repository:
   terminal diagrams through mmdflux.
 - [`tuika-html`](crates/tuika-html/) lays out block-level HTML with html5ever —
   inside Markdown through the `HtmlBlockRenderer` seam, or standalone through
-  its own [`Html` view](crates/tuika-html/#standalone).
+  its own [`Html`](docs/components.md#html) component.
 
 All three keep their heavier parsers and grammars out of tuika core.
 

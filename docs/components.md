@@ -147,6 +147,20 @@ The presentational inline HTML tags render too — `<b>`, `<em>`, `<code>`,
 
 <img src="demos/markdown_html.png" width="880" alt="Inline HTML in markdown: strong, emphasis, struck and underlined text, a highlighted run, keyboard keys, a link, Unicode subscript and superscript, and a line broken by a br tag">
 
+### `Html`
+
+Renders an HTML fragment to styled lines: headings, paragraphs, lists,
+definition lists, block quotes, `<pre>`, `<hr>`, `<table>`,
+`<details>`/`<summary>`, and the presentational inline elements. Every element
+resolves a `StyleSheet` role, so HTML inherits the app's theme like everything
+else. No CSS — this renders content, not pages. Ships in the companion crate
+[`tuika-html`](../crates/tuika-html/), which also supplies the
+`HtmlBlockRenderer` that lays out HTML blocks inside
+[Markdown](markdown.md#block-html).
+[API](https://docs.rs/tuika-html/latest/tuika_html/struct.Html.html)
+
+<img src="../crates/tuika-html/examples/html_view/html_view.png" width="880" alt="The Html view filling a bordered pane: a heading, wrapped prose with bold and italic runs, a definition list, a box-drawn table, a block quote, a pre block on a code background, a rule, and a footer line with a link, keyboard keys and a highlighted run">
+
 ### `CodeBlock`
 
 A themed, syntax-highlighted fenced block: a language label, a left rail, and a
@@ -663,8 +677,5 @@ view! { node(FrameBufferView::new(&fb, 64, 16)) }
   `Constrained`, `Wrap`, `KeyHints`).
 - [Markdown guide](markdown.md) — streaming, GFM tables, highlighting, links,
   images, and inline HTML, in one place.
-- [`tuika-html`](../crates/tuika-html/) — a companion crate whose `Html` view
-  renders a whole HTML fragment, and whose `HtmlBlockRenderer` lays out HTML
-  blocks inside Markdown.
 - [Runnable examples](../examples/) — enter the alternate screen; quit with `q`/`esc`.
 - [README](../README.md) — the model behind the toolkit.
