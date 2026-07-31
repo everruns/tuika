@@ -662,6 +662,9 @@ view! { node(FrameBufferView::new(&fb, 64, 16)) }
   including helpers without a standalone demo (`Spacer`, `Responsive`,
   `Constrained`, `Wrap`, `KeyHints`).
 - [Markdown guide](markdown.md) — streaming, GFM tables, highlighting, links,
-  and images, in one place.
+  images, and inline HTML, in one place.
+- [`tuika-html`](../crates/tuika-html/) — a companion crate whose `Html` view
+  renders a whole HTML fragment, and whose `HtmlBlockRenderer` lays out HTML
+  blocks inside Markdown.
 - [Runnable examples](../examples/) — enter the alternate screen; quit with `q`/`esc`.
 - [README](../README.md) — the model behind the toolkit.

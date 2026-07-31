@@ -172,7 +172,12 @@ impl<'a> Layout<'a> {
                 let style = self.sheet.strong.apply(self.base_style());
                 self.inline_block(node, style, indent, width, depth);
             }
-            "dd" => self.blocks(node, indent + INDENT, width, depth + 1),
+            // A definition belongs to the term above it, so it hangs directly
+            // under it rather than floating a blank line away.
+            "dd" => {
+                self.suppress_blank = true;
+                self.blocks(node, indent + INDENT, width, depth + 1);
+            }
             "pre" => self.pre(node, indent, width),
             "hr" => {
                 self.blank();

@@ -64,10 +64,57 @@ impl InlineBuf {
     }
 }
 
+/// `<sub>` / `<sup>`, rendered as Unicode when every character has a form.
+///
+/// The same rule tuika's own inline-HTML whitelist applies, and deliberately the
+/// same table: a document must not render `H₂O` through markdown and `H2O`
+/// through this crate.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Script {
+    Sub,
+    Sup,
+}
+
+impl Script {
+    fn map(self, ch: char) -> Option<char> {
+        // Digits and arithmetic only. Letter forms cover part of the alphabet
+        // (there is no superscript `q`), so including them would make coverage
+        // depend on which letters a word happens to use.
+        let table = match self {
+            Script::Sub => "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎",
+            Script::Sup => "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾",
+        };
+        table.chars().nth("0123456789+-=()".find(ch)?)
+    }
+}
+
+/// Transliterate `text`, or `None` if any character lacks a form. All-or-nothing
+/// on purpose: a partial mapping (`x₂ + y2`) is worse than none.
+fn transliterate(text: &str, script: Script) -> Option<String> {
+    if text.trim().is_empty() {
+        return None;
+    }
+    text.chars().map(|c| script.map(c)).collect()
+}
+
 /// Collect one node's inline content into `buf`.
 pub(crate) fn collect(
     node: &Handle,
     style: Style,
+    theme: &Theme,
+    sheet: &StyleSheet,
+    depth: usize,
+    max_depth: usize,
+    buf: &mut InlineBuf,
+) {
+    collect_scoped(node, style, None, theme, sheet, depth, max_depth, buf);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn collect_scoped(
+    node: &Handle,
+    style: Style,
+    script: Option<Script>,
     theme: &Theme,
     sheet: &StyleSheet,
     depth: usize,
@@ -85,6 +132,11 @@ pub(crate) fn collect(
             } else {
                 text
             };
+            // Inside `<sub>`/`<sup>`, text becomes Unicode when it fully maps;
+            // otherwise it falls through and renders unchanged.
+            let text = script
+                .and_then(|script| transliterate(&text, script))
+                .unwrap_or(text);
             buf.push(text, style);
         }
         NodeData::Element { .. } => {
@@ -109,8 +161,22 @@ pub(crate) fn collect(
                 "wbr" => {}
                 _ => {
                     let inner = inline_style(&name, style, theme, sheet);
+                    let script = match name.as_str() {
+                        "sub" => Some(Script::Sub),
+                        "sup" => Some(Script::Sup),
+                        _ => script,
+                    };
                     for child in node.children.borrow().iter() {
-                        collect(child, inner, theme, sheet, depth + 1, max_depth, buf);
+                        collect_scoped(
+                            child,
+                            inner,
+                            script,
+                            theme,
+                            sheet,
+                            depth + 1,
+                            max_depth,
+                            buf,
+                        );
                     }
                 }
             }
@@ -199,6 +265,16 @@ mod tests {
         assert!(text("<img src=p.png alt='a cat'>").contains("a cat"));
         // No alt: the source is better than nothing.
         assert!(text("<img src=p.png>").contains("p.png"));
+    }
+
+    #[test]
+    fn sub_and_sup_become_unicode_when_every_character_maps() {
+        assert_eq!(text("H<sub>2</sub>O"), "H₂O");
+        assert_eq!(text("2<sup>10</sup>"), "2¹⁰");
+        assert_eq!(text("x<sup>-9</sup>"), "x⁻⁹");
+        // No form for letters, so the text renders unchanged rather than partly
+        // transliterated — the same rule tuika core applies.
+        assert_eq!(text("4<sup>th</sup>"), "4th");
     }
 
     #[test]

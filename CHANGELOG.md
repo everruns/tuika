@@ -66,6 +66,11 @@ block-HTML seam.
   block leaves no gap where it was.
 - New gallery demo for inline HTML (`docs/demos/markdown_html.png`), referenced
   from the component gallery, the markdown guide, and `Markdown`'s rustdoc.
+- `tuika-html` gains an example and a recording for the `Html` *component*
+  (`cargo run -p tuika-html --example html_view`); the existing example covers
+  the markdown seam. `<sub>`/`<sup>` now transliterate there too, so one
+  document cannot render `H₂O` through markdown and `H2O` through the crate,
+  and `<dd>` hangs directly under its `<dt>` instead of a blank line below.
 - `Table` now windows rows to its assigned render height by default.
   `Table::viewport(rows)` remains an optional upper bound.
 - ratatui `Line` styles are composed underneath their `Span` styles in text,

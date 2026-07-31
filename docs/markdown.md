@@ -101,7 +101,9 @@ reach anything but these styles. Unbalanced tags (`<b>` with no `</b>`, a stray
 Block-level HTML is a *seam* rather than a feature, for the same reason syntax
 highlighting is: an HTML parser is a dependency tuika will not carry. Attach an
 `HtmlBlockRenderer` and `<details>`, `<table>`, and the rest lay out too —
-[`tuika-html`](https://crates.io/crates/tuika-html) is the ready-made one.
+[`tuika-html`](https://crates.io/crates/tuika-html) is the ready-made one, and
+it also ships an [`Html` view](../crates/tuika-html/#standalone) for markup that
+is not inside markdown at all.
 
 ```rust
 use tuika::prelude::*;
