@@ -78,6 +78,7 @@ struct MeasureKey {
     width: u16,
     theme: Theme,
     sheet: StyleSheet,
+    style_resolver: Option<(usize, u64)>,
     focused: bool,
 }
 
@@ -87,6 +88,7 @@ impl MeasureKey {
             width,
             theme: *ctx.theme,
             sheet: ctx.sheet,
+            style_resolver: ctx.style_resolver_key(),
             focused: ctx.focused,
         }
     }
@@ -431,6 +433,50 @@ mod tests {
         };
         let styled = RenderCtx::new(&theme).with_sheet(sheet);
         assert_eq!(view.measure(Size::new(10, 10), &styled).height, 5);
+    }
+
+    #[test]
+    fn resolver_revision_invalidates_cached_heights() {
+        use std::cell::Cell;
+
+        const ITEM: crate::StyleRole = crate::StyleRole::new("test.item");
+
+        struct Resolver(Cell<u64>);
+        impl crate::StyleResolver for Resolver {
+            fn resolve(&self, role: crate::StyleRole) -> Option<crate::style::StyleBundle> {
+                (role == ITEM).then(|| {
+                    crate::style::StyleBundle::new()
+                        .padding(crate::Padding::symmetric(0, self.0.get() as u16))
+                })
+            }
+
+            fn revision(&self) -> u64 {
+                self.0.get()
+            }
+        }
+
+        struct StyledHeight;
+        impl View for StyledHeight {
+            fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+                let vertical = ctx
+                    .style(ITEM)
+                    .padding
+                    .map_or(0, |padding| padding.vertical());
+                Size::new(1, 1u16.saturating_add(vertical)).clamp_to(available)
+            }
+
+            fn render(&self, _area: Rect, _surface: &mut Surface, _ctx: &RenderCtx) {}
+        }
+
+        let resolver = Resolver(Cell::new(1));
+        let state = ScrollState::new();
+        let view = ItemScroll::new(vec![element(StyledHeight)], &state).scrollbar(false);
+        let theme = Theme::default();
+        let ctx = RenderCtx::new(&theme).with_style_resolver(&resolver);
+        assert_eq!(view.measure(Size::new(10, 10), &ctx).height, 3);
+
+        resolver.0.set(2);
+        assert_eq!(view.measure(Size::new(10, 10), &ctx).height, 5);
     }
 
     #[test]

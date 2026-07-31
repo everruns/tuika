@@ -3,7 +3,7 @@
 use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 
-use crate::{StyleSheet, Theme, View, paint, paint_with_sheet};
+use crate::{RenderCtx, StyleSheet, Theme, View, paint, paint_with_context, paint_with_sheet};
 
 /// Render `view` into a zero-origin in-memory buffer.
 pub fn render(view: &dyn View, width: u16, height: u16, theme: &Theme) -> Buffer {
@@ -24,6 +24,14 @@ pub fn render_with_sheet(
     let area = Rect::new(0, 0, width, height);
     let mut buffer = Buffer::empty(area);
     paint_with_sheet(&mut buffer, area, theme, sheet, view, &[]);
+    buffer
+}
+
+/// Render `view` with a fully configured context into a zero-origin buffer.
+pub fn render_with_context(view: &dyn View, width: u16, height: u16, ctx: &RenderCtx) -> Buffer {
+    let area = Rect::new(0, 0, width, height);
+    let mut buffer = Buffer::empty(area);
+    paint_with_context(&mut buffer, area, ctx, view, &[]);
     buffer
 }
 

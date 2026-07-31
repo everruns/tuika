@@ -31,14 +31,17 @@ Two layers, resolved at render time:
   or by string (`theme_by_name`, for a `--theme` flag or config value);
   `themes::PRESETS` enumerates them for a picker.
 - A **`StyleSheet`** is the rule layer: a mapping from a semantic *role*
-  (heading, link, inline code, list bullet, a panel's border and fill) onto a
+  (heading, link, inline code, toast severity, diff row, key hint) onto a
   `StyleBundle` of color plus text attributes. Overriding one role restyles
-  every element with that role, including markdown parts and bare URLs.
+  every element with that role.
+- A **`StyleResolver`** is the open extension layer. Tuika publishes typed
+  `StyleRole` constants for built-ins; a host or companion crate defines stable,
+  namespaced constants for its own views. Resolver results partially overlay the
+  sheet, so an extension can change one attribute without copying defaults.
 
-`StyleSheet::from_theme` reproduces exactly the look components had before
-stylesheets existed, so adopting a sheet is a no-op until a role is overridden.
-Adoption must stay free; a default sheet that changes appearance would make the
-feature a migration rather than an addition.
+`StyleSheet::from_theme` derives all built-in roles from the palette. This is the
+unification invariant: adding a component must not require a host to discover a
+literal color hidden in its renderer.
 
 Generic status roles (`success`, `warning`, `danger`, `info`) are additive
 `Theme` helpers derived from the existing code palette. They deliberately do
@@ -65,7 +68,9 @@ name the roles you care about, and everything unnamed keeps tracking the theme.
 ### One policy per tree
 
 A host installs a single sheet for the whole render rather than passing styles
-down through view constructors. Styling is a cross-cutting policy; threading it
+down through view constructors. The optional resolver is installed on the same
+`RenderCtx`, and its identity plus explicit revision participates in measurement
+caches. Styling is a cross-cutting policy; threading it
 through the tree would put a style parameter on every component and make "change
 all links" an N-call-site edit — precisely the problem the layer exists to
 remove.
@@ -105,6 +110,14 @@ fail, so it is also the fallback when a terminal answers nothing. What it cannot
 do is express a tone *between* two slots, which is exactly what the derived
 theme exists to supply.
 
+### Open roles remain flat
+
+Open roles are stable identifiers, not CSS selectors or terminal content. They
+do not cascade, allocate, or perform string matching beyond equality. The sheet
+owns tuika's typed built-in data; the resolver owns external vocabulary. This
+avoids adding a required `Theme` or `StyleSheet` field for every companion view
+while keeping the common built-ins discoverable.
+
 ### The gallery is the proof
 
 The theme and stylesheet galleries (`docs/themes.md`, `docs/styling.md`) are
@@ -135,8 +148,9 @@ existing in code. Regenerating them is `scripts/gen-theme-demos.sh` and
   directly. (Distinct from *terminal inheritance* above, which produces a plain
   `Theme` and involves no cascade.)
 - No runtime stylesheet *format*; a sheet is Rust data.
-- No per-component style overrides layered on top of the sheet, which would
-  reintroduce the scattered-decision problem.
+- No generic per-component style map layered on top of the sheet. Purpose-built
+  instance overrides remain valid when local state or one exceptional view owns
+  the decision; they take precedence over global policy.
 
 ## Public surface
 

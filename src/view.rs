@@ -13,7 +13,7 @@
 use ratatui_core::layout::Rect;
 
 use super::geometry::Size;
-use super::style::{StyleSheet, Theme};
+use super::style::{StyleBundle, StyleResolver, StyleRole, StyleSheet, Theme};
 use super::surface::Surface;
 
 /// Context threaded to every [`View::measure`] and [`View::render`] call.
@@ -26,6 +26,9 @@ pub struct RenderCtx<'a> {
     /// by installing its own with [`with_sheet`](Self::with_sheet) or
     /// [`paint_with_sheet`](crate::host::paint_with_sheet).
     pub sheet: StyleSheet,
+    /// Optional host policy for built-in and application-defined semantic
+    /// styles. Resolver results overlay the active stylesheet.
+    style_resolver: Option<&'a dyn StyleResolver>,
     /// Whether the focused component of the frame is this one. Containers pass
     /// this down unchanged; focus-aware leaves use it to highlight borders.
     pub focused: bool,
@@ -37,6 +40,7 @@ impl<'a> RenderCtx<'a> {
         Self {
             theme,
             sheet: StyleSheet::from_theme(theme),
+            style_resolver: None,
             focused: false,
         }
     }
@@ -47,11 +51,36 @@ impl<'a> RenderCtx<'a> {
         self
     }
 
+    /// Install a host resolver for built-in and application-defined roles.
+    pub fn with_style_resolver(mut self, resolver: &'a dyn StyleResolver) -> Self {
+        self.style_resolver = Some(resolver);
+        self
+    }
+
+    /// Resolve a semantic style from the stylesheet and optional host policy.
+    ///
+    /// Unknown roles start empty, so companion crates and applications can
+    /// define their own [`StyleRole`] constants without extending tuika.
+    pub fn style(&self, role: StyleRole) -> StyleBundle {
+        let base = self.sheet.resolve_style(role).unwrap_or_default();
+        self.style_resolver
+            .and_then(|resolver| resolver.resolve(role))
+            .map_or(base, |override_bundle| base.overlay(override_bundle))
+    }
+
+    pub(crate) fn style_resolver_key(&self) -> Option<(usize, u64)> {
+        self.style_resolver.map(|resolver| {
+            let identity = std::ptr::from_ref(resolver).cast::<()>() as usize;
+            (identity, resolver.revision())
+        })
+    }
+
     /// A child context with an explicit focus flag.
     pub fn with_focus(&self, focused: bool) -> RenderCtx<'a> {
         RenderCtx {
             theme: self.theme,
             sheet: self.sheet,
+            style_resolver: self.style_resolver,
             focused,
         }
     }
@@ -152,7 +181,23 @@ pub type CanvasView<F> = DrawView<F>;
 mod draw_view_tests {
     use super::*;
     use crate::Theme;
-    use crate::testing::{grid, render};
+    use crate::style::{StyleBundle, StyleResolver, StyleRole};
+    use crate::testing::{grid, render, render_with_context};
+    use ratatui_core::style::Color;
+
+    const METRIC: StyleRole = StyleRole::new("example.metric");
+
+    struct AppStyles;
+
+    impl StyleResolver for AppStyles {
+        fn resolve(&self, role: StyleRole) -> Option<StyleBundle> {
+            match role {
+                METRIC => Some(StyleBundle::new().fg(Color::Green).bold()),
+                StyleRole::KEY_HINT_KEY => Some(StyleBundle::new().fg(Color::Yellow)),
+                _ => None,
+            }
+        }
+    }
 
     #[test]
     fn draw_view_is_clipped_and_reports_intrinsic_size() {
@@ -170,5 +215,37 @@ mod draw_view_tests {
             Size::new(4, 1)
         );
         assert_eq!(grid(&render(&view, 4, 1, &Theme::default())), "canv");
+    }
+
+    #[test]
+    fn context_resolves_application_roles_and_overlays_built_in_defaults() {
+        let view = DrawView::new(
+            |area: Rect, surface: &mut Surface<'_>, ctx: &RenderCtx<'_>| {
+                surface.set(area.x, area.y, 'm', ctx.style(METRIC).to_style());
+                surface.set(
+                    area.x + 1,
+                    area.y,
+                    'k',
+                    ctx.style(StyleRole::KEY_HINT_KEY).to_style(),
+                );
+            },
+        );
+        let theme = Theme::default();
+        let styles = AppStyles;
+        let ctx = RenderCtx::new(&theme).with_style_resolver(&styles);
+        let buffer = render_with_context(&view, 2, 1, &ctx);
+
+        assert_eq!(buffer[(0, 0)].fg, Color::Green);
+        assert!(
+            buffer[(0, 0)]
+                .modifier
+                .contains(ratatui_core::style::Modifier::BOLD)
+        );
+        assert_eq!(buffer[(1, 0)].fg, Color::Yellow);
+        assert_eq!(
+            buffer[(1, 0)].bg,
+            theme.accent,
+            "unset resolver bg inherits"
+        );
     }
 }

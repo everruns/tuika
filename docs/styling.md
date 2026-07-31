@@ -7,7 +7,7 @@ tuika splits how a UI looks into two layers:
   hard-codes a color. This is the token layer, and it already existed — see
   [themes](themes.md).
 - a **`StyleSheet`** — a mapping from a semantic **role** (a heading, a link, an
-  inline-code span, a list bullet, a panel's border and fill, …) onto a
+  inline-code span, a toast severity, a diff row, a key hint, …) onto a
   **`StyleBundle`**: the color and text attributes that role draws with. This is
   the rule layer, and it is what lets you restyle *by meaning*, in one place,
   without touching component code.
@@ -68,6 +68,48 @@ let sheet = StyleSheet::from_theme(&theme);
 or, if you build your own `RenderCtx`, install it there with `.with_sheet(sheet)`.
 Plain `paint` and `RenderCtx::new(theme)` keep using the theme's default sheet, so
 nothing else has to change.
+
+## Extending the role vocabulary
+
+`StyleSheet` has typed fields for tuika's built-in components. A companion crate
+or application can add namespaced `StyleRole` constants without tuika having to
+know about them, then supply one `StyleResolver` for the tree:
+
+```rust
+use tuika::prelude::*;
+
+const METRIC_WARNING: StyleRole = StyleRole::new("my-app.metric.warning");
+
+struct AppStyles;
+
+impl StyleResolver for AppStyles {
+    fn resolve(&self, role: StyleRole) -> Option<StyleBundle> {
+        match role {
+            METRIC_WARNING => Some(StyleBundle::new().fg(Color::Yellow).bold()),
+            // A partial built-in override inherits the sheet's key-cap background.
+            StyleRole::KEY_HINT_KEY => Some(StyleBundle::new().fg(Color::Black)),
+            _ => None,
+        }
+    }
+}
+
+let theme = Theme::default();
+let styles = AppStyles;
+let ctx = RenderCtx::new(&theme).with_style_resolver(&styles);
+// paint_with_context(buffer, area, &ctx, root, &[]);
+```
+
+Inside a custom `View`, `ctx.style(METRIC_WARNING)` resolves application and
+built-in roles uniformly. Resolver bundles overlay the active sheet rather than
+replace it. If a resolver's answers can change while the same object remains
+installed, increment `StyleResolver::revision`; measurement caches include that
+revision.
+
+The built-in open roles cover toast base/severities, diff base/rows/gutter/
+divider, and key-hint keys/labels. Their `StyleSheet` fields are the ordinary,
+data-only path for most hosts. Explicit component overrides remain the narrowest
+layer: for example, `Diff::style` wins over semantic diff-row colors for that one
+view.
 
 ## Styling markdown — headings, links, and URLs
 

@@ -18,6 +18,11 @@ block-HTML seam.
 
 ### Added
 
+- `StyleRole` and `StyleResolver` form an open semantic styling seam for hosts
+  and companion crates. `RenderCtx::style` resolves built-in or namespaced
+  application roles, resolver bundles partially overlay stylesheet defaults,
+  and resolver revisions invalidate measurement caches. `paint_with_context`
+  and `testing::render_with_context` install and test the complete policy.
 - `ScopedElement<'view>`, the boxed frame-borrowed counterpart to owned
   `Element`, for heterogeneous component subtrees that read host state without
   cloning it.
@@ -66,6 +71,13 @@ block-HTML seam.
 
 ### Changed
 
+- **Breaking:** `StyleSheet` adds typed toast, diff, and key-hint fields. Toasts,
+  diffs, `KeyHints`, and `KeymapHelp` now derive their defaults from those roles
+  instead of renderer literals; explicit `Diff::style` colors still win for one
+  instance. Exhaustive `StyleSheet` literals must add the new fields or use
+  `..StyleSheet::from_theme(&theme)`. Construct `RenderCtx` through
+  `RenderCtx::new` rather than a struct literal now that it carries the optional
+  resolver.
 - **Breaking:** `View::measure` now takes `&RenderCtx`, and every composition
   container forwards the frame's active theme, stylesheet, and focus state.
   Migrate `fn measure(&self, available: Size)` implementations to

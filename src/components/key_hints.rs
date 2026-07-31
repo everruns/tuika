@@ -1,11 +1,10 @@
 //! Compact, responsive key/action hints and complete keymap help.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::{Color, Style};
-
 use crate::keymap::{Hint, Keymap};
+use crate::style::StyleRole;
 use crate::width::str_cols;
 use crate::{RenderCtx, Size, Surface, View};
+use ratatui_core::layout::Rect;
 
 /// A key/action hint with a responsive fitting priority.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -122,16 +121,22 @@ impl View for KeyHints {
         for (position, index) in self.fitted(usize::from(area.width)).into_iter().enumerate() {
             let hint = &self.hints[index];
             if position > 0 {
-                x = surface.set_string(x, area.y, "  ", ctx.theme.muted_style());
+                x = surface.set_string(
+                    x,
+                    area.y,
+                    "  ",
+                    ctx.style(StyleRole::KEY_HINT_LABEL).to_style(),
+                );
             }
             x = surface.set_string(
                 x,
                 area.y,
                 &format!(" {} ", hint.key),
-                Style::default().fg(Color::Black).bg(ctx.theme.accent),
+                ctx.style(StyleRole::KEY_HINT_KEY).to_style(),
             );
-            x = surface.set_string(x, area.y, " ", ctx.theme.muted_style());
-            x = surface.set_string(x, area.y, &hint.label, ctx.theme.muted_style());
+            let label_style = ctx.style(StyleRole::KEY_HINT_LABEL).to_style();
+            x = surface.set_string(x, area.y, " ", label_style);
+            x = surface.set_string(x, area.y, &hint.label, label_style);
         }
     }
 }
@@ -219,13 +224,13 @@ impl View for KeymapHelp {
                 area.x,
                 y,
                 &hint.keys,
-                Style::default().fg(Color::Black).bg(ctx.theme.accent),
+                ctx.style(StyleRole::KEY_HINT_KEY).to_style(),
             );
             surface.set_string(
                 area.x.saturating_add(key_width).saturating_add(2),
                 y,
                 &hint.label,
-                ctx.theme.muted_style(),
+                ctx.style(StyleRole::KEY_HINT_LABEL).to_style(),
             );
         }
     }
@@ -237,6 +242,7 @@ mod tests {
     use crate::keymap::Layer;
     use crate::testing::{grid, render};
     use crate::{Size, Theme};
+    use ratatui_core::style::Color;
 
     #[test]
     fn key_hints_measure_unicode_by_terminal_width() {
@@ -261,6 +267,34 @@ mod tests {
         );
         assert_eq!(grid(&render(&hints, 8, 1, &Theme::default())), " Q  quit");
         assert_eq!(grid(&render(&hints, 3, 1, &Theme::default())), "   ");
+    }
+
+    #[test]
+    fn footer_and_help_share_semantic_key_styles() {
+        let theme = Theme::default();
+        let sheet = crate::StyleSheet {
+            key_hint_key: crate::style::StyleBundle::new()
+                .fg(Color::Yellow)
+                .bg(Color::Blue),
+            key_hint_label: crate::style::StyleBundle::new().fg(Color::Green),
+            ..crate::StyleSheet::from_theme(&theme)
+        };
+        let footer = KeyHints::new([("q", "quit")]);
+        let rendered = crate::testing::render_with_sheet(&footer, 12, 1, &theme, sheet);
+        assert_eq!(rendered[(1, 0)].fg, Color::Yellow);
+        assert_eq!(rendered[(1, 0)].bg, Color::Blue);
+        assert_eq!(rendered[(4, 0)].fg, Color::Green);
+
+        let help = KeymapHelp::from_hints([Hint {
+            keys: "Q".into(),
+            label: Some("quit".into()),
+            command: (),
+            layer: "global".into(),
+            priority: 0,
+        }]);
+        let rendered = crate::testing::render_with_sheet(&help, 12, 1, &theme, sheet);
+        assert_eq!(rendered[(0, 0)].fg, Color::Yellow);
+        assert_eq!(rendered[(3, 0)].fg, Color::Green);
     }
 
     #[derive(Clone)]

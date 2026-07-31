@@ -33,7 +33,7 @@ pub use crate::highlight::{CodeHighlighter, Highlighter, PlainHighlighter};
 pub use crate::interop::RatatuiView;
 pub use crate::keymap::{Binding, Chord, Dispatch, Hint, KeySequence, Keymap, Layer};
 pub use crate::live::{Live, LiveView, RedrawHandle};
-pub use crate::style::{BorderStyle, CodeTheme, Role, StyleBundle};
+pub use crate::style::{BorderStyle, CodeTheme, Role, StyleBundle, StyleResolver, StyleRole};
 pub use crate::ui::{Color, Line, Modifier, Rect, Span, Style};
 // The `view!` macro plus the module it is named for; the macro expands to
 // `$crate::…` paths, so a glob-importing host needs neither in scope by name.
@@ -43,7 +43,7 @@ pub use crate::{
     LayoutStyle, Mouse, MouseButton, MouseKind, Overlay, OverlaySpec, Padding, RenderCtx, Runner,
     RunnerConfig, Scene, SceneOverlay, ScopedElement, ScopedScene, ScreenMode, Scrollback,
     SemanticRole, Signal, Size, StyleSheet, Surface, TerminalSession, Theme, UpdateResult, View,
-    element, paint, paint_scene, paint_with_sheet, translate_event,
+    element, paint, paint_scene, paint_with_context, paint_with_sheet, translate_event,
 };
 
 #[cfg(feature = "async")]

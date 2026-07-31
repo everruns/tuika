@@ -8,7 +8,30 @@
 //! a list of `use` statements — the imported types have to actually work.
 
 use tuika::prelude::*;
-use tuika::testing::{grid, render};
+use tuika::testing::{grid, render, render_with_context};
+
+#[test]
+fn semantic_style_resolver_is_a_public_host_seam() {
+    const APP_STATUS: StyleRole = StyleRole::new("test.app-status");
+
+    struct Styles;
+    impl StyleResolver for Styles {
+        fn resolve(&self, role: StyleRole) -> Option<StyleBundle> {
+            (role == APP_STATUS).then(|| StyleBundle::new().fg(Color::Green).bold())
+        }
+    }
+
+    let view = tuika::view::DrawView::new(
+        |area: Rect, surface: &mut Surface<'_>, ctx: &RenderCtx<'_>| {
+            surface.set(area.x, area.y, '✓', ctx.style(APP_STATUS).to_style());
+        },
+    );
+    let theme = Theme::default();
+    let styles = Styles;
+    let ctx = RenderCtx::new(&theme).with_style_resolver(&styles);
+    let rendered = render_with_context(&view, 1, 1, &ctx);
+    assert_eq!(rendered[(0, 0)].fg, Color::Green);
+}
 
 /// The prelude is the documented one-line import, so it has to be enough on its
 /// own to build and render a real tree.

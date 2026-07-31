@@ -3,10 +3,8 @@
 //! The component computes an LCS line diff of an `old` and `new` text and
 //! renders it two ways: **unified** (one column, `+`/`-`/` ` markers) or
 //! **side-by-side** (old on the left, new on the right, a divider between). Both
-//! carry an optional line-number gutter. Added and removed lines use conventional
-//! green/red foregrounds — overridable via [`DiffStyle`] for a host that wants to
-//! match its palette — over the theme's code background so the block reads like
-//! the rest of a code surface.
+//! carry an optional line-number gutter. Colors resolve from the active semantic
+//! stylesheet and host resolver; [`DiffStyle`] remains the per-instance override.
 //!
 //! The diff itself ([`rows`]) is a pure function, so classification is
 //! testable without rendering.
@@ -15,6 +13,7 @@ use ratatui_core::layout::Rect;
 use ratatui_core::style::{Color, Modifier, Style};
 
 use crate::geometry::Size;
+use crate::style::StyleRole;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
 
@@ -164,9 +163,9 @@ pub enum DiffMode {
 
 /// The foreground colors a [`Diff`] draws additions, removals, and context with.
 ///
-/// Defaults to conventional green/red (independent of the theme's hue, since diff
-/// semantics are near-universal), with context in a neutral gray. Override any
-/// field for a palette-matched look.
+/// Defaults to conventional green/red with context in neutral gray. Passing a
+/// `DiffStyle` is an explicit per-instance override and takes precedence over
+/// semantic stylesheet and resolver colors.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DiffStyle {
     /// Foreground for inserted lines.
@@ -203,7 +202,7 @@ pub struct Diff {
     rows: Vec<DiffRow>,
     mode: DiffMode,
     line_numbers: bool,
-    style: DiffStyle,
+    style: Option<DiffStyle>,
 }
 
 impl Diff {
@@ -218,7 +217,7 @@ impl Diff {
             rows,
             mode: DiffMode::default(),
             line_numbers: false,
-            style: DiffStyle::default(),
+            style: None,
         }
     }
 
@@ -236,7 +235,7 @@ impl Diff {
 
     /// Override the add/remove/context colors.
     pub fn style(mut self, style: DiffStyle) -> Self {
-        self.style = style;
+        self.style = Some(style);
         self
     }
 
@@ -255,24 +254,33 @@ impl Diff {
         max.to_string().len() as u16
     }
 
-    fn fg(&self, tag: DiffTag) -> Color {
-        match tag {
-            DiffTag::Equal => self.style.context,
-            DiffTag::Insert => self.style.added,
-            DiffTag::Delete => self.style.removed,
+    fn row_style(&self, tag: DiffTag, ctx: &RenderCtx) -> Style {
+        let role = match tag {
+            DiffTag::Equal => StyleRole::DIFF_CONTEXT,
+            DiffTag::Insert => StyleRole::DIFF_ADDED,
+            DiffTag::Delete => StyleRole::DIFF_REMOVED,
+        };
+        let resolved = ctx.style(role).apply(ctx.style(StyleRole::DIFF).to_style());
+        match self.style {
+            Some(style) => resolved.fg(match tag {
+                DiffTag::Equal => style.context,
+                DiffTag::Insert => style.added,
+                DiffTag::Delete => style.removed,
+            }),
+            None => resolved,
         }
     }
 
     fn render_unified(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
-        let bg = ctx.theme.code.background;
+        let base = ctx.style(StyleRole::DIFF).to_style();
+        let gutter_style = ctx.style(StyleRole::DIFF_GUTTER).apply(base);
         let numw = self.number_width();
         for (row, dr) in self.rows.iter().enumerate() {
             let y = area.y.saturating_add(row as u16);
             if y >= area.bottom() {
                 break;
             }
-            let fg = self.fg(dr.tag);
-            let style = Style::default().fg(fg).bg(bg);
+            let style = self.row_style(dr.tag, ctx);
             let marker = match dr.tag {
                 DiffTag::Equal => ' ',
                 DiffTag::Insert => '+',
@@ -280,7 +288,7 @@ impl Diff {
             };
             // Fill the row background first so short lines still read as a block.
             for x in area.x..area.right() {
-                surface.set(x, y, ' ', Style::default().bg(bg));
+                surface.set(x, y, ' ', base);
             }
             let mut x = area.x;
             if numw > 0 {
@@ -291,7 +299,7 @@ impl Diff {
                     ow = numw as usize,
                     nw = numw as usize
                 );
-                x = surface.set_string(x, y, &gutter, Style::default().fg(ctx.theme.muted).bg(bg));
+                x = surface.set_string(x, y, &gutter, gutter_style);
             }
             x = surface.set_string(
                 x,
@@ -304,10 +312,10 @@ impl Diff {
     }
 
     fn render_side_by_side(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
-        let bg = ctx.theme.code.background;
+        let base = ctx.style(StyleRole::DIFF).to_style();
         let numw = self.number_width();
         // Divider column between the two halves.
-        let divider = ctx.theme.dim;
+        let divider_style = ctx.style(StyleRole::DIFF_DIVIDER).apply(base);
         let usable = area.width.saturating_sub(3); // " │ "
         let col_w = usable / 2;
         if col_w == 0 {
@@ -326,9 +334,9 @@ impl Diff {
             }
             // Background fill for the whole row.
             for x in area.x..area.right() {
-                surface.set(x, y, ' ', Style::default().bg(bg));
+                surface.set(x, y, ' ', base);
             }
-            surface.set(div_x, y, '│', Style::default().fg(divider).bg(bg));
+            surface.set(div_x, y, '│', divider_style);
 
             // Left side shows deletions and context; right side insertions and
             // context. The tag decides which sides are populated.
@@ -338,10 +346,10 @@ impl Diff {
                 DiffTag::Insert => (false, true),
             };
             if show_left {
-                self.render_cell(surface, left, y, dr.old_line, dr, bg, '-', numw, ctx);
+                self.render_cell(surface, left, y, dr.old_line, dr, '-', numw, ctx);
             }
             if show_right {
-                self.render_cell(surface, right, y, dr.new_line, dr, bg, '+', numw, ctx);
+                self.render_cell(surface, right, y, dr.new_line, dr, '+', numw, ctx);
             }
         }
     }
@@ -354,13 +362,11 @@ impl Diff {
         y: u16,
         number: Option<usize>,
         dr: &DiffRow,
-        bg: Color,
         change_marker: char,
         numw: u16,
         ctx: &RenderCtx,
     ) {
-        let fg = self.fg(dr.tag);
-        let style = Style::default().fg(fg).bg(bg);
+        let style = self.row_style(dr.tag, ctx);
         let mut sub = surface.child(cell);
         let mut x = cell.x;
         if numw > 0 {
@@ -369,7 +375,8 @@ impl Diff {
                 x,
                 y,
                 &format!("{num:>w$} ", w = numw as usize),
-                Style::default().fg(ctx.theme.muted).bg(bg),
+                ctx.style(StyleRole::DIFF_GUTTER)
+                    .apply(ctx.style(StyleRole::DIFF).to_style()),
             );
         }
         let marker = if dr.tag == DiffTag::Equal {
@@ -510,6 +517,32 @@ mod tests {
         }
         assert!(fgs.contains(&Color::Rgb(1, 2, 3)), "added color used");
         assert!(fgs.contains(&Color::Rgb(4, 5, 6)), "removed color used");
+    }
+
+    #[test]
+    fn semantic_roles_style_diff_and_instance_override_wins() {
+        let theme = Theme::default();
+        let sheet = crate::StyleSheet {
+            diff: crate::style::StyleBundle::new().bg(Color::Blue),
+            diff_added: crate::style::StyleBundle::new().fg(Color::Yellow),
+            diff_removed: crate::style::StyleBundle::new().fg(Color::Magenta),
+            ..crate::StyleSheet::from_theme(&theme)
+        };
+        let diff = Diff::new("old", "new");
+        let buffer = crate::testing::render_with_sheet(&diff, 12, 2, &theme, sheet);
+        assert_eq!(buffer[(0, 0)].fg, Color::Magenta);
+        assert_eq!(buffer[(0, 0)].bg, Color::Blue);
+        assert_eq!(buffer[(0, 1)].fg, Color::Yellow);
+
+        let override_diff = Diff::new("old", "new").style(DiffStyle {
+            added: Color::Green,
+            removed: Color::Red,
+            context: Color::White,
+        });
+        let buffer = crate::testing::render_with_sheet(&override_diff, 12, 2, &theme, sheet);
+        assert_eq!(buffer[(0, 0)].fg, Color::Red);
+        assert_eq!(buffer[(0, 1)].fg, Color::Green);
+        assert_eq!(buffer[(0, 1)].bg, Color::Blue);
     }
 
     #[test]

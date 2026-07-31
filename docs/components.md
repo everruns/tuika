@@ -182,9 +182,9 @@ view! {
 ### `Diff`
 
 A line-oriented diff (LCS) rendered **unified** (`+`/`-`/` ` gutters) or
-**side-by-side**, with an optional line-number gutter. Added/removed lines use
-conventional green/red (overridable via `DiffStyle`). The pure `diff::rows(old,
-new)` classifier is reusable on its own.
+**side-by-side**, with an optional line-number gutter. Base, row, gutter, and
+divider colors resolve from semantic styling; `DiffStyle` is the per-instance
+override. The pure `diff::rows(old, new)` classifier is reusable on its own.
 [API](https://docs.rs/tuika/latest/tuika/components/diff/struct.Diff.html)
 
 <img src="demos/diff.png" width="880" alt="Diff demo">
@@ -609,8 +609,9 @@ view! { node(TextInput::new(&state).highlights(spans)) }
 
 A transient notification stack with frame-driven expiry: each toast carries a
 remaining lifetime in frames, `tick()` decrements them, and one is dropped at
-zero. Four severity levels select the bar color and glyph. Place a `ToastList`
-in a corner overlay.
+zero. Four severity levels select a semantic accent role and glyph, so one
+stylesheet or resolver restyles every notification. Place a `ToastList` in a
+corner overlay.
 [API](https://docs.rs/tuika/latest/tuika/components/toast/struct.Toasts.html)
 
 <img src="demos/toast.png" width="880" alt="Toasts demo">
@@ -695,7 +696,8 @@ view! { node(FrameBufferView::new(&fb, 64, 16)) }
 `KeyHint::priority` and `KeyHints::prioritized` fit only complete hints on narrow
 screens; higher priorities survive first. `KeyHints::from_keymap` and
 `KeymapHelp::from_keymap` turn the same labeled declarations used for dispatch
-into a responsive footer and a complete, scrollable help view.
+into a responsive footer and a complete, scrollable help view. Both resolve the
+same semantic key-cap and label roles.
 
 ## See also
 

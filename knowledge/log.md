@@ -2,6 +2,16 @@
 
 ## 2026-07-31
 
+- **Semantic styling is open and complete**
+
+- Toasts, diffs, and keymap hints now join markdown and panels under one
+  stylesheet policy; their palette defaults come from the active theme, while
+  existing purpose-built instance overrides remain the final local layer.
+- `StyleRole` and `StyleResolver` let hosts and companion crates add namespaced
+  semantics without adding fields to tuika. Resolver bundles overlay built-in
+  data, and an explicit revision keeps measurement caches correct when a live
+  policy changes.
+
 - **Measurement and rendering share one frame context**
 
 - `View::measure` now receives the active `RenderCtx`, and composition helpers
