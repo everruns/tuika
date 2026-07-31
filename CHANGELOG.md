@@ -18,6 +18,11 @@ block-HTML seam.
 
 ### Added
 
+- Target-relative overlays: `TargetPlacement` selects above/below/left/right,
+  cross-axis alignment, gap, and optional edge-aware flipping;
+  `OverlaySpec::resolve_target` resolves it directly and
+  `SceneOverlay::target` follows a `RectProbe` from the scene root in the same
+  frame. Screen-anchored placement remains unchanged.
 - `StyleRole` and `StyleResolver` form an open semantic styling seam for hosts
   and companion crates. `RenderCtx::style` resolves built-in or namespaced
   application roles, resolver bundles partially overlay stylesheet defaults,

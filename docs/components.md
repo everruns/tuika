@@ -409,7 +409,10 @@ let form = Form::new(vec![
 
 ### `Scene` + `Dialog`
 
-`Scene` owns a base tree and ordered, anchored overlays. `Dialog` builds a
+`Scene` owns a base tree and ordered overlays. Screen anchors place dialogs and
+other independent layers; `SceneOverlay::target` uses a `RectProbe` to follow a
+laid-out trigger for popovers, menus, and tooltips, with side selection,
+alignment, gap, edge-aware flipping, and screen clamping. `Dialog` builds a
 centered modal from ordinary Tuika elements, with optional action hints,
 min/max sizing, clear or dimmed backdrops, and top-layer focus ownership.
 [Scene API](https://docs.rs/tuika/latest/tuika/scene/struct.Scene.html) ·

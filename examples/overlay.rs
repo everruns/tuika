@@ -1,10 +1,10 @@
 //! Overlay compositing + input routing. Run with
 //! `cargo run --example overlay` (o open · enter/esc close · q quit).
 //!
-//! Demonstrates [`OverlaySpec`] anchoring a centered dialog over the base tree
-//! and [`paint`] compositing it last (clearing its rect first, so base content
-//! leaks around a clean-bordered panel). While the dialog is open it owns
-//! input — the same key means different things depending on overlay state.
+//! Demonstrates a [`SceneOverlay`] following a laid-out trigger through a
+//! [`RectProbe`](tuika::probe::RectProbe). The preferred below-target placement
+//! flips above when the terminal edge leaves more room there. While the popover
+//! is open it owns input — the same key means different things by overlay state.
 
 use std::io;
 use std::time::Duration;
@@ -15,10 +15,12 @@ use ratatui::text::{Line, Span};
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
 use tuika::prelude::*;
+use tuika::probe::RectProbe;
 
 fn main() -> io::Result<()> {
     let mut open = false;
     let mut confirmed = 0u32;
+    let trigger = RectProbe::new();
 
     let _session = TerminalSession::enter()?;
     let mut terminal = Terminal::with_options(
@@ -33,11 +35,15 @@ fn main() -> io::Result<()> {
         terminal.draw(|f| {
             let area = f.area();
             let hint = if open {
-                "dialog open — enter = confirm · esc = dismiss"
+                "popover open — enter = confirm · esc = dismiss"
             } else {
-                "o open dialog · q quit"
+                "o open popover · q quit"
             };
-            let base = view! {
+            let trigger_view = trigger.wrap(Text::new(vec![Line::from(Span::styled(
+                "[ o Open actions ]",
+                theme.accent_style(),
+            ))]));
+            let base: Element = view! {
                 col(padding = Padding::all(1), gap = 1) {
                     node(Text::new(vec![Line::from(Span::styled(
                         "tuika overlay demo",
@@ -52,16 +58,22 @@ fn main() -> io::Result<()> {
                     }
                     grow(1) { spacer() }
                     fixed(1) {
+                        row {
+                            grow(1) { spacer() }
+                            fixed(18) { node(trigger_view) }
+                        }
+                    }
+                    fixed(1) {
                         node(Text::new(vec![Line::from(Span::styled(hint, theme.muted_style()))]))
                     }
                 }
             };
 
-            // The dialog Element must outlive the `paint` borrow below.
-            let dialog: Option<Element> = open.then(|| {
-                view! {
+            let mut scene = Scene::new(base);
+            if open {
+                let popover = view! {
                     boxed(
-                        title = Line::from(Span::styled(" confirm ", theme.accent_style())),
+                        title = Line::from(Span::styled(" actions ", theme.accent_style())),
                         padding = Padding::all(1)
                     ) {
                         col(gap = 1) {
@@ -72,20 +84,22 @@ fn main() -> io::Result<()> {
                             ))]))
                         }
                     }
-                }
-            });
-            let mut overlays: Vec<Overlay> = Vec::new();
-            if let Some(d) = &dialog {
-                let rect = OverlaySpec::centered(50, 40)
-                    .min_size(34, 7)
-                    .resolve(area);
-                overlays.push(Overlay {
-                    area: rect,
-                    view: d.as_ref(),
-                    clear: true,
-                });
+                };
+                let spec = OverlaySpec {
+                    width: tuika::overlay::Extent::Cells(38),
+                    height: tuika::overlay::Extent::Cells(7),
+                    ..OverlaySpec::centered(0, 0).margin(1)
+                };
+                scene = scene.overlay(
+                    SceneOverlay::new(popover, spec)
+                        .target(
+                            &trigger,
+                            TargetPlacement::below().align(TargetAlign::End).gap(1),
+                        )
+                        .focus_owner("actions"),
+                );
             }
-            paint(f.buffer_mut(), area, &theme, base.as_ref(), &overlays);
+            paint_scene(f.buffer_mut(), area, &theme, &scene);
         })?;
 
         if !event::poll(Duration::from_millis(150))? {

@@ -28,9 +28,11 @@ rather than beside it.
 - **Layout is a flexbox subset** over a direction-agnostic axis, so rows and
   columns share one solver: `Dimension` (`Auto`/`Fixed`/`Percent`/`Flex`) plus
   `Align`, `Justify`, and `Direction`.
-- **Overlays anchor over the base tree** rather than nesting inside it, so a
-  dialog's position is independent of where it is declared and input routing can
-  give the topmost overlay first refusal.
+- **Overlays composite over the base tree** rather than nesting inside it, so
+  input routing can give the topmost layer first refusal. Screen anchors keep a
+  dialog independent of where it is declared; target placement follows a
+  `RectProbe` from the already-painted root for popovers and menus, with
+  cross-axis alignment, gaps, edge-aware flipping, and final screen clamping.
 - **Selection policy is host-configurable**: the core state owns cursor and
   checked-item transitions, while aliases and mouse geometry are explicit
   inputs. Hosts can share picker behavior without inheriting hard-coded keys or
@@ -94,7 +96,8 @@ this by returning values up the render call chain (which would make `render`
 signatures host-specific); it uses a shared, frame-scoped handle the view writes
 into and the host reads back:
 
-- `RectProbe` records a view's painted absolute rect.
+- `RectProbe` records a view's painted absolute rect. A `SceneOverlay` may read
+  a root probe later in the same paint to resolve target-relative placement.
 - `ImageLayer` records each image's rect plus its pixel handle, for emission
   after `terminal.draw()` returns (see [images.md](./images.md)).
 

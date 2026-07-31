@@ -254,6 +254,35 @@ scene.sync_focus(&mut focus);
 paint_scene(buffer, area, &theme, &scene);
 ```
 
+For popovers, menus, and tooltips, wrap the trigger with a
+`probe::RectProbe` and attach the probe to a `SceneOverlay`. The root renders
+first, so placement uses the trigger's current rect in the same frame. It can
+align on any side, keep a gap, flip when the preferred side runs out of room,
+and clamp to the screen margin:
+
+```rust
+use tuika::overlay::Extent;
+use tuika::prelude::*;
+use tuika::probe::RectProbe;
+
+let trigger = RectProbe::new();
+let root = element(Flex::column().fixed(
+    1,
+    trigger.wrap(Text::raw("Open actions")),
+));
+let menu_size = OverlaySpec {
+    width: Extent::Cells(28),
+    height: Extent::Cells(7),
+    ..OverlaySpec::centered(0, 0).margin(1)
+};
+let scene = Scene::new(root).overlay(
+    SceneOverlay::new(element(Text::raw("Run action")), menu_size).target(
+        &trigger,
+        TargetPlacement::below().align(TargetAlign::Start).gap(1),
+    ),
+);
+```
+
 Custom views can import `Rect`, `Color`, `Style`, `Modifier`, `Line`, and `Span` from `tuika::ui` or the prelude without adding `ratatui-core` directly.
 
 `Element` is an owned, boxed view. `ScopedElement<'_>` is its frame-borrowed
@@ -437,7 +466,7 @@ Each takes over the terminal — the alternate screen, or a pinned footer for
 | [`gallery`](examples/gallery.rs)  | `cargo run --example gallery`    | motion components + native OSC 9;4 progress        |
 | [`markdown`](examples/markdown.rs) | `cargo run --example markdown`   | streaming `MarkdownState` + highlighted `CodeBlock`, following the stream until you scroll back |
 | [`select`](examples/select.rs)   | `cargo run --example select`     | `SelectState` + `SelectList` (stateful-widget idiom) |
-| [`overlay`](examples/overlay.rs)  | `cargo run --example overlay`    | `OverlaySpec` centered dialog + input routing      |
+| [`overlay`](examples/overlay.rs)  | `cargo run --example overlay`    | Target-following popover + input routing           |
 | [`primitives`](examples/primitives.rs) | `cargo run --example primitives` | owned dialog scene + form + arbitrary-child viewport |
 | [`ratatui_dashboard`](examples/ratatui_dashboard.rs) | `cargo run --example ratatui_dashboard` | mixed Ratatui widgets + responsive live data |
 | [`async_dashboard`](examples/async_dashboard.rs) | `cargo run --example async_dashboard --features async` | `AsyncRunner` polling on a Tokio runtime, no shared state |
