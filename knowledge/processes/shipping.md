@@ -73,7 +73,10 @@ suggestions.
    unless the change is docs-only or config-only with explicit justification.
 9. **Follow-ups surfaced.** TODOs, partial fixes, declined suggestions, missed
    edges, and spec/doc drift are explicitly listed under **Follow-ups** in the PR
-   body (or `"No follow-ups."` if none).
+   body (or `"No follow-ups."` if none). Internally discovered follow-ups do not
+   become GitHub issues: keep them in the PR, durable knowledge, or local
+   planning. Create a new issue only when a maintainer explicitly requests it;
+   otherwise update an existing externally reported issue when one applies.
 10. **Safe landing.** CI is green before the change lands, and the change lands
     as a **single commit** — squash-merged from a PR, or squashed locally before
     a direct push. A branch's working history is the author's; `main`'s history

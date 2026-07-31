@@ -16,6 +16,14 @@
   the following frame boundary. Dynamic component trees therefore cannot keep
   routing input to a stale target or resurrect it when it later returns.
 
+- **Internal follow-ups stay out of GitHub issues**
+
+- Work discovered during maintainer or agent tasks stays in the current PR,
+  durable knowledge, or local planning. A new GitHub issue requires an explicit
+  maintainer request; existing externally reported issues may still be updated.
+  This keeps the public tracker for intentional external coordination rather
+  than exposing internal scratch queues.
+
 ## 2026-07-30
 
 - **Render-time facts stay in render-time components**
