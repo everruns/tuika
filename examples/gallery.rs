@@ -98,7 +98,7 @@ fn build(frame: u64, theme: &Theme) -> tuika::Element {
                     // full-row selection, caret gutter (flex solver owns widths).
                     node({
                         let mut sel = SelectState::new();
-                        sel.select(1);
+                        sel.select(Some(1));
                         let columns = vec![
                             Column::fixed(Span::styled("branch", theme.muted_style()), 8),
                             Column::auto(Span::styled("ahead", theme.muted_style())),

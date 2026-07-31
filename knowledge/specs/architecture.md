@@ -82,9 +82,11 @@ shape rather than invent a third.
 
 ## Content the host lays out: lines vs items
 
-Two viewport primitives exist on purpose. `Scroll` windows pre-wrapped
-`Line`s — one content row per line, so its arithmetic is trivial and it can
-paint O(viewport) without measuring anything. `ItemScroll` windows `Element`s:
+Two viewport primitives exist on purpose. `Scroll` windows `Line`s. Its default
+mode treats one input line as one content row and can paint O(viewport) without
+measuring anything; its opt-in wrapping mode reflows owned lines at render width
+and derives the row window then, because width does not exist earlier.
+`ItemScroll` windows `Element`s:
 each entry is measured at the render width and scrolled by row, so an entry
 taller than the space left clips at the edge rather than snapping to an item
 boundary.
@@ -94,13 +96,13 @@ bordered panels, tables, diffs, or nested layouts cannot be expressed as lines
 without the host drawing box glyphs into strings — reimplementing layout in a
 place the solver cannot see. Chat and agent UIs are the archetype.
 
-The cost of measuring items is real, so the ownership split mirrors `Scroll`:
-the owned constructor measures every item every frame; the windowed one takes
-the visible slice plus a host-supplied content height, for a host keeping its
-own height cache. Because item heights depend on width, the scrollbar's column
-is reserved whenever the bar is enabled — not only while content overflows —
-so the appearance of a bar cannot silently re-wrap and re-measure everything
-above it.
+The cost of measuring items is real, so the ownership split mirrors unwrapped
+`Scroll`: the owned constructor measures every item every frame; the windowed
+one takes the visible slice plus a host-supplied content height, for a host
+keeping its own height cache. Because item heights depend on width, the
+scrollbar's column is reserved whenever the bar is enabled — not only while
+content overflows — so the appearance of a bar cannot silently re-wrap and
+re-measure everything above it.
 
 ## Input and focus
 

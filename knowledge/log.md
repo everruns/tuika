@@ -1,5 +1,21 @@
 # Knowledge Log
 
+## 2026-07-30
+
+- **Render-time facts stay in render-time components**
+
+- Tables now derive their default row window from the assigned rectangle, and
+  wrapped scrolling reflows owned lines at render width. Requiring either
+  height or width at construction forced hosts to create wrapper `View`s whose
+  only purpose was to pass geometry back into a component.
+- Selection state is optional, matching ratatui's model, and per-instance
+  selection styles represent local focus/hover/inactive state without turning
+  those stateful distinctions into global theme policy.
+- ratatui `Line` style remains the base layer under each `Span` style throughout
+  these render paths, and boxed titles follow ratatui's inset and truncation.
+  These details are part of the interoperability promise, not cosmetic
+  preferences.
+
 ## 2026-07-25
 
 - **OKF v0.2 compliance**: Declared the bundle version, normalized this log

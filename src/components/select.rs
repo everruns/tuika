@@ -1,9 +1,10 @@
 //! Selectable list (Pi's `SelectList`).
 //!
-//! [`SelectState`] persists the highlighted index and handles up/down/wrap
-//! navigation; [`SelectList`] renders the options, marking the current one with
-//! the theme selection style and a caret. Enter is surfaced to the host via
-//! [`SelectOutcome`] so the caller decides what "confirm" means.
+//! [`SelectState`] persists an optional highlighted index and handles
+//! up/down/wrap navigation; [`SelectList`] renders the options, marking the
+//! current one with a theme-default or instance selection style and a caret.
+//! Enter is surfaced to the host via [`SelectOutcome`] so the caller decides
+//! what "confirm" means.
 
 use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
@@ -25,35 +26,35 @@ pub enum SelectOutcome {
     Cancelled,
 }
 
-/// Persisted selection index for one list.
+/// Persisted optional selection index for one list.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SelectState {
-    selected: usize,
+    selected: Option<usize>,
 }
 
 impl SelectState {
     /// A fresh state with the first row highlighted.
     pub fn new() -> Self {
-        Self { selected: 0 }
+        Self { selected: Some(0) }
     }
 
-    /// The currently highlighted index.
-    pub fn selected(&self) -> usize {
+    /// The currently highlighted index, or `None` when no row is selected.
+    pub fn selected(&self) -> Option<usize> {
         self.selected
     }
 
-    /// Set the highlighted index directly. Lets a host drive the selection from
-    /// its own state (e.g. mirroring an external index into the list).
-    pub fn select(&mut self, index: usize) {
+    /// Set or clear the highlighted index directly. Lets a host drive the
+    /// selection from its own optional state.
+    pub fn select(&mut self, index: Option<usize>) {
         self.selected = index;
     }
 
     /// Keep the index in range as the list length changes.
     pub fn clamp(&mut self, len: usize) {
         if len == 0 {
-            self.selected = 0;
-        } else if self.selected >= len {
-            self.selected = len - 1;
+            self.selected = None;
+        } else if self.selected.is_some_and(|selected| selected >= len) {
+            self.selected = Some(len - 1);
         }
     }
 
@@ -61,16 +62,18 @@ impl SelectState {
     /// non-wrapping stepping primitive; use it when a picker holds at the ends
     /// rather than wrapping the way [`handle`](Self::handle) does.
     pub fn move_up(&mut self) {
-        self.selected = self.selected.saturating_sub(1);
+        if let Some(selected) = self.selected {
+            self.selected = Some(selected.saturating_sub(1));
+        }
     }
 
     /// Move the highlight down one row, clamping at the last of `len` rows (no
     /// wrap). The non-wrapping counterpart to [`move_up`](Self::move_up).
     pub fn move_down(&mut self, len: usize) {
         if len == 0 {
-            self.selected = 0;
-        } else {
-            self.selected = (self.selected + 1).min(len - 1);
+            self.selected = None;
+        } else if let Some(selected) = self.selected {
+            self.selected = Some((selected + 1).min(len - 1));
         }
     }
 
@@ -87,25 +90,29 @@ impl SelectState {
         }
         match k.code {
             KeyCode::Up => {
-                self.selected = if self.selected == 0 {
-                    len - 1
-                } else {
-                    self.selected - 1
-                };
+                self.selected = Some(match self.selected {
+                    Some(0) | None => len - 1,
+                    Some(selected) => selected - 1,
+                });
                 SelectOutcome::Moved(EventFlow::Consumed)
             }
             KeyCode::Down => {
-                self.selected = (self.selected + 1) % len;
+                self.selected = Some(self.selected.map_or(0, |selected| (selected + 1) % len));
                 SelectOutcome::Moved(EventFlow::Consumed)
             }
-            KeyCode::Enter => SelectOutcome::Confirmed(self.selected),
+            KeyCode::Enter => self.selected.map_or(
+                SelectOutcome::Moved(EventFlow::Ignored),
+                SelectOutcome::Confirmed,
+            ),
             KeyCode::Esc => SelectOutcome::Cancelled,
             _ => SelectOutcome::Moved(EventFlow::Ignored),
         }
     }
 }
 
-/// Renders `items` with the selected row highlighted. With a [`viewport`] set,
+/// Renders `items` with the selected row highlighted. A state whose
+/// [`selected`](SelectState::selected) value is `None` draws no caret or band.
+/// With a [`viewport`] set,
 /// a list taller than the viewport is windowed around the selection and a
 /// scrollbar is drawn — the primitive for long pickers (hundreds of models).
 ///
@@ -130,10 +137,11 @@ impl SelectState {
 /// ![select demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/select.gif)
 pub struct SelectList {
     items: Vec<Line<'static>>,
-    selected: usize,
+    selected: Option<usize>,
     /// Max visible rows; `None` shows the whole list.
     viewport: Option<u16>,
     scrollbar: bool,
+    selection_style: Option<Style>,
 }
 
 impl SelectList {
@@ -144,6 +152,7 @@ impl SelectList {
             selected: state.selected(),
             viewport: None,
             scrollbar: true,
+            selection_style: None,
         }
     }
 
@@ -160,6 +169,13 @@ impl SelectList {
         self
     }
 
+    /// Override the selected row's style. By default the theme's selection
+    /// style is used.
+    pub fn selection_style(mut self, style: Style) -> Self {
+        self.selection_style = Some(style);
+        self
+    }
+
     /// The `(start, visible_rows)` window: the whole list unless a `viewport`
     /// smaller than the list is set, in which case a slice centered on the
     /// selection and clamped to the ends.
@@ -168,7 +184,11 @@ impl SelectList {
         match self.viewport {
             Some(v) if total > v as usize => {
                 let v = (v as usize).max(1);
-                let start = self.selected.saturating_sub(v / 2).min(total - v);
+                let start = self
+                    .selected
+                    .unwrap_or(0)
+                    .saturating_sub(v / 2)
+                    .min(total - v);
                 (start, v)
             }
             _ => (0, total),
@@ -199,6 +219,9 @@ impl View for SelectList {
             area.width
         };
         let row_right = area.x.saturating_add(row_width);
+        let selection_style = self
+            .selection_style
+            .unwrap_or_else(|| ctx.theme.selection_style());
         for i in 0..rows {
             let idx = start + i;
             let Some(item) = self.items.get(idx) else {
@@ -208,14 +231,14 @@ impl View for SelectList {
             if y >= area.bottom() {
                 break;
             }
-            let selected = idx == self.selected;
+            let selected = self.selected == Some(idx);
             if selected {
                 let mut line = surface.child(Rect::new(area.x, y, row_width, 1));
-                line.fill(ctx.theme.selection_style());
+                line.fill(selection_style);
             }
             let caret = if selected { '›' } else { ' ' };
             let caret_style = if selected {
-                ctx.theme.selection_style()
+                selection_style
             } else {
                 ctx.theme.muted_style()
             };
@@ -226,9 +249,9 @@ impl View for SelectList {
                     break;
                 }
                 let style = if selected {
-                    span.style.patch(ctx.theme.selection_style())
+                    item.style.patch(span.style).patch(selection_style)
                 } else {
-                    span.style
+                    item.style.patch(span.style)
                 };
                 x = surface.set_string(x, y, span.content.as_ref(), style);
             }
@@ -288,12 +311,12 @@ mod tests {
         let down = Event::Key(Key::new(KeyCode::Down));
         let up = Event::Key(Key::new(KeyCode::Up));
         assert_eq!(s.handle(&up, 3), SelectOutcome::Moved(EventFlow::Consumed));
-        assert_eq!(s.selected(), 2); // wrapped from 0 to last
+        assert_eq!(s.selected(), Some(2)); // wrapped from 0 to last
         assert_eq!(
             s.handle(&down, 3),
             SelectOutcome::Moved(EventFlow::Consumed)
         );
-        assert_eq!(s.selected(), 0); // wrapped back
+        assert_eq!(s.selected(), Some(0)); // wrapped back
         let enter = Event::Key(Key::new(KeyCode::Enter));
         assert_eq!(s.handle(&enter, 3), SelectOutcome::Confirmed(0));
         let esc = Event::Key(Key::new(KeyCode::Esc));
@@ -305,28 +328,60 @@ mod tests {
         let mut s = SelectState::new();
         // Down steps forward, clamping at the last of `len` rows (no wrap).
         s.move_down(3);
-        assert_eq!(s.selected(), 1);
+        assert_eq!(s.selected(), Some(1));
         s.move_down(3);
-        assert_eq!(s.selected(), 2);
+        assert_eq!(s.selected(), Some(2));
         s.move_down(3);
-        assert_eq!(s.selected(), 2); // held at the bottom, not wrapped
+        assert_eq!(s.selected(), Some(2)); // held at the bottom, not wrapped
         // Up steps back, clamping at the top.
         s.move_up();
-        assert_eq!(s.selected(), 1);
+        assert_eq!(s.selected(), Some(1));
         s.move_up();
         s.move_up();
-        assert_eq!(s.selected(), 0); // held at the top, not wrapped
+        assert_eq!(s.selected(), Some(0)); // held at the top, not wrapped
         // Degenerate: an empty list stays at 0.
         s.move_down(0);
-        assert_eq!(s.selected(), 0);
+        assert_eq!(s.selected(), None);
     }
 
     #[test]
     fn select_state_select_sets_index_directly() {
         // A host can drive the highlight from its own state.
         let mut s = SelectState::new();
-        s.select(2);
-        assert_eq!(s.selected(), 2);
+        s.select(Some(2));
+        assert_eq!(s.selected(), Some(2));
+    }
+
+    #[test]
+    fn select_state_and_list_support_no_selection() {
+        assert_eq!(SelectState::default().selected(), None);
+        let mut state = SelectState::new();
+        state.select(None);
+        assert_eq!(state.selected(), None);
+        assert_eq!(
+            state.handle(&Event::Key(Key::new(KeyCode::Enter)), 2),
+            SelectOutcome::Moved(EventFlow::Ignored)
+        );
+
+        let list = SelectList::new(vec![Line::from("a"), Line::from("b")], &state);
+        let theme = Theme::default();
+        let buf = crate::testing::render(&list, 5, 2, &theme);
+        assert!((0..2).all(|y| buf[(0, y)].symbol() == " "));
+        assert!((0..2).all(|y| buf[(0, y)].bg != theme.selection_bg));
+    }
+
+    #[test]
+    fn select_list_accepts_an_instance_selection_style() {
+        let state = SelectState::new();
+        let style = Style::default().fg(ratatui_core::style::Color::Blue);
+        let list = SelectList::new(vec![Line::from("a")], &state).selection_style(style);
+        let buf = crate::testing::render(&list, 5, 1, &Theme::default());
+        assert_eq!(buf[(0, 0)].fg, ratatui_core::style::Color::Blue);
+        assert!(
+            !buf[(0, 0)]
+                .modifier
+                .contains(ratatui_core::style::Modifier::BOLD)
+        );
     }
 
     #[test]
@@ -352,7 +407,7 @@ mod tests {
         // 20 items, viewport of 4: the selection must always be on screen.
         let items: Vec<Line> = (0..20).map(|i| Line::from(format!("item{i}"))).collect();
         let mut state = SelectState::new();
-        state.select(12);
+        state.select(Some(12));
         let theme = Theme::default();
         let list = SelectList::new(items.clone(), &state).viewport(4);
         // Windowed height is the viewport, not the full list.

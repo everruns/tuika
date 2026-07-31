@@ -15,8 +15,9 @@
 //! Chrome follows the theme by default but is overridable, the same
 //! theme-by-default / explicit-override pattern as [`Boxed::border_color`]:
 //! [`Table::caret`] sets the gutter marker glyph, [`Table::header_style`]
-//! restyles the header row, and [`Table::preserve_selection_fg`] keeps each
-//! column's own color under the selection highlight.
+//! restyles the header row, [`Table::selection_style`] customizes the active
+//! row, and [`Table::preserve_selection_fg`] keeps each column's own color
+//! under the selection highlight.
 //!
 //! [`SelectList`]: crate::components::SelectList
 //! [`Boxed::border_color`]: crate::components::Boxed::border_color
@@ -96,7 +97,7 @@ impl Column {
 pub struct Table {
     columns: Vec<Column>,
     rows: Vec<Vec<Line<'static>>>,
-    selected: usize,
+    selected: Option<usize>,
     viewport: Option<u16>,
     scrollbar: bool,
     gutter: bool,
@@ -105,6 +106,7 @@ pub struct Table {
     caret: char,
     header_style: Option<Style>,
     preserve_selection_fg: bool,
+    selection_style: Option<Style>,
 }
 
 impl Table {
@@ -122,11 +124,12 @@ impl Table {
             caret: '›',
             header_style: None,
             preserve_selection_fg: false,
+            selection_style: None,
         }
     }
 
-    /// Cap the visible data rows to `rows`, windowing a longer table around the
-    /// selection so the selected row stays on screen.
+    /// Cap the visible data rows to `rows`. By default the table fills its
+    /// assigned body height; this adds a smaller upper bound when desired.
     pub fn viewport(mut self, rows: u16) -> Self {
         self.viewport = Some(rows.max(1));
         self
@@ -180,6 +183,13 @@ impl Table {
         self
     }
 
+    /// Override the selected row's style. By default the theme's selection
+    /// style is used.
+    pub fn selection_style(mut self, style: Style) -> Self {
+        self.selection_style = Some(style);
+        self
+    }
+
     /// Cells the caret gutter occupies (caret + space), or 0 when hidden.
     fn gutter_width(&self) -> u16 {
         if self.gutter { 2 } else { 0 }
@@ -222,12 +232,21 @@ impl Table {
     /// The `(start, visible_rows)` data-row window: the whole table unless a
     /// [`viewport`](Self::viewport) smaller than the row count is set, in which
     /// case a slice centered on the selection and clamped to the ends.
-    fn window(&self) -> (usize, usize) {
+    fn window(&self, available_rows: u16) -> (usize, usize) {
         let total = self.rows.len();
-        match self.viewport {
-            Some(v) if total > v as usize => {
-                let v = (v as usize).max(1);
-                let start = self.selected.saturating_sub(v / 2).min(total - v);
+        let viewport = self
+            .viewport
+            .map_or(available_rows, |rows| rows.min(available_rows));
+        match viewport as usize {
+            v if total > v => {
+                if v == 0 {
+                    return (0, 0);
+                }
+                let start = self
+                    .selected
+                    .unwrap_or(0)
+                    .saturating_sub(v / 2)
+                    .min(total - v);
                 (start, v)
             }
             _ => (0, total),
@@ -254,9 +273,10 @@ impl Table {
                 if x >= right {
                     break;
                 }
+                let style = cell.style.patch(span.style);
                 let style = match row_style {
-                    Some(sel) => span.style.patch(sel),
-                    None => span.style,
+                    Some(sel) => style.patch(sel),
+                    None => style,
                 };
                 x = surface.set_string(x, y, span.content.as_ref(), style);
             }
@@ -266,7 +286,8 @@ impl Table {
 
 impl View for Table {
     fn measure(&self, available: Size) -> Size {
-        let (_, rows) = self.window();
+        let available_rows = available.height.saturating_sub(self.header_rows());
+        let (_, rows) = self.window(available_rows);
         let cols_w: u16 = (0..self.columns.len())
             .map(|c| self.column_intrinsic(c))
             .fold(0, u16::saturating_add);
@@ -285,7 +306,8 @@ impl View for Table {
         if area.width == 0 || area.height == 0 || self.columns.is_empty() {
             return;
         }
-        let (start, win_rows) = self.window();
+        let body_rows = area.height.saturating_sub(self.header_rows());
+        let (start, win_rows) = self.window(body_rows);
         let overflow = self.rows.len() > win_rows;
         let gutter_w = self.gutter_width();
         let scrollbar_w = u16::from(overflow && self.scrollbar);
@@ -324,16 +346,20 @@ impl View for Table {
             if y >= area.bottom() {
                 break;
             }
-            let selected = idx == self.selected;
+            let selected = self.selected == Some(idx);
             let row_style = if selected {
-                let sel = ctx.theme.selection_style();
+                let sel = self
+                    .selection_style
+                    .unwrap_or_else(|| ctx.theme.selection_style());
                 // Highlight spans the whole row: gutter, columns, and gaps.
                 let mut band = surface.child(Rect::new(area.x, y, row_span_w, 1));
                 band.fill(sel);
                 // Cells get the full selection style (uniform fg) by default, or
                 // just its background when preserving each column's own color.
                 Some(if self.preserve_selection_fg {
-                    Style::default().bg(ctx.theme.selection_bg)
+                    let mut preserve_fg = sel;
+                    preserve_fg.fg = None;
+                    preserve_fg
                 } else {
                     sel
                 })
@@ -343,7 +369,8 @@ impl View for Table {
             if self.gutter {
                 let caret = if selected { self.caret } else { ' ' };
                 let caret_style = if selected {
-                    ctx.theme.selection_style()
+                    self.selection_style
+                        .unwrap_or_else(|| ctx.theme.selection_style())
                 } else {
                     ctx.theme.muted_style()
                 };
@@ -420,7 +447,7 @@ mod tests {
     fn table_renders_header_and_marks_selection() {
         let (cols, rows) = sample();
         let mut state = SelectState::new();
-        state.select(1);
+        state.select(Some(1));
         let table = Table::new(cols, rows, &state);
         let mut buf = buffer(20, 4);
         let theme = Theme::default();
@@ -442,7 +469,7 @@ mod tests {
         let (cols, rows) = sample();
         let t = rainbow_theme();
         let mut state = SelectState::new();
-        state.select(0);
+        state.select(Some(0));
         let table = Table::new(cols, rows, &state);
         let mut buf = buffer(20, 4);
         let area = buf.area;
@@ -482,7 +509,7 @@ mod tests {
             .map(|i| vec![Line::from(format!("row{i}"))])
             .collect();
         let mut state = SelectState::new();
-        state.select(15);
+        state.select(Some(15));
         let table = Table::new(cols, rows, &state).viewport(4);
         let theme = Theme::default();
         // Height = header (1) + viewport (4).
@@ -497,12 +524,27 @@ mod tests {
     }
 
     #[test]
+    fn table_defaults_to_the_assigned_body_height() {
+        let cols = vec![Column::auto("n")];
+        let rows = (0..20)
+            .map(|i| vec![Line::from(format!("row{i}"))])
+            .collect();
+        let mut state = SelectState::new();
+        state.select(Some(15));
+        let table = Table::new(cols, rows, &state);
+        let buf = crate::testing::render(&table, 20, 5, &Theme::default());
+        let text = crate::testing::grid(&buf);
+        assert!(text.contains("row15"), "selection visible:\n{text}");
+        assert!((1..5).any(|y| matches!(buf[(19, y)].symbol(), "█" | "│")));
+    }
+
+    #[test]
     fn table_navigates_with_select_state() {
         // The table shares SelectState with SelectList — arrow keys move the row.
         let (_, rows) = sample();
         let mut state = SelectState::new();
         state.handle(&Event::Key(Key::new(KeyCode::Down)), rows.len());
-        assert_eq!(state.selected(), 1);
+        assert_eq!(state.selected(), Some(1));
     }
 
     #[test]
@@ -522,7 +564,7 @@ mod tests {
     fn table_custom_caret_marks_selection() {
         let (cols, rows) = sample();
         let mut state = SelectState::new();
-        state.select(0);
+        state.select(Some(0));
         let table = Table::new(cols, rows, &state).caret('▶');
         let mut buf = buffer(20, 3);
         let theme = Theme::default();
@@ -595,5 +637,50 @@ mod tests {
         // Default (off): the selected row is recolored to the uniform selection fg.
         let (fg_off, _) = render(false);
         assert_eq!(fg_off, t.selection_fg, "default overwrites cell fg");
+    }
+
+    #[test]
+    fn table_draws_no_selection_band_when_state_is_none() {
+        let (cols, rows) = sample();
+        let mut state = SelectState::new();
+        state.select(None);
+        let t = rainbow_theme();
+        let table = Table::new(cols, rows, &state);
+        let buf = crate::testing::render(&table, 20, 4, &t);
+        assert!((1..4).all(|y| buf[(0, y)].symbol() == " "));
+        assert!((1..4).all(|y| buf[(0, y)].bg != t.selection_bg));
+    }
+
+    #[test]
+    fn table_accepts_an_instance_selection_style() {
+        use ratatui_core::style::{Color, Modifier};
+        let (cols, rows) = sample();
+        let state = SelectState::new();
+        let table =
+            Table::new(cols, rows, &state).selection_style(Style::default().fg(Color::Blue));
+        let buf = crate::testing::render(&table, 20, 4, &Theme::default());
+        assert_eq!(buf[(0, 1)].fg, Color::Blue);
+        assert!(!buf[(0, 1)].modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn table_cells_compose_line_style_under_span_style() {
+        use ratatui_core::style::{Color, Modifier};
+        let cols = vec![Column::auto("c")];
+        let rows = vec![vec![
+            Line::from(vec![
+                Span::raw("a"),
+                Span::styled("b", Style::default().fg(Color::Blue)),
+            ])
+            .style(Style::default().fg(Color::Red).bold()),
+        ]];
+        let mut state = SelectState::new();
+        state.select(None);
+        let table = Table::new(cols, rows, &state).gutter(false);
+        let buf = crate::testing::render(&table, 4, 2, &Theme::default());
+        assert_eq!(buf[(0, 1)].fg, Color::Red);
+        assert_eq!(buf[(1, 1)].fg, Color::Blue);
+        assert!(buf[(0, 1)].modifier.contains(Modifier::BOLD));
+        assert!(buf[(1, 1)].modifier.contains(Modifier::BOLD));
     }
 }
