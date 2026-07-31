@@ -17,6 +17,10 @@ repository, so keep it short, factual, and project-specific.
 - Keep changes small, PR-sized, testable, and runnable locally.
 - For bug fixes, write or update a failing test before the fix when practical.
 - Important decisions belong as concise comments near the relevant code, not in scratch docs.
+- Never create GitHub issues for follow-ups discovered during internal or
+  maintainer work. Keep them in the current PR's **Follow-ups**, durable
+  knowledge, or local planning. Create an issue only when a maintainer
+  explicitly asks; otherwise update an existing externally reported issue.
 - tuika is pre-1.0, but it is a **published library**: every `pub` item is API. A
   breaking change is allowed in a minor release, and must be called out in the
   changelog rather than slipped in.
