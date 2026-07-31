@@ -405,6 +405,22 @@ const DEMOS: &[Demo] = &[
         scene_status_bar,
     ),
     demo(
+        "key_hints",
+        "KeyHints",
+        "priority-aware fitting at constrained widths",
+        10,
+        false,
+        scene_key_hints,
+    ),
+    demo(
+        "keymap_help",
+        "KeymapHelp",
+        "complete help generated from active bindings",
+        12,
+        false,
+        scene_keymap_help,
+    ),
+    demo(
         "textinput",
         "TextInput",
         "multi-line edit model",
@@ -1248,6 +1264,44 @@ fn scene_tabs(frame: u64, theme: &Theme) -> Element {
         col(gap = 1) {
             fixed(1) { node(Tabs::new(labels, &state)) }
             fixed(1) { node(Text::new(vec![Line::from(Span::styled("←/→ or Tab to switch", theme.muted_style()))])) }
+        }
+    }
+}
+
+fn demo_keymap() -> Keymap<&'static str> {
+    Keymap::new()
+        .layer(
+            Layer::new("global")
+                .bind_labeled("?", "open help", "help")
+                .bind_labeled("q", "quit", "quit"),
+        )
+        .layer(
+            Layer::new("search")
+                .priority(10)
+                .bind_labeled("enter", "open result", "open")
+                .bind_labeled("ctrl+n", "next result", "next")
+                .bind_labeled("ctrl+p", "previous result", "previous"),
+        )
+}
+
+fn scene_key_hints(_frame: u64, theme: &Theme) -> Element {
+    view! {
+        col(gap = 1) {
+            node(Text::new(vec![Line::from(Span::styled("Full width", theme.accent_style()))]))
+            node(KeyHints::from_keymap(&demo_keymap()))
+            row(gap = 2) {
+                fixed(12) { node(Text::new(vec![Line::from(Span::styled("28 columns", theme.muted_style()))])) }
+                fixed(28) { node(KeyHints::from_keymap(&demo_keymap())) }
+            }
+        }
+    }
+}
+
+fn scene_keymap_help(_frame: u64, theme: &Theme) -> Element {
+    view! {
+        col(gap = 1) {
+            node(Text::new(vec![Line::from(Span::styled("Active bindings", theme.accent_style()))]))
+            node(KeymapHelp::from_keymap(&demo_keymap()))
         }
     }
 }
