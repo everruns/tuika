@@ -53,6 +53,55 @@ terminal UI with tuika without requiring knowledge of repository internals.
   a reader arrives at without being sent, and it may name internal machinery
   where a contributor would otherwise be asked for something unexplained.
 
+### Every public component is in the gallery
+
+`docs/components.md` carries **every** component: a name, a description, an API
+link, and its demo — including a component that ships in a companion crate,
+whose entry names the crate. A reader asking "does tuika have an X view?" must be
+able to answer it from one page, without knowing how the workspace is split
+across published crates. A component whose only documentation is its rustdoc is
+undiscoverable to someone who does not already know it exists.
+
+The gallery stays presentational: an entry describes and shows, and links to a
+guide when the surface is larger than one entry.
+
+### The README indexes; the guides explain
+
+`README.md` is the entry point, and its job is to say what exists and where to
+read about it. Detail belongs in `docs/`. A feature earns at most a short
+paragraph and a link there, plus a row in the component table — not a code
+sample, and not a screenshot per entry point. Two symptoms mean the boundary has
+slipped: an example that appears in both the README and a guide, and a README
+section that grows every time the feature does.
+
+The guides take the opposite posture: `docs/markdown.md` and its siblings are
+where examples, options, caveats, and recordings accumulate.
+
+### A demo sits with what it demonstrates
+
+A recording is evidence for a claim, so it goes immediately after the prose or
+API it depicts, with a line saying what to look at when the frame is not
+self-evident. A recording placed above the first section, or on a page whose
+subject it only partly covers, reads as chrome and is skipped — a demo nobody
+connects to a feature is as good as absent.
+
+The same rule decides which page: the seam's demo goes where the seam is
+documented, the component's where the component is.
+
+### rustdoc carries an example and a demo
+
+Every public component and every host-facing seam documents itself twice over:
+
+- **An example that compiles** — a doctest, so it cannot rot silently. For a
+  seam, the example shows an *implementation*, not only how to attach one; the
+  reader's question is what their `impl` has to do.
+- **The demo**, embedded by absolute `raw.githubusercontent.com` URL so it
+  resolves on docs.rs, plus the command that runs the example it came from.
+
+docs.rs is where most readers meet the API, and it cannot follow a repository
+relative link. Rustdoc that only names a guide leaves them with nothing to look
+at.
+
 ## Direction of links
 
 The public documentation boundary is one-way:
@@ -101,8 +150,11 @@ staged by hand. The rule is that the *scene registry is the source of truth*:
   example source instead of embedding the full recording; the recording belongs
   on the relevant guide or showcase page. These sit outside the `demo -- check`
   invariant, which is about single-component scenes and their gallery references.
-  The `tuika-mermaid` recording follows this rule and ships with that companion
-  crate so its crates.io README can show the integration it documents.
+  The `tuika-mermaid` and `tuika-html` recordings follow this rule and ship with
+  their companion crates so each crates.io README can show what it documents.
+  A crate with more than one entry point records more than one scene —
+  `tuika-html` has a demo for the markdown seam and another for its standalone
+  component, because one recording cannot answer both questions.
 - `tuika-codeformatters` follows the same example-driven rule for its language
   gallery; `scripts/gen-language-demo.sh` records the real `languages` example.
 - `scripts/gen-all-demos.sh` is the repository-wide inventory and regeneration
@@ -233,7 +285,7 @@ determines whether the packaged copy is ever read:
 
 So a member needs an `exclude` only when it has an absolute-URL asset; what every
 published member does need is a case in `tests/packaging.rs`, which drives the
-real `cargo package --list` for all three and asserts both directions.
+real `cargo package --list` for all four and asserts both directions.
 
 ### Capture toolchain
 

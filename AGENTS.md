@@ -124,8 +124,11 @@ tuika's own suite covers more:
 ## Docs layout
 
 - `docs/components.md` — the public component gallery (name, description, demo
-  per component). Keep it **presentational only**: no build or regeneration
-  instructions belong here (they live in this file).
+  per component), covering **every** component, including those published in a
+  companion crate. Keep it **presentational only**: no build or regeneration
+  instructions belong here (they live in this file). The README links to entries
+  here rather than explaining a component itself; see
+  `knowledge/specs/documentation.md`.
 - `docs/markdown.md` — the markdown guide: streaming, GFM tables, the
   highlighter seam, link policy, and images in one page. It reuses the gallery's
   `DEMOS` recordings, so it is inside the `demo -- check` reference invariant.

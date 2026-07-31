@@ -120,6 +120,10 @@ impl Default for Limits {
 ///     .block_renderer(&renderer);
 /// # let _ = doc;
 /// ```
+///
+/// ![HTML blocks in markdown](https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-html/examples/html_markdown/html.png)
+///
+/// `cargo run -p tuika-html --example html_markdown` is the scene above.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct HtmlRenderer {
     limits: Limits,
@@ -191,6 +195,10 @@ impl FencedBlockRenderer for HtmlRenderer {
 /// let sheet = StyleSheet::from_theme(&theme);
 /// let lines = tuika_html::to_lines("<p>Hello <b>world</b></p>", 40, &theme, &sheet);
 /// assert_eq!(lines.len(), 1);
+///
+/// // Block elements are separated, and each is fitted to the width.
+/// let page = tuika_html::to_lines("<h1>Title</h1><p>Prose.</p>", 40, &theme, &sheet);
+/// assert_eq!(page.len(), 3); // heading, blank, prose
 /// ```
 pub fn to_lines(html: &str, width: u16, theme: &Theme, sheet: &StyleSheet) -> Vec<Line<'static>> {
     to_lines_with_limits(html, width, theme, sheet, Limits::default()).unwrap_or_default()

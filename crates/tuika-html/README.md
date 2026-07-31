@@ -7,8 +7,6 @@ blocks inside Markdown, and a standalone `Html` view. Built on
 them — which is exactly the dependency tuika core will not carry, and why this
 crate exists separately.
 
-<img src="examples/html_markdown/html.png" width="880" alt="HTML blocks rendered inside tuika Markdown: a details summary with a bullet list, a box-drawn table, and a quoted line with Unicode subscript and superscript">
-
 ## In Markdown
 
 `HtmlRenderer` implements both of tuika's markdown seams: `HtmlBlockRenderer`
@@ -25,6 +23,12 @@ let document = Markdown::new("<details><summary>Notes</summary>Body</details>")
     .block_renderer(&html);
 # let _ = document;
 ```
+
+Below, the `<details>`, the `<ul>` inside it, and the `<table>` are all raw HTML
+in a markdown document — laid out by the seam, beside markdown the renderer
+never sees:
+
+<img src="examples/html_markdown/html.png" width="880" alt="HTML blocks rendered inside tuika Markdown: a details summary with a bullet list, a box-drawn table, and a quoted line with Unicode subscript and superscript">
 
 Without a renderer attached, tuika drops block HTML — so adding this crate is
 purely additive. The presentational *inline* tags (`<b>`, `<a>`, `<br>`,

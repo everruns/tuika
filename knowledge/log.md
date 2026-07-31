@@ -48,6 +48,17 @@
 - Its example runs as a real app rather than printing a rendered grid: styling
   is half of what the crate does, and a plain-text dump discards all of it. The
   recording is a screenshot, since the scene is settled.
+- **Documentation placement is a rule, not a habit.** HTML landed correctly and
+  was documented by accretion: the block-seam recording sat as an unlabeled hero
+  above the crate README's first section, the `Html` component was missing from
+  the gallery entirely, and the root README grew code samples and screenshots
+  that belong in a guide. Every individual edit looked reasonable; the shape was
+  wrong. [Documentation](specs/documentation.md) now states the four rules that
+  were only ever implicit — every component appears in the gallery including
+  companion-crate ones, the README indexes while guides explain, a demo sits with
+  what it demonstrates, and rustdoc carries both a compiling example and the
+  demo. Written down because the gallery's own integrity check enforces asset
+  *existence*, never placement, so nothing failed while the docs drifted.
 - Two renderers for one vocabulary need one *observable* result: the crate's
   own `<sub>`/`<sup>` were left untransliterated, so the same document rendered
   `H₂O` through markdown and `H2O` through tuika-html. Separate implementations
