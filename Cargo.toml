@@ -40,8 +40,8 @@ categories = ["command-line-interface"]
 #    beside the `codex` example — total ~14 MiB and are consumed only from the
 #    repository by `docs/*.md` or absolute rustdoc URLs. rustdoc/docs.rs
 #    references none of them from its crate front page, so bundling them just
-#    bloats the tarball. Keep `hero.gif`, `demos/image.svg`, and
-#    `demos/split-footer.svg`: those are the only three the crates.io README
+#    bloats the tarball. Keep `logo.svg`, `hero.gif`, `demos/image.svg`, and
+#    `demos/split-footer.svg`: those are the four assets the crates.io README
 #    (`README.md`) embeds by relative path.
 # 2. Repository machinery. Since tuika is the root package, everything beside it
 #    in the repo would otherwise ship: internal knowledge, agent skills, CI

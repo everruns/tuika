@@ -1,4 +1,8 @@
-# tuika
+<p align="center">
+  <img src="logo.svg" width="144" alt="tuika logo: two offset rounded interface panels intersect at a gold anchor point">
+</p>
+
+<h1 align="center">tuika</h1>
 
 <div align="center">
 

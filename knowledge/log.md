@@ -2,6 +2,13 @@
 
 ## 2026-07-31
 
+- **A composable visual identity**
+
+- Added tuika's first logo: two offset interface panels meet at a gold anchor,
+  pairing the toolkit's base-view/overlay model with Everruns' navy-and-gold
+  visual language. The authored SVG is the canonical source and ships with the
+  crate because the crates.io README embeds it by relative path.
+
 - **Semantic styling is open and complete**
 
 - Toasts, diffs, and keymap hints now join markdown and panels under one
