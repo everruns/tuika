@@ -112,8 +112,8 @@ impl<T, F> View for LiveView<T, F>
 where
     F: Fn(&T) -> Element,
 {
-    fn measure(&self, available: Size) -> Size {
-        self.current().measure(available)
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        self.current().measure(available, ctx)
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {

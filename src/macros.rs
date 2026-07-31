@@ -223,7 +223,7 @@ mod tests {
     /// A `View` standing in for a component defined in some other crate.
     struct Star;
     impl View for Star {
-        fn measure(&self, _available: Size) -> Size {
+        fn measure(&self, _available: Size, _ctx: &RenderCtx) -> Size {
             Size::new(1, 1)
         }
         fn render(&self, area: Rect, surface: &mut Surface, _ctx: &RenderCtx) {
@@ -247,7 +247,7 @@ mod tests {
     struct BorrowedLabel<'a>(&'a str);
 
     impl View for BorrowedLabel<'_> {
-        fn measure(&self, available: Size) -> Size {
+        fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
             Size::new(
                 (self.0.len() as u16).min(available.width),
                 available.height.min(1),

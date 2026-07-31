@@ -60,7 +60,7 @@ pub struct Boxed<V: View = Element> {
     child: V,
     border: BorderStyle,
     border_color: Option<Color>,
-    padding: Padding,
+    padding: Option<Padding>,
     title: Option<Line<'static>>,
     title_bottom: Option<Line<'static>>,
     background: Option<Style>,
@@ -73,7 +73,7 @@ impl<V: View> Boxed<V> {
             child,
             border: BorderStyle::Rounded,
             border_color: None,
-            padding: Padding::symmetric(1, 0),
+            padding: None,
             title: None,
             title_bottom: None,
             background: None,
@@ -102,8 +102,12 @@ impl<V: View> Boxed<V> {
     }
 
     /// Set the padding between the border and the child.
+    ///
+    /// This explicit value takes precedence over the stylesheet's
+    /// [`Role::Panel`] padding. Without either, panels retain the default of one
+    /// horizontal cell and no vertical padding.
     pub fn padding(mut self, padding: Padding) -> Self {
-        self.padding = padding;
+        self.padding = Some(padding);
         self
     }
 
@@ -141,7 +145,13 @@ impl<V: View> Boxed<V> {
     }
 
     /// Interior rect available to the child after border + padding.
-    fn inner(&self, area: Rect) -> Rect {
+    fn resolved_padding(&self, ctx: &RenderCtx) -> Padding {
+        self.padding
+            .or(ctx.sheet.resolve(Role::Panel).padding)
+            .unwrap_or_else(|| Padding::symmetric(1, 0))
+    }
+
+    fn inner(&self, area: Rect, padding: Padding) -> Rect {
         let bordered = if self.has_border() {
             Rect {
                 x: area.x.saturating_add(1),
@@ -152,30 +162,31 @@ impl<V: View> Boxed<V> {
         } else {
             area
         };
-        self.padding.inner(bordered)
+        padding.inner(bordered)
     }
 
-    fn chrome(&self) -> Size {
+    fn chrome(&self, padding: Padding) -> Size {
         let border = if self.has_border() { 2 } else { 0 };
         Size::new(
-            self.padding.horizontal().saturating_add(border),
-            self.padding.vertical().saturating_add(border),
+            padding.horizontal().saturating_add(border),
+            padding.vertical().saturating_add(border),
         )
     }
 }
 
 impl<V: View> View for Boxed<V> {
-    fn measure(&self, available: Size) -> Size {
-        let chrome = self.chrome();
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        let chrome = self.chrome(self.resolved_padding(ctx));
         let inner_avail = Size::new(
             available.width.saturating_sub(chrome.width),
             available.height.saturating_sub(chrome.height),
         );
-        let content = self.child.measure(inner_avail);
+        let content = self.child.measure(inner_avail, ctx);
         Size::new(
             content.width.saturating_add(chrome.width),
             content.height.saturating_add(chrome.height),
         )
+        .clamp_to(available)
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
@@ -217,7 +228,7 @@ impl<V: View> View for Boxed<V> {
                 draw_title(surface, area, bottom, title, Alignment::Right);
             }
         }
-        let inner = self.inner(area);
+        let inner = self.inner(area, self.resolved_padding(ctx));
         let mut inner_surface = surface.child(inner);
         self.child.render(inner, &mut inner_surface, ctx);
     }
@@ -255,7 +266,7 @@ mod tests {
     use super::*;
     use crate::Surface;
     use crate::components::Text;
-    use crate::style::Theme;
+    use crate::style::{StyleBundle, StyleSheet, Theme};
     use crate::tests::support::{buffer, rainbow_theme, row};
     use crate::view::{RenderCtx, View, element};
     use ratatui_core::style::{Color, Modifier};
@@ -277,6 +288,40 @@ mod tests {
                 assert_eq!(buf[(w - 1, h - 1)].symbol(), "╯", "bottom-right at {w}x{h}");
             }
         }
+    }
+
+    #[test]
+    fn stylesheet_padding_affects_measurement_and_render_with_instance_precedence() {
+        let theme = Theme::default();
+        let sheet = StyleSheet {
+            panel: StyleBundle::new().padding(Padding::all(2)),
+            ..StyleSheet::from_theme(&theme)
+        };
+        let ctx = RenderCtx::new(&theme).with_sheet(sheet);
+        let styled = Boxed::new(element(Text::raw("x")));
+        assert_eq!(styled.measure(Size::new(20, 20), &ctx), Size::new(7, 7));
+
+        let mut buf = buffer(7, 7);
+        let area = buf.area;
+        styled.render(area, &mut Surface::new(&mut buf, area), &ctx);
+        assert_eq!(buf[(3, 3)].symbol(), "x");
+
+        let explicit = Boxed::new(element(Text::raw("x"))).padding(Padding::ZERO);
+        assert_eq!(explicit.measure(Size::new(20, 20), &ctx), Size::new(3, 3));
+        let mut buf = buffer(3, 3);
+        let area = buf.area;
+        explicit.render(area, &mut Surface::new(&mut buf, area), &ctx);
+        assert_eq!(buf[(1, 1)].symbol(), "x");
+
+        let oversized_sheet = StyleSheet {
+            panel: StyleBundle::new().padding(Padding::all(u16::MAX)),
+            ..StyleSheet::from_theme(&theme)
+        };
+        let oversized_ctx = RenderCtx::new(&theme).with_sheet(oversized_sheet);
+        assert_eq!(
+            styled.measure(Size::new(2, 2), &oversized_ctx),
+            Size::new(2, 2)
+        );
     }
 
     #[test]

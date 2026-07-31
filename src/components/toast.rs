@@ -165,7 +165,7 @@ impl<'a> ToastList<'a> {
 }
 
 impl View for ToastList<'_> {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let width = self
             .toasts
             .items
@@ -271,7 +271,12 @@ mod tests {
     fn empty_and_tiny_areas_do_not_panic() {
         let theme = Theme::default();
         let empty = Toasts::new(4);
-        assert_eq!(ToastList::new(&empty).measure(Size::new(40, 10)).height, 0);
+        assert_eq!(
+            ToastList::new(&empty)
+                .measure(Size::new(40, 10), &RenderCtx::new(&theme))
+                .height,
+            0
+        );
         let mut t = Toasts::new(4);
         t.push(ToastLevel::Info, "a very long notification message");
         for (w, h) in [(0u16, 0u16), (1, 1), (3, 1)] {

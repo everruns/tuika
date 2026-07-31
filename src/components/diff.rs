@@ -409,7 +409,7 @@ impl Diff {
 }
 
 impl View for Diff {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         Size::new(
             self.intrinsic_width().min(available.width),
             (self.rows.len() as u16).min(available.height),

@@ -61,9 +61,20 @@ block-HTML seam.
   Enter/Ctrl+J submission, and allocation-free borrowed text access.
 - `tuika::ui` re-exports `Rect`, `Color`, `Style`, `Modifier`, `Line`, and `Span`
   for custom views without a direct `ratatui-core` dependency.
+- `testing::render_with_sheet` renders consumer views under an explicit
+  stylesheet in the same hermetic buffer harness as `testing::render`.
 
 ### Changed
 
+- **Breaking:** `View::measure` now takes `&RenderCtx`, and every composition
+  container forwards the frame's active theme, stylesheet, and focus state.
+  Migrate `fn measure(&self, available: Size)` implementations to
+  `fn measure(&self, available: Size, ctx: &RenderCtx)`; callers likewise pass
+  the context used for rendering. `Flex::solve` now takes that context, and
+  `ItemScroll::{measure_height, measure_views}` take it as their final argument.
+- `Markdown` and the companion `tuika-html::Html` view now measure with the same
+  theme and stylesheet they render with. `Boxed` implements stylesheet panel
+  padding as real layout; an explicit `.padding(...)` wins over the stylesheet.
 - `element`, `view!`, and composition containers now preserve borrowed child
   views at any depth. Existing owned trees continue to use `Element`; borrowed
   trees use the same builders and are bounded to their frame lifetime.

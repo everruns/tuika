@@ -126,16 +126,19 @@ use tuika::prelude::*;
 
 let theme = Theme::default();
 let sheet = StyleSheet {
-    panel: StyleBundle::new().fg(theme.accent_alt).bg(theme.surface),
+    panel: StyleBundle::new()
+        .fg(theme.accent_alt)
+        .bg(theme.surface)
+        .padding(Padding::all(2)),
     ..StyleSheet::from_theme(&theme)
 };
 ```
 
-Only **paint-time** attributes are stylesheet-owned. A component's `measure`
-runs without a render context, so choices that change a component's footprint —
-whether a border exists, how much padding — stay instance-level (e.g.
-`Boxed::border`, `Boxed::padding`); the sheet owns color, background, and text
-modifiers.
+Measurement and rendering receive the same context, so the panel role's padding
+changes both the size a `Boxed` requests and the inner rectangle it paints.
+`Boxed::padding` is the local override when one panel needs different spacing.
+Whether a border exists remains instance-level (`Boxed::border`); color and
+text modifiers remain ordinary paint-time rules.
 
 ## Side by side
 

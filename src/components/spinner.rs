@@ -73,7 +73,7 @@ impl Spinner {
 }
 
 impl View for Spinner {
-    fn measure(&self, _available: Size) -> Size {
+    fn measure(&self, _available: Size, _ctx: &RenderCtx) -> Size {
         Size::new(1, 1)
     }
 

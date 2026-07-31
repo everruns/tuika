@@ -302,7 +302,7 @@ impl Scroll {
 }
 
 impl View for Scroll {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         // `Size` is a terminal-cell extent (`u16`); a transcript can be taller
         // than that. Saturate — the intrinsic hint only matters when the scroll
         // is not a flex `grow` child, and a viewport is never `u16::MAX` tall.

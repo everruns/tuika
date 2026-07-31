@@ -319,7 +319,7 @@ fn commit<B: Backend>(
     if width == 0 || terminal.size()?.height == 0 {
         return Ok(());
     }
-    let rows = block_rows(rows, view, width);
+    let rows = block_rows(rows, view, width, ctx);
     terminal.insert_before(rows, |buffer| paint_block(buffer, view, ctx))
 }
 
@@ -329,10 +329,10 @@ fn commit<B: Backend>(
 /// publishes nothing) and never more than [`Scrollback::MAX_BLOCK_ROWS`], which
 /// bounds the scratch buffer a single block can allocate — a view is free to
 /// measure itself as `u16::MAX` tall.
-fn block_rows(requested: Option<u16>, view: &dyn View, width: u16) -> u16 {
+fn block_rows(requested: Option<u16>, view: &dyn View, width: u16, ctx: &RenderCtx) -> u16 {
     requested
         .unwrap_or_else(|| {
-            view.measure(Size::new(width, Scrollback::MAX_BLOCK_ROWS))
+            view.measure(Size::new(width, Scrollback::MAX_BLOCK_ROWS), ctx)
                 .height
         })
         .clamp(1, Scrollback::MAX_BLOCK_ROWS)
@@ -508,7 +508,11 @@ mod tests {
     #[test]
     fn a_measured_block_takes_the_rows_its_view_asks_for() {
         let view = element(Text::new(vec![Line::from("a"), Line::from("b")]));
-        assert_eq!(block_rows(None, view.as_ref(), 10), 2);
+        let theme = Theme::default();
+        assert_eq!(
+            block_rows(None, view.as_ref(), 10, &RenderCtx::new(&theme)),
+            2
+        );
     }
 
     #[test]
@@ -516,27 +520,33 @@ mod tests {
         // A block that publishes nothing is a queue entry that did nothing;
         // clamping keeps `write_rows(0)` meaning "one row", not "silently drop".
         let view = element(Text::raw("x"));
-        assert_eq!(block_rows(Some(0), view.as_ref(), 10), 1);
+        let theme = Theme::default();
+        assert_eq!(
+            block_rows(Some(0), view.as_ref(), 10, &RenderCtx::new(&theme)),
+            1
+        );
     }
 
     #[test]
     fn an_oversized_block_is_clamped_to_the_row_ceiling() {
         struct Tall;
         impl View for Tall {
-            fn measure(&self, _available: Size) -> Size {
+            fn measure(&self, _available: Size, _ctx: &RenderCtx) -> Size {
                 Size::new(1, u16::MAX)
             }
             fn render(&self, _area: Rect, _surface: &mut Surface, _ctx: &RenderCtx) {}
         }
         // Both a view that measures itself absurdly tall and a caller that asks
         // for it are bounded, so one block cannot allocate an unbounded buffer.
+        let theme = Theme::default();
+        let ctx = RenderCtx::new(&theme);
         assert_eq!(
-            block_rows(None, &Tall, 10),
+            block_rows(None, &Tall, 10, &ctx),
             Scrollback::MAX_BLOCK_ROWS,
             "a measured height is clamped"
         );
         assert_eq!(
-            block_rows(Some(u16::MAX), &Tall, 10),
+            block_rows(Some(u16::MAX), &Tall, 10, &ctx),
             Scrollback::MAX_BLOCK_ROWS,
             "a requested height is clamped"
         );

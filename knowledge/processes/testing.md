@@ -45,9 +45,10 @@ identically. `.gitattributes` pins the files to LF and the comparison normalizes
 line endings, so neither a Windows CI leg nor a contributor's `core.autocrlf`
 can turn a green suite red.
 
-The consumer-facing subset of this machinery — `testing::{render, render_sizes,
-grid}` — is public API, so hosts test their own views the same way. Changes to
-it are API changes.
+The consumer-facing subset of this machinery — `testing::{render,
+render_with_sheet, render_sizes, grid}` — is public API, so hosts test their own
+views with the same theme and stylesheet contexts used in production. Changes
+to it are API changes.
 
 ## Why a PTY layer exists at all
 

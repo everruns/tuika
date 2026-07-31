@@ -125,14 +125,14 @@ impl<V: View> Flex<V> {
         axis.size(main, axis.cross(inner_available))
     }
 
-    fn items(&self, area: Rect) -> Vec<Item> {
+    fn items(&self, area: Rect, ctx: &RenderCtx) -> Vec<Item> {
         let inner_available = Size::from(self.style.padding.inner(area));
         let mut items: Vec<Item> = self
             .children
             .iter()
             .map(|child| {
                 let available = self.child_available(inner_available, child.dimension);
-                Item::new(child.dimension, child.view.measure(available))
+                Item::new(child.dimension, child.view.measure(available, ctx))
             })
             .collect();
 
@@ -152,7 +152,7 @@ impl<V: View> Flex<V> {
                 if matches!(child.dimension, Dimension::Flex(_)) {
                     let main = axis.main(Size::from(rect));
                     let available = axis.size(main, axis.cross(inner_available));
-                    item.intrinsic = child.view.measure(available);
+                    item.intrinsic = child.view.measure(available, ctx);
                 }
             }
         }
@@ -176,13 +176,15 @@ impl<V: View> Flex<V> {
     /// let flex = Flex::row()
     ///     .fixed(4, element(Text::raw("abcd")))
     ///     .grow(1, element(Text::raw("rest")));
-    /// let rects = flex.solve(Rect::new(0, 0, 10, 1));
+    /// let theme = Theme::default();
+    /// let ctx = RenderCtx::new(&theme);
+    /// let rects = flex.solve(Rect::new(0, 0, 10, 1), &ctx);
     /// assert_eq!(rects.len(), 2);
     /// assert_eq!(rects[0], Rect::new(0, 0, 4, 1));
     /// assert_eq!(rects[1], Rect::new(4, 0, 6, 1)); // grows into the leftover
     /// ```
-    pub fn solve(&self, area: Rect) -> Vec<Rect> {
-        solve(area, &self.style, &self.items(area))
+    pub fn solve(&self, area: Rect, ctx: &RenderCtx) -> Vec<Rect> {
+        solve(area, &self.style, &self.items(area, ctx))
     }
 }
 
@@ -219,7 +221,7 @@ impl Flex<Element> {
 }
 
 impl<V: View> View for Flex<V> {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
         // Sum children on the main axis, max on the cross axis, plus gaps and
         // padding. Used when this Flex is itself an Auto child.
         let axis = self.style.direction.axis();
@@ -234,7 +236,7 @@ impl<V: View> View for Flex<V> {
         for (i, c) in self.children.iter().enumerate() {
             let sz = c
                 .view
-                .measure(self.child_available(inner_avail, c.dimension));
+                .measure(self.child_available(inner_avail, c.dimension), ctx);
             let intrinsic_main = axis.main(sz);
             let resolved_main = match c.dimension {
                 Dimension::Auto | Dimension::Flex(_) => intrinsic_main,
@@ -265,7 +267,7 @@ impl<V: View> View for Flex<V> {
             let mut fill = surface.child(area);
             fill.fill(bg);
         }
-        let rects = self.solve(area);
+        let rects = self.solve(area, ctx);
         for (child, rect) in self.children.iter().zip(rects) {
             let mut child_surface = surface.child(rect);
             child.view.render(rect, &mut child_surface, ctx);
@@ -285,7 +287,7 @@ mod tests {
     struct WidthSensitive;
 
     impl View for WidthSensitive {
-        fn measure(&self, available: Size) -> Size {
+        fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
             Size::new(available.width, if available.width < 10 { 2 } else { 1 })
         }
 
@@ -303,8 +305,10 @@ mod tests {
             .grow(1, probes[1].wrap(element(Text::raw("body"))))
             .fixed(2, probes[2].wrap(element(Text::raw("footer"))));
 
-        let precomputed = flex.solve(area);
-        let _ = crate::testing::render(&flex, area.width, area.height, &Theme::default());
+        let theme = Theme::default();
+        let ctx = RenderCtx::new(&theme);
+        let precomputed = flex.solve(area, &ctx);
+        let _ = crate::testing::render(&flex, area.width, area.height, &theme);
 
         let painted: Vec<Rect> = probes.iter().map(|p| p.rect()).collect();
         assert_eq!(
@@ -320,7 +324,11 @@ mod tests {
     #[test]
     fn solve_of_empty_container_is_empty() {
         let flex = Flex::row();
-        assert!(flex.solve(Rect::new(0, 0, 10, 3)).is_empty());
+        let theme = Theme::default();
+        assert!(
+            flex.solve(Rect::new(0, 0, 10, 3), &RenderCtx::new(&theme))
+                .is_empty()
+        );
     }
 
     #[test]
@@ -329,15 +337,23 @@ mod tests {
             .align(crate::layout::Align::Start)
             .fixed(5, element(WidthSensitive));
 
-        assert_eq!(flex.measure(Size::new(10, 4)), Size::new(5, 2));
-        assert_eq!(flex.solve(Rect::new(0, 0, 10, 4))[0], Rect::new(0, 0, 5, 2));
+        let theme = Theme::default();
+        let ctx = RenderCtx::new(&theme);
+        assert_eq!(flex.measure(Size::new(10, 4), &ctx), Size::new(5, 2));
+        assert_eq!(
+            flex.solve(Rect::new(0, 0, 10, 4), &ctx)[0],
+            Rect::new(0, 0, 5, 2)
+        );
     }
 
     #[test]
     fn measure_resolves_declared_percent_main_size() {
         let flex = Flex::row().child(Dimension::Percent(50), element(Text::raw("x")));
-
-        assert_eq!(flex.measure(Size::new(10, 2)), Size::new(5, 1));
+        let theme = Theme::default();
+        assert_eq!(
+            flex.measure(Size::new(10, 2), &RenderCtx::new(&theme)),
+            Size::new(5, 1)
+        );
     }
 
     #[test]
@@ -346,7 +362,11 @@ mod tests {
             .padding(Padding::symmetric(1, 0))
             .auto(element(WidthSensitive));
 
-        assert_eq!(flex.solve(Rect::new(0, 0, 10, 4))[0].height, 2);
+        let theme = Theme::default();
+        assert_eq!(
+            flex.solve(Rect::new(0, 0, 10, 4), &RenderCtx::new(&theme))[0].height,
+            2
+        );
     }
 
     #[test]
@@ -356,7 +376,11 @@ mod tests {
             .fixed(5, element(Text::raw("fixed")))
             .grow(1, element(WidthSensitive));
 
-        assert_eq!(flex.solve(Rect::new(0, 0, 10, 4))[1], Rect::new(5, 0, 5, 2));
+        let theme = Theme::default();
+        assert_eq!(
+            flex.solve(Rect::new(0, 0, 10, 4), &RenderCtx::new(&theme))[1],
+            Rect::new(5, 0, 5, 2)
+        );
     }
 
     #[test]

@@ -59,8 +59,8 @@ impl Html {
 }
 
 impl View for Html {
-    fn measure(&self, available: Size) -> Size {
-        let lines = self.lines(available.width, &Theme::default(), &StyleSheet::default());
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        let lines = self.lines(available.width, ctx.theme, &ctx.sheet);
         let width = lines.iter().map(line_width).max().unwrap_or(0);
         Size::new(width.min(available.width), lines.len() as u16)
     }
@@ -89,7 +89,9 @@ impl View for Html {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tuika::testing::{grid, render};
+    use ratatui_core::style::Color;
+    use tuika::style::StyleBundle;
+    use tuika::testing::{grid, render, render_with_sheet};
 
     #[test]
     fn the_view_paints_its_fragment() {
@@ -100,10 +102,22 @@ mod tests {
 
     #[test]
     fn the_view_measures_its_rendered_size() {
-        let view = Html::new("<p>one two</p>");
-        let size = view.measure(Size::new(4, 10));
-        assert!(size.height >= 2, "wrapped to two rows: {size:?}");
-        assert!(size.width <= 4);
+        let view = Html::new("<h1>Title</h1><p>body</p>");
+        let theme = Theme {
+            accent: Color::Cyan,
+            ..Theme::default()
+        };
+        let sheet = StyleSheet {
+            heading: StyleBundle::new().fg(Color::Magenta),
+            ..StyleSheet::from_theme(&theme)
+        };
+        let ctx = RenderCtx::new(&theme).with_sheet(sheet);
+        let size = view.measure(Size::new(12, 10), &ctx);
+
+        assert_eq!(size, Size::new(5, 3));
+        let painted = render_with_sheet(&view, 12, size.height, &theme, sheet);
+        assert_eq!(grid(&painted), "Title       \n            \nbody        ");
+        assert_eq!(painted[(0, 0)].fg, Color::Magenta);
     }
 
     #[test]

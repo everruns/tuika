@@ -302,7 +302,7 @@ fn composite(px: Rgba, bg: Color) -> Color {
 }
 
 impl View for FrameBufferView<'_> {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         Size::new(self.cols, self.rows).clamp_to(available)
     }
 
@@ -430,7 +430,10 @@ mod tests {
         let mut fb = FrameBuffer::new(4, 4);
         fb.clear(RED);
         let view = FrameBufferView::new(&fb, 4, 2);
-        assert_eq!(view.measure(Size::new(80, 24)), Size::new(4, 2));
+        assert_eq!(
+            view.measure(Size::new(80, 24), &RenderCtx::new(&theme)),
+            Size::new(4, 2)
+        );
         let buf = crate::testing::render(&view, 4, 2, &theme);
         // Every cell is the half-block glyph; a fully-red buffer paints red fg/bg.
         assert_eq!(buf[(0, 0)].symbol(), "▀");

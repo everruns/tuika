@@ -103,7 +103,7 @@ impl KeyHints {
 }
 
 impl View for KeyHints {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let width = self
             .hints
             .iter()
@@ -177,7 +177,7 @@ impl KeymapHelp {
 }
 
 impl View for KeymapHelp {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let key_width = self
             .hints
             .iter()
@@ -241,7 +241,11 @@ mod tests {
     #[test]
     fn key_hints_measure_unicode_by_terminal_width() {
         let hints = KeyHints::new([("⌘", "開く")]);
-        assert_eq!(hints.measure(Size::new(20, 1)), Size::new(8, 1));
+        let theme = Theme::default();
+        assert_eq!(
+            hints.measure(Size::new(20, 1), &RenderCtx::new(&theme)),
+            Size::new(8, 1)
+        );
     }
 
     #[test]

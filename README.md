@@ -265,7 +265,7 @@ struct Dashboard<'a> {
 }
 
 impl View for Dashboard<'_> {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         available
     }
 
@@ -290,6 +290,10 @@ The borrow lasts only as long as the scoped scene, matching Tuika's
 frame-by-frame view model. No transcript clone, leaked allocation, custom
 wrapper view, or application compositor is needed. The `view!` macro preserves
 the same lifetime through nested `Flex` and `Boxed` containers.
+
+Measurement receives the same `RenderCtx` as rendering. A custom view whose
+geometry depends on the active theme or stylesheet resolves it there, and every
+container passes that context to the children it measures.
 
 `Form` lays out arbitrary control `Element`s beside responsive labels, stacking
 on narrow terminals. Help and validation rows are built in; `FormState` owns
@@ -413,7 +417,9 @@ Where a `Theme` is the color *tokens*, a `StyleSheet` is the *rules* — a mappi
 from a semantic role (heading, link, inline code, a panel's border and fill, …)
 onto the style it draws with. Override a role in one place and every element with
 that role restyles at once; markdown parts and bare URLs are role-driven too. See
-the [styling guide](docs/styling.md).
+the [styling guide](docs/styling.md). `StyleBundle::padding` is layout, not a
+paint-only hint: `Boxed` resolves panel padding during both measurement and
+rendering; an explicit `Boxed::padding` remains the per-instance override.
 
 ## Runnable examples
 
@@ -715,6 +721,8 @@ terminal or `TestBackend` setup. The [`testing`](https://docs.rs/tuika/latest/tu
 module draws a `View` into an in-memory ratatui `Buffer` and reads it back:
 
 - `render(view, width, height, &theme) -> Buffer` — draw once at a fixed size.
+- `render_with_sheet(view, width, height, &theme, sheet) -> Buffer` — the same
+  harness with an explicit stylesheet.
 - `grid(&buffer) -> String` — the buffer as a plain glyph grid, ready for a
   snapshot assertion.
 - `render_sizes(view, sizes, &theme) -> Vec<Buffer>` — the same view across a set

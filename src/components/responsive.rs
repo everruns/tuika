@@ -35,8 +35,8 @@ impl<V: View> Responsive<V> {
 }
 
 impl<V: View> View for Responsive<V> {
-    fn measure(&self, available: Size) -> Size {
-        self.select(available.width).measure(available)
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        self.select(available.width).measure(available, ctx)
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {

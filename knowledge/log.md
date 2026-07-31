@@ -2,6 +2,17 @@
 
 ## 2026-07-31
 
+- **Measurement and rendering share one frame context**
+
+- `View::measure` now receives the active `RenderCtx`, and composition helpers
+  forward it through the whole tree. Layout can no longer use the default theme
+  or stylesheet while the same view renders with host policy.
+- Markdown and the companion HTML view resolve one theme/stylesheet pair for
+  both halves. `Boxed` now treats stylesheet panel padding as real geometry,
+  with an explicit instance padding as the local override.
+- Consumer tests can use `testing::render_with_sheet`, so a custom stylesheet is
+  asserted through the same in-memory buffer path as production rendering.
+
 - **Borrowed views compose inside ordinary component trees**
 
 - `Element` remains the owned default, while `ScopedElement` carries a frame

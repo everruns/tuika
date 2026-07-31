@@ -296,11 +296,11 @@ pub enum SemanticRole {
 /// rather than replace a whole [`Style`]: [`apply`](Self::apply) overlays only
 /// the fields it sets onto a base style, and adds its modifiers.
 ///
-/// Only paint-time attributes belong here. A component's [`measure`] runs
-/// without a [`RenderCtx`], so layout-affecting choices (whether a border
-/// exists, how much padding) stay instance-level; the stylesheet owns color,
-/// background, modifiers, and — where they do not change a cell's footprint —
-/// border glyphs.
+/// A component resolves layout-affecting fields from the same [`RenderCtx`] in
+/// both [`measure`] and render. Border *presence* remains instance-level;
+/// container padding may come from a role, with an explicit component value
+/// taking precedence. Color, background, modifiers, and border glyph choice are
+/// paint attributes.
 ///
 /// [`measure`]: crate::View::measure
 /// [`RenderCtx`]: crate::RenderCtx
@@ -316,7 +316,8 @@ pub struct StyleBundle {
     /// change a component's footprint, so it selects the glyph set, not whether
     /// a border exists).
     pub border: Option<BorderStyle>,
-    /// Padding for container roles, when the role sets one.
+    /// Padding for container roles, when the role sets one. Components that
+    /// consume it resolve it during both measurement and rendering.
     pub padding: Option<Padding>,
 }
 

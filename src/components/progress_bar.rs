@@ -182,7 +182,7 @@ impl ProgressBar {
 }
 
 impl View for ProgressBar {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         Size::new(available.width, 1)
     }
 

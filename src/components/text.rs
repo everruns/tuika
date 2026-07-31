@@ -107,7 +107,7 @@ impl Text {
 }
 
 impl View for Text {
-    fn measure(&self, _available: Size) -> Size {
+    fn measure(&self, _available: Size, _ctx: &RenderCtx) -> Size {
         let width = self.lines.iter().map(line_width).max().unwrap_or(0);
         Size::new(width, self.lines.len() as u16)
     }
@@ -161,7 +161,7 @@ impl Paragraph {
 }
 
 impl View for Paragraph {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let lines = self.wrap(available.width);
         let width = lines
             .iter()
@@ -339,7 +339,7 @@ impl Wrap {
 }
 
 impl View for Wrap {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let wrapped = wrap_lines(&self.lines, available.width);
         let width = wrapped.iter().map(line_width).max().unwrap_or(0);
         Size::new(width.min(available.width), wrapped.len() as u16)
@@ -397,7 +397,8 @@ mod tests {
     #[test]
     fn paragraph_wraps_to_width() {
         let p = Paragraph::new("the quick brown fox", Style::default());
-        let size = p.measure(Size::new(10, 10));
+        let theme = Theme::default();
+        let size = p.measure(Size::new(10, 10), &RenderCtx::new(&theme));
         assert!(size.height >= 2, "expected wrap, got {size:?}");
         assert!(size.width <= 10);
     }

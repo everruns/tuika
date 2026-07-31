@@ -11,7 +11,7 @@ use crate::view::{RenderCtx, View};
 pub struct Spacer;
 
 impl View for Spacer {
-    fn measure(&self, _available: Size) -> Size {
+    fn measure(&self, _available: Size, _ctx: &RenderCtx) -> Size {
         Size::ZERO
     }
 

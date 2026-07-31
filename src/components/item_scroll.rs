@@ -26,6 +26,7 @@ use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 
 use crate::geometry::Size;
+use crate::style::{StyleSheet, Theme};
 use crate::surface::Surface;
 use crate::view::{Element, RenderCtx, ScopedElement, View};
 
@@ -44,7 +45,9 @@ use super::scroll::{ScrollState, draw_scrollbar};
 ///     element(Text::raw("second")),
 /// ];
 /// // Total rows the items occupy at this width — what the host clamps against.
-/// assert_eq!(ItemScroll::measure_height(&items, 10, 0, false), 2);
+/// let theme = Theme::default();
+/// let ctx = RenderCtx::new(&theme);
+/// assert_eq!(ItemScroll::measure_height(&items, 10, 0, false, &ctx), 2);
 ///
 /// let state = ScrollState::new();
 /// let view = ItemScroll::new(items, &state).scrollbar(false);
@@ -67,7 +70,26 @@ pub struct ItemScroll<V: View = Element> {
     scrollbar: bool,
     /// Item heights memoized for the width they were measured at, so `measure`
     /// and `render` in the same frame don't measure the tree twice.
-    heights: RefCell<Option<(u16, Vec<u16>)>>,
+    heights: RefCell<Option<(MeasureKey, Vec<u16>)>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct MeasureKey {
+    width: u16,
+    theme: Theme,
+    sheet: StyleSheet,
+    focused: bool,
+}
+
+impl MeasureKey {
+    fn new(width: u16, ctx: &RenderCtx) -> Self {
+        Self {
+            width,
+            theme: *ctx.theme,
+            sheet: ctx.sheet,
+            focused: ctx.focused,
+        }
+    }
 }
 
 impl<V: View> ItemScroll<V> {
@@ -122,21 +144,22 @@ impl<V: View> ItemScroll<V> {
     }
 
     /// Item heights at `width`, measuring (and memoizing) on first use.
-    fn with_heights<R>(&self, width: u16, f: impl FnOnce(&[u16]) -> R) -> R {
+    fn with_heights<R>(&self, width: u16, ctx: &RenderCtx, f: impl FnOnce(&[u16]) -> R) -> R {
         let mut cache = self.heights.borrow_mut();
-        let fresh = !matches!(cache.as_ref(), Some((w, _)) if *w == width);
+        let key = MeasureKey::new(width, ctx);
+        let fresh = !matches!(cache.as_ref(), Some((cached, _)) if *cached == key);
         if fresh {
-            *cache = Some((width, measure_items(&self.items, width)));
+            *cache = Some((key, measure_items(&self.items, width, ctx)));
         }
         let (_, heights) = cache.as_ref().expect("heights measured above");
         f(heights)
     }
 
     /// Content height in rows: the host's number when windowed, else measured.
-    fn content_height(&self, width: u16) -> usize {
+    fn content_height(&self, width: u16, ctx: &RenderCtx) -> usize {
         match self.content_height {
             Some(h) => h,
-            None => self.with_heights(width, |h| total_height(h, self.gap)),
+            None => self.with_heights(width, ctx, |h| total_height(h, self.gap)),
         }
     }
 }
@@ -176,13 +199,25 @@ impl ItemScroll<Element> {
     }
 
     /// Total rows `items` occupy at `width`, including `gap` rows.
-    pub fn measure_height(items: &[Element], width: u16, gap: u16, scrollbar: bool) -> usize {
-        Self::measure_views(items, width, gap, scrollbar)
+    pub fn measure_height(
+        items: &[Element],
+        width: u16,
+        gap: u16,
+        scrollbar: bool,
+        ctx: &RenderCtx,
+    ) -> usize {
+        Self::measure_views(items, width, gap, scrollbar, ctx)
     }
 
     /// Total rows any owned or borrowed view slice occupies at `width`.
-    pub fn measure_views<V: View>(items: &[V], width: u16, gap: u16, scrollbar: bool) -> usize {
-        let heights = measure_items(items, content_width(width, scrollbar));
+    pub fn measure_views<V: View>(
+        items: &[V],
+        width: u16,
+        gap: u16,
+        scrollbar: bool,
+        ctx: &RenderCtx,
+    ) -> usize {
+        let heights = measure_items(items, content_width(width, scrollbar), ctx);
         total_height(&heights, gap)
     }
 }
@@ -201,10 +236,10 @@ fn content_width(width: u16, scrollbar: bool) -> u16 {
     }
 }
 
-fn measure_items<V: View>(items: &[V], width: u16) -> Vec<u16> {
+fn measure_items<V: View>(items: &[V], width: u16, ctx: &RenderCtx) -> Vec<u16> {
     items
         .iter()
-        .map(|item| item.measure(Size::new(width, u16::MAX)).height)
+        .map(|item| item.measure(Size::new(width, u16::MAX), ctx).height)
         .collect()
 }
 
@@ -215,11 +250,11 @@ fn total_height(heights: &[u16], gap: u16) -> usize {
 }
 
 impl<V: View> View for ItemScroll<V> {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
         // `Size` is a cell extent (`u16`); a transcript can be taller than that,
         // so saturate exactly as `Scroll` does.
         let height = self
-            .content_height(content_width(available.width, self.scrollbar))
+            .content_height(content_width(available.width, self.scrollbar), ctx)
             .min(u16::MAX as usize) as u16;
         Size::new(available.width, height)
     }
@@ -232,12 +267,12 @@ impl<V: View> View for ItemScroll<V> {
         if text_width == 0 {
             return;
         }
-        let content_h = self.content_height(text_width);
+        let content_h = self.content_height(text_width, ctx);
         let overflow = content_h > area.height as usize;
 
         let viewport_top = self.offset;
         let viewport_bottom = self.offset + area.height as usize;
-        self.with_heights(text_width, |heights| {
+        self.with_heights(text_width, ctx, |heights| {
             let mut top = self.window_start_row;
             for (item, height) in self.items.iter().zip(heights) {
                 let height = *height;
@@ -362,8 +397,40 @@ mod tests {
     #[test]
     fn measure_height_sums_items_and_gaps() {
         let items = blocks(3, 2);
-        assert_eq!(ItemScroll::measure_height(&items, 20, 0, false), 6);
-        assert_eq!(ItemScroll::measure_height(&items, 20, 1, false), 8);
+        let theme = Theme::default();
+        let ctx = RenderCtx::new(&theme);
+        assert_eq!(ItemScroll::measure_height(&items, 20, 0, false, &ctx), 6);
+        assert_eq!(ItemScroll::measure_height(&items, 20, 1, false, &ctx), 8);
+    }
+
+    #[test]
+    fn cached_heights_are_invalidated_when_the_measurement_context_changes() {
+        struct StyledHeight;
+        impl View for StyledHeight {
+            fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+                let vertical = ctx
+                    .sheet
+                    .panel
+                    .padding
+                    .map_or(0, |padding| padding.vertical());
+                Size::new(1, 1u16.saturating_add(vertical)).clamp_to(available)
+            }
+
+            fn render(&self, _area: Rect, _surface: &mut Surface, _ctx: &RenderCtx) {}
+        }
+
+        let state = ScrollState::new();
+        let view = ItemScroll::new(vec![element(StyledHeight)], &state).scrollbar(false);
+        let theme = Theme::default();
+        let base = RenderCtx::new(&theme);
+        assert_eq!(view.measure(Size::new(10, 10), &base).height, 1);
+
+        let sheet = StyleSheet {
+            panel: crate::style::StyleBundle::new().padding(crate::Padding::all(2)),
+            ..StyleSheet::from_theme(&theme)
+        };
+        let styled = RenderCtx::new(&theme).with_sheet(sheet);
+        assert_eq!(view.measure(Size::new(10, 10), &styled).height, 5);
     }
 
     #[test]
@@ -425,7 +492,7 @@ mod tests {
     fn a_greedy_item_scrolls_without_allocating_its_measured_height() {
         struct Greedy;
         impl View for Greedy {
-            fn measure(&self, available: Size) -> Size {
+            fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
                 // What `Spacer` and any `grow` child do: take everything.
                 available
             }

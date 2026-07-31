@@ -402,7 +402,7 @@ impl SelectList {
 }
 
 impl View for SelectList {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let width = self
             .items
             .iter()
@@ -712,9 +712,10 @@ mod tests {
         let mut state = SelectState::new();
         state.select(Some(12));
         let theme = Theme::default();
+        let ctx = RenderCtx::new(&theme);
         let list = SelectList::new(items.clone(), &state).viewport(4);
         // Windowed height is the viewport, not the full list.
-        assert_eq!(list.measure(Size::new(20, 40)).height, 4);
+        assert_eq!(list.measure(Size::new(20, 40), &ctx).height, 4);
         let rendered = crate::testing::render(&list, 20, 4, &theme);
         let text = crate::testing::grid(&rendered);
         assert!(
@@ -738,9 +739,13 @@ mod tests {
         let items: Vec<Line> = (0..3).map(|i| Line::from(format!("item{i}"))).collect();
         let state = SelectState::new();
         let list = SelectList::new(items, &state).viewport(8);
-        // Fits within the viewport → no windowing, height is the item count.
-        assert_eq!(list.measure(Size::new(20, 40)).height, 3);
         let theme = Theme::default();
+        // Fits within the viewport → no windowing, height is the item count.
+        assert_eq!(
+            list.measure(Size::new(20, 40), &RenderCtx::new(&theme))
+                .height,
+            3
+        );
         let text = crate::testing::grid(&crate::testing::render(&list, 20, 3, &theme));
         assert!(text.contains("item0") && text.contains("item2"));
     }

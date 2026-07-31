@@ -59,7 +59,7 @@ impl<F> View for RatatuiView<F>
 where
     F: Fn(Rect, &mut Buffer),
 {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         match self.measure {
             Measure::Fill => available,
             Measure::Fixed(size) => Size::new(

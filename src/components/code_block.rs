@@ -197,7 +197,7 @@ impl<'a> CodeBlock<'a> {
 }
 
 impl View for CodeBlock<'_> {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let theme = Theme::default();
         let lines = self.lines(&theme);
         let width = lines

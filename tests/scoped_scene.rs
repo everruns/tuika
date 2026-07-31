@@ -11,7 +11,7 @@ struct Transcript<'data> {
 }
 
 impl View for Transcript<'_> {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         Size::new(
             available.width,
             (self.messages.len() as u16).min(available.height),

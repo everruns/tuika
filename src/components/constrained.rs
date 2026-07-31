@@ -35,8 +35,8 @@ impl<V: View> Constrained<V> {
 }
 
 impl<V: View> View for Constrained<V> {
-    fn measure(&self, available: Size) -> Size {
-        let measured = self.child.measure(available);
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        let measured = self.child.measure(available, ctx);
         Size::new(
             measured
                 .width
@@ -65,10 +65,15 @@ mod tests {
 
     #[test]
     fn constrained_clamps_intrinsic_measurement() {
+        let theme = crate::Theme::default();
+        let ctx = RenderCtx::new(&theme);
         let constrained = Constrained::new(element(Text::raw("long content")))
             .min_size(4, 1)
             .max_size(6, 2);
-        assert_eq!(constrained.measure(Size::new(20, 10)), Size::new(6, 1));
-        assert_eq!(constrained.measure(Size::new(3, 1)), Size::new(3, 1));
+        assert_eq!(
+            constrained.measure(Size::new(20, 10), &ctx),
+            Size::new(6, 1)
+        );
+        assert_eq!(constrained.measure(Size::new(3, 1), &ctx), Size::new(3, 1));
     }
 }

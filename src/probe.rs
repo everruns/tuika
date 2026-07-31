@@ -79,8 +79,8 @@ impl<V: View> Probe<V> {
 }
 
 impl<V: View> View for Probe<V> {
-    fn measure(&self, available: Size) -> Size {
-        self.inner.measure(available)
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        self.inner.measure(available, ctx)
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {

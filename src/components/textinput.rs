@@ -1165,7 +1165,7 @@ impl TextInput {
 }
 
 impl View for TextInput {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let height = wrap_visual_rows(&self.lines, available.width).len().max(1) as u16;
         Size::new(available.width, height)
     }

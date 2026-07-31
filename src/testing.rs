@@ -3,13 +3,27 @@
 use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 
-use crate::{Theme, View, paint};
+use crate::{StyleSheet, Theme, View, paint, paint_with_sheet};
 
 /// Render `view` into a zero-origin in-memory buffer.
 pub fn render(view: &dyn View, width: u16, height: u16, theme: &Theme) -> Buffer {
     let area = Rect::new(0, 0, width, height);
     let mut buffer = Buffer::empty(area);
     paint(&mut buffer, area, theme, view, &[]);
+    buffer
+}
+
+/// Render `view` with an explicit stylesheet into a zero-origin in-memory buffer.
+pub fn render_with_sheet(
+    view: &dyn View,
+    width: u16,
+    height: u16,
+    theme: &Theme,
+    sheet: StyleSheet,
+) -> Buffer {
+    let area = Rect::new(0, 0, width, height);
+    let mut buffer = Buffer::empty(area);
+    paint_with_sheet(&mut buffer, area, theme, sheet, view, &[]);
     buffer
 }
 
