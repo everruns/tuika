@@ -549,7 +549,7 @@ impl QrCode {
 }
 
 impl View for QrCode {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let side = self.full_size();
         // Two module rows per terminal row via the half-block glyph.
         Size::new(side, side.div_ceil(2)).clamp_to(available)
@@ -684,9 +684,10 @@ mod tests {
     #[test]
     fn renders_half_blocks_with_quiet_zone() {
         let theme = Theme::default();
+        let ctx = RenderCtx::new(&theme);
         let qr = QrCode::encode("HI", QrEcc::Low).unwrap();
         // 21 modules + 8 quiet = 29 wide; 15 rows tall (ceil(29/2)).
-        assert_eq!(qr.measure(Size::new(80, 40)), Size::new(29, 15));
+        assert_eq!(qr.measure(Size::new(80, 40), &ctx), Size::new(29, 15));
         let buf = crate::testing::render(&qr, 29, 15, &theme);
         // The top-left cell is quiet zone → light background, half-block glyph.
         assert_eq!(buf[(0, 0)].symbol(), "▀");

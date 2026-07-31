@@ -190,7 +190,7 @@ impl Form<Element> {
 }
 
 impl<V: View> View for Form<V> {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
         let stacked = self.stacked(available.width);
         let label_width = self.label_width(available.width);
         let control_width = if stacked {
@@ -205,16 +205,17 @@ impl<V: View> View for Form<V> {
             if index > 0 {
                 height = height.saturating_add(self.gap);
             }
-            let control = field
-                .control
-                .measure(Size::new(control_width, available.height));
+            let control = field.control.measure(
+                Size::new(control_width, available.height),
+                &ctx.with_focus(index == self.focused),
+            );
             height = height
                 .saturating_add(control.height.max(1))
                 .saturating_add(field.message_rows())
                 .saturating_add(u16::from(stacked));
         }
         if let Some(actions) = &self.actions {
-            height = height.saturating_add(actions.measure(available).height.max(1));
+            height = height.saturating_add(actions.measure(available, ctx).height.max(1));
         }
         Size::new(available.width, height.min(available.height))
     }
@@ -247,16 +248,16 @@ impl<V: View> View for Form<V> {
                     break;
                 }
             }
-            let measured = field
-                .control
-                .measure(Size::new(control_width, area.bottom().saturating_sub(y)));
+            let control_ctx = ctx.with_focus(index == self.focused);
+            let measured = field.control.measure(
+                Size::new(control_width, area.bottom().saturating_sub(y)),
+                &control_ctx,
+            );
             let control_height = measured.height.max(1).min(area.bottom().saturating_sub(y));
             let control_area = Rect::new(control_x, y, control_width, control_height);
-            field.control.render(
-                control_area,
-                &mut surface.child(control_area),
-                &ctx.with_focus(index == self.focused),
-            );
+            field
+                .control
+                .render(control_area, &mut surface.child(control_area), &control_ctx);
             y = y.saturating_add(control_height);
             if let Some(help) = &field.help
                 && y < area.bottom()

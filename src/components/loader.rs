@@ -47,7 +47,7 @@ impl Loader {
 }
 
 impl View for Loader {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         Size::new(available.width, 1)
     }
 

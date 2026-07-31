@@ -63,7 +63,8 @@ pub fn build(
     // Item heights are measured the way the viewport will measure them — same
     // width, same scrollbar setting — so the offset can't drift from the paint.
     let items = app.transcript(width, theme, sheet);
-    app.content_h = ItemScroll::measure_height(&items, width, TRANSCRIPT_GAP, true);
+    let ctx = RenderCtx::new(theme).with_sheet(*sheet);
+    app.content_h = ItemScroll::measure_height(&items, width, TRANSCRIPT_GAP, true, &ctx);
     app.viewport_h = transcript_h as usize;
     app.scroll.clamp(app.content_h, app.viewport_h);
 

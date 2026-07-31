@@ -112,7 +112,7 @@ impl TabSelect {
 const PILL_PAD: u16 = 1;
 
 impl View for TabSelect {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         // Each pill is label width plus a cell of padding on each side; pills abut
         // with no separator.
         let width = self

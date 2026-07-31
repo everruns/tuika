@@ -136,7 +136,7 @@ impl AsciiFont {
 }
 
 impl View for AsciiFont {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let width = self.total_width().min(available.width);
         let height = if self.text.is_empty() {
             0
@@ -183,10 +183,15 @@ mod tests {
     #[test]
     fn measures_five_rows_and_summed_width() {
         let font = AsciiFont::new("HI");
+        let theme = Theme::default();
+        let ctx = RenderCtx::new(&theme);
         // 'H' and 'I' are each 5 wide, plus one spacing column = 11.
-        assert_eq!(font.measure(Size::new(80, 24)), Size::new(11, 5));
+        assert_eq!(font.measure(Size::new(80, 24), &ctx), Size::new(11, 5));
         // Empty string has no height.
-        assert_eq!(AsciiFont::new("").measure(Size::new(80, 24)).height, 0);
+        assert_eq!(
+            AsciiFont::new("").measure(Size::new(80, 24), &ctx).height,
+            0
+        );
     }
 
     #[test]

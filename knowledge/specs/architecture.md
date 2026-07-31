@@ -60,12 +60,15 @@ rather than beside it.
   is an explicit dirty result or an external redraw request. Rendering stays
   pure, and idle ticks do not churn the terminal.
 
-`measure` and `render` are the two halves of every view: `measure` reports a
-size in whole cells so the solver can allocate, `render` paints into the clipped
-region it was given. Sizes are whole cells throughout — there is no sub-cell
-layout — which is why image sizing is quantized to cells rather than driven by
-pixel geometry. A container measures children against the content box they will
-actually receive after its own padding. When a `Flex` is itself measured, its
+`measure` and `render` are the two halves of every view, and both receive the
+same `RenderCtx`: `measure` reports a size in whole cells so the solver can
+allocate, while `render` paints into the clipped region it was given. Theme,
+stylesheet, and focus therefore cannot silently fall back to defaults during
+layout. Sizes are whole cells throughout — there is no sub-cell layout — which
+is why image sizing is quantized to cells rather than driven by pixel geometry.
+A container forwards the context while measuring children against the content
+box they will actually receive after its own resolved padding. An explicit
+component padding overrides stylesheet padding. When a `Flex` is itself measured, its
 declared fixed and percent dimensions contribute their resolved main-axis sizes;
 the child's intrinsic size is the basis only for auto and flexible children.
 
@@ -170,7 +173,7 @@ the child's logical extent is much larger.
    `view!` DSL, which expands to the same builder calls — no runtime cost).
    `element` preserves frame borrows as `ScopedElement`, so borrowed views may
    appear at any depth in the base tree; `ScopedScene` adds owned overlays.
-2. The solver resolves the tree to rects.
+2. The solver resolves the tree to rects using the frame's active `RenderCtx`.
 3. Views paint into a clipped `Surface`; overlays composite over the base.
 4. The host calls out-of-band emitters (images, native progress) after the
    frame, because those escapes paint outside the cell model.

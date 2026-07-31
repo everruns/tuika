@@ -234,7 +234,9 @@ use ratatui::layout::Rect;
 let flex = Flex::row()
     .fixed(8, element(Text::raw("sidebar")))
     .grow(1, element(Text::raw("content")));
-let rects = flex.solve(Rect::new(0, 0, 40, 10)); // [sidebar_rect, content_rect]
+let theme = Theme::default();
+let ctx = RenderCtx::new(&theme);
+let rects = flex.solve(Rect::new(0, 0, 40, 10), &ctx); // [sidebar_rect, content_rect]
 ```
 
 ### `Boxed`
@@ -247,6 +249,8 @@ bottom border — the slot for a `1 of 3` position counter, a footer legend, or 
 hint. Both titles honor their `Line` alignment; unset, the top title is
 flush-left and the bottom title flush-right. Titles begin one cell after the
 corner and truncate before the opposite corner, matching ratatui `Block`.
+The stylesheet's panel padding participates in measurement and rendering;
+`.padding(...)` on this instance takes precedence.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.Boxed.html)
 
 <img src="demos/boxed.png" width="880" alt="Boxed demo">
@@ -366,7 +370,8 @@ plus the true height for lists too long to measure every frame.
 ```rust
 use tuika::prelude::*;
 let items: Vec<Element> = history.iter().map(|entry| entry.view()).collect();
-let content_h = ItemScroll::measure_height(&items, width, 1, true);
+let ctx = RenderCtx::new(&theme).with_sheet(sheet);
+let content_h = ItemScroll::measure_height(&items, width, 1, true, &ctx);
 state.clamp(content_h, viewport_h);          // reconcile before the paint
 view! { node(ItemScroll::new(items, &state).gap(1)) }
 ```

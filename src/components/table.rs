@@ -285,7 +285,7 @@ impl Table {
 }
 
 impl View for Table {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let available_rows = available.height.saturating_sub(self.header_rows());
         let (_, rows) = self.window(available_rows);
         let cols_w: u16 = (0..self.columns.len())
@@ -513,7 +513,12 @@ mod tests {
         let table = Table::new(cols, rows, &state).viewport(4);
         let theme = Theme::default();
         // Height = header (1) + viewport (4).
-        assert_eq!(table.measure(Size::new(30, 40)).height, 5);
+        assert_eq!(
+            table
+                .measure(Size::new(30, 40), &RenderCtx::new(&theme))
+                .height,
+            5
+        );
         let text = crate::testing::grid(&crate::testing::render(&table, 30, 5, &theme));
         assert!(text.contains("row15"), "selection visible:\n{text}");
         assert!(!text.contains("row0\n"), "far rows windowed out:\n{text}");

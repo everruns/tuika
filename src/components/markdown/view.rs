@@ -168,9 +168,8 @@ impl<'a> Markdown<'a> {
 }
 
 impl View for Markdown<'_> {
-    fn measure(&self, available: Size) -> Size {
-        let (lines, _, _) =
-            self.lines_images_links(available.width, &Theme::default(), &StyleSheet::default());
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        let (lines, _, _) = self.lines_images_links(available.width, ctx.theme, &ctx.sheet);
         let width = lines.iter().map(line_width).max().unwrap_or(0);
         Size::new(width.min(available.width), lines.len() as u16)
     }
@@ -223,5 +222,58 @@ impl View for Markdown<'_> {
             }
             image.render(rect, surface, ctx);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::HtmlBlockRenderer;
+    use crate::style::StyleBundle;
+    use crate::testing::{grid, render_with_sheet};
+    use ratatui_core::style::Color;
+    use ratatui_core::text::{Line, Span};
+
+    struct ContextBlock;
+
+    impl HtmlBlockRenderer for ContextBlock {
+        fn render(
+            &self,
+            _source: &str,
+            _width: u16,
+            theme: &Theme,
+            sheet: &StyleSheet,
+        ) -> Option<Vec<Line<'static>>> {
+            if theme.accent == Color::Cyan && sheet.heading.fg == Some(Color::Magenta) {
+                Some(vec![
+                    Line::from(Span::raw("alpha")),
+                    Line::from(Span::raw("beta")),
+                    Line::from(Span::raw("omega")),
+                ])
+            } else {
+                Some(vec![Line::from(Span::raw("wrong context"))])
+            }
+        }
+    }
+
+    #[test]
+    fn measurement_and_render_share_the_active_theme_and_sheet() {
+        let theme = Theme {
+            accent: Color::Cyan,
+            ..Theme::default()
+        };
+        let sheet = StyleSheet {
+            heading: StyleBundle::new().fg(Color::Magenta),
+            ..StyleSheet::from_theme(&theme)
+        };
+        let renderer = ContextBlock;
+        let view = Markdown::new("<div>context</div>").html_renderer(&renderer);
+        let ctx = RenderCtx::new(&theme).with_sheet(sheet);
+
+        assert_eq!(view.measure(Size::new(10, 10), &ctx), Size::new(5, 3));
+        assert_eq!(
+            grid(&render_with_sheet(&view, 10, 3, &theme, sheet)),
+            "alpha     \nbeta      \nomega     "
+        );
     }
 }

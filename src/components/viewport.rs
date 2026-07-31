@@ -96,7 +96,7 @@ impl<V: View> Viewport<V> {
 }
 
 impl<V: View> View for Viewport<V> {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         Size::new(
             self.content.width.min(available.width),
             self.content.height.min(available.height),

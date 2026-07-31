@@ -69,7 +69,7 @@ impl Tabs {
 }
 
 impl View for Tabs {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let labels = self
             .labels
             .iter()

@@ -77,7 +77,7 @@ impl Image {
 }
 
 impl View for Image {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         Size::new(self.cols, self.rows).clamp_to(available)
     }
 
@@ -139,9 +139,11 @@ mod tests {
     #[test]
     fn image_reserves_its_cell_footprint() {
         let img = Image::new(solid(2, 2, [0, 0, 0, 255]), 6, 3);
-        assert_eq!(img.measure(Size::new(80, 24)), Size::new(6, 3));
+        let theme = Theme::default();
+        let ctx = RenderCtx::new(&theme);
+        assert_eq!(img.measure(Size::new(80, 24), &ctx), Size::new(6, 3));
         // Clamped to the available area.
-        assert_eq!(img.measure(Size::new(4, 2)), Size::new(4, 2));
+        assert_eq!(img.measure(Size::new(4, 2), &ctx), Size::new(4, 2));
     }
 
     #[test]

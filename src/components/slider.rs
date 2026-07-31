@@ -179,7 +179,7 @@ fn format_value(value: f32) -> String {
 }
 
 impl View for Slider {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         Size::new(available.width, 1)
     }
 

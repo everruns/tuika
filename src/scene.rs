@@ -25,7 +25,7 @@
 //! }
 //!
 //! impl View for Dashboard<'_> {
-//!     fn measure(&self, available: Size) -> Size {
+//!     fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
 //!         Size::new(available.width, (self.messages.len() as u16).min(available.height))
 //!     }
 //!
@@ -62,7 +62,7 @@
 //!
 //! struct Count<'data>(&'data [String]);
 //! impl View for Count<'_> {
-//!     fn measure(&self, available: Size) -> Size {
+//!     fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
 //!         Size::new(available.width.min(8), available.height.min(1))
 //!     }
 //!     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
@@ -215,8 +215,8 @@ impl Scene {
 }
 
 impl View for Scene {
-    fn measure(&self, available: Size) -> Size {
-        self.root.measure(available)
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        self.root.measure(available, ctx)
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
@@ -297,8 +297,8 @@ impl<'view, V: View + ?Sized> ScopedScene<'view, V> {
 }
 
 impl<V: View + ?Sized> View for ScopedScene<'_, V> {
-    fn measure(&self, available: Size) -> Size {
-        self.root.measure(available)
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        self.root.measure(available, ctx)
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
@@ -358,7 +358,7 @@ mod tests {
     struct FocusProbe(Rc<RefCell<Vec<bool>>>);
 
     impl View for FocusProbe {
-        fn measure(&self, available: Size) -> Size {
+        fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
             available
         }
 

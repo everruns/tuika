@@ -170,7 +170,7 @@ impl<'a> Console<'a> {
 }
 
 impl View for Console<'_> {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         available
     }
 

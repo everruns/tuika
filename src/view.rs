@@ -16,7 +16,7 @@ use super::geometry::Size;
 use super::style::{StyleSheet, Theme};
 use super::surface::Surface;
 
-/// Context threaded to every `View::render`.
+/// Context threaded to every [`View::measure`] and [`View::render`] call.
 pub struct RenderCtx<'a> {
     /// The active theme supplying colors for this frame.
     pub theme: &'a Theme,
@@ -60,13 +60,14 @@ impl<'a> RenderCtx<'a> {
 /// A drawable, measurable UI element.
 ///
 /// `measure` reports the intrinsic content size the view would like given
-/// `available`; the flex solver uses it for `Dimension::Auto` sizing.
+/// `available` and the same active theme, stylesheet, and focus state that its
+/// render will receive; the flex solver uses it for `Dimension::Auto` sizing.
 /// `render` paints into the `area` the layout assigned, through the clipped
 /// `surface`. A view may borrow application state; use it as the root of a
 /// [`ScopedScene`](crate::ScopedScene) when it needs Tuika-owned overlays.
 pub trait View {
-    /// Report the intrinsic content size wanted given `available`.
-    fn measure(&self, available: Size) -> Size;
+    /// Report the intrinsic content size wanted given `available` and `ctx`.
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size;
     /// Paint the view into the assigned `area` through `surface`.
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx);
 }
@@ -82,8 +83,8 @@ pub type ScopedElement<'view> = Box<dyn View + 'view>;
 pub type Element = ScopedElement<'static>;
 
 impl View for Box<dyn View + '_> {
-    fn measure(&self, available: Size) -> Size {
-        (**self).measure(available)
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        (**self).measure(available, ctx)
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
@@ -132,7 +133,7 @@ impl<F> View for DrawView<F>
 where
     F: Fn(Rect, &mut Surface<'_>, &RenderCtx<'_>),
 {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         Size::new(
             self.intrinsic.width.min(available.width),
             self.intrinsic.height.min(available.height),
@@ -163,7 +164,11 @@ mod draw_view_tests {
         )
         .intrinsic_size(Size::new(20, 3));
 
-        assert_eq!(view.measure(Size::new(4, 1)), Size::new(4, 1));
+        let theme = Theme::default();
+        assert_eq!(
+            view.measure(Size::new(4, 1), &RenderCtx::new(&theme)),
+            Size::new(4, 1)
+        );
         assert_eq!(grid(&render(&view, 4, 1, &Theme::default())), "canv");
     }
 }

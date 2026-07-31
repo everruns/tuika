@@ -28,7 +28,7 @@ fn scene() -> Element {
 struct Padded;
 
 impl View for Padded {
-    fn measure(&self, available: Size) -> Size {
+    fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         available
     }
 

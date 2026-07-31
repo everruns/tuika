@@ -99,6 +99,10 @@ genuinely public helper module for *consumers*; see
   implementations must name (`Rect`, colors/styles, and text lines/spans), so a
   host need not add a direct backend dependency merely to implement tuika's
   trait. Backend operations and widgets remain private.
+- `View::measure` and `View::render` receive the same `RenderCtx`. Any public
+  helper that measures a component tree (`Flex::solve`, item-height helpers,
+  split-footer publication) must require or already own that context; it may not
+  synthesize default styling behind the host's back.
 - The prelude may grow, but adding to it is a judgement about frequency, not a
   convenience: a name that lands there is one a host should not have to think
   about. Terminal escapes, pixel canvases, probes, and width measurement are

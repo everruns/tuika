@@ -1155,7 +1155,7 @@ fn scene_item_scroll(frame: u64, theme: &Theme) -> Element {
         })
         .collect();
     let viewport_h = 8usize;
-    let content_h = ItemScroll::measure_height(&items, 60, 1, true);
+    let content_h = ItemScroll::measure_height(&items, 60, 1, true, &RenderCtx::new(theme));
     let mut state = ScrollState::new();
     let reach = tuika::anim::ping_pong(frame, 200);
     let steps = (reach * (content_h.saturating_sub(viewport_h) as f32 / 3.0 + 1.0)) as u32;

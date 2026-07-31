@@ -62,8 +62,8 @@ impl<V: View> FocusScope<V> {
 }
 
 impl<V: View> View for FocusScope<V> {
-    fn measure(&self, available: Size) -> Size {
-        self.child.measure(available)
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        self.child.measure(available, &ctx.with_focus(self.focused))
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
@@ -105,9 +105,11 @@ mod tests {
     #[test]
     fn focus_scope_is_layout_transparent() {
         // measure() passes straight through to the child.
+        let theme = rainbow_theme();
+        let ctx = RenderCtx::new(&theme);
         let inner = Boxed::new(element(Text::raw("hello")));
-        let want = inner.measure(Size::new(40, 10));
+        let want = inner.measure(Size::new(40, 10), &ctx.with_focus(true));
         let scoped = FocusScope::focused(element(Boxed::new(element(Text::raw("hello")))));
-        assert_eq!(scoped.measure(Size::new(40, 10)), want);
+        assert_eq!(scoped.measure(Size::new(40, 10), &ctx), want);
     }
 }
