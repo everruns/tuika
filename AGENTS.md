@@ -149,8 +149,9 @@ tuika's own suite covers more:
   The `tuika-mermaid` integration recording follows the same pattern at
   `crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif`; regenerate it
   with `scripts/gen-mermaid-demo.sh`.
-  `tuika-html`'s demo follows it as well, at
-  `crates/tuika-html/examples/html_markdown/html.png`, regenerated with
+  `tuika-html` has two, one per example — the markdown seam
+  (`examples/html_markdown/html.png`) and the standalone `Html` component
+  (`examples/html_view/html_view.png`) — both regenerated with
   `scripts/gen-html-demo.sh`. It is a *screenshot* rather than a GIF because the
   scene is settled, the same rule the component gallery applies — and the
   example runs as a real app rather than printing a grid, because a plain-text

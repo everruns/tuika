@@ -32,7 +32,8 @@ purely additive. The presentational *inline* tags (`<b>`, `<a>`, `<br>`,
 
 ## Standalone
 
-`Html` is a `View`, the HTML counterpart to `Markdown`:
+`Html` is a `View`, the HTML counterpart to `Markdown` — place it in a layout
+and the whole pane is HTML, fitted to whatever width it is given:
 
 ```rust
 use tuika_html::Html;
@@ -40,6 +41,8 @@ use tuika_html::Html;
 let page = Html::new("<h1>Release notes</h1><ul><li>Faster</li></ul>");
 # let _ = page;
 ```
+
+<img src="examples/html_view/html_view.png" width="880" alt="The Html view filling a bordered pane: a heading, wrapped prose with bold and italic runs, a definition list, a box-drawn table, a block quote, a pre block on a code background, a rule, and a footer line with a link, keyboard keys and a highlighted run">
 
 ## What renders
 
@@ -75,9 +78,11 @@ markup overflows the stack before any of this crate's code runs — a 140 KiB
 fragment of nested `<b>` is enough, well inside the size bound. Capping the
 traversal cannot help; the input has to be refused first.
 
-## Run the example
+## Run the examples
 
 ```sh
-cargo run -p tuika-html --example html_markdown            # the scene above (q quits)
-cargo run -p tuika-html --example html_markdown -- --dump  # one frame as text
+cargo run -p tuika-html --example html_view       # the `Html` component (q quits)
+cargo run -p tuika-html --example html_markdown   # HTML blocks inside markdown
 ```
+
+Both take `-- --dump` to print one frame as text instead of running.

@@ -11,6 +11,8 @@ use crate::{Limits, to_lines_with_limits};
 
 /// A view that renders an HTML fragment to its area.
 ///
+/// ![Html view demo](https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-html/examples/html_view/html_view.png)
+///
 /// The standalone counterpart to attaching an
 /// [`HtmlRenderer`](crate::HtmlRenderer) to markdown: same engine, but the whole
 /// area is HTML. Prose wraps to the width, `<pre>` stays verbatim, and tables
@@ -24,6 +26,8 @@ use crate::{Limits, to_lines_with_limits};
 /// // `page` is a `View`: render it via `tuika::paint` or embed it in a `Flex`.
 /// # let _ = page;
 /// ```
+///
+/// `cargo run -p tuika-html --example html_view` is the scene above.
 pub struct Html {
     source: String,
     limits: Limits,

@@ -48,6 +48,11 @@
 - Its example runs as a real app rather than printing a rendered grid: styling
   is half of what the crate does, and a plain-text dump discards all of it. The
   recording is a screenshot, since the scene is settled.
+- Two renderers for one vocabulary need one *observable* result: the crate's
+  own `<sub>`/`<sup>` were left untransliterated, so the same document rendered
+  `H₂O` through markdown and `H2O` through tuika-html. Separate implementations
+  are fine; a visible divergence is not, and only an example exercising the
+  component surfaced it.
 - Bounding a *parser* means bounding its input, not its traversal. html5ever
   builds and drops its tree recursively, so deeply nested markup overflows the
   stack before any traversal begins — a capped walk is no defense. Nesting is

@@ -164,10 +164,15 @@ fn html_keeps_the_demo_its_readme_embeds() {
 
     // Same rule as `tuika-mermaid`: the README embeds the demo by *relative*
     // path, so the packaged copy is what crates.io renders.
-    assert!(
-        has("examples/html_markdown/html.png"),
-        "the demo the crates.io README embeds by relative path must ship"
-    );
+    for asset in [
+        "examples/html_markdown/html.png",
+        "examples/html_view/html_view.png",
+    ] {
+        assert!(
+            has(asset),
+            "the demos the crates.io README embeds by relative path must ship: {asset}"
+        );
+    }
     assert!(has("src/lib.rs"), "library source must ship");
     assert!(has("Cargo.toml"), "manifest must ship");
     assert!(has("README.md"), "README must ship");
