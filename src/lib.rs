@@ -104,6 +104,16 @@ pub mod themes;
 pub mod view;
 pub mod width;
 
+/// Backend UI vocabulary re-exported for custom [`View`] implementations.
+///
+/// Applications can use these canonical types without depending on
+/// `ratatui-core` directly. More specialized backend internals remain private.
+pub mod ui {
+    pub use ratatui_core::layout::Rect;
+    pub use ratatui_core::style::{Color, Modifier, Style};
+    pub use ratatui_core::text::{Line, Span};
+}
+
 // The framework spine: the types a host composes with on essentially every
 // frame. Widgets are not here on purpose — they live in `components`, and
 // `prelude` is the one-line import that brings both. Anything reachable only

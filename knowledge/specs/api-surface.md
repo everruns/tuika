@@ -95,6 +95,10 @@ genuinely public helper module for *consumers*; see
 - Every `pub` item is API. Moving or renaming one is a breaking change, allowed
   in a minor release pre-1.0, and must be called out in `CHANGELOG.md` with a
   before/after migration line — never slipped in.
+- `ui` re-exports the narrow backend value vocabulary custom `View`
+  implementations must name (`Rect`, colors/styles, and text lines/spans), so a
+  host need not add a direct backend dependency merely to implement tuika's
+  trait. Backend operations and widgets remain private.
 - The prelude may grow, but adding to it is a judgement about frequency, not a
   convenience: a name that lands there is one a host should not have to think
   about. Terminal escapes, pixel canvases, probes, and width measurement are

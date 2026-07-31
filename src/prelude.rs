@@ -34,6 +34,7 @@ pub use crate::interop::RatatuiView;
 pub use crate::keymap::{Binding, Chord, Dispatch, Hint, KeySequence, Keymap, Layer};
 pub use crate::live::{Live, LiveView, RedrawHandle};
 pub use crate::style::{BorderStyle, CodeTheme, Role, StyleBundle};
+pub use crate::ui::{Color, Line, Modifier, Rect, Span, Style};
 // The `view!` macro plus the module it is named for; the macro expands to
 // `$crate::…` paths, so a glob-importing host needs neither in scope by name.
 pub use crate::view;

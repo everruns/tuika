@@ -549,6 +549,10 @@ host-computed `TextSpan` ranges over the text. Cursor and span coordinates remai
 char indices for host interoperability; movement and deletion keep grapheme
 clusters intact, and wrapping/cursor placement use terminal-cell width so CJK
 and emoji align with the rendered grid.
+For search fields and command bars, `SingleLineInputState` wraps the same editor
+but guarantees one line: setters and paste normalize CR/LF to spaces, Enter and
+Ctrl+J submit, and `text()` returns a borrowed `&str` without allocation. Render
+it with `TextInput::new(state.as_text_input())`.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.TextInput.html)
 
 <img src="demos/textinput.gif" width="880" alt="TextInput demo">

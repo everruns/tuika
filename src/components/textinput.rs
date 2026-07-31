@@ -965,6 +965,111 @@ fn wrap_visual_rows<'a>(lines: &'a [String], width: u16) -> Vec<VisualRow<'a>> {
     rows
 }
 
+/// Strictly single-line editing state for search fields and command bars.
+///
+/// Newline input from setters, paste, Ctrl+J, or direct character insertion is
+/// normalized to one space. Enter always submits. Unlike
+/// [`TextInputState::text`], [`text`](Self::text) returns a borrowed string.
+#[derive(Clone, Debug, Default)]
+pub struct SingleLineInputState {
+    inner: TextInputState,
+}
+
+impl SingleLineInputState {
+    /// Create an empty single-line input.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Seed from text, normalizing every line boundary to one space.
+    pub fn from_text(text: &str) -> Self {
+        let mut state = Self::new();
+        state.set_text(text);
+        state
+    }
+
+    /// Borrow the current text without allocating.
+    pub fn text(&self) -> &str {
+        &self.inner.lines[0]
+    }
+
+    /// Whether the input is empty.
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// Cursor column as a logical character index.
+    pub fn cursor(&self) -> usize {
+        self.inner.col
+    }
+
+    /// Replace the text, normalizing line boundaries to spaces.
+    pub fn set_text(&mut self, text: &str) {
+        self.inner.set_text(&normalize_single_line(text));
+    }
+
+    /// Clear the input.
+    pub fn clear(&mut self) {
+        self.inner.clear();
+    }
+
+    /// Insert one character, normalizing CR/LF to a space.
+    pub fn insert_char(&mut self, ch: char) {
+        self.inner
+            .insert_char(if matches!(ch, '\r' | '\n') { ' ' } else { ch });
+    }
+
+    /// Insert text, normalizing every line boundary to one space.
+    pub fn insert_str(&mut self, text: &str) {
+        self.inner.insert_str(&normalize_single_line(text));
+    }
+
+    /// Access the underlying state for [`TextInput`] rendering.
+    pub fn as_text_input(&self) -> &TextInputState {
+        &self.inner
+    }
+
+    /// Handle editing input. Enter and Ctrl+J always submit.
+    pub fn handle(&mut self, event: &Event) -> Option<TextInputEvent> {
+        match event {
+            Event::Paste(text) => {
+                self.insert_str(text);
+                Some(TextInputEvent::Changed)
+            }
+            Event::Key(key)
+                if key.plain()
+                    && matches!(key.code, KeyCode::Enter | KeyCode::Char('\n' | '\r')) =>
+            {
+                Some(TextInputEvent::Submit)
+            }
+            Event::Key(key)
+                if key.ctrl && !key.alt && !key.shift && key.code == KeyCode::Char('j') =>
+            {
+                Some(TextInputEvent::Submit)
+            }
+            _ => self.inner.handle(event),
+        }
+    }
+}
+
+fn normalize_single_line(text: &str) -> String {
+    let mut normalized = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                normalized.push(' ');
+            }
+            '\n' => normalized.push(' '),
+            _ => normalized.push(ch),
+        }
+    }
+    normalized
+}
+
 /// Renders a snapshot of a [`TextInputState`]'s wrapped text.
 ///
 /// Owns its lines (cloned from the state at construction, like [`Scroll`]) so it
@@ -1107,6 +1212,44 @@ mod tests {
     use crate::view::{RenderCtx, element};
     use ratatui_core::layout::Rect;
     use ratatui_core::style::Color;
+
+    #[test]
+    fn single_line_normalizes_setter_and_paste_newlines() {
+        let mut state = SingleLineInputState::from_text("alpha\r\nbeta\ngamma\rdelta");
+        assert_eq!(state.text(), "alpha beta gamma delta");
+        assert_eq!(
+            state.handle(&Event::Paste(" one\r\ntwo\nthree".into())),
+            Some(TextInputEvent::Changed)
+        );
+        assert_eq!(state.text(), "alpha beta gamma delta one two three");
+    }
+
+    #[test]
+    fn single_line_text_is_borrowed_and_cursor_stays_on_one_row() {
+        let mut state = SingleLineInputState::new();
+        state.insert_str("café");
+        let borrowed: &str = state.text();
+        assert_eq!(borrowed, "café");
+        assert_eq!(state.cursor(), 4);
+        assert_eq!(state.as_text_input().cursor(), (0, 4));
+    }
+
+    #[test]
+    fn single_line_enter_and_ctrl_j_submit_without_mutating() {
+        let mut state = SingleLineInputState::from_text("query");
+        for event in [
+            Event::Key(Key::new(KeyCode::Enter)),
+            Event::Key(Key {
+                code: KeyCode::Char('j'),
+                ctrl: true,
+                alt: false,
+                shift: false,
+            }),
+        ] {
+            assert_eq!(state.handle(&event), Some(TextInputEvent::Submit));
+            assert_eq!(state.text(), "query");
+        }
+    }
 
     fn press(state: &mut TextInputState, code: KeyCode) -> bool {
         matches!(
