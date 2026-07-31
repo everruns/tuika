@@ -10,8 +10,6 @@
 //! anywhere, `Html` placed in a layout exactly like `Markdown` would be, fitting
 //! its content to whatever width the pane gives it.
 
-use std::ops::ControlFlow;
-
 use tuika::prelude::*;
 use tuika::testing::{grid, render};
 use tuika_html::Html;
@@ -44,12 +42,15 @@ fn main() -> std::io::Result<()> {
     let runner = Runner::new(RunnerConfig::default());
     runner.run(
         &theme,
-        |_frame| scene(),
-        |event| match event {
-            Event::Key(key) if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) => {
-                ControlFlow::Break(())
+        &mut (),
+        |(), _frame| scene(),
+        |(), signal| match signal {
+            Signal::Event(Event::Key(key))
+                if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
+            {
+                UpdateResult::Exit
             }
-            _ => ControlFlow::Continue(()),
+            _ => UpdateResult::Clean,
         },
     )
 }

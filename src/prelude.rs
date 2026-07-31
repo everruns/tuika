@@ -40,10 +40,10 @@ pub use crate::view;
 pub use crate::{
     Align, Backdrop, Dimension, Direction, Element, Event, EventFlow, Justify, Key, KeyCode,
     LayoutStyle, Mouse, MouseButton, MouseKind, Overlay, OverlaySpec, Padding, RenderCtx, Runner,
-    RunnerConfig, Scene, SceneOverlay, ScopedScene, ScreenMode, Scrollback, SemanticRole, Size,
-    StyleSheet, Surface, TerminalSession, Theme, View, element, paint, paint_scene,
-    paint_with_sheet, translate_event,
+    RunnerConfig, Scene, SceneOverlay, ScopedScene, ScreenMode, Scrollback, SemanticRole, Signal,
+    Size, StyleSheet, Surface, TerminalSession, Theme, UpdateResult, View, element, paint,
+    paint_scene, paint_with_sheet, translate_event,
 };
 
 #[cfg(feature = "async")]
-pub use crate::{AsyncRunner, Signal};
+pub use crate::AsyncRunner;

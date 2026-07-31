@@ -14,7 +14,6 @@
 //! cargo run --example split_footer -- --mouse # the footer captures it instead
 //! ```
 
-use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
@@ -134,28 +133,30 @@ fn main() -> std::io::Result<()> {
     });
 
     let view_status = status.clone();
+    let mut state = ();
     let result = runner.run(
         &theme,
-        move |frame| {
+        &mut state,
+        move |(), frame| {
             element(LiveView::new(view_status.clone(), move |status| {
                 footer(status, frame, &theme)
             }))
         },
-        |event| match event {
-            Event::Key(key) if key.plain() => match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => ControlFlow::Break(()),
+        |(), signal| match signal {
+            Signal::Event(Event::Key(key)) if key.plain() => match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => UpdateResult::Exit,
                 KeyCode::Char('p') => {
                     status.update(|status| status.paused = !status.paused);
-                    ControlFlow::Continue(())
+                    UpdateResult::Clean
                 }
                 KeyCode::Char(' ') | KeyCode::Enter => {
                     publish(&scrollback, seq.fetch_add(1, Ordering::AcqRel), &theme);
                     status.update(|status| status.published += 1);
-                    ControlFlow::Continue(())
+                    UpdateResult::Clean
                 }
-                _ => ControlFlow::Continue(()),
+                _ => UpdateResult::Clean,
             },
-            _ => ControlFlow::Continue(()),
+            _ => UpdateResult::Clean,
         },
     );
 

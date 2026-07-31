@@ -116,8 +116,8 @@ pub use host::{TerminalSession, paint, paint_scene, paint_with_sheet, translate_
 pub use layout::{Align, Dimension, Direction, Justify, LayoutStyle};
 pub use overlay::{Overlay, OverlaySpec};
 #[cfg(feature = "async")]
-pub use runner::{AsyncRunner, Signal};
-pub use runner::{Runner, RunnerConfig};
+pub use runner::AsyncRunner;
+pub use runner::{Runner, RunnerConfig, Signal, UpdateResult};
 pub use scene::{Backdrop, Scene, SceneOverlay, ScopedScene};
 pub use screen::{ScreenMode, Scrollback};
 pub use style::{SemanticRole, StyleSheet, Theme};

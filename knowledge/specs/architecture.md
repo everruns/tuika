@@ -43,6 +43,10 @@ rather than beside it.
 - **The host owns the terminal**: the screen mode (alternate screen or a split
   footer over live scrollback — see [screen-modes.md](./screen-modes.md)), raw
   mode, mouse capture, input translation, and frame compositing.
+- **The synchronous runner owns application state directly**: rendering receives
+  `&State`, updates receive `&mut State` plus a tick or input signal, and repaint
+  is an explicit dirty result or an external redraw request. Rendering stays
+  pure, and idle ticks do not churn the terminal.
 
 `measure` and `render` are the two halves of every view: `measure` reports a
 size in whole cells so the solver can allocate, `render` paints into the clipped
