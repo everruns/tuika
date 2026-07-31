@@ -415,6 +415,10 @@ pub struct Hint<C> {
     pub label: Option<String>,
     /// The command the binding runs.
     pub command: C,
+    /// Name of the active layer that declared this binding.
+    pub layer: String,
+    /// Layer priority, suitable for responsive hint fitting.
+    pub priority: i32,
 }
 
 /// The keymap engine: a set of [`Layer`]s, a runtime-data store used to gate
@@ -546,11 +550,14 @@ impl<C: Clone> Keymap<C> {
         layers.sort_by(|a, b| b.priority.cmp(&a.priority));
         layers
             .iter()
-            .flat_map(|layer| layer.bindings.iter())
-            .map(|binding| Hint {
-                keys: binding.sequence.display(),
-                label: binding.label.clone(),
-                command: binding.command.clone(),
+            .flat_map(|layer| {
+                layer.bindings.iter().map(|binding| Hint {
+                    keys: binding.sequence.display(),
+                    label: binding.label.clone(),
+                    command: binding.command.clone(),
+                    layer: layer.name.clone(),
+                    priority: layer.priority,
+                })
             })
             .collect()
     }

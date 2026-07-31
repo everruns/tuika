@@ -15,6 +15,12 @@
 - Per-frame focus rings discard ids that disappeared and commit the fallback at
   the following frame boundary. Dynamic component trees therefore cannot keep
   routing input to a stale target or resurrect it when it later returns.
+- **Keymap-derived responsive help**
+  - Active labeled bindings drive whole-item, priority-aware footer fitting and
+    a complete scrollable help view.
+  - Layer priority is display priority, keeping contextual/modal actions visible
+    before global actions when width is constrained.
+
 - **Configurable selection behavior**
   - Selection state now supports opt-in terminal-picker aliases, explicit mouse
     hit-testing, and a separate multiple-selection state.

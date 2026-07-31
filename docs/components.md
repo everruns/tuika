@@ -679,6 +679,13 @@ fb.fill_rect(8, 8, 16, 16, [240, 90, 90, 255]);
 view! { node(FrameBufferView::new(&fb, 64, 16)) }
 ```
 
+## Key hints and help
+
+`KeyHint::priority` and `KeyHints::prioritized` fit only complete hints on narrow
+screens; higher priorities survive first. `KeyHints::from_keymap` and
+`KeymapHelp::from_keymap` turn the same labeled declarations used for dispatch
+into a responsive footer and a complete, scrollable help view.
+
 ## See also
 
 - [API documentation](https://docs.rs/tuika) — the complete component reference,
