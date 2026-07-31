@@ -220,8 +220,10 @@ view! {
 Need the child rects *before* (or without) painting — to size a scroll region
 to a pane's real height, hit-test a click, or decide what fits? `Flex::solve`
 runs the same measure-then-solve pass render uses and returns one `Rect` per
-child, painting nothing. The underlying flexbox solver is also callable directly
-as `tuika::layout::solve(area, &style, &items)` for layouts built without a `Flex`.
+child, painting nothing. Padded containers measure children against the inner
+box, and a `Flex` measured as an `Auto` child honors its own fixed and percent
+dimensions. The underlying flexbox solver is also callable directly as
+`tuika::layout::solve(area, &style, &items)` for layouts built without a `Flex`.
 
 ```rust
 use tuika::prelude::*;
@@ -539,7 +541,10 @@ renders a snapshot; the host places the terminal cursor from
 `TextInputMode` (`SubmitOnEnter` by default): the other chord inserts a newline.
 Ctrl+J always inserts a newline (raw-mode LF from terminals without enhanced
 keyboard reporting). `placeholder` fills an empty buffer, and `highlights` paints
-host-computed `TextSpan` ranges over the text.
+host-computed `TextSpan` ranges over the text. Cursor and span coordinates remain
+char indices for host interoperability; movement and deletion keep grapheme
+clusters intact, and wrapping/cursor placement use terminal-cell width so CJK
+and emoji align with the rendered grid.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.TextInput.html)
 
 <img src="demos/textinput.gif" width="880" alt="TextInput demo">

@@ -7,7 +7,8 @@
 //! and renders. The view is word-soft-wrapped to the render width — a logical
 //! line longer than the area breaks at the last space that fits (hard-breaking a
 //! word longer than the width), and a line that fills the width exactly wraps the
-//! cursor onto a fresh row, like a real editor.
+//! cursor onto a fresh row, like a real editor. Wrapping and cursor placement
+//! count terminal cells, while editing moves and deletes whole grapheme clusters.
 //!
 //! It is a *rendering + edit model*, not a terminal: the host reads
 //! [`TextInputState::cursor_screen`] after layout and calls the backend's
@@ -16,12 +17,13 @@
 
 use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
-use unicode_width::UnicodeWidthChar;
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::event::{Event, KeyCode};
 use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
+use crate::width::grapheme_cols;
 
 /// The editable text and cursor of a [`TextInput`].
 #[derive(Clone, Debug)]
@@ -311,11 +313,12 @@ impl TextInputState {
         self.mode = mode;
     }
 
-    /// Move the cursor to `(row, col)`, clamped into the buffer. Lets a host
-    /// mirror an external editor's cursor into this state for rendering.
+    /// Move the cursor to `(row, col)`, clamped into the buffer and to the
+    /// preceding grapheme boundary. Lets a host mirror an external editor's
+    /// cursor into this state for rendering.
     pub fn set_cursor(&mut self, row: usize, col: usize) {
         self.row = row.min(self.lines.len().saturating_sub(1));
-        self.col = col.min(self.lines[self.row].chars().count());
+        self.col = grapheme_boundary_at_or_before(&self.lines[self.row], col);
     }
 
     fn row_chars(&self, row: usize) -> Vec<char> {
@@ -358,12 +361,13 @@ impl TextInputState {
         self.col = 0;
     }
 
-    /// Delete the char before the cursor (joining lines at column 0).
+    /// Delete the grapheme before the cursor (joining lines at column 0).
     pub fn backspace(&mut self) {
         if self.col > 0 {
             let mut chars = self.row_chars(self.row);
-            chars.remove(self.col - 1);
-            self.col -= 1;
+            let start = previous_grapheme_boundary(&self.lines[self.row], self.col);
+            chars.drain(start..self.col);
+            self.col = start;
             self.set_row(self.row, chars);
         } else if self.row > 0 {
             let cur = self.lines.remove(self.row);
@@ -373,11 +377,12 @@ impl TextInputState {
         }
     }
 
-    /// Delete the char at the cursor (joining the next line at line end).
+    /// Delete the grapheme at the cursor (joining the next line at line end).
     pub fn delete(&mut self) {
         let mut chars = self.row_chars(self.row);
         if self.col < chars.len() {
-            chars.remove(self.col);
+            let end = next_grapheme_boundary(&self.lines[self.row], self.col);
+            chars.drain(self.col..end);
             self.set_row(self.row, chars);
         } else if self.row + 1 < self.lines.len() {
             let next = self.lines.remove(self.row + 1);
@@ -386,24 +391,24 @@ impl TextInputState {
     }
 
     fn clamp_col(&mut self) {
-        self.col = self.col.min(self.lines[self.row].chars().count());
+        self.col = grapheme_boundary_at_or_before(&self.lines[self.row], self.col);
     }
 
-    /// Move one char left, wrapping to the end of the previous line.
+    /// Move one grapheme left, wrapping to the end of the previous line.
     pub fn move_left(&mut self) {
         if self.col > 0 {
-            self.col -= 1;
+            self.col = previous_grapheme_boundary(&self.lines[self.row], self.col);
         } else if self.row > 0 {
             self.row -= 1;
             self.col = self.lines[self.row].chars().count();
         }
     }
 
-    /// Move one char right, wrapping to the start of the next line.
+    /// Move one grapheme right, wrapping to the start of the next line.
     pub fn move_right(&mut self) {
         let len = self.lines[self.row].chars().count();
         if self.col < len {
-            self.col += 1;
+            self.col = next_grapheme_boundary(&self.lines[self.row], self.col);
         } else if self.row + 1 < self.lines.len() {
             self.row += 1;
             self.col = 0;
@@ -783,12 +788,59 @@ impl TextInputState {
     }
 }
 
-/// One wrapped visual row: which logical line it came from, the char index in
-/// that line where it starts, and its chars.
-struct VisualRow {
+/// Char-index boundaries between grapheme clusters, including 0 and line end.
+fn grapheme_boundaries(line: &str) -> Vec<usize> {
+    let mut boundaries = Vec::with_capacity(line.graphemes(true).count() + 1);
+    boundaries.push(0);
+    let mut col = 0;
+    for grapheme in line.graphemes(true) {
+        col += grapheme.chars().count();
+        boundaries.push(col);
+    }
+    boundaries
+}
+
+fn grapheme_boundary_at_or_before(line: &str, col: usize) -> usize {
+    let col = col.min(line.chars().count());
+    grapheme_boundaries(line)
+        .into_iter()
+        .take_while(|boundary| *boundary <= col)
+        .last()
+        .unwrap_or(0)
+}
+
+fn previous_grapheme_boundary(line: &str, col: usize) -> usize {
+    grapheme_boundaries(line)
+        .into_iter()
+        .take_while(|boundary| *boundary < col)
+        .last()
+        .unwrap_or(0)
+}
+
+fn next_grapheme_boundary(line: &str, col: usize) -> usize {
+    grapheme_boundaries(line)
+        .into_iter()
+        .find(|boundary| *boundary > col)
+        .unwrap_or_else(|| line.chars().count())
+}
+
+/// One terminal grapheme cell and its logical char-index range.
+#[derive(Clone, Copy)]
+struct VisualCell<'a> {
+    text: &'a str,
+    start: usize,
+    end: usize,
+    width: u16,
+}
+
+/// One wrapped visual row: its logical line, char-index range, grapheme cells,
+/// and measured terminal-cell width.
+struct VisualRow<'a> {
     logical: usize,
     start: usize,
-    chars: Vec<char>,
+    end: usize,
+    cells: Vec<VisualCell<'a>>,
+    width: u16,
 }
 
 /// The cursor's visual `(row, col)` for `lines` with the logical cursor at
@@ -796,7 +848,7 @@ struct VisualRow {
 /// rendered scroll offset and the placed cursor always agree with what's drawn.
 fn visual_cursor_at(lines: &[String], row: usize, col: usize, width: u16) -> (u16, u16) {
     let rows = wrap_visual_rows(lines, width);
-    let mut last_on_line: Option<(usize, usize)> = None; // (visual index, start col)
+    let mut last_on_line: Option<(usize, &VisualRow)> = None;
     for (vi, vr) in rows.iter().enumerate() {
         if vr.logical > row {
             break;
@@ -804,67 +856,109 @@ fn visual_cursor_at(lines: &[String], row: usize, col: usize, width: u16) -> (u1
         if vr.logical != row {
             continue;
         }
-        let end = vr.start + vr.chars.len();
-        last_on_line = Some((vi, vr.start));
+        last_on_line = Some((vi, vr));
         // A col at this row's end belongs to the next row's start, so only claim
         // it here when it falls strictly inside — except the line's last row,
         // handled below.
-        if col >= vr.start && col < end {
-            return (vi as u16, (col - vr.start) as u16);
+        if col >= vr.start && col < vr.end {
+            let visual_col = vr
+                .cells
+                .iter()
+                .take_while(|cell| cell.end <= col)
+                .map(|cell| cell.width)
+                .fold(0, u16::saturating_add);
+            return (vi as u16, visual_col);
         }
     }
     // Cursor at the end of the logical line: rest at the end of its last row
     // (which is an empty trailing row when the text filled the width exactly).
-    if let Some((vi, start)) = last_on_line {
-        return (vi as u16, col.saturating_sub(start) as u16);
+    if let Some((vi, vr)) = last_on_line {
+        return (vi as u16, vr.width);
     }
     (rows.len().saturating_sub(1) as u16, 0)
 }
 
 /// Word-soft-wrap `lines` to `width`: each logical line breaks at the last space
-/// that fits, falling back to a hard char-break for a word longer than `width`.
+/// that fits, falling back to a hard grapheme break for a word longer than
+/// `width`. Width is measured in terminal cells, not Unicode scalar count.
 /// A line whose final row fills the width exactly emits a trailing empty row so
 /// the cursor can rest on a fresh line. Shared by [`visual_cursor_at`] (cursor
 /// math) and [`TextInput`] (rendering) so both wrap identically.
-fn wrap_visual_rows(lines: &[String], width: u16) -> Vec<VisualRow> {
-    let width = width.max(1) as usize;
+fn wrap_visual_rows<'a>(lines: &'a [String], width: u16) -> Vec<VisualRow<'a>> {
+    let width = width.max(1);
     let mut rows = Vec::new();
     for (r, line) in lines.iter().enumerate() {
-        let chars: Vec<char> = line.chars().collect();
-        if chars.is_empty() {
+        let mut char_col = 0;
+        let cells: Vec<VisualCell<'a>> = line
+            .graphemes(true)
+            .map(|grapheme| {
+                let start = char_col;
+                char_col += grapheme.chars().count();
+                VisualCell {
+                    text: grapheme,
+                    start,
+                    end: char_col,
+                    width: grapheme_cols(grapheme),
+                }
+            })
+            .collect();
+        if cells.is_empty() {
             rows.push(VisualRow {
                 logical: r,
                 start: 0,
-                chars: Vec::new(),
+                end: 0,
+                cells: Vec::new(),
+                width: 0,
             });
             continue;
         }
         let mut start = 0;
         let mut last_filled = false;
-        while start < chars.len() {
-            let remaining = chars.len() - start;
-            let end = if remaining <= width {
-                chars.len()
+        while start < cells.len() {
+            let mut hard_end = start;
+            let mut hard_width = 0u16;
+            while hard_end < cells.len() {
+                let next_width = hard_width.saturating_add(cells[hard_end].width);
+                if hard_end > start && next_width > width {
+                    break;
+                }
+                hard_width = next_width;
+                hard_end += 1;
+                if hard_width >= width {
+                    break;
+                }
+            }
+
+            let end = if hard_end == cells.len() {
+                hard_end
             } else {
-                // Break after the last space within the width window; if the
-                // window holds no space, hard-break at the width boundary.
-                let hard = start + width;
-                let brk = (start + 1..hard).rev().find(|&i| chars[i] == ' ');
-                brk.map(|i| i + 1).unwrap_or(hard)
+                (start + 1..hard_end)
+                    .rev()
+                    .find(|&i| cells[i].text.chars().all(char::is_whitespace))
+                    .map(|i| i + 1)
+                    .unwrap_or(hard_end)
             };
-            last_filled = end - start == width;
+            let row_width = cells[start..end]
+                .iter()
+                .map(|cell| cell.width)
+                .fold(0, u16::saturating_add);
+            last_filled = row_width == width;
             rows.push(VisualRow {
                 logical: r,
-                start,
-                chars: chars[start..end].to_vec(),
+                start: cells[start].start,
+                end: cells[end - 1].end,
+                cells: cells[start..end].to_vec(),
+                width: row_width,
             });
             start = end;
         }
         if last_filled {
             rows.push(VisualRow {
                 logical: r,
-                start: chars.len(),
-                chars: Vec::new(),
+                start: char_col,
+                end: char_col,
+                cells: Vec::new(),
+                width: 0,
             });
         }
     }
@@ -992,13 +1086,12 @@ impl View for TextInput {
                 break;
             }
             let mut x = area.x;
-            for (n, ch) in vr.chars.into_iter().enumerate() {
-                let w = UnicodeWidthChar::width(ch).unwrap_or(0) as u16;
-                if w == 0 || x >= area.right() {
+            for cell in vr.cells {
+                if cell.width == 0 || x >= area.right() {
                     continue;
                 }
-                surface.set(x, y, ch, self.style_at(vr.logical, vr.start + n));
-                x = x.saturating_add(w);
+                surface.set_string(x, y, cell.text, self.style_at(vr.logical, cell.start));
+                x = x.saturating_add(cell.width);
             }
         }
     }
@@ -1278,6 +1371,46 @@ mod tests {
         let out = render_view_rows(&TextInput::new(&state), 4, 2);
         assert_eq!(out[0], "abcd");
         assert_eq!(out[1], "ef");
+    }
+
+    #[test]
+    fn text_input_wraps_and_places_the_cursor_by_terminal_cells() {
+        let state = TextInputState::from_text("界界界");
+
+        assert_eq!(state.visual_height(4), 2);
+        assert_eq!(state.cursor_screen(Rect::new(0, 0, 4, 2)), (2, 1));
+        assert_eq!(
+            render_view_rows(&TextInput::new(&state), 4, 2),
+            vec!["界 界", "界"]
+        );
+
+        let emoji = TextInputState::from_text("👩‍💻x");
+        assert_eq!(
+            render_view_rows(&TextInput::new(&emoji), 3, 2),
+            vec!["👩‍💻 x", ""]
+        );
+    }
+
+    #[test]
+    fn text_input_moves_and_deletes_whole_graphemes() {
+        let mut state = TextInputState::from_text("a\u{301}b");
+
+        state.move_left();
+        assert_eq!(state.cursor(), (0, 2));
+        state.move_left();
+        assert_eq!(state.cursor(), (0, 0));
+
+        state.set_cursor(0, 2);
+        state.backspace();
+        assert_eq!(state.text(), "b");
+        assert_eq!(state.cursor(), (0, 0));
+
+        let mut state = TextInputState::from_text("👩‍💻x");
+        state.move_left();
+        assert_eq!(state.cursor(), (0, 3));
+        state.backspace();
+        assert_eq!(state.text(), "x");
+        assert_eq!(state.cursor(), (0, 0));
     }
 
     #[test]
