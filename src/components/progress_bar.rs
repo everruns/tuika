@@ -11,6 +11,7 @@ use crate::anim;
 use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
+use crate::width::str_cols;
 
 /// Left-to-right eighth-block fill glyphs, index 0 = empty .. 8 = full.
 const EIGHTHS: [char; 9] = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
@@ -25,6 +26,7 @@ pub struct ProgressBar {
     frame: u64,
     /// Append a right-aligned `NN%` label to a determinate bar.
     show_percent: bool,
+    label: Option<String>,
     filled: Option<ratatui_core::style::Color>,
     track: Option<ratatui_core::style::Color>,
 }
@@ -36,6 +38,7 @@ impl ProgressBar {
             fraction: Some(fraction.clamp(0.0, 1.0)),
             frame: 0,
             show_percent: false,
+            label: None,
             filled: None,
             track: None,
         }
@@ -47,6 +50,7 @@ impl ProgressBar {
             fraction: None,
             frame,
             show_percent: false,
+            label: None,
             filled: None,
             track: None,
         }
@@ -55,6 +59,12 @@ impl ProgressBar {
     /// Show a trailing `NN%` (determinate bars only).
     pub fn percent(mut self, show: bool) -> Self {
         self.show_percent = show;
+        self
+    }
+
+    /// Draw a centered caption over the bar, clipped to its available width.
+    pub fn label(mut self, label: impl Into<String>) -> Self {
+        self.label = Some(label.into());
         self
     }
 
@@ -148,6 +158,27 @@ impl ProgressBar {
             }
         }
     }
+
+    fn draw_label(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
+        let Some(label) = &self.label else {
+            return;
+        };
+        let suffix_w = if self.show_percent && self.fraction.is_some() {
+            5
+        } else {
+            0
+        };
+        let region = Rect::new(area.x, area.y, area.width.saturating_sub(suffix_w), 1);
+        if region.width == 0 {
+            return;
+        }
+        let width = str_cols(label);
+        let x = region
+            .x
+            .saturating_add(region.width.saturating_sub(width) / 2);
+        let mut clipped = surface.child(region);
+        clipped.set_string(x, area.y, label, ctx.theme.text_style());
+    }
 }
 
 impl View for ProgressBar {
@@ -164,6 +195,7 @@ impl View for ProgressBar {
             Some(fraction) => self.render_determinate(row, surface, ctx, fraction),
             None => self.render_indeterminate(row, surface, ctx),
         }
+        self.draw_label(row, surface, ctx);
     }
 }
 
@@ -204,6 +236,18 @@ mod tests {
         // Bar area (minus the " 100%" suffix = 5 cols) is fully filled.
         let full = (0..15).filter(|&x| buf[(x, 0)].symbol() == "█").count();
         assert_eq!(full, 15);
+    }
+
+    #[test]
+    fn progress_bar_draws_centered_clipped_label() {
+        let theme = Theme::default();
+        let bar = ProgressBar::determinate(0.5).label("0:42/3:07");
+        let buf = crate::testing::render(&bar, 14, 1, &theme);
+        assert!(row(&buf, 0).contains("0:42/3:07"));
+
+        let narrow = crate::testing::render(&bar, 4, 1, &theme);
+        assert_eq!(row(&narrow, 0), "0:42");
+        assert_eq!(narrow[(0, 0)].fg, theme.text);
     }
 
     #[test]

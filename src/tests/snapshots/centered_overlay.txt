@@ -1,6 +1,6 @@
 base line one
 base line two
-base ╭─ menu ─────────────╮
+base ╭ menu ──────────────╮
      │ Choose one:        │
      │ 1) first           │
      │ 2) second          │

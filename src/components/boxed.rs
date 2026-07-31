@@ -49,9 +49,9 @@ use super::text::{aligned_x, line_width};
 /// let buffer = render(&view, 12, 3, &Theme::default());
 /// assert_eq!(
 ///     grid(&buffer),
-///     "╭─ files ──╮\n\
+///     "╭ files ───╮\n\
 ///      │ hi       │\n\
-///      ╰──── 1/3 ─╯",
+///      ╰───── 1/3 ╯",
 /// );
 /// ```
 ///
@@ -107,7 +107,8 @@ impl Boxed {
         self
     }
 
-    /// Set a title drawn on the top border, clipped between the corners.
+    /// Set a title drawn directly after the top-left corner and truncated
+    /// before the top-right corner.
     ///
     /// The title's horizontal placement honors its [`Line::alignment`]; an unset
     /// alignment (the default) is flush-left, matching a plain string title.
@@ -116,9 +117,9 @@ impl Boxed {
         self
     }
 
-    /// Set a secondary title drawn on the bottom border, clipped between the
-    /// corners — the slot list/table TUIs use for a `1 of 3` position counter, a
-    /// footer legend, or a keybinding hint.
+    /// Set a secondary title drawn on the bottom border and truncated between
+    /// the corners — the slot list/table TUIs use for a `1 of 3` position
+    /// counter, a footer legend, or a keybinding hint.
     ///
     /// Placement honors the title's [`Line::alignment`]. An unset alignment
     /// defaults to flush-**right** here (unlike the top title's flush-left),
@@ -222,10 +223,8 @@ impl View for Boxed {
     }
 }
 
-/// Draw a border `title` on row `y`, inset one cell from each corner and clipped
-/// to fit between them. Horizontal placement honors the line's alignment,
-/// falling back to `default_align` when it is unset. A title too wide for the
-/// span between the corners is dropped rather than overrunning a corner.
+/// Draw a border `title` on row `y`, clipped between the corners. Horizontal
+/// placement honors the line's alignment, falling back to `default_align`.
 fn draw_title(
     surface: &mut Surface,
     area: Rect,
@@ -233,22 +232,21 @@ fn draw_title(
     title: &Line<'static>,
     default_align: Alignment,
 ) {
-    let max = area.width.saturating_sub(4);
-    if line_width(title) > max {
+    let max = area.width.saturating_sub(2);
+    if max == 0 {
         return;
     }
-    // The title span runs from one cell past the left corner to one cell before
-    // the right corner; align the content within that inset region.
     let region = Rect {
-        x: area.x.saturating_add(2),
+        x: area.x.saturating_add(1),
         y,
         width: max,
         height: 1,
     };
     let align = title.alignment.unwrap_or(default_align);
     let mut x = aligned_x(align, line_width(title), region);
+    let mut clipped = surface.child(region);
     for span in &title.spans {
-        x = surface.set_string(x, y, span.content.as_ref(), span.style);
+        x = clipped.set_string(x, y, span.content.as_ref(), title.style.patch(span.style));
     }
 }
 
@@ -260,7 +258,8 @@ mod tests {
     use crate::style::Theme;
     use crate::tests::support::{buffer, rainbow_theme, row};
     use crate::view::{RenderCtx, View, element};
-    use ratatui_core::style::Color;
+    use ratatui_core::style::{Color, Modifier};
+    use ratatui_core::text::Span;
 
     #[test]
     fn boxed_border_closed_across_sizes() {
@@ -292,9 +291,7 @@ mod tests {
         Boxed::new(element(Text::raw("x")))
             .title_bottom(" 1/3 ")
             .render(area, &mut surface, &ctx);
-        // Width 10: corners at 0 and 9, inset span [2..8) is 6 cols, " 1/3 " is
-        // 5 cols -> right-aligned start at column 3.
-        assert_eq!(row(&buf, 2), "╰── 1/3 ─╯");
+        assert_eq!(row(&buf, 2), "╰─── 1/3 ╯");
     }
 
     #[test]
@@ -307,8 +304,7 @@ mod tests {
         Boxed::new(element(Text::raw("x")))
             .title_bottom(Line::from("ab").left_aligned())
             .render(area, &mut surface, &ctx);
-        // Left-aligned -> one cell in from the left corner.
-        assert_eq!(row(&buf, 2), "╰─ab─────╯");
+        assert_eq!(row(&buf, 2), "╰ab──────╯");
     }
 
     #[test]
@@ -321,13 +317,12 @@ mod tests {
         Boxed::new(element(Text::raw("x")))
             .title(Line::from("ab").centered())
             .render(area, &mut surface, &ctx);
-        // Inset span [2..8) width 6, content 2 -> slack 4, centered start col
-        // 2 + 4/2 = 4.
+        // Interior span [1..9) width 8, content 2 -> centered at column 4.
         assert_eq!(row(&buf, 0), "╭───ab───╮");
     }
 
     #[test]
-    fn oversized_bottom_title_is_dropped() {
+    fn oversized_bottom_title_is_truncated() {
         let theme = Theme::default();
         let ctx = RenderCtx::new(&theme);
         let mut buf = buffer(6, 3);
@@ -336,8 +331,22 @@ mod tests {
         Boxed::new(element(Text::raw("x")))
             .title_bottom("a title far too wide")
             .render(area, &mut surface, &ctx);
-        // Doesn't fit between the corners -> border stays intact, no overrun.
-        assert_eq!(row(&buf, 2), "╰────╯");
+        assert_eq!(row(&buf, 2), "╰a ti╯");
+    }
+
+    #[test]
+    fn title_composes_line_style_under_span_style() {
+        let title = Line::from(vec![
+            Span::raw("a"),
+            Span::styled("b", Style::default().fg(Color::Blue)),
+        ])
+        .style(Style::default().fg(Color::Red).bold());
+        let view = Boxed::new(element(Text::raw("x"))).title(title);
+        let buf = crate::testing::render(&view, 6, 3, &Theme::default());
+        assert_eq!(buf[(1, 0)].fg, Color::Red);
+        assert_eq!(buf[(2, 0)].fg, Color::Blue);
+        assert!(buf[(1, 0)].modifier.contains(Modifier::BOLD));
+        assert!(buf[(2, 0)].modifier.contains(Modifier::BOLD));
     }
 
     #[test]

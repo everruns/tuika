@@ -1,7 +1,7 @@
 //! Text and paragraph components.
 //!
-//! [`Text`] draws pre-styled ratatui [`Line`]s faithfully (mixed styles per
-//! line preserved), clipping to its area. [`Paragraph`] takes a plain string
+//! [`Text`] draws pre-styled ratatui [`Line`]s faithfully (`Line::style` under
+//! each `Span::style`), clipping to its area. [`Paragraph`] takes a plain string
 //! plus one style and word-wraps it to the available width. [`Wrap`] is the
 //! styled counterpart to `Paragraph`: it word-wraps pre-styled `Line`s while
 //! preserving each span's style across the reflow (see [`wrap_lines`]).
@@ -52,7 +52,7 @@ fn draw_lines(lines: &[Line<'static>], area: Rect, surface: &mut Surface) {
             if x >= area.right() {
                 break;
             }
-            x = surface.set_string(x, y, span.content.as_ref(), span.style);
+            x = surface.set_string(x, y, span.content.as_ref(), line.style.patch(span.style));
         }
     }
 }
@@ -216,7 +216,11 @@ fn wrap_one(line: &Line<'static>, width: u16, out: &mut Vec<Line<'static>>) {
     let cells: Vec<(&str, Style)> = line
         .spans
         .iter()
-        .flat_map(|s| s.content.graphemes(true).map(move |g| (g, s.style)))
+        .flat_map(|s| {
+            s.content
+                .graphemes(true)
+                .map(move |g| (g, line.style.patch(s.style)))
+        })
         .collect();
     let before = out.len();
     let mut cur: Vec<(&str, Style)> = Vec::new();
@@ -374,6 +378,20 @@ mod tests {
         // Clipped to 6 columns ("hello " with a trailing space, which `row` trims).
         assert_eq!(row(&buf, 0), "hello");
         assert_eq!(row(&buf, 1), "hi");
+    }
+
+    #[test]
+    fn text_composes_line_style_under_span_style() {
+        let line = Line::from(vec![
+            Span::raw("a"),
+            Span::styled("b", Style::default().fg(Color::Blue)),
+        ])
+        .style(Style::default().fg(Color::Red).bold());
+        let buf = crate::testing::render(&Text::new(vec![line]), 2, 1, &Theme::default());
+        assert_eq!(buf[(0, 0)].fg, Color::Red);
+        assert_eq!(buf[(1, 0)].fg, Color::Blue);
+        assert!(buf[(0, 0)].modifier.contains(Modifier::BOLD));
+        assert!(buf[(1, 0)].modifier.contains(Modifier::BOLD));
     }
 
     #[test]

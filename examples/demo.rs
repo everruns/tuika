@@ -883,7 +883,7 @@ fn scene_progress(frame: u64, theme: &Theme) -> Element {
     view! {
         col(gap = 1) {
             fixed(1) { node(ProgressBar::determinate(0.25).percent(true)) }
-            fixed(1) { node(ProgressBar::determinate(0.60).percent(true)) }
+            fixed(1) { node(ProgressBar::determinate(0.60).label("0:42 / 3:07").percent(true)) }
             fixed(1) { node(ProgressBar::determinate(animated).percent(true)) }
             fixed(1) { node(ProgressBar::indeterminate(frame)) }
         }

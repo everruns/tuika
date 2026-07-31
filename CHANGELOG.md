@@ -11,6 +11,32 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
+## Unreleased
+
+### Added
+
+- `ProgressBar::label` draws a centered, clipped caption over determinate and
+  indeterminate bars.
+- `Scroll::wrap(true)` reflows owned styled lines at render width before
+  applying the scroll window.
+- `Table::selection_style` and `SelectList::selection_style` allow per-instance
+  selection foreground, background, and modifiers.
+
+### Changed
+
+- **Breaking**: `SelectState::selected()` now returns `Option<usize>`, and
+  `SelectState::select` takes `Option<usize>`, so lists and tables can render
+  without a selected row. Migrate `state.select(index)` to
+  `state.select(Some(index))`; use `state.select(None)` or
+  `SelectState::default()` for no selection. `SelectState::new()` still selects
+  the first row.
+- `Table` now windows rows to its assigned render height by default.
+  `Table::viewport(rows)` remains an optional upper bound.
+- ratatui `Line` styles are composed underneath their `Span` styles in text,
+  table cells, scrolling text, and box titles.
+- `Boxed` titles start directly after the corner and truncate at the opposite
+  corner, matching ratatui `Block` title placement.
+
 ## [0.6.0] - 2026-07-25
 
 Released alongside `tuika-codeformatters` 0.3.1 and `tuika-mermaid` 0.1.1,

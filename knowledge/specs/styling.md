@@ -70,6 +70,12 @@ through the tree would put a style parameter on every component and make "change
 all links" an N-call-site edit — precisely the problem the layer exists to
 remove.
 
+Per-instance styles remain appropriate when appearance carries local state
+rather than global policy. A table or list selection can encode which pane is
+focused, hovered, or inactive, so its explicit `selection_style` overlays the
+theme default for that instance. The theme still supplies the default; the
+instance override is the same narrow escape hatch as a semantic box border.
+
 ### Inheritance reports, then derives
 
 A terminal can report its foreground, its background, and sixteen ANSI entries.

@@ -370,7 +370,10 @@ impl App {
         };
         // Tab completes the highlighted row in place, without running it.
         if key.plain() && key.code == KeyCode::Tab {
-            let completion = items.get(state.selected()).map(|(label, _)| label.clone());
+            let completion = state
+                .selected()
+                .and_then(|selected| items.get(selected))
+                .map(|(label, _)| label.clone());
             if is_token && let Some(label) = completion {
                 self.complete(&label);
             }

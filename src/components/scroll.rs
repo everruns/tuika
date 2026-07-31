@@ -19,6 +19,9 @@
 //! split. [`max_offset`](ScrollState::max_offset) and
 //! [`max_x_offset`](ScrollState::max_x_offset) expose the in-range bounds for a
 //! host that drives the offsets itself.
+//!
+//! [`Scroll::wrap`] reflows owned styled lines at the assigned width before
+//! windowing, for prose that must both wrap and scroll.
 
 use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
@@ -28,6 +31,8 @@ use crate::event::{Event, EventFlow, KeyCode, MouseKind};
 use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
+
+use super::text::wrap_lines;
 
 /// Persisted scroll position for one scroll region.
 ///
@@ -220,7 +225,10 @@ pub struct Scroll {
     /// Leftmost visible display column; each line is drawn skipping this many
     /// columns from its left. Zero (the default) is the flush-left fast path.
     x_offset: usize,
+    stick_to_bottom: bool,
     scrollbar: bool,
+    wrap: bool,
+    windowed: bool,
 }
 
 impl Scroll {
@@ -234,7 +242,10 @@ impl Scroll {
             window_start: 0,
             offset: state.offset(),
             x_offset: state.x_offset(),
+            stick_to_bottom: state.is_stuck_to_bottom(),
             scrollbar: true,
+            wrap: false,
+            windowed: false,
         }
     }
 
@@ -260,13 +271,27 @@ impl Scroll {
             content_height,
             offset,
             x_offset: state.x_offset(),
+            stick_to_bottom: state.is_stuck_to_bottom(),
             scrollbar: true,
+            wrap: false,
+            windowed: true,
         }
     }
 
     /// Toggle the scrollbar (shown by default when content overflows).
     pub fn scrollbar(mut self, show: bool) -> Self {
         self.scrollbar = show;
+        self
+    }
+
+    /// Word-wrap owned lines to the assigned width before scrolling.
+    ///
+    /// Wrapping and overflow are resolved at render time, when width is known.
+    /// Horizontal panning is disabled while wrapping. A [`windowed`](Self::windowed)
+    /// view already represents host-prepared rows, so its rows must be wrapped
+    /// by the host and this setting has no effect there.
+    pub fn wrap(mut self, wrap: bool) -> Self {
+        self.wrap = wrap;
         self
     }
 
@@ -281,7 +306,12 @@ impl View for Scroll {
         // `Size` is a terminal-cell extent (`u16`); a transcript can be taller
         // than that. Saturate — the intrinsic hint only matters when the scroll
         // is not a flex `grow` child, and a viewport is never `u16::MAX` tall.
-        let intrinsic_h = self.content_height().min(u16::MAX as usize) as u16;
+        let content_height = if self.wrap && !self.windowed {
+            wrap_lines(&self.lines, available.width).len()
+        } else {
+            self.content_height()
+        };
+        let intrinsic_h = content_height.min(u16::MAX as usize) as u16;
         Size::new(available.width, intrinsic_h)
     }
 
@@ -289,21 +319,46 @@ impl View for Scroll {
         if area.width == 0 || area.height == 0 {
             return;
         }
-        let content_h = self.content_height();
-        let overflow = content_h > area.height as usize;
+        let should_wrap = self.wrap && !self.windowed;
+        let mut wrapped = if should_wrap {
+            wrap_lines(&self.lines, area.width)
+        } else {
+            Vec::new()
+        };
+        let mut content_h = if should_wrap {
+            wrapped.len()
+        } else {
+            self.content_height()
+        };
+        let mut overflow = content_h > area.height as usize;
         let text_width = if overflow && self.scrollbar {
             area.width.saturating_sub(1)
         } else {
             area.width
         };
+        if should_wrap && text_width < area.width {
+            wrapped = wrap_lines(&self.lines, text_width);
+            content_h = wrapped.len();
+            overflow = content_h > area.height as usize;
+        }
+        let lines = if should_wrap { &wrapped } else { &self.lines };
+        let window_start = if should_wrap { 0 } else { self.window_start };
+        let max_offset = ScrollState::max_offset(content_h, area.height as usize);
+        let offset = if should_wrap && self.stick_to_bottom {
+            max_offset
+        } else if should_wrap {
+            self.offset.min(max_offset)
+        } else {
+            self.offset
+        };
 
         for row in 0..area.height {
             // Map the content row (offset + row) to an index into `lines`, which
             // begins at `window_start` (0 in full mode, `offset` when windowed).
-            let Some(idx) = (self.offset + row as usize).checked_sub(self.window_start) else {
+            let Some(idx) = (offset + row as usize).checked_sub(window_start) else {
                 break;
             };
-            let Some(line) = self.lines.get(idx) else {
+            let Some(line) = lines.get(idx) else {
                 break;
             };
             let y = area.y + row;
@@ -311,18 +366,28 @@ impl View for Scroll {
             // Skip `x_offset` display columns from the left of each line (the
             // horizontal pan), carried across the line's spans. A zero offset is
             // exactly the flush-left `set_string` path.
-            let mut skip = self.x_offset.min(u16::MAX as usize) as u16;
+            let mut skip = if should_wrap {
+                0
+            } else {
+                self.x_offset.min(u16::MAX as usize) as u16
+            };
             let mut x = area.x;
             for span in &line.spans {
                 if x >= area.x + text_width {
                     break;
                 }
-                x = clip.set_string_skip(x, y, span.content.as_ref(), span.style, &mut skip);
+                x = clip.set_string_skip(
+                    x,
+                    y,
+                    span.content.as_ref(),
+                    line.style.patch(span.style),
+                    &mut skip,
+                );
             }
         }
 
         if overflow && self.scrollbar && text_width < area.width {
-            draw_scrollbar(area, self.offset, content_h, surface, ctx);
+            draw_scrollbar(area, offset, content_h, surface, ctx);
         }
     }
 }
@@ -427,6 +492,27 @@ mod tests {
         s.set_offset(500);
         s.clamp(100, 10);
         assert_eq!(s.offset(), 90, "clamped to content height - viewport");
+    }
+
+    #[test]
+    fn scroll_wraps_at_render_width_before_windowing() {
+        let mut state = ScrollState::new();
+        state.jump_to_top();
+        let scroll = Scroll::new(
+            vec![Line::styled(
+                "the quick brown fox",
+                Style::default().fg(Color::Blue),
+            )],
+            &state,
+        )
+        .wrap(true)
+        .scrollbar(false);
+        let buf = crate::testing::render(&scroll, 9, 3, &Theme::default());
+        assert_eq!(
+            crate::testing::grid(&buf),
+            "the quick\nbrown fox\n         "
+        );
+        assert_eq!(buf[(0, 1)].fg, Color::Blue);
     }
 
     #[test]

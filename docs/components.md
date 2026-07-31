@@ -27,7 +27,8 @@ view! {
 ### `ProgressBar`
 
 A single-row bar: determinate (sub-cell eighth-block fill, optional `NN%`) or an
-indeterminate marquee driven by the frame counter.
+indeterminate marquee driven by the frame counter. `.label("…")` overlays a
+centered caption and clips it on narrow terminals.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.ProgressBar.html)
 
 <img src="demos/progress_bar.gif" width="880" alt="ProgressBar demo">
@@ -36,7 +37,7 @@ indeterminate marquee driven by the frame counter.
 use tuika::prelude::*;
 view! {
     col(gap = 1) {
-        node(ProgressBar::determinate(0.6).percent(true))
+        node(ProgressBar::determinate(0.6).label("0:42/3:07").percent(true))
         node(ProgressBar::indeterminate(frame))
     }
 }
@@ -219,7 +220,8 @@ that with an explicit color for semantic frames — an accent or danger modal, o
 a per-pane color a host resolves itself. An optional `title_bottom` rides the
 bottom border — the slot for a `1 of 3` position counter, a footer legend, or a
 hint. Both titles honor their `Line` alignment; unset, the top title is
-flush-left and the bottom title flush-right.
+flush-left and the bottom title flush-right. Titles begin one cell after the
+corner and truncate before the opposite corner, matching ratatui `Block`.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.Boxed.html)
 
 <img src="demos/boxed.png" width="880" alt="Boxed demo">
@@ -282,7 +284,8 @@ own position. Content wider than the pane (logs, diffs, wide tables, deep paths)
 **pans horizontally** with `set_x_offset(cols)` (bind to `h`/`l` or `←`/`→`),
 bounded by `clamp_x` — the pan is width-aware, so wide/CJK glyphs never split.
 `ScrollState::max_offset` / `max_x_offset` expose the in-range bounds for a host
-driving the offsets itself.
+driving the offsets itself. For prose, `.wrap(true)` reflows styled lines at the
+assigned width before windowing; horizontal panning is disabled in that mode.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.Scroll.html)
 
 <img src="demos/scroll.gif" width="880" alt="Scroll demo">
@@ -294,7 +297,7 @@ state.handle(&event, content_h, viewport_h); // built-in wheel/paging, or…
 state.set_offset(app.scroll_row);            // …mirror an app-owned row, and
 state.set_x_offset(app.scroll_col);          // …pan wide lines left/right
 state.clamp_x(widest_line_w, viewport_w);    // keep the pan within the content
-view! { node(Scroll::new(lines, &state)) }
+view! { node(Scroll::new(lines, &state).wrap(true)) }
 ```
 
 #### Following a stream
@@ -415,16 +418,20 @@ let chart = DrawView::new(
 ### `SelectList` + `SelectState`
 
 A selectable list; `SelectState` navigates with the arrow keys (wrapping),
-confirms on Enter, cancels on Esc.
+confirms on Enter, cancels on Esc. Selection is optional:
+`state.select(None)` draws neither caret nor highlight. `.selection_style(style)`
+overrides the theme selection style for one list.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.SelectList.html)
 
 <img src="demos/select.gif" width="880" alt="SelectList demo">
 
 ```rust
+use ratatui::style::{Color, Style};
 use tuika::prelude::*;
 let mut state = SelectState::new();
-state.handle(&event, items.len());
-view! { node(SelectList::new(items, &state)) }
+let style = Style::default().fg(Color::Blue);
+state.select(None); // cursorless list; use Some(index) to select
+view! { node(SelectList::new(items, &state).selection_style(style)) }
 ```
 
 ### `Table` + `SelectState`
@@ -435,19 +442,25 @@ per-column width policy, a full-row selection highlight, a caret gutter, and
 windowed scrolling. Column widths come from the same flexbox `solve` as every
 other container — a `Column` is `fixed`, `auto` (widest cell), or `flex`
 (shares leftover width). Selection reuses `SelectState`, so a list and a table
-share one state type. Chrome follows the theme by default but is overridable
-(the `Boxed::border_color` pattern): `.caret(char)` sets the gutter marker,
-`.header_style(Style)` restyles the header, and `.preserve_selection_fg(true)`
-keeps color-coded columns' own colors under the selection highlight.
+share one state type. The table windows to its assigned height by default;
+`.viewport(rows)` is only an optional upper bound. Chrome follows the theme by
+default but is overridable (the `Boxed::border_color` pattern): `.caret(char)`
+sets the gutter marker,
+`.header_style(Style)` restyles the header, `.selection_style(Style)` controls
+one table's selection band (including modifiers), and
+`.preserve_selection_fg(true)` keeps color-coded columns' own colors under the
+selection highlight.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.Table.html)
 
 ```rust
+use ratatui::style::{Color, Style};
 use ratatui::text::Line;
 use tuika::prelude::*;
 let mut state = SelectState::new();
 state.handle(&event, rows.len());
+let style = Style::default().fg(Color::Blue);
 let columns = vec![Column::auto("branch"), Column::fixed("ahead", 5), Column::flex("subject", 1)];
-view! { node(Table::new(columns, rows, &state).viewport(20).caret('▶')) }
+view! { node(Table::new(columns, rows, &state).selection_style(style).caret('▶')) }
 ```
 
 ### `Tabs` + `TabsState`

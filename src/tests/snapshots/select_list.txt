@@ -1,4 +1,4 @@
-╭─ pick ─────────╮
+╭ pick ──────────╮
 │   Alpha        │
 │ › Beta         │
 │   Gamma        │
