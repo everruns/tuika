@@ -32,7 +32,7 @@ Set Shell bash
 Set FontSize 31
 Set CursorBlink false
 Set Width 1800
-Set Height 744
+Set Height 1200
 Set Padding 36
 Set WindowBar Colorful
 Set Theme { "background": "#141214", "foreground": "#ebe6e6" }

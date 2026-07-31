@@ -193,28 +193,74 @@ Without one, code is themed but uncolored. The `tuika-codeformatters` crate ship
 a tree-sitter implementation covering the common languages; a host with its own
 lexer implements the two-method trait instead.
 
-## Extensible fenced blocks
+## Mermaid diagrams
 
 `FencedBlockRenderer` can replace a language fence with terminal-native,
 width-aware lines. A renderer returns `None` for languages or inputs it does not
-handle, preserving the normal themed code block. `tuika-mermaid` supplies an
-mmdflux-backed implementation:
+handle, preserving the normal themed code block. The companion
+[`tuika-mermaid`](https://crates.io/crates/tuika-mermaid) crate supplies an
+mmdflux-backed renderer for `mermaid` fences:
 
 ```rust
 use tuika::prelude::*;
 use tuika_mermaid::MermaidRenderer;
 
+let source = "```mermaid\nflowchart LR\n  Parse --> Layout --> Paint\n```";
 let mermaid = MermaidRenderer::new();
-let doc = Markdown::new(
-    "```mermaid\nflowchart LR\n  Source --> Parse --> Paint\n```",
-)
-.block_renderer(&mermaid);
+let doc = Markdown::new(source).block_renderer(&mermaid);
 # let _ = doc;
 ```
 
-The fence is painted directly as Unicode cells:
+The renderer understands Mermaid flowcharts. For example, a left-to-right
+pipeline:
 
-<img src="https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif" width="880" alt="Mermaid diagram rendered as Unicode cells inside tuika Markdown">
+````markdown
+```mermaid
+flowchart LR
+  Source[Markdown] --> Parse
+  Parse --> Layout
+  Layout --> Paint[Terminal cells]
+```
+````
+
+A top-down decision flow with labeled branches:
+
+````markdown
+```mermaid
+flowchart TD
+  Input[Read fence] --> Supported{Supported?}
+  Supported -->|yes| Diagram[Render diagram]
+  Supported -->|no| Code[Render code block]
+```
+````
+
+And a sequence diagram showing the rendering handoff:
+
+````markdown
+```mermaid
+sequenceDiagram
+  participant Host
+  participant Markdown
+  participant Renderer
+  Host->>Markdown: Render source
+  Markdown->>Renderer: Mermaid fence
+  Renderer-->>Markdown: Unicode cells
+  Markdown-->>Host: Composed frame
+```
+````
+
+All three are ordinary Markdown source; registering `MermaidRenderer` turns them
+into Unicode diagrams sized for the available terminal width. Unsupported
+syntax, malformed input, and fences over 64 KiB remain visible as ordinary
+themed code blocks instead of disappearing.
+
+Here are the flowchart and sequence diagram rendered by the runnable integration
+example:
+
+<img src="https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif" width="880" alt="A Mermaid flowchart and sequence diagram rendered as Unicode cells inside tuika Markdown">
+
+Run it from the workspace root with
+`cargo run -p tuika-mermaid --example mermaid_markdown`.
 
 ## Links
 

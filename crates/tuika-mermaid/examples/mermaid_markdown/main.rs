@@ -6,7 +6,9 @@ use tuika_mermaid::MermaidRenderer;
 const DOCUMENT: &str = "\
 # Native Mermaid
 
-The fenced block below is laid out as Unicode cells:
+The fenced blocks below are laid out as Unicode cells:
+
+## Flowchart
 
 ```mermaid
 flowchart LR
@@ -14,13 +16,26 @@ flowchart LR
   Parse --> Layout
   Layout --> Paint[Terminal cells]
 ```
+
+## Sequence diagram
+
+```mermaid
+sequenceDiagram
+  participant Host
+  participant Markdown
+  participant Renderer
+  Host->>Markdown: Render source
+  Markdown->>Renderer: Mermaid fence
+  Renderer-->>Markdown: Unicode cells
+  Markdown-->>Host: Composed frame
+```
 ";
 
 fn main() {
     let theme = Theme::default();
     let mermaid = MermaidRenderer::new();
     let document = Markdown::new(DOCUMENT).block_renderer(&mermaid);
-    let buffer = render(&document, 80, 12, &theme);
+    let buffer = render(&document, 80, 30, &theme);
     let output = grid(&buffer)
         .lines()
         .map(str::trim_end)
