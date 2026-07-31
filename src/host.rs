@@ -325,20 +325,35 @@ pub fn paint_with_sheet(
     root: &dyn View,
     overlays: &[Overlay],
 ) {
+    let ctx = RenderCtx::new(theme).with_sheet(sheet);
+    paint_with_context(buffer, area, &ctx, root, overlays);
+}
+
+/// Composite a frame with a fully configured render context.
+///
+/// This is the host seam for an application that installs a
+/// [`StyleResolver`](crate::StyleResolver) in addition to a theme and
+/// stylesheet. Simpler hosts can keep using [`paint`] or [`paint_with_sheet`].
+pub fn paint_with_context(
+    buffer: &mut Buffer,
+    area: Rect,
+    ctx: &RenderCtx,
+    root: &dyn View,
+    overlays: &[Overlay],
+) {
     // Base background so the alternate screen is fully owned (no stale cells).
     {
         let mut surface = Surface::new(buffer, area);
-        surface.fill(Style::default().bg(theme.background));
+        surface.fill(Style::default().bg(ctx.theme.background));
     }
-    let ctx = RenderCtx::new(theme).with_sheet(sheet);
     {
         let mut surface = Surface::new(buffer, area);
-        root.render(area, &mut surface, &ctx);
+        root.render(area, &mut surface, ctx);
     }
     for overlay in overlays {
         let mut surface = Surface::new(buffer, overlay.area);
         if overlay.clear {
-            surface.fill(Style::default().bg(theme.surface));
+            surface.fill(Style::default().bg(ctx.theme.surface));
         }
         // An open overlay owns input, so render it focused.
         overlay

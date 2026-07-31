@@ -123,7 +123,9 @@ pub mod ui {
 // name earns it.
 pub use event::{Event, EventFlow, Key, KeyCode, Mouse, MouseButton, MouseKind};
 pub use geometry::{Padding, Size};
-pub use host::{TerminalSession, paint, paint_scene, paint_with_sheet, translate_event};
+pub use host::{
+    TerminalSession, paint, paint_scene, paint_with_context, paint_with_sheet, translate_event,
+};
 pub use layout::{Align, Dimension, Direction, Justify, LayoutStyle};
 pub use overlay::{Overlay, OverlaySpec};
 #[cfg(feature = "async")]
@@ -131,7 +133,7 @@ pub use runner::AsyncRunner;
 pub use runner::{Runner, RunnerConfig, Signal, UpdateResult};
 pub use scene::{Backdrop, Scene, SceneOverlay, ScopedScene};
 pub use screen::{ScreenMode, Scrollback};
-pub use style::{SemanticRole, StyleSheet, Theme};
+pub use style::{SemanticRole, StyleResolver, StyleRole, StyleSheet, Theme};
 pub use surface::Surface;
 pub use view::{Element, RenderCtx, ScopedElement, View, element};
 

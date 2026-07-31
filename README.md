@@ -416,8 +416,10 @@ it to. The query lives with the other out-of-band escapes, in `term::palette`. S
 Where a `Theme` is the color *tokens*, a `StyleSheet` is the *rules* — a mapping
 from a semantic role (heading, link, inline code, a panel's border and fill, …)
 onto the style it draws with. Override a role in one place and every element with
-that role restyles at once; markdown parts and bare URLs are role-driven too. See
-the [styling guide](docs/styling.md). `StyleBundle::padding` is layout, not a
+that role restyles at once; markdown, toast severities, diff rows, and key hints
+are role-driven too. Companion crates and applications can define namespaced
+`StyleRole`s and install a `StyleResolver` without expanding tuika's closed data
+model. See the [styling guide](docs/styling.md). `StyleBundle::padding` is layout, not a
 paint-only hint: `Boxed` resolves panel padding during both measurement and
 rendering; an explicit `Boxed::padding` remains the per-instance override.
 

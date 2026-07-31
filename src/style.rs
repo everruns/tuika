@@ -395,6 +395,21 @@ impl StyleBundle {
     pub fn to_style(&self) -> Style {
         self.apply(Style::default())
     }
+
+    /// Overlay `override_bundle` onto this bundle.
+    ///
+    /// Set fields replace the base, unset fields inherit it, and modifiers are
+    /// combined. This is how a host style resolver can change one attribute of
+    /// a built-in component role without restating its complete default.
+    pub fn overlay(self, override_bundle: StyleBundle) -> StyleBundle {
+        StyleBundle {
+            fg: override_bundle.fg.or(self.fg),
+            bg: override_bundle.bg.or(self.bg),
+            add_modifier: self.add_modifier | override_bundle.add_modifier,
+            border: override_bundle.border.or(self.border),
+            padding: override_bundle.padding.or(self.padding),
+        }
+    }
 }
 
 /// A semantic element a component styles itself as. The stylesheet maps each
@@ -424,6 +439,71 @@ pub enum Role {
     Rule,
     /// The glyph marking an inline image placeholder.
     ImageMarker,
+}
+
+/// An open semantic style key used by components and host-defined views.
+///
+/// Tuika publishes constants for its built-in component roles. Applications
+/// and companion crates may define their own namespaced constants with
+/// [`StyleRole::new`] and resolve them through a [`StyleResolver`] installed on
+/// [`RenderCtx`](crate::RenderCtx). The static string is an identifier, never
+/// terminal output.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct StyleRole(&'static str);
+
+impl StyleRole {
+    /// Define a stable, namespaced semantic role.
+    pub const fn new(name: &'static str) -> Self {
+        Self(name)
+    }
+
+    /// The role's stable identifier.
+    pub const fn name(self) -> &'static str {
+        self.0
+    }
+
+    /// Base text and fill of a toast row.
+    pub const TOAST: Self = Self::new("tuika.toast");
+    /// Informational toast accent.
+    pub const TOAST_INFO: Self = Self::new("tuika.toast.info");
+    /// Successful toast accent.
+    pub const TOAST_SUCCESS: Self = Self::new("tuika.toast.success");
+    /// Warning toast accent.
+    pub const TOAST_WARNING: Self = Self::new("tuika.toast.warning");
+    /// Error toast accent.
+    pub const TOAST_ERROR: Self = Self::new("tuika.toast.error");
+    /// Diff block background.
+    pub const DIFF: Self = Self::new("tuika.diff");
+    /// Inserted diff row.
+    pub const DIFF_ADDED: Self = Self::new("tuika.diff.added");
+    /// Removed diff row.
+    pub const DIFF_REMOVED: Self = Self::new("tuika.diff.removed");
+    /// Unchanged diff row.
+    pub const DIFF_CONTEXT: Self = Self::new("tuika.diff.context");
+    /// Diff line-number gutter.
+    pub const DIFF_GUTTER: Self = Self::new("tuika.diff.gutter");
+    /// Divider between side-by-side diff columns.
+    pub const DIFF_DIVIDER: Self = Self::new("tuika.diff.divider");
+    /// Key-cap portion of an action hint.
+    pub const KEY_HINT_KEY: Self = Self::new("tuika.key-hint.key");
+    /// Label portion of an action hint.
+    pub const KEY_HINT_LABEL: Self = Self::new("tuika.key-hint.label");
+}
+
+/// Optional host policy for built-in or application-defined [`StyleRole`]s.
+///
+/// Returned bundles overlay the active [`StyleSheet`] defaults. Resolvers are
+/// expected to be cheap and side-effect free. A resolver with interior mutable
+/// policy should increment [`revision`](Self::revision) whenever its answers
+/// change so measurement caches can invalidate.
+pub trait StyleResolver {
+    /// Resolve `role`, or return `None` to keep the stylesheet/default result.
+    fn resolve(&self, role: StyleRole) -> Option<StyleBundle>;
+
+    /// Monotonic policy revision for cache invalidation.
+    fn revision(&self) -> u64 {
+        0
+    }
 }
 
 /// The rule layer of tuika's styling model: a mapping from every [`Role`] to the
@@ -474,13 +554,38 @@ pub struct StyleSheet {
     pub rule: StyleBundle,
     /// Inline-image placeholder marker glyph.
     pub image_marker: StyleBundle,
+    /// Base text and fill of toast rows.
+    pub toast: StyleBundle,
+    /// Informational toast accent.
+    pub toast_info: StyleBundle,
+    /// Successful toast accent.
+    pub toast_success: StyleBundle,
+    /// Warning toast accent.
+    pub toast_warning: StyleBundle,
+    /// Error toast accent.
+    pub toast_error: StyleBundle,
+    /// Diff block background.
+    pub diff: StyleBundle,
+    /// Inserted diff rows.
+    pub diff_added: StyleBundle,
+    /// Removed diff rows.
+    pub diff_removed: StyleBundle,
+    /// Unchanged diff rows.
+    pub diff_context: StyleBundle,
+    /// Diff line-number gutter.
+    pub diff_gutter: StyleBundle,
+    /// Side-by-side diff divider.
+    pub diff_divider: StyleBundle,
+    /// Key-cap portion of action hints.
+    pub key_hint_key: StyleBundle,
+    /// Label portion of action hints.
+    pub key_hint_label: StyleBundle,
 }
 
 impl StyleSheet {
-    /// The default stylesheet for `theme`: every role mapped to the same style
-    /// tuika's components used before the stylesheet existed, so swapping in
-    /// `from_theme(theme)` is a no-op visually. Start from this and override the
-    /// roles you want to restyle.
+    /// The default stylesheet for `theme`: every built-in role mapped to a
+    /// theme-derived style. Start from this and override the roles you want to
+    /// restyle.
     pub fn from_theme(theme: &Theme) -> Self {
         let code = &theme.code;
         StyleSheet {
@@ -498,6 +603,27 @@ impl StyleSheet {
             task_marker: StyleBundle::new().fg(theme.accent),
             rule: StyleBundle::new().fg(theme.dim),
             image_marker: StyleBundle::new().fg(theme.accent),
+            toast: StyleBundle::new().fg(theme.text).bg(theme.surface),
+            toast_info: StyleBundle::new()
+                .fg(theme.semantic_color(SemanticRole::Info))
+                .bg(theme.surface),
+            toast_success: StyleBundle::new()
+                .fg(theme.semantic_color(SemanticRole::Success))
+                .bg(theme.surface),
+            toast_warning: StyleBundle::new()
+                .fg(theme.semantic_color(SemanticRole::Warning))
+                .bg(theme.surface),
+            toast_error: StyleBundle::new()
+                .fg(theme.semantic_color(SemanticRole::Danger))
+                .bg(theme.surface),
+            diff: StyleBundle::new().bg(code.background),
+            diff_added: StyleBundle::new().fg(theme.semantic_color(SemanticRole::Success)),
+            diff_removed: StyleBundle::new().fg(theme.semantic_color(SemanticRole::Danger)),
+            diff_context: StyleBundle::new().fg(theme.muted),
+            diff_gutter: StyleBundle::new().fg(theme.muted),
+            diff_divider: StyleBundle::new().fg(theme.dim),
+            key_hint_key: StyleBundle::new().fg(Color::Black).bg(theme.accent),
+            key_hint_label: StyleBundle::new().fg(theme.muted),
         }
     }
 
@@ -516,6 +642,27 @@ impl StyleSheet {
             Role::Rule => self.rule,
             Role::ImageMarker => self.image_marker,
         }
+    }
+
+    /// Resolve a built-in open [`StyleRole`]. Unknown application roles return
+    /// `None` for a host [`StyleResolver`] to own.
+    pub fn resolve_style(&self, role: StyleRole) -> Option<StyleBundle> {
+        Some(match role {
+            StyleRole::TOAST => self.toast,
+            StyleRole::TOAST_INFO => self.toast_info,
+            StyleRole::TOAST_SUCCESS => self.toast_success,
+            StyleRole::TOAST_WARNING => self.toast_warning,
+            StyleRole::TOAST_ERROR => self.toast_error,
+            StyleRole::DIFF => self.diff,
+            StyleRole::DIFF_ADDED => self.diff_added,
+            StyleRole::DIFF_REMOVED => self.diff_removed,
+            StyleRole::DIFF_CONTEXT => self.diff_context,
+            StyleRole::DIFF_GUTTER => self.diff_gutter,
+            StyleRole::DIFF_DIVIDER => self.diff_divider,
+            StyleRole::KEY_HINT_KEY => self.key_hint_key,
+            StyleRole::KEY_HINT_LABEL => self.key_hint_label,
+            _ => return None,
+        })
     }
 }
 
@@ -592,6 +739,16 @@ mod tests {
     }
 
     #[test]
+    fn bundle_overlay_inherits_unset_attributes() {
+        let base = StyleBundle::new().fg(Color::Red).bg(Color::Black).bold();
+        let merged = base.overlay(StyleBundle::new().fg(Color::Green).italic());
+        assert_eq!(merged.fg, Some(Color::Green));
+        assert_eq!(merged.bg, Some(Color::Black));
+        assert!(merged.add_modifier.contains(Modifier::BOLD));
+        assert!(merged.add_modifier.contains(Modifier::ITALIC));
+    }
+
+    #[test]
     fn from_theme_reproduces_the_pre_stylesheet_styles() {
         let t = rainbow_theme();
         let s = StyleSheet::from_theme(&t);
@@ -614,6 +771,13 @@ mod tests {
         assert_eq!(s.resolve(Role::Heading), s.heading);
         assert_eq!(s.resolve(Role::Link), s.link);
         assert_eq!(s.resolve(Role::Panel), s.panel);
+        assert_eq!(s.resolve_style(StyleRole::TOAST_ERROR), Some(s.toast_error));
+        assert_eq!(s.resolve_style(StyleRole::DIFF_ADDED), Some(s.diff_added));
+        assert_eq!(
+            s.resolve_style(StyleRole::KEY_HINT_LABEL),
+            Some(s.key_hint_label)
+        );
+        assert_eq!(s.resolve_style(StyleRole::new("app.unknown")), None);
     }
 
     #[test]

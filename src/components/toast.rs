@@ -10,22 +10,23 @@
 //! scheduler.
 
 use ratatui_core::layout::Rect;
-use ratatui_core::style::{Color, Modifier, Style};
+use ratatui_core::style::{Color, Modifier};
 
 use crate::geometry::Size;
+use crate::style::StyleRole;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
 
-/// Severity of a toast, which selects its accent color and leading glyph.
+/// Severity of a toast, which selects its semantic style role and leading glyph.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToastLevel {
-    /// Neutral information (blue).
+    /// Neutral information.
     Info,
-    /// A successful action (green).
+    /// A successful action.
     Success,
-    /// A caution (amber).
+    /// A caution.
     Warning,
-    /// A failure (red).
+    /// A failure.
     Error,
 }
 
@@ -48,6 +49,15 @@ impl ToastLevel {
             ToastLevel::Success => '✔',
             ToastLevel::Warning => '⚠',
             ToastLevel::Error => '✖',
+        }
+    }
+
+    fn style_role(self) -> StyleRole {
+        match self {
+            ToastLevel::Info => StyleRole::TOAST_INFO,
+            ToastLevel::Success => StyleRole::TOAST_SUCCESS,
+            ToastLevel::Warning => StyleRole::TOAST_WARNING,
+            ToastLevel::Error => StyleRole::TOAST_ERROR,
         }
     }
 }
@@ -184,7 +194,7 @@ impl View for ToastList<'_> {
         if area.is_empty() {
             return;
         }
-        let fill = Style::default().fg(ctx.theme.text).bg(ctx.theme.surface);
+        let fill = ctx.style(StyleRole::TOAST).to_style();
         for (row, toast) in self.toasts.items.iter().enumerate() {
             let y = area.y.saturating_add(row as u16);
             if y >= area.bottom() {
@@ -194,9 +204,7 @@ impl View for ToastList<'_> {
             for x in area.x..area.right() {
                 surface.set(x, y, ' ', fill);
             }
-            let accent = Style::default()
-                .fg(toast.level.color())
-                .bg(ctx.theme.surface);
+            let accent = ctx.style(toast.level.style_role()).apply(fill);
             let mut x = area.x;
             x = surface.set_string(x, y, "▌", accent.add_modifier(Modifier::BOLD));
             x = surface.set_string(x, y, &format!("{} ", toast.level.glyph()), accent);
@@ -262,9 +270,27 @@ mod tests {
         assert!(row(&buf, 1).contains("saved"));
         assert_eq!(
             buf[(0, 0)].fg,
-            ToastLevel::Error.color(),
-            "bar uses level color"
+            theme.semantic_color(crate::SemanticRole::Danger)
         );
+    }
+
+    #[test]
+    fn toast_roles_follow_the_stylesheet() {
+        let theme = Theme::default();
+        let mut toasts = Toasts::new(1);
+        toasts.push(ToastLevel::Error, "boom");
+        let sheet = crate::StyleSheet {
+            toast: crate::style::StyleBundle::new()
+                .fg(Color::Cyan)
+                .bg(Color::Blue),
+            toast_error: crate::style::StyleBundle::new().fg(Color::Yellow),
+            ..crate::StyleSheet::from_theme(&theme)
+        };
+        let buffer =
+            crate::testing::render_with_sheet(&ToastList::new(&toasts), 12, 1, &theme, sheet);
+        assert_eq!(buffer[(0, 0)].fg, Color::Yellow);
+        assert_eq!(buffer[(0, 0)].bg, Color::Blue);
+        assert_eq!(buffer[(4, 0)].fg, Color::Cyan);
     }
 
     #[test]
