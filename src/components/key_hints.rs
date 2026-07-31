@@ -40,6 +40,8 @@ impl KeyHint {
 
 /// A one-line sequence of styled key and action labels.
 ///
+/// ![responsive key hints demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/key_hints.png)
+///
 /// A narrow area never paints half a hint. The highest-priority complete hints
 /// that fit are retained, while their original declaration order is preserved.
 pub struct KeyHints {
@@ -142,6 +144,8 @@ impl View for KeyHints {
 }
 
 /// Complete, vertically scrollable help generated from active keymap bindings.
+///
+/// ![keymap help demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/keymap_help.png)
 pub struct KeymapHelp {
     hints: Vec<HelpHint>,
     offset: usize,
@@ -240,7 +244,7 @@ impl View for KeymapHelp {
 mod tests {
     use super::*;
     use crate::keymap::Layer;
-    use crate::testing::{grid, render};
+    use crate::testing::{grid, render, render_sizes};
     use crate::{Size, Theme};
     use ratatui_core::style::Color;
 
@@ -267,6 +271,21 @@ mod tests {
         );
         assert_eq!(grid(&render(&hints, 8, 1, &Theme::default())), " Q  quit");
         assert_eq!(grid(&render(&hints, 3, 1, &Theme::default())), "   ");
+    }
+
+    #[test]
+    fn key_hints_and_help_survive_degenerate_sizes() {
+        let keymap = Keymap::new().layer(
+            Layer::new("global")
+                .bind_labeled("enter", "open", ())
+                .bind_labeled("q", "quit", ()),
+        );
+        let hints = KeyHints::from_keymap(&keymap);
+        let help = KeymapHelp::from_keymap(&keymap);
+        let hint_sizes = (0..=24).flat_map(|width| (0..=3).map(move |height| (width, height)));
+        let help_sizes = (0..=24).flat_map(|width| (0..=4).map(move |height| (width, height)));
+        render_sizes(&hints, hint_sizes, &Theme::default());
+        render_sizes(&help, help_sizes, &Theme::default());
     }
 
     #[test]
