@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1024"
+     height="1024"
+     viewBox="0 0 512 512"
+     role="img"
+     aria-labelledby="title desc">
+  <title id="title">tuika logo</title>
+  <desc id="desc">Two offset rounded interface panels intersect at a gold anchor point.</desc>
+
+  <defs>
+    <!-- The offset panels represent tuika's base view and anchored overlays;
+         their shared gold point carries the Everruns family signature. -->
+    <linearGradient id="front" x1="170" y1="158" x2="432" y2="420"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D4A43A"/>
+      <stop offset="0.24" stop-color="#D4A43A"/>
+      <stop offset="0.58" stop-color="#0A1636"/>
+      <stop offset="1" stop-color="#0B1233"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="72" y="92" width="274" height="274" rx="58"
+        fill="none" stroke="#081C3F" stroke-width="30"/>
+  <rect x="166" y="146" width="274" height="274" rx="58"
+        fill="none" stroke="url(#front)" stroke-width="30"/>
+  <rect x="215" y="195" width="66" height="66" rx="20" fill="#D4A43A"/>
+</svg>

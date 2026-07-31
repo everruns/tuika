@@ -127,6 +127,8 @@ tuika's own suite covers more:
 
 ## Docs layout
 
+- `logo.svg` — the hand-authored vector source for tuika's mark, embedded in the
+  README and shipped so crates.io can resolve the relative path.
 - `docs/components.md` — the public component gallery (name, description, demo
   per component), covering **every** component, including those published in a
   companion crate. Keep it **presentational only**: no build or regeneration
@@ -167,9 +169,9 @@ tuika's own suite covers more:
 The root package's demo, showcase, example, theme, and styling assets are
 GitHub-only: `Cargo.toml`'s `exclude` keeps them (and the repository
 machinery — `knowledge/`, `.agents/`, `.github/`, `scripts/`) out of tuika's
-published `.crate`, and `tests/packaging.rs` guards that split. Only
-`docs/hero.gif`, `docs/demos/image.svg`, and `docs/demos/split-footer.svg`,
-which the crates.io README embeds by relative path, ship in tuika.
+published `.crate`, and `tests/packaging.rs` guards that split. Only `logo.svg`,
+`docs/hero.gif`, `docs/demos/image.svg`, and `docs/demos/split-footer.svg`, which
+the crates.io README embeds by relative path, ship in tuika.
 
 Every published member owns the same rule, and how its README embeds a recording
 decides the answer: `tuika-mermaid`'s small recording ships, because its README

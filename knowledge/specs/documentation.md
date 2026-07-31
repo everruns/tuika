@@ -134,8 +134,9 @@ owns clarity, task completeness, working examples, and accurate warnings.
 
 ## Generated visual assets
 
-Every visual in this repository is generated from code that is checked in, not
-staged by hand. The rule is that the *scene registry is the source of truth*:
+Every visual in this repository has checked-in source rather than an opaque
+staged artifact. The hand-authored `logo.svg` is its own editable vector source;
+generated demos follow the rule that the *scene registry is the source of truth*:
 
 - Component demos come from the `DEMOS` registry in `examples/demo.rs`; VHS
   tapes are generated per scene into a temp dir and are **not committed**.
@@ -266,18 +267,18 @@ consumed only by the GitHub-rendered README and `docs/*.md`. docs.rs renders the
 hand-written `//!` header, which references none of them, so bundling them only
 bloats the published `.crate`. Root `Cargo.toml`'s `exclude` keeps them — and the
 repository machinery (`knowledge/`, `.agents/`, `.github/`, `scripts/`) — out
-of that tarball; only `docs/hero.gif`, `docs/demos/image.svg`, and
-`docs/demos/split-footer.svg`, which its crates.io README embeds by relative
-path, ship.
+of that tarball; only `logo.svg`, `docs/hero.gif`, `docs/demos/image.svg`, and
+`docs/demos/split-footer.svg`, which its crates.io README embeds by relative path,
+ship.
 
 The split is per **published crate**, not per repository, and the deciding
 question is how that crate's own README reaches the asset — because that is what
 determines whether the packaged copy is ever read:
 
 - **Relative path** — crates.io renders the page from the tarball, so the asset
-  must ship. tuika's README assets (`docs/hero.gif`, `docs/demos/image.svg`, and
-  `docs/demos/split-footer.svg`) and `tuika-mermaid`'s ~32 KiB recording beside
-  its example are here.
+  must ship. tuika's README assets (`logo.svg`, `docs/hero.gif`,
+  `docs/demos/image.svg`, and `docs/demos/split-footer.svg`) and
+  `tuika-mermaid`'s ~32 KiB recording beside its example are here.
 - **Absolute `raw.githubusercontent.com` URL** — the packaged copy is
   unreachable from inside the `.crate` and is pure weight, so it is excluded
   wherever it lives. `tuika-codeformatters`' `docs/languages.gif` was shipping

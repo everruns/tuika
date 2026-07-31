@@ -24,7 +24,7 @@
 //! README embeds it: an absolute `raw.githubusercontent.com` URL means the
 //! packaged copy is unreachable and must not ship (`tuika-codeformatters`), a
 //! relative path means crates.io renders from the packaged copy and it must
-//! (`tuika-mermaid`, `tuika-html`, and tuika's three README assets).
+//! (`tuika-mermaid`, `tuika-html`, and tuika's four README assets).
 
 use std::process::Command;
 
@@ -124,6 +124,7 @@ fn crates_io_readme_assets_and_source_are_kept() {
     let has = |p: &str| files.iter().any(|f| f == p);
 
     // The assets the crates.io README embeds by relative path.
+    assert!(has("logo.svg"), "README logo must ship");
     assert!(has("docs/hero.gif"), "README hero image must ship");
     assert!(
         has("docs/demos/image.svg"),
