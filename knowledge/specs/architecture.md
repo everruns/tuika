@@ -31,6 +31,10 @@ rather than beside it.
 - **Overlays anchor over the base tree** rather than nesting inside it, so a
   dialog's position is independent of where it is declared and input routing can
   give the topmost overlay first refusal.
+- **Selection policy is host-configurable**: the core state owns cursor and
+  checked-item transitions, while aliases and mouse geometry are explicit
+  inputs. Hosts can share picker behavior without inheriting hard-coded keys or
+  layout assumptions.
 - **Owned scenes are frame descriptions, not retained UI.** `Scene` owns the
   root and overlay elements for one frame and resolves each overlay's
   `OverlaySpec` while rendering. This removes borrowed compositor plumbing
