@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 7070aa7d00c56db90bf9087e68dadd3450e1abf26314e81a36cfc4e181fc6f18 # shrinks to w = 0, h = 0, items = [Item { dimension: Auto, intrinsic: Size { width: 0, height: 0 } }], gap = 0, pad = 1, dir = Row, align = Start, justify = Start
+cc a70a33f0c17d26025fe3bb46b40fa48d35843d910b103ffec7175f5c716f3bdb # shrinks to w = 0, h = 1, bases = [0, 0], gap = 1, row_gap = 0, grow = 0, shrink = 0, align_content = Start

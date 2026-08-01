@@ -21,8 +21,8 @@ terminal UI with tuika without requiring knowledge of repository internals.
   for someone who added `tuika` to their `Cargo.toml`:
   - `docs/components.md` — the component gallery. **Presentational only**: no
     build or regeneration instructions.
-  - `docs/features.md`, `docs/keymap.md`, `docs/markdown.md`, `docs/styling.md`,
-    `docs/themes.md` — focused guides, each with its generated assets in a
+  - `docs/features.md`, `docs/keymap.md`, `docs/layout.md`, `docs/markdown.md`,
+    `docs/styling.md`, `docs/themes.md` — focused guides, each with its generated assets in a
     same-named subdirectory, except `docs/markdown.md`, which reuses the
     gallery's `DEMOS` scenes rather than owning a second copy of them. A
     component earns a guide of its own when its surface outgrows a gallery

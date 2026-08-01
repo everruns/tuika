@@ -10,6 +10,20 @@
   adding another parser-backed block no longer grows parallel component fields
   and methods. HTML fences now inherit the active host stylesheet.
 
+- **Application and layout foundations remain integer-native and runtime-neutral**
+
+- Flex now owns wrapped lines, grow and shrink distribution, cross-line
+  alignment, per-child styles, and exact boundary rounding. Intrinsic `Flow`
+  and an intentionally small equal-column `Grid` cover common terminal layouts
+  without adopting Taffy or CSS Grid.
+- Measurement accepts non-exhaustive known-axis and intrinsic-sizing requests;
+  existing views adapt through the original method.
+- One pure runner state machine drives sync and async shells. Terminal lifecycle
+  policies are independently configurable, and a headless application harness
+  drives the same signal/update contract without a runtime or terminal.
+- Static views can be emitted once as ANSI-styled ordinary output; the DSL now
+  composes conditional and repeated children.
+
 - **Character key bindings use logical text**
 
 - Keymap character specs now name the exact Unicode result after keyboard

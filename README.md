@@ -11,7 +11,7 @@
 [![downloads](https://img.shields.io/crates/d/tuika.svg)](https://crates.io/crates/tuika)
 [![license](https://img.shields.io/crates/l/tuika.svg)](https://github.com/everruns/tuika/blob/main/LICENSE)
 ![msrv](https://img.shields.io/badge/rust-1.88%2B-blue.svg) \
-[Docs](https://docs.rs/tuika) · [Components](docs/components.md) ·
+[Docs](https://docs.rs/tuika) · [Components](docs/components.md) · [Layout](docs/layout.md) ·
 [Markdown](docs/markdown.md) · [Terminal features](docs/features.md) ·
 [Keymap](docs/keymap.md) · [Styling](docs/styling.md) ·
 [Themes](docs/themes.md) \
@@ -130,9 +130,11 @@ with tuika's surfaces (see [Compatibility](#compatibility)).
 - **Live data** (`Live` / `LiveView`) is shared application state read at render
   time. Updates request a redraw from the runner; Tuika does not spawn data
   sources or reconcile a retained widget tree.
-- **Layout** is a flexbox subset (`layout`): `Dimension` (`Auto`/`Fixed`/
-  `Percent`/`Flex`), `Align`, `Justify`, `Direction`, over a direction-agnostic
-  axis so rows and columns share one solver.
+- **Layout** is an [integer-native flexbox subset](docs/layout.md) (`layout`): wrapped flex lines,
+  independent basis/grow/shrink/min/max child styles, cross-line alignment, and
+  exact boundary rounding over one direction-agnostic solver. `Flow` packages
+  intrinsic wrapping; `Grid` is the smaller equal-column, row-major alternative
+  to adopting CSS Grid.
 - **Overlays** (`overlay`) anchor a view over the base tree; the **host**
   (`host`) owns the alternate screen, translates crossterm input, and
   composites the frame.
@@ -193,6 +195,8 @@ component. Linked names below jump straight to their demo.
 | `QrCode` (+ `QrEcc`) | QR code (byte-mode v1–4 encoder) rendered with half-blocks |
 | [`Rule`](docs/components.md#rule) | Horizontal separator: optional title + fill glyph to width |
 | [`Flex`](docs/components.md#flex) | Flexbox container (the composition primitive) |
+| [`Flow`](docs/components.md#flow) | Intrinsic-width items wrapped into flex lines |
+| [`Grid`](docs/components.md#grid) | Small equal-column, row-major terminal grid |
 | `Responsive` / `Constrained` | Breakpoint selection and min/max measurement |
 | [`Boxed`](docs/components.md#boxed) | Border + padding + title, focus-aware |
 | `Scene` / `ScopedScene` / `Dialog` | Owned or frame-borrowed root + anchored overlays |
@@ -509,12 +513,15 @@ let root = crate::view! {
 Grammar (each keyword consumes exactly one node):
 
 - `col(attrs) { … }` / `row(attrs) { … }` — flex containers. Attrs (all
-  optional): `gap`, `padding`, `align`, `justify`, `background`.
+  optional): `gap`, `row_gap`, `column_gap`, `padding`, `align`, `justify`,
+  `wrap`, `align_content`, `background`.
 - `boxed(attrs) { child }` — bordered container. Attrs: `title`, `border`,
   `padding`, `background`.
 - `text(expr)`, `spacer()` — leaves.
 - `grow(n) { node }` / `fixed(n) { node }` — set a child's main-axis size
   (default auto).
+- `when(condition) { node }` / `for(pattern in iterable) { node }` — conditional
+  and repeated children, still expanding to ordinary builder calls.
 - **`node(expr)`** — splice any `impl View`. This is the escape hatch, and how
   a component **from another crate** participates in the DSL:
 
@@ -644,6 +651,10 @@ keyboard layout, while modifiers remain separate for non-character chords. It
 preserves raw mode and any keyboard-reporting stack entries the caller had
 already enabled. `AltScreen` remains available for hosts that intentionally own
 raw mode, keyboard modes, and cursor visibility themselves.
+`TerminalSession::enter_config(TerminalSessionConfig)` keeps the same rollback
+guarantees while independently configuring raw mode, enhanced keyboard
+reporting, mouse capture, and cursor visibility. `Runner::with_session_config`
+uses that policy without replacing the runner loop.
 
 `Runner` is an optional synchronous event loop for dashboards and small tools.
 It owns `TerminalSession`, frame scheduling, Crossterm event translation, and
@@ -679,6 +690,11 @@ or deterministic test owns monotonic time. The same `Clock` seam drives
 `SelectionState::handle_with_clock`, so double-click timing never has to depend
 on wall-clock sleeps. Frame animation, keymap timeouts, and toast expiry remain
 explicitly host-driven and therefore need no internal clock.
+
+`RunnerCore` is the runtime-neutral state machine underneath both runners. It
+turns dirty/clean/exit results and external invalidations into
+`RunnerAction::{Wait, Render(frame), Exit}` without knowing about Crossterm,
+Tokio, clocks, or terminal backends.
 
 `AsyncRunner` (behind `features = ["async"]`) uses the same state/view/signal
 model for applications that already have a Tokio runtime — anything doing
@@ -796,6 +812,8 @@ module draws a `View` into an in-memory ratatui `Buffer` and reads it back:
   snapshot assertion.
 - `render_sizes(view, sizes, &theme) -> Vec<Buffer>` — the same view across a set
   of sizes, for resize and degenerate-size sweeps.
+- `TestHarness<State>` — drive `Signal`s through state/update/view functions,
+  resize deterministically, and receive a buffer only for dirty updates.
 
 ```rust
 use tuika::testing::{grid, render};
@@ -804,6 +822,10 @@ use tuika::Theme;
 let buffer = render(my_view.as_ref(), 20, 3, &Theme::default());
 assert!(grid(&buffer).contains("expected text"));
 ```
+
+For static command output that should remain in scrollback, `render_once` and
+`write_once` measure and render a view as ordinary ANSI-styled UTF-8. They do
+not enter raw mode, capture input, hide the cursor, or own a screen.
 
 ## Used in
 

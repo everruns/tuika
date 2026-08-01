@@ -3,7 +3,95 @@
 use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 
-use crate::{RenderCtx, StyleSheet, Theme, View, paint, paint_with_context, paint_with_sheet};
+use crate::{
+    Element, RenderCtx, Signal, StyleSheet, Theme, UpdateResult, View, paint, paint_with_context,
+    paint_with_sheet,
+};
+
+/// A deterministic, terminal-free application harness.
+///
+/// The harness owns application state, viewport size, and frame numbering. It
+/// drives the same `Signal`/`UpdateResult` contract as [`Runner`](crate::Runner)
+/// while rendering into an in-memory [`Buffer`]. No raw mode, terminal global,
+/// sleeping, or OS event queue is involved.
+///
+/// ```
+/// use tuika::prelude::*;
+/// use tuika::testing::{TestHarness, grid};
+///
+/// let mut app = TestHarness::new(0u8, 3, 1);
+/// let (result, frame) = app.step(
+///     Signal::Tick,
+///     |count, _| { *count += 1; UpdateResult::Dirty },
+///     |count, _frame| element(Text::raw(count.to_string())),
+/// );
+/// assert_eq!(result, UpdateResult::Dirty);
+/// assert_eq!(grid(&frame.unwrap()), "1  ");
+/// ```
+pub struct TestHarness<S> {
+    state: S,
+    theme: Theme,
+    width: u16,
+    height: u16,
+    frame: u64,
+}
+
+impl<S> TestHarness<S> {
+    /// Create a harness with the default theme and a fixed viewport.
+    pub fn new(state: S, width: u16, height: u16) -> Self {
+        Self::with_theme(state, width, height, Theme::default())
+    }
+
+    /// Create a harness with an explicit theme.
+    pub fn with_theme(state: S, width: u16, height: u16, theme: Theme) -> Self {
+        Self {
+            state,
+            theme,
+            width,
+            height,
+            frame: 0,
+        }
+    }
+
+    /// Borrow the current application state.
+    pub fn state(&self) -> &S {
+        &self.state
+    }
+
+    /// Mutably borrow the current application state.
+    pub fn state_mut(&mut self) -> &mut S {
+        &mut self.state
+    }
+
+    /// Change the headless viewport for subsequent frames.
+    pub fn resize(&mut self, width: u16, height: u16) {
+        self.width = width;
+        self.height = height;
+    }
+
+    /// Build and render the next application frame.
+    pub fn render(&mut self, view: impl FnOnce(&S, u64) -> Element) -> Buffer {
+        let root = view(&self.state, self.frame);
+        let buffer = render(root.as_ref(), self.width, self.height, &self.theme);
+        self.frame = self.frame.wrapping_add(1);
+        buffer
+    }
+
+    /// Deliver a signal, rendering only when the update marks the app dirty.
+    ///
+    /// `None` represents both a clean update and exit; inspect the returned
+    /// [`UpdateResult`] to distinguish them.
+    pub fn step(
+        &mut self,
+        signal: Signal,
+        update: impl FnOnce(&mut S, Signal) -> UpdateResult,
+        view: impl FnOnce(&S, u64) -> Element,
+    ) -> (UpdateResult, Option<Buffer>) {
+        let result = update(&mut self.state, signal);
+        let frame = (result == UpdateResult::Dirty).then(|| self.render(view));
+        (result, frame)
+    }
+}
 
 /// Render `view` into a zero-origin in-memory buffer.
 pub fn render(view: &dyn View, width: u16, height: u16, theme: &Theme) -> Buffer {
@@ -72,5 +160,27 @@ mod tests {
         let theme = Theme::default();
         let rendered = render(&Text::raw("hi"), 3, 2, &theme);
         assert_eq!(grid(&rendered), "hi \n   ");
+    }
+
+    #[test]
+    fn harness_drives_state_and_only_renders_dirty_updates() {
+        let mut harness = TestHarness::new(0u8, 2, 1);
+        let (result, frame) = harness.step(
+            Signal::Tick,
+            |state, _| {
+                *state += 1;
+                UpdateResult::Dirty
+            },
+            |state, _| crate::element(Text::raw(state.to_string())),
+        );
+        assert_eq!(result, UpdateResult::Dirty);
+        assert_eq!(grid(&frame.unwrap()), "1 ");
+
+        let (_, frame) = harness.step(
+            Signal::Tick,
+            |_, _| UpdateResult::Clean,
+            |_, _| crate::element(Text::raw("unused")),
+        );
+        assert!(frame.is_none());
     }
 }

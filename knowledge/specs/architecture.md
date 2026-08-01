@@ -37,9 +37,13 @@ rather than beside it.
   resolves it to a wide dock, a narrow focused drawer, or a hidden passive
   panel. Views, focus ids, keymaps, scrolling, and domain state remain with the
   host.
-- **Layout is a flexbox subset** over a direction-agnostic axis, so rows and
-  columns share one solver: `Dimension` (`Auto`/`Fixed`/`Percent`/`Flex`) plus
-  `Align`, `Justify`, and `Direction`.
+- **Layout is an integer-native flexbox subset** over a direction-agnostic axis.
+  Container style owns direction, two-axis gaps, wrapping, justification, item
+  alignment, and line alignment; `FlexItemStyle` separately owns basis, grow,
+  shrink, min/max, and `align_self`. Positive and negative free space use
+  weighted cumulative boundaries, so rounded cell allocations sum exactly.
+  `Flow` packages intrinsic-width wrapping. `Grid` deliberately stops at
+  equal-column row-major placement rather than importing CSS Grid semantics.
 - **Overlays composite over the base tree** rather than nesting inside it, so
   input routing can give the topmost layer first refusal. Screen anchors keep a
   dialog independent of where it is declared; target placement follows a
@@ -75,6 +79,9 @@ rather than beside it.
   Rendering stays pure, and idle ticks do not churn the terminal. The
   synchronous runner's monotonic clock defaults to the process clock and is
   replaceable for deterministic hosts.
+  `RunnerCore` is the runtime-neutral dirty/render/exit state machine used by
+  both sync and async shells; event polling, clocks, sleeping, and terminal I/O
+  remain outside it.
 
 `measure` and `render` are the two halves of every view, and both receive the
 same `RenderCtx`: `measure` reports a size in whole cells so the solver can
@@ -87,6 +94,10 @@ box they will actually receive after its own resolved padding. An explicit
 component padding overrides stylesheet padding. When a `Flex` is itself measured, its
 declared fixed and percent dimensions contribute their resolved main-axis sizes;
 the child's intrinsic size is the basis only for auto and flexible children.
+`measure_request` adds optional known axes plus definite, min-content, and
+max-content availability. Its default adapts to the original `measure`, so old
+views remain source-compatible; the non-exhaustive request and availability
+types can gain future measurement inputs without another trait-wide break.
 
 ## Why the `ratatui-core` seam, not the umbrella
 
@@ -206,7 +217,8 @@ the child's logical extent is much larger.
 ## Rendering pipeline
 
 1. The host builds the view tree from application state (optionally through the
-   `view!` DSL, which expands to the same builder calls — no runtime cost).
+   `view!` DSL, whose conditional and repeated forms still expand to the same
+   builder calls — no reconciler or runtime identity).
    `element` preserves frame borrows as `ScopedElement`, so borrowed views may
    appear at any depth in the base tree; `ScopedScene` adds owned overlays.
 2. The solver resolves the tree to rects using the frame's active `RenderCtx`.

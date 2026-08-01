@@ -198,6 +198,9 @@ view! {
 
 ## Layout
 
+See the [layout guide](layout.md) for wrapping, grow/shrink, line alignment,
+measurement requests, migration notes, and choosing Flex, Flow, or Grid.
+
 ### `Flex`
 
 The flexbox container and composition primitive — `grow(n)` children share
@@ -237,6 +240,44 @@ let flex = Flex::row()
 let theme = Theme::default();
 let ctx = RenderCtx::new(&theme);
 let rects = flex.solve(Rect::new(0, 0, 40, 10), &ctx); // [sidebar_rect, content_rect]
+```
+
+`FlexItemStyle` separates child-owned basis/grow/shrink/min/max/`align_self`
+from container-owned direction, wrapping, gaps, justification, and line
+alignment. `Flex::wrap(FlexWrap::Wrap)` forms flex lines; positive and negative
+free space are distributed by weight with exact cell-boundary rounding.
+
+### `Flow`
+
+A row-oriented wrapping flex container for tags, actions, and other items whose
+intrinsic widths decide the line breaks.
+[API](https://docs.rs/tuika/latest/tuika/components/struct.Flow.html)
+
+<img src="demos/flow.png" width="880" alt="Flow demo">
+
+```rust
+use tuika::prelude::*;
+let flow = Flow::new()
+    .gap(1)
+    .item(element(Text::raw("build")))
+    .item(element(Text::raw("release-ready")));
+```
+
+### `Grid`
+
+A deliberately small equal-column, row-major terminal grid with intrinsic row
+heights, independent gaps, padding, and exact boundary rounding. It omits CSS
+Grid's named lines, implicit tracks, spanning, and dense packing.
+[API](https://docs.rs/tuika/latest/tuika/components/struct.Grid.html)
+
+<img src="demos/grid.png" width="880" alt="Grid demo">
+
+```rust
+use tuika::prelude::*;
+let grid = Grid::new(3)
+    .gap(1)
+    .cell(element(Text::raw("one")))
+    .cell(element(Text::raw("two")));
 ```
 
 ### `Boxed`

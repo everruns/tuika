@@ -5,7 +5,7 @@ iai-callgrind counts instructions and is a CI gate.
 
 ## Criterion (wall clock)
 
-`markdown.rs` and `scroll.rs` here, and `highlight.rs` in
+`markdown.rs`, `scroll.rs`, and the wrapped-line `layout.rs` here, and `highlight.rs` in
 `crates/tuika-codeformatters/benches/`, are Criterion targets. Wall-clock
 numbers are too noisy on shared runners to gate on, so CI runs these only on
 `main` (and via manual dispatch) and uploads the Criterion output as an

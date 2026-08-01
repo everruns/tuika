@@ -14,6 +14,116 @@ use ratatui_core::layout::Rect;
 
 use super::geometry::Size;
 use super::style::{StyleBundle, StyleResolver, StyleRole, StyleSheet, Theme};
+
+/// The space available to a view on one axis during intrinsic measurement.
+///
+/// Most callers have a concrete cell extent and use [`Definite`](Self::Definite).
+/// Layout containers with intrinsic track sizing can instead ask for the
+/// smallest unwrapped contribution or the preferred unconstrained extent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AvailableSpace {
+    /// A concrete number of terminal cells.
+    Definite(u16),
+    /// The smallest extent the content can occupy without avoidable overflow.
+    MinContent,
+    /// The preferred extent when the axis is unconstrained.
+    MaxContent,
+}
+
+impl AvailableSpace {
+    const fn fallback(self) -> u16 {
+        match self {
+            Self::Definite(cells) => cells,
+            Self::MinContent => 0,
+            Self::MaxContent => u16::MAX,
+        }
+    }
+}
+
+/// A layout engine's complete measurement request for a view.
+///
+/// `known_*` means the layout algorithm has already resolved that axis. The
+/// default [`View::measure_request`] implementation adapts this richer request
+/// to the original [`View::measure`] method, so existing third-party views keep
+/// working. Width-sensitive built-ins can override it when min/max-content or
+/// one-known-axis measurement materially changes their intrinsic contribution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct MeasureRequest {
+    /// Width already fixed by the parent layout pass.
+    pub known_width: Option<u16>,
+    /// Height already fixed by the parent layout pass.
+    pub known_height: Option<u16>,
+    /// Width constraint when the width is not already known.
+    pub available_width: AvailableSpace,
+    /// Height constraint when the height is not already known.
+    pub available_height: AvailableSpace,
+}
+
+impl MeasureRequest {
+    /// Measure within a concrete cell rectangle, with neither axis pre-resolved.
+    pub const fn new(available: Size) -> Self {
+        Self {
+            known_width: None,
+            known_height: None,
+            available_width: AvailableSpace::Definite(available.width),
+            available_height: AvailableSpace::Definite(available.height),
+        }
+    }
+
+    /// Supply a width the parent has already resolved.
+    pub const fn with_known_width(mut self, width: u16) -> Self {
+        self.known_width = Some(width);
+        self
+    }
+
+    /// Supply a height the parent has already resolved.
+    pub const fn with_known_height(mut self, height: u16) -> Self {
+        self.known_height = Some(height);
+        self
+    }
+
+    /// Change the width sizing mode used when width is not known.
+    pub const fn with_available_width(mut self, available: AvailableSpace) -> Self {
+        self.available_width = available;
+        self
+    }
+
+    /// Change the height sizing mode used when height is not known.
+    pub const fn with_available_height(mut self, available: AvailableSpace) -> Self {
+        self.available_height = available;
+        self
+    }
+
+    /// The concrete fallback passed to legacy [`View::measure`] implementations.
+    pub fn fallback_available(self) -> Size {
+        Size::new(
+            match self.known_width {
+                Some(width) => width,
+                None => self.available_width.fallback(),
+            },
+            match self.known_height {
+                Some(height) => height,
+                None => self.available_height.fallback(),
+            },
+        )
+    }
+
+    pub(crate) fn resolve(self, measured: Size) -> Size {
+        Size::new(
+            resolve_axis(self.known_width, self.available_width, measured.width),
+            resolve_axis(self.known_height, self.available_height, measured.height),
+        )
+    }
+}
+
+fn resolve_axis(known: Option<u16>, available: AvailableSpace, measured: u16) -> u16 {
+    known.unwrap_or(match available {
+        AvailableSpace::Definite(limit) => measured.min(limit),
+        AvailableSpace::MinContent | AvailableSpace::MaxContent => measured,
+    })
+}
 use super::surface::Surface;
 
 /// Context threaded to every [`View::measure`] and [`View::render`] call.
@@ -97,6 +207,15 @@ impl<'a> RenderCtx<'a> {
 pub trait View {
     /// Report the intrinsic content size wanted given `available` and `ctx`.
     fn measure(&self, available: Size, ctx: &RenderCtx) -> Size;
+    /// Answer a measurement request with optional known axes and intrinsic
+    /// sizing modes.
+    ///
+    /// The compatibility implementation delegates to [`measure`](Self::measure).
+    /// Override this only when the distinction between definite,
+    /// minimum-content, and maximum-content measurement affects the result.
+    fn measure_request(&self, request: MeasureRequest, ctx: &RenderCtx) -> Size {
+        request.resolve(self.measure(request.fallback_available(), ctx))
+    }
     /// Paint the view into the assigned `area` through `surface`.
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx);
 }
@@ -114,6 +233,10 @@ pub type Element = ScopedElement<'static>;
 impl View for Box<dyn View + '_> {
     fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
         (**self).measure(available, ctx)
+    }
+
+    fn measure_request(&self, request: MeasureRequest, ctx: &RenderCtx) -> Size {
+        (**self).measure_request(request, ctx)
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {

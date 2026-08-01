@@ -17,14 +17,17 @@
 //!
 //! Grammar (each keyword consumes exactly one node):
 //! - `col( attrs ) { children }` / `row( attrs ) { children }` — flex containers.
-//!   Attrs: `gap = e`, `padding = e`, `align = e`, `justify = e` (comma-separated,
-//!   all optional; the whole `( … )` may be omitted).
+//!   Attrs: `gap = e`, `row_gap = e`, `column_gap = e`, `padding = e`,
+//!   `wrap = e`, `align = e`, `justify = e`, `align_content = e`, and
+//!   `background = e` (comma-separated, all optional; the whole `( … )` may be omitted).
 //! - `boxed( attrs ) { child }` — bordered container of one child.
 //!   Attrs: `title = e`, `title_bottom = e`, `border = e`, `border_color = e`,
 //!   `padding = e`, `background = e`.
 //! - `text( expr )` — a `Text::raw` line. `spacer()` — a `Spacer`.
 //! - `grow(n) { node }` / `fixed(n) { node }` — set a child's main-axis size
 //!   (default is auto).
+//! - `when(condition) { node }` — include a child conditionally.
+//! - `for(pattern in iterable) { node }` — repeat a child for each value.
 //! - `node( expr )` — **escape hatch**: splice any `impl View`, including a
 //!   component defined in another crate. This is how third-party components
 //!   plug into the DSL today.
@@ -42,12 +45,14 @@
 /// coerces to [`Element`](crate::view::Element).
 ///
 /// Each keyword consumes exactly one node: `col`/`row` open flex containers
-/// (with optional `gap`/`padding`/`align`/`justify`/`background` attrs and a
+/// (with optional `gap`/`row_gap`/`column_gap`/`padding`/`wrap`/`align`/
+/// `justify`/`align_content`/`background` attrs and a
 /// `{ children }` block), `boxed` wraps a single child in a border (with
 /// `title`/`title_bottom`/`border`/`border_color`/`padding`/`background` attrs), `text(expr)` and `spacer()`
-/// emit leaves, `grow(n)`/`fixed(n)` set a child's main-axis size, and
-/// `node(expr)` splices any `impl View`. Expands to plain builder calls with no
-/// runtime cost.
+/// emit leaves, `grow(n)`/`fixed(n)` set a child's main-axis size,
+/// `when(condition)` conditionally includes a node, `for(pattern in iterable)`
+/// repeats one, and `node(expr)` splices any `impl View`. Expands to plain
+/// builder calls with no runtime cost.
 #[macro_export]
 macro_rules! view {
     // ---- public entry: a single node -> Element -----------------------------
@@ -90,6 +95,22 @@ macro_rules! view {
     (@kids $b:expr; fixed ( $n:expr ) { $($node:tt)* } $($rest:tt)*) => {
         $crate::view!(@kids $b.fixed($n, $crate::view!(@one $($node)*)); $($rest)*)
     };
+    (@kids $b:expr; when ( $condition:expr ) { $($node:tt)* } $($rest:tt)*) => {{
+        let __flex = $b;
+        let __flex = if $condition {
+            __flex.auto($crate::view!(@one $($node)*))
+        } else {
+            __flex
+        };
+        $crate::view!(@kids __flex; $($rest)*)
+    }};
+    (@kids $b:expr; for ( $pattern:pat in $values:expr ) { $($node:tt)* } $($rest:tt)*) => {{
+        let mut __flex = $b;
+        for $pattern in $values {
+            __flex = __flex.auto($crate::view!(@one $($node)*));
+        }
+        $crate::view!(@kids __flex; $($rest)*)
+    }};
     (@kids $b:expr; col $(( $($a:tt)* ))? { $($k:tt)* } $($rest:tt)*) => {
         $crate::view!(@kids $b.auto($crate::view!(@one col $(($($a)*))? { $($k)* })); $($rest)*)
     };
@@ -113,6 +134,18 @@ macro_rules! view {
     (@attrs $b:expr; ) => { $b };
     (@attrs $b:expr; gap = $e:expr $(, $($rest:tt)*)?) => {
         $crate::view!(@attrs $b.gap($e); $($($rest)*)?)
+    };
+    (@attrs $b:expr; row_gap = $e:expr $(, $($rest:tt)*)?) => {
+        $crate::view!(@attrs $b.row_gap($e); $($($rest)*)?)
+    };
+    (@attrs $b:expr; column_gap = $e:expr $(, $($rest:tt)*)?) => {
+        $crate::view!(@attrs $b.column_gap($e); $($($rest)*)?)
+    };
+    (@attrs $b:expr; wrap = $e:expr $(, $($rest:tt)*)?) => {
+        $crate::view!(@attrs $b.wrap($e); $($($rest)*)?)
+    };
+    (@attrs $b:expr; align_content = $e:expr $(, $($rest:tt)*)?) => {
+        $crate::view!(@attrs $b.align_content($e); $($($rest)*)?)
     };
     (@attrs $b:expr; padding = $e:expr $(, $($rest:tt)*)?) => {
         $crate::view!(@attrs $b.padding($e); $($($rest)*)?)
@@ -275,5 +308,24 @@ mod tests {
             crate::testing::grid(&rendered).contains("borrowed"),
             "a borrow must survive node -> Flex -> Boxed composition"
         );
+    }
+
+    #[test]
+    fn view_macro_composes_conditional_and_repeated_children() {
+        let labels = ["one", "two"];
+        let tree: Element = crate::view! {
+            col {
+                when(false) { text("hidden") }
+                for(label in labels) { node(Text::raw(label)) }
+                when(true) { text("shown") }
+            }
+        };
+        let output = crate::testing::grid(&crate::testing::render(
+            &tree,
+            8,
+            3,
+            &crate::Theme::default(),
+        ));
+        assert_eq!(output, "one     \ntwo     \nshown   ");
     }
 }
