@@ -25,9 +25,11 @@ A host-agnostic engine (`tuika::keymap`) that resolves declared key bindings to
 named command values:
 
 - **Chords and sequences.** A `Chord` is one key press plus modifiers, parsed
-  from a string (`ctrl+r`, `alt+shift+tab`, `?`, `space`, literal `ctrl++`). A
-  `KeySequence` is one or more chords typed in order, written space-separated
-  (`g g`, `ctrl+x s`), so multi-stroke bindings are first-class.
+  from a string (`ctrl+r`, `alt+shift+tab`, `?`, `A`, `space`, literal
+  `ctrl++`). Character tokens are exact logical text produced by the active
+  layout. A `KeySequence` is one or more chords typed in order, written
+  space-separated (`g g`, `ctrl+x s`), so multi-stroke bindings are
+  first-class.
 - **Layers.** Bindings are grouped into named, prioritized `Layer`s. A layer may
   be *gated* on runtime data (`when("mode", "panel")`) so it is active only in a
   given application mode; an ungated layer is always active. When two active
@@ -48,14 +50,19 @@ engine free of terminal I/O, so it is unit-testable without a PTY: the same
 boundary that lets the rest of the widget layer be tested against synthetic
 events.
 
-### Modifier normalization mirrors how terminals report input
+### Character bindings are logical text
 
 Matching is on a normalized `Chord`, so a binding matches the event a terminal
 actually delivers:
 
-- For a character key, Shift is folded into the character itself (`?` arrives as
-  `Char('?')`, not `Shift`+`Char('/')`), so the `shift` flag is dropped for
-  characters and kept meaningful only for non-character keys (`Shift`+`Enter`).
+- A character key is the exact Unicode character produced by the active
+  keyboard layout (`?` arrives as `Char('?')`, not `Shift`+`Char('/')`). A
+  binding spells that result directly (`?`, `A`, `ctrl+R`) rather than guessing
+  a physical Shift combination. This keeps bindings portable across layouts.
+- A `shift+character` spec is rejected because its result is layout policy;
+  Shift is kept meaningful for non-character keys (`Shift+Enter`). A translated
+  character event's Shift flag is dropped because its effect is already present
+  in the logical character.
 - `Shift`+`Tab` folds to the distinct `BackTab` key that terminals report.
 
 Both the string parser and `Chord::from_key` apply the same normalization, so a
@@ -73,12 +80,13 @@ is retried on its own so it can begin a fresh sequence. Changing runtime data
 clears the pending buffer, since the bindings that could complete it may no
 longer be active.
 
-### Bindings are static, so parse errors panic by construction
+### Static binding parse errors fail fast
 
-`Layer::bind` panics on a malformed key spec, because bindings are authored as
-static literals — a bad spec is a programmer error caught on first run, like a
-malformed regex literal. `Chord::parse` / `Layer::try_bind` return a `Result` for
-the rare dynamic case (config-sourced bindings).
+`Layer::bind` panics on a malformed or layout-dependent key spec, because
+bindings are authored as static literals — a bad spec is a programmer error
+caught on first run, like a malformed regex literal. `Chord::parse` /
+`Layer::try_bind` return a `Result` for the rare dynamic case (config-sourced
+bindings), including an explanation for rejected `shift+character` input.
 
 ### Precedence is the host's to choose
 
