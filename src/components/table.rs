@@ -33,6 +33,7 @@ use crate::view::{RenderCtx, View};
 
 use super::select::SelectState;
 use super::text::line_width;
+use super::{Scrollbar, VirtualWindow};
 
 /// One table column: a header cell and a main-axis width policy.
 #[derive(Clone)]
@@ -97,6 +98,8 @@ impl Column {
 pub struct Table {
     columns: Vec<Column>,
     rows: Vec<Vec<Line<'static>>>,
+    /// Host-provided source window, or `None` when `rows` is the whole table.
+    source_window: Option<VirtualWindow>,
     selected: Option<usize>,
     viewport: Option<u16>,
     scrollbar: bool,
@@ -115,6 +118,36 @@ impl Table {
         Self {
             columns,
             rows,
+            source_window: None,
+            selected: state.selected(),
+            viewport: None,
+            scrollbar: true,
+            gutter: true,
+            show_header: true,
+            gap: 2,
+            caret: '›',
+            header_style: None,
+            preserve_selection_fg: false,
+            selection_style: None,
+        }
+    }
+
+    /// Build from only the rows in `window` rather than the whole collection.
+    ///
+    /// `rows` correspond to `window.range()` in order, while `window.total()`
+    /// preserves absolute selection and scrollbar geometry. Auto columns size
+    /// from the supplied rows; use fixed or flex columns when widths must stay
+    /// stable as a host exchanges windows.
+    pub fn windowed(
+        columns: Vec<Column>,
+        rows: Vec<Vec<Line<'static>>>,
+        window: VirtualWindow,
+        state: &SelectState,
+    ) -> Self {
+        Self {
+            columns,
+            rows,
+            source_window: Some(window),
             selected: state.selected(),
             viewport: None,
             scrollbar: true,
@@ -229,27 +262,20 @@ impl Table {
         solve(cols_area, &LayoutStyle::row().gap(self.gap), &items)
     }
 
-    /// The `(start, visible_rows)` data-row window: the whole table unless a
+    /// The visible data-row window: the whole table unless a
     /// [`viewport`](Self::viewport) smaller than the row count is set, in which
     /// case a slice centered on the selection and clamped to the ends.
-    fn window(&self, available_rows: u16) -> (usize, usize) {
-        let total = self.rows.len();
+    fn window(&self, available_rows: u16) -> VirtualWindow {
         let viewport = self
             .viewport
             .map_or(available_rows, |rows| rows.min(available_rows));
-        match viewport as usize {
-            v if total > v => {
-                if v == 0 {
-                    return (0, 0);
-                }
-                let start = self
-                    .selected
-                    .unwrap_or(0)
-                    .saturating_sub(v / 2)
-                    .min(total - v);
-                (start, v)
-            }
-            _ => (0, total),
+        match self.source_window {
+            Some(source) => VirtualWindow::new(
+                source.total(),
+                source.len().min(usize::from(viewport)),
+                source.start(),
+            ),
+            None => VirtualWindow::around(self.rows.len(), usize::from(viewport), self.selected),
         }
     }
 
@@ -287,7 +313,7 @@ impl Table {
 impl View for Table {
     fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let available_rows = available.height.saturating_sub(self.header_rows());
-        let (_, rows) = self.window(available_rows);
+        let rows = self.window(available_rows).len();
         let cols_w: u16 = (0..self.columns.len())
             .map(|c| self.column_intrinsic(c))
             .fold(0, u16::saturating_add);
@@ -307,8 +333,10 @@ impl View for Table {
             return;
         }
         let body_rows = area.height.saturating_sub(self.header_rows());
-        let (start, win_rows) = self.window(body_rows);
-        let overflow = self.rows.len() > win_rows;
+        let window = self.window(body_rows);
+        let start = window.start();
+        let win_rows = window.len();
+        let overflow = window.overflows();
         let gutter_w = self.gutter_width();
         let scrollbar_w = u16::from(overflow && self.scrollbar);
 
@@ -337,9 +365,13 @@ impl View for Table {
         // Data rows, windowed around the selection.
         let body_top = area.y.saturating_add(self.header_rows());
         let row_span_w = area.width.saturating_sub(scrollbar_w);
+        let rows_start = self.source_window.map_or(0, VirtualWindow::start);
         for i in 0..win_rows {
             let idx = start + i;
-            let Some(row) = self.rows.get(idx) else {
+            let Some(local) = idx.checked_sub(rows_start) else {
+                continue;
+            };
+            let Some(row) = self.rows.get(local) else {
                 break;
             };
             let y = body_top.saturating_add(i as u16);
@@ -380,45 +412,16 @@ impl View for Table {
         }
 
         if scrollbar_w == 1 {
-            self.draw_scrollbar(area, start, win_rows, surface, ctx);
-        }
-    }
-}
-
-impl Table {
-    /// A right-edge scrollbar whose thumb tracks the data-row window, mirroring
-    /// [`SelectList`](crate::components::SelectList)'s. Drawn over the body rows, below the
-    /// header.
-    fn draw_scrollbar(
-        &self,
-        area: Rect,
-        start: usize,
-        rows: usize,
-        surface: &mut Surface,
-        ctx: &RenderCtx,
-    ) {
-        let total = self.rows.len();
-        let track_x = area.right() - 1;
-        let track_top = area.y.saturating_add(self.header_rows());
-        let track_h = rows as u16;
-        let max_start = total.saturating_sub(rows).max(1) as u32;
-        let thumb_h = (((rows * rows) / total).max(1) as u16).min(track_h);
-        let travel = track_h.saturating_sub(thumb_h);
-        let thumb_y = track_top + ((start as u32 * travel as u32) / max_start) as u16;
-        let track_style = Style::default().fg(ctx.theme.dim);
-        let thumb_style = Style::default().fg(ctx.theme.muted);
-        for r in 0..track_h {
-            let y = track_top + r;
-            if y >= area.bottom() {
-                break;
-            }
-            let within = y >= thumb_y && y < thumb_y.saturating_add(thumb_h);
-            let (glyph, style) = if within {
-                ('█', thumb_style)
-            } else {
-                ('│', track_style)
-            };
-            surface.set(track_x, y, glyph, style);
+            Scrollbar::vertical(window).render(
+                Rect::new(
+                    area.right() - 1,
+                    area.y.saturating_add(self.header_rows()),
+                    1,
+                    body_rows.min(win_rows.min(u16::MAX as usize) as u16),
+                ),
+                surface,
+                ctx,
+            );
         }
     }
 }

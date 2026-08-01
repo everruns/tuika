@@ -18,6 +18,12 @@ block-HTML seam.
 
 ### Added
 
+- `VirtualWindow` provides overflow-safe clamped and selection-centered ranges;
+  `Scrollbar` renders the same window vertically or horizontally with semantic
+  styling and local glyph/style overrides. Scroll, item scroll, viewport,
+  select, and table now share those primitives. `SelectList::windowed` and
+  `Table::windowed` accept only the visible records while preserving absolute
+  selection and full-collection scrollbar geometry.
 - Target-relative overlays: `TargetPlacement` selects above/below/left/right,
   cross-axis alignment, gap, and optional edge-aware flipping;
   `OverlaySpec::resolve_target` resolves it directly and

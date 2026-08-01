@@ -297,6 +297,25 @@ view! {
 }
 ```
 
+### `Scrollbar` + `VirtualWindow`
+
+One clamped window model and one scrollbar renderer for vertical or horizontal
+collections. `VirtualWindow::around` keeps an absolute selection visible;
+`range()` lets a host fetch only the current records. `SelectList::windowed`
+and `Table::windowed` accept that slice directly, preserving absolute selection
+and scrollbar geometry without cloning the full collection.
+[Scrollbar API](https://docs.rs/tuika/latest/tuika/components/struct.Scrollbar.html) ·
+[VirtualWindow API](https://docs.rs/tuika/latest/tuika/components/struct.VirtualWindow.html)
+
+<img src="demos/scrollbar.png" width="880" alt="Vertical and horizontal scrollbars representing the same virtual collection window">
+
+```rust
+use tuika::prelude::*;
+let window = VirtualWindow::around(total, viewport_rows, state.selected());
+let rows = window.range().map(|index| load_row(index)).collect();
+view! { node(SelectList::windowed(rows, window, &state)) }
+```
+
 ## Interactive
 
 Each pairs a rendered view with a host-persisted `*State` (the

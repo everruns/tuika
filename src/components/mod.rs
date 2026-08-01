@@ -50,6 +50,7 @@ pub mod text;
 mod textinput;
 pub mod toast;
 mod viewport;
+mod virtualization;
 
 pub use ascii_font::AsciiFont;
 pub use boxed::Boxed;
@@ -89,3 +90,4 @@ pub use textinput::{
 };
 pub use toast::{ToastLevel, ToastList, Toasts};
 pub use viewport::Viewport;
+pub use virtualization::{Scrollbar, VirtualWindow};

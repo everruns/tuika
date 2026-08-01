@@ -2,6 +2,14 @@
 
 ## 2026-08-01
 
+- **Virtualized collections share one range and scrollbar model**
+
+- `VirtualWindow` now supplies clamped, selection-centered absolute ranges,
+  and one `Scrollbar` view draws either axis with overflow-safe geometry.
+- Line scroll, item scroll, arbitrary viewports, lists, and tables use those
+  primitives. Lists and tables can receive only their visible records while
+  retaining absolute selection and full-collection bar position.
+
 - **Interactive components share one state contract**
 
 - Selection, multi-selection, tabs, segmented selection, sliders, scrolling,

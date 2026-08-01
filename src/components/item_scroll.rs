@@ -30,7 +30,7 @@ use crate::style::{StyleSheet, Theme};
 use crate::surface::Surface;
 use crate::view::{Element, RenderCtx, ScopedElement, View};
 
-use super::scroll::{ScrollState, draw_scrollbar};
+use super::{ScrollState, Scrollbar, VirtualWindow};
 
 /// A vertical viewport over a list of [`Element`]s.
 ///
@@ -303,7 +303,16 @@ impl<V: View> View for ItemScroll<V> {
         });
 
         if overflow && self.scrollbar {
-            draw_scrollbar(area, self.offset, content_h, surface, ctx);
+            Scrollbar::vertical(VirtualWindow::new(
+                content_h,
+                usize::from(area.height),
+                self.offset,
+            ))
+            .render(
+                Rect::new(area.right() - 1, area.y, 1, area.height),
+                surface,
+                ctx,
+            );
         }
     }
 }

@@ -2,14 +2,13 @@
 
 use ratatui_core::buffer::{Buffer, Cell};
 use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
 
 use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{Element, RenderCtx, View};
 use crate::width::str_cols;
 
-use super::ScrollState;
+use super::{ScrollState, Scrollbar, VirtualWindow};
 
 /// A clipped, vertically scrollable and horizontally pannable child view.
 ///
@@ -158,74 +157,30 @@ impl<V: View> View for Viewport<V> {
 
         let vertical_overflow = self.content.height as usize > viewport.height as usize;
         if vertical_overflow && self.vertical_scrollbar && viewport.width < area.width {
-            draw_scrollbar(
-                surface,
-                area.right() - 1,
-                area.y,
-                viewport.height,
-                self.content.height as usize,
+            Scrollbar::vertical(VirtualWindow::new(
+                usize::from(self.content.height),
+                usize::from(viewport.height),
                 offset,
-                false,
+            ))
+            .render(
+                Rect::new(area.right() - 1, area.y, 1, viewport.height),
+                surface,
                 ctx,
             );
         }
         let horizontal_overflow = self.content.width as usize > viewport.width as usize;
         if horizontal_overflow && self.horizontal_scrollbar && viewport.height < area.height {
-            draw_scrollbar(
-                surface,
-                area.y + viewport.height,
-                area.x,
-                viewport.width,
-                self.content.width as usize,
+            Scrollbar::horizontal(VirtualWindow::new(
+                usize::from(self.content.width),
+                usize::from(viewport.width),
                 x_offset,
-                true,
+            ))
+            .render(
+                Rect::new(area.x, area.y + viewport.height, viewport.width, 1),
+                surface,
                 ctx,
             );
         }
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn draw_scrollbar(
-    surface: &mut Surface,
-    fixed: u16,
-    start: u16,
-    length: u16,
-    content: usize,
-    offset: usize,
-    horizontal: bool,
-    ctx: &RenderCtx,
-) {
-    if length == 0 {
-        return;
-    }
-    let length_u = length as usize;
-    let thumb = ((length_u * length_u) / content.max(1))
-        .max(1)
-        .min(length_u) as u16;
-    let travel = length.saturating_sub(thumb);
-    let max_offset = content.saturating_sub(length_u).max(1);
-    let thumb_start = start + ((offset * travel as usize) / max_offset) as u16;
-    for index in 0..length {
-        let position = start + index;
-        let within = position >= thumb_start && position < thumb_start.saturating_add(thumb);
-        let (glyph, style) = if within {
-            (
-                if horizontal { '━' } else { '█' },
-                Style::default().fg(ctx.theme.muted),
-            )
-        } else {
-            (
-                if horizontal { '─' } else { '│' },
-                Style::default().fg(ctx.theme.dim),
-            )
-        };
-        let (x, y) = if horizontal {
-            (position, fixed)
-        } else {
-            (fixed, position)
-        };
-        surface.set(x, y, glyph, style);
     }
 }
 
