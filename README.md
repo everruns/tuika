@@ -139,8 +139,11 @@ with tuika's surfaces (see [Compatibility](#compatibility)).
 - **Keymap** ([`keymap`](docs/keymap.md)) resolves declarative key bindings to
   named commands: chords (`ctrl+r`) and multi-stroke sequences (`g g`) grouped
   into prioritized, mode-gated `Layer`s, dispatched from a translated `Key` and
-  queryable for help/`KeyHints` surfaces. Host-agnostic, so it unit-tests
-  without a terminal. See the [keymap guide](docs/keymap.md).
+  queryable for help/`KeyHints` surfaces. Character chords are exact logical
+  text (`A`, `?`, `ж`), so the active keyboard layout is applied before
+  matching; Shift stays explicit for non-character keys such as `Shift+Enter`.
+  Host-agnostic, so it unit-tests without a terminal. See the
+  [keymap guide](docs/keymap.md).
 - **Motion** (`anim`, `components::{Spinner, ProgressBar, Loader}`,
   `term::progress::TerminalProgress`) animates from a host-supplied frame counter and
   can drive the terminal's own OSC 9;4 progress indicator. `anim::Timeline` adds
@@ -634,9 +637,11 @@ took. Enhanced reporting preserves
 non-character modifiers, so `Shift+Enter` reaches `TextInputState` as a
 different chord from `Enter`; iTerm2 and tmux get their required protocol
 variants, while Windows uses the modifier state already carried by its native
-console events. It preserves raw mode and any keyboard-reporting stack entries
-the caller had already enabled. `AltScreen` remains available for hosts that
-intentionally own raw mode, keyboard modes, and cursor visibility themselves.
+console events. Character codes carry the logical text produced by the active
+keyboard layout, while modifiers remain separate for non-character chords. It
+preserves raw mode and any keyboard-reporting stack entries the caller had
+already enabled. `AltScreen` remains available for hosts that intentionally own
+raw mode, keyboard modes, and cursor visibility themselves.
 
 `Runner` is an optional synchronous event loop for dashboards and small tools.
 It owns `TerminalSession`, frame scheduling, Crossterm event translation, and

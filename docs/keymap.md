@@ -18,7 +18,8 @@ unit-tests without a PTY.
 Four types, smallest to largest:
 
 - **`Chord`** — one key press plus its modifiers (`ctrl+r`, `alt+shift+tab`,
-  `?`, `space`, the literal `ctrl++`). Parse it from a string with
+  `?`, `A`, `space`, the literal `ctrl++`). Character tokens are exact logical
+  text, after the active keyboard layout. Parse a chord from a string with
   `Chord::parse`, or build it from a live event with `Chord::from_key`.
 - **`KeySequence`** — one *or more* chords typed in order, written
   space-separated (`g g`, `ctrl+x s`). A single chord is a one-element sequence,
@@ -87,15 +88,23 @@ A key that no active binding matches returns `Unmatched`, so the host stays in
 control of everything the keymap does not claim (typing into a text field,
 say).
 
-### Modifier normalization
+### Logical text and modifier normalization
 
 Matching is on a normalized chord, so a binding matches the event a terminal
-actually delivers. For a character key, Shift is folded into the character
-itself (`?` arrives as `Char('?')`, not `Shift`+`Char('/')`), so the `shift`
-flag is dropped for characters and kept meaningful only for non-character keys
-(`Shift`+`Enter`). `Shift`+`Tab` folds to the distinct `BackTab` key terminals
-report. Both the string parser and `Chord::from_key` apply the same rules, so a
-parsed binding and a live event agree.
+actually delivers. A character key is the exact logical Unicode character
+produced by the active keyboard layout: `?` arrives as `Char('?')`, not
+`Shift`+`Char('/')`. Bind `?`, `A`, or `ctrl+R` directly. This is portable to
+non-US layouts because the keymap never guesses which physical key plus Shift
+produces that text.
+
+Accordingly, `shift+character` specs are rejected instead of silently losing
+Shift; `Chord::parse` and `Layer::try_bind` return `KeyParseError`, while static
+`Layer::bind` fails fast as usual. Shift remains a distinct modifier for
+non-character keys (`Shift+Enter`). `Shift`+`Tab` folds to the distinct
+`BackTab` key terminals report. `Chord::from_key` drops any separately reported
+Shift flag from character events because its effect is already present in the
+character. Parsed bindings and live events therefore share one layout-neutral
+identity.
 
 ## Modes: layers gated on runtime data
 

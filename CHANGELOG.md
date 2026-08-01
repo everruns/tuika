@@ -90,6 +90,11 @@ block-HTML seam.
 
 ### Changed
 
+- **Breaking:** keymap character specs are now explicitly logical text. Write
+  the character produced by the active layout (`A`, `?`, `ctrl+R`) rather than
+  `shift+a` or `shift+/`; `Shift` remains valid for non-character chords such as
+  `shift+enter`. Ambiguous `shift+character` specs now return `KeyParseError`
+  (or panic through static `Layer::bind`) instead of silently discarding Shift.
 - **Breaking:** `AsyncRunner` update closures now return `UpdateResult` instead
   of `ControlFlow<()>`, matching synchronous `Runner`; clean ticks and events no
   longer rebuild or repaint the view.

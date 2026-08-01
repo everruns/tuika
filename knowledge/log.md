@@ -2,6 +2,12 @@
 
 ## 2026-08-01
 
+- **Character key bindings use logical text**
+
+- Keymap character specs now name the exact Unicode result after keyboard
+  layout (`A`, `?`, `ctrl+R`) and reject layout-dependent
+  `shift+character` spellings; non-character Shift chords remain explicit.
+
 - **Monotonic time is injectable**
 
 - `Clock` gives gesture recognition and synchronous runner scheduling one

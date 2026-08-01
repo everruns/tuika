@@ -14,6 +14,8 @@
 //! # Model
 //!
 //! - A [`Chord`] is one key press plus its modifiers (`ctrl+r`, `enter`, `?`).
+//!   Character tokens are exact logical text after keyboard-layout translation;
+//!   Shift is written separately only for non-character keys.
 //! - A [`KeySequence`] is one or more chords typed in order (`g g`, `ctrl+x s`).
 //! - A [`Binding`] maps a sequence to a command value `C` (usually an app enum).
 //! - A [`Layer`] groups bindings under a name and priority, optionally *gated*
@@ -55,10 +57,10 @@ use crate::event::{Key, KeyCode};
 
 /// One key press plus its modifier state, normalized for binding lookups.
 ///
-/// Modifier state is explicit, but with one normalization that mirrors how
-/// terminals report input: for a [`KeyCode::Char`] the Shift flag is *dropped*,
-/// because the shifted character is already folded into the `char` itself (`?`
-/// arrives as `Char('?')`, not `Shift`+`Char('/')`). Shift is kept meaningful
+/// Modifier state is explicit, but character codes are exact logical text from
+/// the active keyboard layout. For a [`KeyCode::Char`] the Shift flag is
+/// *dropped*, because its effect is already folded into the character (`?`
+/// arrives as `Char('?')`, not `Shift`+`Char('/')`). Shift remains meaningful
 /// for non-character keys, where it is a distinct chord (`Shift`+`Enter`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Chord {
@@ -103,6 +105,11 @@ impl Chord {
     /// `"?"`. Modifiers (`ctrl`/`control`, `alt`/`option`, `shift`) are joined to
     /// the key with `+`; the final segment is the key. A trailing `+` is the
     /// literal plus key (`"ctrl++"`).
+    ///
+    /// Character tokens are exact logical text. Spell a shifted character as
+    /// the character it produces (`"A"`, `"?"`, `"ctrl+R"`), not as
+    /// `"shift+a"` or `"shift+/"`: translating a physical key through Shift is
+    /// keyboard-layout policy and therefore cannot be parsed portably here.
     pub fn parse(spec: &str) -> Result<Self, KeyParseError> {
         let spec = spec.trim();
         if spec.is_empty() {
@@ -132,9 +139,8 @@ impl Chord {
 
         let key_token = key_token.ok_or_else(|| KeyParseError::new(spec))?;
         let mut code = parse_key_code(key_token).ok_or_else(|| KeyParseError::new(spec))?;
-        // A character key folds Shift into the char, matching `from_key`.
-        if matches!(code, KeyCode::Char(_)) {
-            shift = false;
+        if matches!(code, KeyCode::Char(_)) && shift {
+            return Err(KeyParseError::shifted_character(spec));
         }
         // Terminals report Shift+Tab as a distinct `BackTab` key (as does
         // `from_key`), so fold the spec to match what an event will carry.
@@ -163,6 +169,11 @@ impl Chord {
         if self.shift {
             out.push_str("Shift+");
         }
+        // Preserve the established keycap-style label for lowercase ASCII
+        // bindings while keeping an uppercase logical binding distinguishable.
+        if !self.shift && matches!(self.code, KeyCode::Char(c) if c.is_ascii_uppercase()) {
+            out.push_str("Shift+");
+        }
         out.push_str(&key_code_label(self.code));
         out
     }
@@ -188,6 +199,9 @@ fn parse_key_code(token: &str) -> Option<KeyCode> {
     // A single character (including a literal "+") is a `Char`, case-sensitive.
     let mut chars = token.chars();
     if let (Some(c), None) = (chars.next(), chars.next()) {
+        if c.is_control() {
+            return None;
+        }
         return Some(KeyCode::Char(c));
     }
     Some(match token.to_ascii_lowercase().as_str() {
@@ -233,23 +247,45 @@ fn key_code_label(code: KeyCode) -> String {
     }
 }
 
-/// A parse failure for a chord or sequence spec, carrying the offending text.
+/// A parse failure for a chord or sequence spec, carrying the offending text
+/// and, for layout-dependent character input, an explanatory reason.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KeyParseError {
     spec: String,
+    kind: KeyParseErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum KeyParseErrorKind {
+    Invalid,
+    ShiftedCharacter,
 }
 
 impl KeyParseError {
     fn new(spec: &str) -> Self {
         Self {
             spec: spec.to_string(),
+            kind: KeyParseErrorKind::Invalid,
+        }
+    }
+
+    fn shifted_character(spec: &str) -> Self {
+        Self {
+            spec: spec.to_string(),
+            kind: KeyParseErrorKind::ShiftedCharacter,
         }
     }
 }
 
 impl fmt::Display for KeyParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid key spec: {:?}", self.spec)
+        write!(f, "invalid key spec: {:?}", self.spec)?;
+        if self.kind == KeyParseErrorKind::ShiftedCharacter {
+            f.write_str(
+                ": character keys are logical text; use the resulting character instead of Shift",
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -631,15 +667,25 @@ mod tests {
     }
 
     #[test]
-    fn char_chords_ignore_shift() {
-        // Shift is folded into the character, so a bare '?' never carries it.
-        assert!(!Chord::parse("shift+?").unwrap().shift);
+    fn character_chords_are_exact_logical_text() {
+        let error = Chord::parse("shift+/").unwrap_err();
+        assert!(error.to_string().contains("logical text"));
+        assert!(Chord::parse("shift+a").is_err());
+        assert!(Chord::parse("shift+space").is_err());
+
+        assert_eq!(Chord::parse("?").unwrap().code, KeyCode::Char('?'));
+        assert_eq!(Chord::parse("ж").unwrap().code, KeyCode::Char('ж'));
+        assert_ne!(Chord::parse("r").unwrap(), Chord::parse("R").unwrap());
+
+        // Translated events already contain the resulting character; an
+        // independently reported Shift flag is not part of a text chord.
         let from = Chord::from_key(Key {
-            code: KeyCode::Char('?'),
+            code: KeyCode::Char('R'),
             ctrl: false,
             alt: false,
             shift: true,
         });
+        assert_eq!(from.code, KeyCode::Char('R'));
         assert!(!from.shift);
     }
 
@@ -647,12 +693,15 @@ mod tests {
     fn rejects_garbage_specs() {
         assert!(Chord::parse("").is_err());
         assert!(Chord::parse("bogus+r").is_err());
+        assert!(Chord::parse("\u{1b}").is_err());
+        assert!(Chord::parse("\u{7}").is_err());
         assert!(KeySequence::parse("   ").is_err());
     }
 
     #[test]
     fn display_is_human_readable() {
         assert_eq!(Chord::parse("ctrl+r").unwrap().display(), "Ctrl+R");
+        assert_eq!(Chord::parse("ctrl+R").unwrap().display(), "Ctrl+Shift+R");
         assert_eq!(Chord::parse("space").unwrap().display(), "Space");
         assert_eq!(Chord::parse("enter").unwrap().display(), "Enter");
         assert_eq!(
@@ -674,6 +723,28 @@ mod tests {
         );
         assert_eq!(keymap.dispatch(ctrl('d')), Dispatch::Command(Action::Quit));
         assert_eq!(keymap.dispatch(ctrl('z')), Dispatch::Unmatched);
+    }
+
+    #[test]
+    fn dispatch_distinguishes_logical_character_case() {
+        let mut keymap = Keymap::new().layer(
+            Layer::new("global")
+                .bind("ctrl+r", Action::Search)
+                .bind("ctrl+R", Action::Close),
+        );
+        assert_eq!(
+            keymap.dispatch(Key {
+                code: KeyCode::Char('R'),
+                ctrl: true,
+                alt: false,
+                shift: true,
+            }),
+            Dispatch::Command(Action::Close)
+        );
+        assert_eq!(
+            keymap.dispatch(ctrl('r')),
+            Dispatch::Command(Action::Search)
+        );
     }
 
     #[test]

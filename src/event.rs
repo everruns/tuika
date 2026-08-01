@@ -26,7 +26,7 @@ pub enum Event {
 /// A key press with its modifier state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Key {
-    /// The key that was pressed.
+    /// The logical key value that was pressed.
     pub code: KeyCode,
     /// Ctrl held during the press.
     pub ctrl: bool,
@@ -54,10 +54,14 @@ impl Key {
     }
 }
 
-/// A physical/logical key, independent of modifier state.
+/// A logical key value, independent of the separately reported modifier state.
+///
+/// Character codes describe the text produced by the active keyboard layout,
+/// not a physical key position. This keeps text input and character bindings
+/// portable across layouts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeyCode {
-    /// A printable character.
+    /// The logical Unicode character produced by the key press.
     Char(char),
     /// Enter/Return.
     Enter,

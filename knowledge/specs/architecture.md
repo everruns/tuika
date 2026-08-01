@@ -162,6 +162,12 @@ native console events already include modifier state. Everything above that
 boundary — the keymap engine, focus routing, component handlers — consumes only
 tuika types, which is what lets all of it be unit-tested without a PTY.
 
+Character key codes are logical Unicode text produced by the active keyboard
+layout, never physical key positions. Keymap character specs use that exact
+text (`A`, `?`, `ctrl+R`) and reject `shift+character`, whose result depends on
+layout; Shift remains independently matchable for non-character keys. This
+keeps input editing and command bindings on the same layout-neutral identity.
+
 Focus is a registry of scopes rather than a flag per component: a `FocusScope`
 claims input ownership for its subtree, so a modal or overlay can take input
 without every component learning about modality. At each frame boundary the
