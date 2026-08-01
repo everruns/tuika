@@ -29,6 +29,7 @@ use ratatui_core::style::Style;
 use std::time::{Duration, Instant};
 
 use crate::event::{Mouse, MouseButton, MouseKind};
+use crate::{Clock, SystemClock};
 
 /// A normalized text selection in reading order: `start` is at or before `end`
 /// ordered by `(row, column)`. Both endpoints are inclusive cells.
@@ -104,6 +105,15 @@ impl SelectionState {
     /// Feed a mouse event; returns `true` when the selection changed and a
     /// redraw is warranted.
     pub fn handle(&mut self, m: &Mouse) -> bool {
+        self.handle_with_clock(m, &SystemClock)
+    }
+
+    /// Feed a mouse event using an explicit monotonic `clock`.
+    ///
+    /// This is behaviorally identical to [`handle`](Self::handle), but makes
+    /// double-click timing deterministic in tests, replay systems, and hosts
+    /// with a virtual clock.
+    pub fn handle_with_clock(&mut self, m: &Mouse, clock: &dyn Clock) -> bool {
         match m.kind {
             MouseKind::Down(MouseButton::Left) => {
                 self.anchor = (m.column, m.row);
@@ -129,9 +139,10 @@ impl SelectionState {
                     self.last_click = None;
                 } else {
                     let position = self.cursor;
-                    let now = Instant::now();
+                    let now = clock.now();
                     let is_double = self.last_click.is_some_and(|(previous, at)| {
-                        previous == position && now.duration_since(at) <= DOUBLE_CLICK_INTERVAL
+                        previous == position
+                            && now.saturating_duration_since(at) <= DOUBLE_CLICK_INTERVAL
                     });
                     self.last_click = Some((position, now));
                     self.pending_word = is_double.then_some(position);
