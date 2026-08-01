@@ -78,6 +78,7 @@
 
 pub mod anim;
 pub mod components;
+pub mod dock;
 pub mod event;
 #[macro_use]
 mod macros;
@@ -121,6 +122,7 @@ pub mod ui {
 // through its module (`themes::by_name`, `probe::RectProbe`, `term::clipboard`)
 // is deliberately not flattened: a shallow path is worth something only if the
 // name earns it.
+pub use dock::{DockEdge, DockLayout, DockPlacement, DockSpec, DockState};
 pub use event::{Event, EventFlow, InputOutcome, Key, KeyCode, Mouse, MouseButton, MouseKind};
 pub use geometry::{Padding, Size};
 pub use host::{

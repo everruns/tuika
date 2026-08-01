@@ -22,6 +22,14 @@
 
 ## 2026-07-31
 
+- **Responsive auxiliary panels stay host-owned**
+
+- A small dock state now resolves one panel to wide dock, narrow focused
+  drawer, or hidden passive geometry. It owns no view tree or application data,
+  so hosts can reuse the lifecycle without adopting a retained window manager.
+- Focused panels are always assigned a visible rectangle; passive panels may
+  remain logically open through narrow resizes and reappear when space returns.
+
 - **Overlay placement can follow laid-out targets**
 
 - Popovers, menus, and tooltips can resolve on any side of a probed root view,

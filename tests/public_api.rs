@@ -50,6 +50,21 @@ fn the_prelude_alone_can_build_and_render_a_screen() {
     );
 }
 
+#[test]
+fn responsive_dock_lifecycle_is_in_the_framework_prelude() {
+    let mut dock = DockState::new();
+    dock.show_passive();
+    let wide = dock.resolve(Rect::new(0, 0, 100, 20), DockSpec::right(80, 32));
+    assert_eq!(wide.placement, DockPlacement::Docked);
+    assert_eq!(wide.main.width, 68);
+
+    dock.focus();
+    let narrow = dock.resolve(Rect::new(0, 0, 60, 20), DockSpec::right(80, 32));
+    assert_eq!(narrow.placement, DockPlacement::Drawer);
+    assert_eq!(narrow.main.width, 60);
+    assert_eq!(narrow.panel.expect("focused drawer").x, 28);
+}
+
 /// `view!` expands to `$crate::components::…` paths. Only an out-of-crate
 /// expansion proves those paths resolve for a host.
 #[test]

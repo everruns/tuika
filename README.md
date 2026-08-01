@@ -125,8 +125,8 @@ with tuika's surfaces (see [Compatibility](#compatibility)).
   is cheap because `ratatui` diffs the resulting cell buffer, so there is no
   reconciler.
 - **State** that must survive across frames — scroll offset, selection index,
-  focus — lives in host-persisted `*State` structs (the `StatefulWidget`
-  idiom), not in the view tree.
+  focus, dock visibility — lives in host-persisted `*State` structs (the
+  `StatefulWidget` idiom), not in the view tree.
 - **Live data** (`Live` / `LiveView`) is shared application state read at render
   time. Updates request a redraw from the runner; Tuika does not spawn data
   sources or reconcile a retained widget tree.
@@ -551,6 +551,21 @@ frame's mutable buffer.
 `Responsive` chooses complete compact/wide view trees from the current width;
 this supports row-to-column reflow and intentionally omitted secondary
 content. `Constrained` supplies min/max intrinsic measurements to flex layout.
+
+`DockState` is the small host-owned lifecycle for an auxiliary panel. A visible
+panel docks beside the main view on wide frames; below its breakpoint it stays
+passive and hidden until focused, then resolves as an overlay drawer. It returns
+rectangles only—the host keeps the panel view, focus id, keymap, and state.
+
+```rust
+use tuika::prelude::*;
+
+let mut activity = DockState::new();
+activity.show_passive();
+let layout = activity.resolve(Rect::new(0, 0, 120, 30), DockSpec::right(90, 40));
+// Paint the main view into `layout.main` and, when present, the panel into
+// `layout.panel`.
+```
 
 `Live<T>` is shared application data with a narrow read/update API. `LiveView`
 derives a fresh view from its current value each frame. Connect it to
