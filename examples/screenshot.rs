@@ -193,7 +193,7 @@ fn tab_strip(frame: u64, theme: &Theme) -> Element {
     let target = (frame / 3) % labels.len() as u64;
     let right = Event::Key(Key::new(KeyCode::Right));
     for _ in 0..target {
-        state.handle(&right, labels.len());
+        let _ = state.handle(&right, labels.len());
     }
     element(Tabs::new(labels, &state))
 }
@@ -242,7 +242,7 @@ fn palette_panel(frame: u64, theme: &Theme) -> Element {
     let target = (frame / 2) % items.len() as u64;
     let down = Event::Key(Key::new(KeyCode::Down));
     for _ in 0..target {
-        state.handle(&down, items.len());
+        let _ = state.handle(&down, items.len());
     }
     view! {
         boxed(title = Line::from(Span::styled(" command palette ", theme.accent_style())),

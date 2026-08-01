@@ -2,22 +2,11 @@
 
 use ratatui_core::layout::Rect;
 
-use crate::event::{Event, EventFlow, KeyCode};
+use crate::event::{Event, InputOutcome, KeyCode};
 use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{Element, RenderCtx, ScopedElement, View};
 use crate::width::str_cols;
-
-/// Result of routing a form-level navigation event.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FormOutcome {
-    /// Focus moved, with the event's consumed status.
-    FocusChanged(EventFlow),
-    /// The host should submit the form.
-    Submitted,
-    /// The host should cancel the form.
-    Cancelled,
-}
 
 /// Host-owned focus state for a form.
 #[derive(Clone, Copy, Debug, Default)]
@@ -54,22 +43,40 @@ impl FormState {
     ///
     /// Give the focused control first refusal when Enter or Esc has
     /// control-specific meaning, then pass ignored events here.
-    pub fn handle(&mut self, event: &Event, field_count: usize) -> FormOutcome {
+    pub fn handle(&mut self, event: &Event, field_count: usize) -> InputOutcome {
         let Event::Key(key) = event else {
-            return FormOutcome::FocusChanged(EventFlow::Ignored);
+            return InputOutcome::Ignored;
         };
         match key.code {
             KeyCode::Tab if key.plain() && field_count > 0 => {
-                self.focused = (self.focused + 1) % field_count;
-                FormOutcome::FocusChanged(EventFlow::Consumed)
+                let before = self.focused;
+                self.focused = if self.focused >= field_count - 1 {
+                    0
+                } else {
+                    self.focused + 1
+                };
+                if self.focused == before {
+                    InputOutcome::Consumed
+                } else {
+                    InputOutcome::Changed
+                }
             }
             KeyCode::BackTab if field_count > 0 => {
-                self.focused = (self.focused + field_count - 1) % field_count;
-                FormOutcome::FocusChanged(EventFlow::Consumed)
+                let before = self.focused;
+                self.focused = if self.focused == 0 || self.focused >= field_count {
+                    field_count - 1
+                } else {
+                    self.focused - 1
+                };
+                if self.focused == before {
+                    InputOutcome::Consumed
+                } else {
+                    InputOutcome::Changed
+                }
             }
-            KeyCode::Enter if key.plain() => FormOutcome::Submitted,
-            KeyCode::Esc if key.plain() => FormOutcome::Cancelled,
-            _ => FormOutcome::FocusChanged(EventFlow::Ignored),
+            KeyCode::Enter if key.plain() => InputOutcome::Submitted,
+            KeyCode::Esc if key.plain() => InputOutcome::Cancelled,
+            _ => InputOutcome::Ignored,
         }
     }
 }
@@ -294,16 +301,16 @@ mod tests {
         let mut state = FormState::new();
         assert_eq!(
             state.handle(&Event::Key(Key::new(KeyCode::Tab)), 2),
-            FormOutcome::FocusChanged(EventFlow::Consumed)
+            InputOutcome::Changed
         );
         assert_eq!(state.focused(), 1);
         assert_eq!(
             state.handle(&Event::Key(Key::new(KeyCode::Enter)), 2),
-            FormOutcome::Submitted
+            InputOutcome::Submitted
         );
         assert_eq!(
             state.handle(&Event::Key(Key::new(KeyCode::Esc)), 2),
-            FormOutcome::Cancelled
+            InputOutcome::Cancelled
         );
     }
 

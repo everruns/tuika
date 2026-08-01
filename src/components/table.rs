@@ -548,7 +548,7 @@ mod tests {
         // The table shares SelectState with SelectList — arrow keys move the row.
         let (_, rows) = sample();
         let mut state = SelectState::new();
-        state.handle(&Event::Key(Key::new(KeyCode::Down)), rows.len());
+        let _ = state.handle(&Event::Key(Key::new(KeyCode::Down)), rows.len());
         assert_eq!(state.selected(), Some(1));
     }
 

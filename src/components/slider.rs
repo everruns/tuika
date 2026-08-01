@@ -9,7 +9,7 @@
 use ratatui_core::layout::Rect;
 use ratatui_core::style::{Modifier, Style};
 
-use crate::event::{Event, EventFlow, KeyCode};
+use crate::event::{Event, InputOutcome, KeyCode};
 use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
@@ -103,15 +103,18 @@ impl SliderState {
     }
 
     /// Apply a key: Right/Up step up, Left/Down step down, PageUp/PageDown jump
-    /// ten steps, Home/End snap to the bounds. Returns whether the key was
-    /// consumed. Modified keys and everything else are ignored so they can bubble.
-    pub fn handle(&mut self, event: &Event) -> EventFlow {
+    /// ten steps, Home/End snap to the bounds. Reports
+    /// [`InputOutcome::Changed`] when the value moves and
+    /// [`InputOutcome::Consumed`] at a bound. Modified keys and everything else
+    /// are ignored so they can bubble.
+    pub fn handle(&mut self, event: &Event) -> InputOutcome {
         let Event::Key(key) = event else {
-            return EventFlow::Ignored;
+            return InputOutcome::Ignored;
         };
         if !key.plain() {
-            return EventFlow::Ignored;
+            return InputOutcome::Ignored;
         }
+        let before = self.value;
         match key.code {
             KeyCode::Right | KeyCode::Up => self.increment(),
             KeyCode::Left | KeyCode::Down => self.decrement(),
@@ -119,9 +122,13 @@ impl SliderState {
             KeyCode::PageDown => self.set_value(self.value - self.step * 10.0),
             KeyCode::Home => self.value = self.min,
             KeyCode::End => self.value = self.max,
-            _ => return EventFlow::Ignored,
+            _ => return InputOutcome::Ignored,
         }
-        EventFlow::Consumed
+        if self.value == before {
+            InputOutcome::Consumed
+        } else {
+            InputOutcome::Changed
+        }
     }
 }
 
@@ -268,19 +275,19 @@ mod tests {
     #[test]
     fn keys_step_page_and_snap() {
         let mut s = SliderState::new(0.0, 100.0, 50.0).step(1.0);
-        assert_eq!(s.handle(&key(KeyCode::Right)), EventFlow::Consumed);
+        assert_eq!(s.handle(&key(KeyCode::Right)), InputOutcome::Changed);
         assert_eq!(s.value(), 51.0);
-        s.handle(&key(KeyCode::Left));
-        s.handle(&key(KeyCode::Left));
+        let _ = s.handle(&key(KeyCode::Left));
+        let _ = s.handle(&key(KeyCode::Left));
         assert_eq!(s.value(), 49.0);
-        s.handle(&key(KeyCode::PageUp));
+        let _ = s.handle(&key(KeyCode::PageUp));
         assert_eq!(s.value(), 59.0); // ten steps
-        s.handle(&key(KeyCode::Home));
+        let _ = s.handle(&key(KeyCode::Home));
         assert_eq!(s.value(), 0.0);
-        s.handle(&key(KeyCode::End));
+        let _ = s.handle(&key(KeyCode::End));
         assert_eq!(s.value(), 100.0);
         // Unrelated keys bubble.
-        assert_eq!(s.handle(&key(KeyCode::Char('x'))), EventFlow::Ignored);
+        assert_eq!(s.handle(&key(KeyCode::Char('x'))), InputOutcome::Ignored);
     }
 
     #[test]

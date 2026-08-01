@@ -4,7 +4,7 @@ use ratatui_core::layout::Rect;
 use ratatui_core::style::{Modifier, Style};
 use ratatui_core::text::Line;
 
-use crate::{Event, EventFlow, KeyCode, RenderCtx, Size, Surface, View};
+use crate::{Event, InputOutcome, KeyCode, RenderCtx, Size, Surface, View};
 
 use super::text::line_width;
 
@@ -15,6 +15,16 @@ pub struct TabsState {
 }
 
 impl TabsState {
+    /// A state with the first tab selected.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A state with `index` selected.
+    pub fn with_selected(index: usize) -> Self {
+        Self { selected: index }
+    }
+
     /// Current selected tab index.
     pub fn selected(&self) -> usize {
         self.selected
@@ -26,26 +36,32 @@ impl TabsState {
     }
 
     /// Handle left/right and forward/backward tab navigation.
-    pub fn handle(&mut self, event: &Event, len: usize) -> EventFlow {
+    pub fn handle(&mut self, event: &Event, len: usize) -> InputOutcome {
         if len == 0 {
-            return EventFlow::Ignored;
+            return InputOutcome::Ignored;
         }
         let Event::Key(key) = event else {
-            return EventFlow::Ignored;
+            return InputOutcome::Ignored;
         };
         if !key.plain() {
-            return EventFlow::Ignored;
+            return InputOutcome::Ignored;
         }
+        let before = self.selected;
         match key.code {
             KeyCode::Left | KeyCode::BackTab => {
+                self.selected = self.selected.min(len - 1);
                 self.selected = self.selected.checked_sub(1).unwrap_or(len - 1);
-                EventFlow::Consumed
             }
             KeyCode::Right | KeyCode::Tab => {
+                self.selected = self.selected.min(len - 1);
                 self.selected = (self.selected + 1) % len;
-                EventFlow::Consumed
             }
-            _ => EventFlow::Ignored,
+            _ => return InputOutcome::Ignored,
+        }
+        if self.selected == before {
+            InputOutcome::Consumed
+        } else {
+            InputOutcome::Changed
         }
     }
 }
@@ -114,7 +130,7 @@ impl View for Tabs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event::{Event, EventFlow, Key, KeyCode};
+    use crate::event::{Event, InputOutcome, Key, KeyCode};
     use crate::style::Theme;
     use crate::tests::support::row;
     use ratatui_core::text::Line;
@@ -124,7 +140,7 @@ mod tests {
         let mut state = TabsState::default();
         assert_eq!(
             state.handle(&Event::Key(Key::new(KeyCode::Left)), 3),
-            EventFlow::Consumed
+            InputOutcome::Changed
         );
         assert_eq!(state.selected(), 2);
 

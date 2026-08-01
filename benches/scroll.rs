@@ -126,7 +126,7 @@ fn paging(c: &mut Criterion) {
                 state.jump_to_top();
                 // Page to the bottom; `handle` re-arms stick-to-bottom at the end.
                 while !state.is_stuck_to_bottom() {
-                    state.handle(black_box(&page_down), rows, HEIGHT as usize);
+                    let _ = state.handle(black_box(&page_down), rows, HEIGHT as usize);
                 }
                 black_box(state.offset())
             });

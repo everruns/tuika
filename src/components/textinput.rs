@@ -35,6 +35,8 @@ pub struct TextInputState {
     /// Cursor column (char index within `lines[row]`).
     col: usize,
     mode: TextInputMode,
+    /// Monotonic marker for text mutations, used to classify handled no-ops.
+    revision: u64,
 }
 
 /// Controls which Enter chord submits a text input.
@@ -219,9 +221,9 @@ impl TextSpan {
     }
 }
 
-/// Result of applying an Enter chord to a text input.
+/// Internal result of applying an Enter chord to a text input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextInputEvent {
+enum TextInputEvent {
     /// The chord inserted a newline; text changed.
     Changed,
     /// The chord requested submission.
@@ -242,6 +244,7 @@ impl TextInputState {
             row: 0,
             col: 0,
             mode: TextInputMode::default(),
+            revision: 0,
         }
     }
 
@@ -256,7 +259,14 @@ impl TextInputState {
     }
 
     /// Apply an Enter chord according to the configured mode.
-    pub fn handle_enter(&mut self, shift: bool) -> TextInputEvent {
+    pub fn handle_enter(&mut self, shift: bool) -> crate::InputOutcome {
+        match self.enter_event(shift) {
+            TextInputEvent::Changed => crate::InputOutcome::Changed,
+            TextInputEvent::Submit => crate::InputOutcome::Submitted,
+        }
+    }
+
+    fn enter_event(&mut self, shift: bool) -> TextInputEvent {
         let submit = match self.mode {
             TextInputMode::SubmitOnEnter => !shift,
             TextInputMode::SubmitOnShiftEnter => shift,
@@ -298,19 +308,27 @@ impl TextInputState {
 
     /// Replace all text; cursor moves to the end.
     pub fn set_text(&mut self, text: &str) {
-        self.lines = text.split('\n').map(str::to_string).collect();
-        if self.lines.is_empty() {
-            self.lines.push(String::new());
+        let mut lines: Vec<String> = text.split('\n').map(str::to_string).collect();
+        if lines.is_empty() {
+            lines.push(String::new());
         }
+        if self.lines != lines {
+            self.revision = self.revision.wrapping_add(1);
+        }
+        self.lines = lines;
         self.row = self.lines.len() - 1;
         self.col = self.lines[self.row].chars().count();
     }
 
     /// Clear to a single empty line. Preserves [`TextInputMode`].
     pub fn clear(&mut self) {
-        let mode = self.mode;
-        *self = Self::new();
-        self.mode = mode;
+        if !self.is_empty() {
+            self.revision = self.revision.wrapping_add(1);
+        }
+        self.lines.clear();
+        self.lines.push(String::new());
+        self.row = 0;
+        self.col = 0;
     }
 
     /// Move the cursor to `(row, col)`, clamped into the buffer and to the
@@ -326,7 +344,11 @@ impl TextInputState {
     }
 
     fn set_row(&mut self, row: usize, chars: Vec<char>) {
-        self.lines[row] = chars.into_iter().collect();
+        let line: String = chars.into_iter().collect();
+        if self.lines[row] != line {
+            self.lines[row] = line;
+            self.revision = self.revision.wrapping_add(1);
+        }
     }
 
     /// Insert one char at the cursor.
@@ -357,6 +379,7 @@ impl TextInputState {
         let head: String = chars[..at].iter().collect();
         self.lines[self.row] = head;
         self.lines.insert(self.row + 1, tail);
+        self.revision = self.revision.wrapping_add(1);
         self.row += 1;
         self.col = 0;
     }
@@ -374,6 +397,7 @@ impl TextInputState {
             self.row -= 1;
             self.col = self.lines[self.row].chars().count();
             self.lines[self.row].push_str(&cur);
+            self.revision = self.revision.wrapping_add(1);
         }
     }
 
@@ -387,6 +411,7 @@ impl TextInputState {
         } else if self.row + 1 < self.lines.len() {
             let next = self.lines.remove(self.row + 1);
             self.lines[self.row].push_str(&next);
+            self.revision = self.revision.wrapping_add(1);
         }
     }
 
@@ -542,9 +567,12 @@ impl TextInputState {
 
     /// Apply an input event according to the configured [`TextInputMode`].
     ///
-    /// Returns [`None`] when the event is ignored; [`Some`] with
-    /// [`TextInputEvent::Changed`] when the buffer or cursor changed, or
-    /// [`TextInputEvent::Submit`] when the Enter chord requested submission
+    /// Returns [`InputOutcome::Ignored`](crate::InputOutcome::Ignored) when the
+    /// event is ignored, [`InputOutcome::Consumed`](crate::InputOutcome::Consumed)
+    /// when a recognized edit or navigation is already at its bound,
+    /// [`InputOutcome::Changed`](crate::InputOutcome::Changed) when text or the
+    /// cursor changes, or
+    /// [`InputOutcome::Submitted`](crate::InputOutcome::Submitted) when the Enter chord requested submission
     /// (the buffer is left unchanged so the host can read [`Self::text`] and
     /// clear).
     ///
@@ -559,7 +587,19 @@ impl TextInputState {
     /// `C-f`/`C-b` char move, `C-p`/`C-n` line move, `C-h`/`C-d` delete,
     /// `C-j` newline, `C-k`/`C-u` kill to line end/start, `C-w`/`M-Backspace`
     /// delete word back, `M-f`/`M-b` word move, `M-d` delete word forward.
-    pub fn handle(&mut self, event: &Event) -> Option<TextInputEvent> {
+    pub fn handle(&mut self, event: &Event) -> crate::InputOutcome {
+        let before = (self.row, self.col, self.revision);
+        match self.handle_event(event) {
+            Some(TextInputEvent::Changed) if (self.row, self.col, self.revision) == before => {
+                crate::InputOutcome::Consumed
+            }
+            Some(TextInputEvent::Changed) => crate::InputOutcome::Changed,
+            Some(TextInputEvent::Submit) => crate::InputOutcome::Submitted,
+            None => crate::InputOutcome::Ignored,
+        }
+    }
+
+    fn handle_event(&mut self, event: &Event) -> Option<TextInputEvent> {
         match event {
             Event::Key(k) if k.ctrl && !k.alt => match k.code {
                 KeyCode::Char('a') => {
@@ -638,7 +678,7 @@ impl TextInputState {
                     self.insert_char(c);
                     Some(TextInputEvent::Changed)
                 }
-                KeyCode::Enter => Some(self.handle_enter(k.shift)),
+                KeyCode::Enter => Some(self.enter_event(k.shift)),
                 KeyCode::Backspace => {
                     self.backspace();
                     Some(TextInputEvent::Changed)
@@ -1030,22 +1070,27 @@ impl SingleLineInputState {
     }
 
     /// Handle editing input. Enter and Ctrl+J always submit.
-    pub fn handle(&mut self, event: &Event) -> Option<TextInputEvent> {
+    pub fn handle(&mut self, event: &Event) -> crate::InputOutcome {
         match event {
             Event::Paste(text) => {
+                let before = (self.inner.row, self.inner.col, self.inner.revision);
                 self.insert_str(text);
-                Some(TextInputEvent::Changed)
+                if (self.inner.row, self.inner.col, self.inner.revision) == before {
+                    crate::InputOutcome::Consumed
+                } else {
+                    crate::InputOutcome::Changed
+                }
             }
             Event::Key(key)
                 if key.plain()
                     && matches!(key.code, KeyCode::Enter | KeyCode::Char('\n' | '\r')) =>
             {
-                Some(TextInputEvent::Submit)
+                crate::InputOutcome::Submitted
             }
             Event::Key(key)
                 if key.ctrl && !key.alt && !key.shift && key.code == KeyCode::Char('j') =>
             {
-                Some(TextInputEvent::Submit)
+                crate::InputOutcome::Submitted
             }
             _ => self.inner.handle(event),
         }
@@ -1219,7 +1264,7 @@ mod tests {
         assert_eq!(state.text(), "alpha beta gamma delta");
         assert_eq!(
             state.handle(&Event::Paste(" one\r\ntwo\nthree".into())),
-            Some(TextInputEvent::Changed)
+            crate::InputOutcome::Changed
         );
         assert_eq!(state.text(), "alpha beta gamma delta one two three");
     }
@@ -1246,7 +1291,7 @@ mod tests {
                 shift: false,
             }),
         ] {
-            assert_eq!(state.handle(&event), Some(TextInputEvent::Submit));
+            assert_eq!(state.handle(&event), crate::InputOutcome::Submitted);
             assert_eq!(state.text(), "query");
         }
     }
@@ -1254,7 +1299,7 @@ mod tests {
     fn press(state: &mut TextInputState, code: KeyCode) -> bool {
         matches!(
             state.handle(&Event::Key(Key::new(code))),
-            Some(TextInputEvent::Changed)
+            crate::InputOutcome::Changed
         )
     }
 
@@ -1266,7 +1311,7 @@ mod tests {
                 alt: false,
                 shift: true,
             })),
-            Some(TextInputEvent::Changed)
+            crate::InputOutcome::Changed
         )
     }
 
@@ -1278,7 +1323,7 @@ mod tests {
                 alt: false,
                 shift: false,
             })),
-            Some(TextInputEvent::Changed)
+            crate::InputOutcome::Changed
         )
     }
 
@@ -1290,7 +1335,7 @@ mod tests {
                 alt: true,
                 shift: false,
             })),
-            Some(TextInputEvent::Changed)
+            crate::InputOutcome::Changed
         )
     }
 
@@ -1376,7 +1421,7 @@ mod tests {
         let mut state = TextInputState::new();
         assert_eq!(
             state.handle(&Event::Paste("one\ntwo".to_string())),
-            Some(TextInputEvent::Changed)
+            crate::InputOutcome::Changed
         );
         assert_eq!(state.text(), "one\ntwo");
         assert_eq!(state.line_count(), 2);
@@ -1647,8 +1692,8 @@ mod tests {
     fn submit_on_enter_mode_uses_shift_enter_for_newline() {
         let mut state = TextInputState::new();
         assert_eq!(state.mode(), TextInputMode::SubmitOnEnter);
-        assert_eq!(state.handle_enter(false), TextInputEvent::Submit);
-        assert_eq!(state.handle_enter(true), TextInputEvent::Changed);
+        assert_eq!(state.handle_enter(false), crate::InputOutcome::Submitted);
+        assert_eq!(state.handle_enter(true), crate::InputOutcome::Changed);
         assert_eq!(state.text(), "\n");
     }
 
@@ -1656,8 +1701,8 @@ mod tests {
     fn submit_on_shift_enter_mode_reverses_enter_chords() {
         let mut state = TextInputState::new();
         state.set_mode(TextInputMode::SubmitOnShiftEnter);
-        assert_eq!(state.handle_enter(false), TextInputEvent::Changed);
-        assert_eq!(state.handle_enter(true), TextInputEvent::Submit);
+        assert_eq!(state.handle_enter(false), crate::InputOutcome::Changed);
+        assert_eq!(state.handle_enter(true), crate::InputOutcome::Submitted);
         assert_eq!(state.text(), "\n");
     }
 
@@ -1678,14 +1723,14 @@ mod tests {
         });
         assert_eq!(
             state.handle(&shift_enter),
-            Some(TextInputEvent::Changed),
+            crate::InputOutcome::Changed,
             "Shift+Enter must insert a newline under SubmitOnEnter"
         );
         assert_eq!(state.text(), "one\n");
         type_str(&mut state, "two");
         assert_eq!(
             state.handle(&Event::Key(Key::new(KeyCode::Enter))),
-            Some(TextInputEvent::Submit),
+            crate::InputOutcome::Submitted,
             "plain Enter must submit under SubmitOnEnter, not insert another newline"
         );
         assert_eq!(
@@ -1702,7 +1747,7 @@ mod tests {
         type_str(&mut state, "one");
         assert_eq!(
             state.handle(&Event::Key(Key::new(KeyCode::Enter))),
-            Some(TextInputEvent::Changed)
+            crate::InputOutcome::Changed
         );
         assert_eq!(state.text(), "one\n");
         type_str(&mut state, "two");
@@ -1712,7 +1757,7 @@ mod tests {
             alt: false,
             shift: true,
         });
-        assert_eq!(state.handle(&shift_enter), Some(TextInputEvent::Submit));
+        assert_eq!(state.handle(&shift_enter), crate::InputOutcome::Submitted);
         assert_eq!(state.text(), "one\ntwo");
     }
 

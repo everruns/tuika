@@ -1,5 +1,17 @@
 # Knowledge Log
 
+## 2026-08-01
+
+- **Interactive components share one state contract**
+
+- Selection, multi-selection, tabs, segmented selection, sliders, scrolling,
+  forms, and text input now report one `InputOutcome` vocabulary. Hosts can
+  route every component consistently while reading values from the state they
+  already own.
+- `Default` and zero-argument `new()` no longer disagree about initial
+  selection or bottom-follow behavior. Alternate starts are named explicitly,
+  and handled boundary keys are distinguishable from events a host may reuse.
+
 ## 2026-07-31
 
 - **Overlay placement can follow laid-out targets**

@@ -273,7 +273,7 @@ fn main() -> io::Result<()> {
         }
         // PgUp/PgDn/Home/End and the wheel; scrolling up releases the stick,
         // reaching the bottom re-arms it.
-        scroll.handle(&event, content_h, viewport_h);
+        let _ = scroll.handle(&event, content_h, viewport_h);
     }
 
     let _ = terminal.clear();

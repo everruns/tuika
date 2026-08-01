@@ -121,7 +121,7 @@ fn snapshot_spinner_and_progress_row() {
 fn snapshot_select_list() {
     let mut state = SelectState::new();
     // Move to the middle entry deterministically.
-    state.handle(
+    let _ = state.handle(
         &crate::event::Event::Key(crate::event::Key::new(crate::event::KeyCode::Down)),
         3,
     );

@@ -173,6 +173,49 @@ pub enum EventFlow {
     Ignored,
 }
 
+/// Result of routing an input event through host-owned component state.
+///
+/// The outcome describes both propagation and lifecycle without duplicating
+/// values already available from the state (`selected()`, `value()`, `text()`,
+/// and so on). Every variant except [`Ignored`](Self::Ignored) consumes the
+/// event.
+#[must_use = "input outcomes determine whether an event keeps propagating"]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum InputOutcome {
+    /// The state did not recognize the event; keep routing it.
+    #[default]
+    Ignored,
+    /// The event was recognized, but persistent state was already at its bound.
+    Consumed,
+    /// Persistent component state changed.
+    Changed,
+    /// The current value was activated or requested for submission.
+    Submitted,
+    /// The interaction requested cancellation or dismissal.
+    Cancelled,
+}
+
+impl InputOutcome {
+    /// Convert this richer result to the propagation-only [`EventFlow`].
+    pub fn flow(self) -> EventFlow {
+        if self == Self::Ignored {
+            EventFlow::Ignored
+        } else {
+            EventFlow::Consumed
+        }
+    }
+
+    /// Whether the event was recognized and should stop propagating.
+    pub fn consumed(self) -> bool {
+        self.flow().consumed()
+    }
+
+    /// Whether persistent component state changed.
+    pub fn changed(self) -> bool {
+        self == Self::Changed
+    }
+}
+
 impl EventFlow {
     /// True for [`EventFlow::Consumed`].
     pub fn consumed(self) -> bool {
