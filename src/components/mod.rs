@@ -60,7 +60,7 @@ pub use dialog::Dialog;
 pub use diff::{Diff, DiffMode, DiffRow, DiffStyle, DiffTag};
 pub use flex::Flex;
 pub use focus_scope::FocusScope;
-pub use form::{Form, FormField, FormOutcome, FormState};
+pub use form::{Form, FormField, FormState};
 pub use image::Image;
 pub use item_scroll::ItemScroll;
 pub use key_hints::{KeyHint, KeyHints, KeymapHelp};
@@ -74,20 +74,18 @@ pub use qr::{QrCode, QrEcc};
 pub use responsive::Responsive;
 pub use rule::Rule;
 pub use scroll::{Scroll, ScrollState};
-pub use select::{
-    MultiSelectOutcome, MultiSelectState, SelectList, SelectNavigation, SelectOutcome, SelectState,
-};
+pub use select::{MultiSelectState, SelectList, SelectNavigation, SelectState};
 pub use slider::{Slider, SliderState};
 pub use spacer::Spacer;
 pub use spinner::{Spinner, SpinnerStyle};
 pub use status_bar::StatusBar;
-pub use tab_select::{TabSelect, TabSelectOutcome, TabSelectState};
+pub use tab_select::{TabSelect, TabSelectState};
 pub use table::{Column, Table};
 pub use tabs::{Tabs, TabsState};
 pub use text::{Paragraph, Text, Wrap};
 pub use textinput::{
-    SingleLineInputState, TextInput, TextInputEvent, TextInputMode, TextInputState, TextSpan,
-    Token, Trigger, TriggerAnchor,
+    SingleLineInputState, TextInput, TextInputMode, TextInputState, TextSpan, Token, Trigger,
+    TriggerAnchor,
 };
 pub use toast::{ToastLevel, ToastList, Toasts};
 pub use viewport::Viewport;

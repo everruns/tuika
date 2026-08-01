@@ -76,6 +76,14 @@ block-HTML seam.
 
 ### Changed
 
+- **Breaking:** interactive component handlers now return one root/prelude
+  `InputOutcome` (`Ignored`, `Consumed`, `Changed`, `Submitted`, or `Cancelled`).
+  Read the submitted value back from its host-owned state. Replace
+  `SelectOutcome`, `MultiSelectOutcome`, `FormOutcome`, `TabSelectOutcome`,
+  `TextInputEvent`, and direct `EventFlow` matches with `InputOutcome`; call
+  `.flow()` when only propagation matters. `SelectState`, `MultiSelectState`,
+  and `ScrollState` now make `Default` identical to `new()`; use
+  `SelectState::unselected()` for an initially cursorless list.
 - **Breaking:** `StyleSheet` adds typed toast, diff, and key-hint fields. Toasts,
   diffs, `KeyHints`, and `KeymapHelp` now derive their defaults from those roles
   instead of renderer literals; explicit `Diff::style` colors still win for one

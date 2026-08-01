@@ -39,9 +39,9 @@ pub use crate::ui::{Color, Line, Modifier, Rect, Span, Style};
 // `$crate::…` paths, so a glob-importing host needs neither in scope by name.
 pub use crate::view;
 pub use crate::{
-    Align, Backdrop, Dimension, Direction, Element, Event, EventFlow, Justify, Key, KeyCode,
-    LayoutStyle, Mouse, MouseButton, MouseKind, Overlay, OverlaySpec, Padding, RenderCtx, Runner,
-    RunnerConfig, Scene, SceneOverlay, ScopedElement, ScopedScene, ScreenMode, Scrollback,
+    Align, Backdrop, Dimension, Direction, Element, Event, EventFlow, InputOutcome, Justify, Key,
+    KeyCode, LayoutStyle, Mouse, MouseButton, MouseKind, Overlay, OverlaySpec, Padding, RenderCtx,
+    Runner, RunnerConfig, Scene, SceneOverlay, ScopedElement, ScopedScene, ScreenMode, Scrollback,
     SemanticRole, Signal, Size, StyleSheet, Surface, TargetAlign, TargetPlacement, TargetSide,
     TerminalSession, Theme, UpdateResult, View, element, paint, paint_scene, paint_with_context,
     paint_with_sheet, translate_event,

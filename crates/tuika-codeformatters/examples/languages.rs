@@ -179,7 +179,7 @@ fn main() -> io::Result<()> {
         {
             break;
         }
-        tabs.handle(&ev, SNIPPETS.len());
+        let _ = tabs.handle(&ev, SNIPPETS.len());
     }
 
     let _ = terminal.clear();

@@ -27,7 +27,7 @@ use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
 use ratatui_core::text::Line;
 
-use crate::event::{Event, EventFlow, KeyCode, MouseKind};
+use crate::event::{Event, InputOutcome, KeyCode, MouseKind};
 use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
@@ -40,7 +40,7 @@ use super::text::wrap_lines;
 /// `u16::MAX` rows in a long session. Measuring the offset and content height in
 /// `u16` let a 65,536-row transcript wrap to ~0, which collapsed
 /// stick-to-bottom's `max_offset` to 0 and silently snapped the view to the top.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct ScrollState {
     /// Top visible content row.
     offset: usize,
@@ -50,6 +50,12 @@ pub struct ScrollState {
     /// When true, `clamp` snaps to the bottom on content growth so new
     /// transcript output stays visible.
     stick_to_bottom: bool,
+}
+
+impl Default for ScrollState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ScrollState {
@@ -136,16 +142,28 @@ impl ScrollState {
         self.x_offset = self.x_offset.min(Self::max_x_offset(content_w, viewport_w));
     }
 
-    fn scroll_up(&mut self, lines: usize) {
+    fn scroll_up(&mut self, lines: usize) -> InputOutcome {
+        let changed = self.offset != 0 || self.stick_to_bottom;
         self.offset = self.offset.saturating_sub(lines);
         self.stick_to_bottom = false;
+        if changed {
+            InputOutcome::Changed
+        } else {
+            InputOutcome::Consumed
+        }
     }
 
-    fn scroll_down(&mut self, lines: usize, content_h: usize, viewport_h: usize) {
+    fn scroll_down(&mut self, lines: usize, content_h: usize, viewport_h: usize) -> InputOutcome {
         let max = Self::max_offset(content_h, viewport_h);
+        let changed = self.offset != max || !self.stick_to_bottom;
         self.offset = self.offset.saturating_add(lines).min(max);
         // Re-arm bottom-stick once the user scrolls back to the end.
         self.stick_to_bottom = self.offset >= max;
+        if changed {
+            InputOutcome::Changed
+        } else {
+            InputOutcome::Consumed
+        }
     }
 
     /// Jump to the newest content and re-enable bottom-stick.
@@ -161,40 +179,39 @@ impl ScrollState {
     }
 
     /// Handle a scroll/paging event against the given dimensions.
-    pub fn handle(&mut self, event: &Event, content_h: usize, viewport_h: usize) -> EventFlow {
+    pub fn handle(&mut self, event: &Event, content_h: usize, viewport_h: usize) -> InputOutcome {
         let page = viewport_h.saturating_sub(1).max(1);
         match event {
             Event::Mouse(m) => match m.kind {
-                MouseKind::ScrollUp => {
-                    self.scroll_up(3);
-                    EventFlow::Consumed
-                }
-                MouseKind::ScrollDown => {
-                    self.scroll_down(3, content_h, viewport_h);
-                    EventFlow::Consumed
-                }
-                _ => EventFlow::Ignored,
+                MouseKind::ScrollUp => self.scroll_up(3),
+                MouseKind::ScrollDown => self.scroll_down(3, content_h, viewport_h),
+                _ => InputOutcome::Ignored,
             },
             Event::Key(k) if k.plain() => match k.code {
-                KeyCode::PageUp => {
-                    self.scroll_up(page);
-                    EventFlow::Consumed
-                }
-                KeyCode::PageDown => {
-                    self.scroll_down(page, content_h, viewport_h);
-                    EventFlow::Consumed
-                }
+                KeyCode::PageUp => self.scroll_up(page),
+                KeyCode::PageDown => self.scroll_down(page, content_h, viewport_h),
                 KeyCode::Home => {
+                    let changed = self.offset != 0 || self.stick_to_bottom;
                     self.jump_to_top();
-                    EventFlow::Consumed
+                    if changed {
+                        InputOutcome::Changed
+                    } else {
+                        InputOutcome::Consumed
+                    }
                 }
                 KeyCode::End => {
+                    let max = Self::max_offset(content_h, viewport_h);
+                    let changed = self.offset != max || !self.stick_to_bottom;
                     self.jump_to_bottom(content_h, viewport_h);
-                    EventFlow::Consumed
+                    if changed {
+                        InputOutcome::Changed
+                    } else {
+                        InputOutcome::Consumed
+                    }
                 }
-                _ => EventFlow::Ignored,
+                _ => InputOutcome::Ignored,
             },
-            _ => EventFlow::Ignored,
+            _ => InputOutcome::Ignored,
         }
     }
 }
@@ -432,7 +449,7 @@ pub(crate) fn draw_scrollbar(
 mod tests {
     use super::*;
     use crate::Surface;
-    use crate::event::{Event, EventFlow, Key, KeyCode, Mouse, MouseKind};
+    use crate::event::{Event, InputOutcome, Key, KeyCode, Mouse, MouseKind};
     use crate::style::Theme;
     use crate::tests::support::{buffer, rainbow_theme, row};
     use crate::view::{RenderCtx, View};
@@ -449,7 +466,7 @@ mod tests {
 
         // Wheel up unsticks and moves up by 3.
         let up = Event::Mouse(Mouse::at(MouseKind::ScrollUp, 0, 0));
-        assert_eq!(s.handle(&up, 100, 10), EventFlow::Consumed);
+        assert_eq!(s.handle(&up, 100, 10), InputOutcome::Changed);
         assert!(!s.is_stuck_to_bottom());
         assert_eq!(s.offset(), 87);
 
@@ -472,7 +489,7 @@ mod tests {
         // Paging up from the bottom detaches and moves by a page, still far from
         // the top rather than snapping there.
         let up = Event::Key(Key::new(KeyCode::PageUp));
-        assert_eq!(s.handle(&up, content_h, viewport_h), EventFlow::Consumed);
+        assert_eq!(s.handle(&up, content_h, viewport_h), InputOutcome::Changed);
         assert!(!s.is_stuck_to_bottom());
         assert_eq!(s.offset(), content_h - viewport_h - (viewport_h - 1));
     }
@@ -596,8 +613,8 @@ mod tests {
 
         // Read back a couple of screens.
         let up = Event::Mouse(Mouse::at(MouseKind::ScrollUp, 0, 0));
-        s.handle(&up, 100, 10);
-        s.handle(&up, 100, 10);
+        let _ = s.handle(&up, 100, 10);
+        let _ = s.handle(&up, 100, 10);
         assert_eq!(s.offset(), 84);
         assert!(!s.is_stuck_to_bottom());
 
@@ -612,7 +629,7 @@ mod tests {
             if s.is_stuck_to_bottom() {
                 break;
             }
-            s.handle(&down, 130, 10);
+            let _ = s.handle(&down, 130, 10);
         }
         assert!(
             s.is_stuck_to_bottom(),
@@ -633,7 +650,7 @@ mod tests {
         assert_eq!(s.offset(), 0);
         assert!(!s.is_stuck_to_bottom());
         let end = Event::Key(Key::new(KeyCode::End));
-        assert_eq!(s.handle(&end, 100, 10), EventFlow::Consumed);
+        assert_eq!(s.handle(&end, 100, 10), InputOutcome::Changed);
         assert_eq!(s.offset(), 90);
         assert!(s.is_stuck_to_bottom());
     }
@@ -676,7 +693,7 @@ mod tests {
         state.clamp(content.len(), height as usize);
         state.jump_to_top();
         let end = Event::Key(Key::new(KeyCode::PageDown));
-        state.handle(&end, content.len(), height as usize); // one page down
+        let _ = state.handle(&end, content.len(), height as usize); // one page down
         let offset = state.offset();
         assert!(offset > 0 && offset < content.len() - height as usize);
 

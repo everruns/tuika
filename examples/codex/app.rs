@@ -296,7 +296,7 @@ impl App {
         }
 
         match self.composer.handle(event) {
-            Some(TextInputEvent::Submit) => {
+            InputOutcome::Submitted => {
                 let text = self.composer.text().trim().to_string();
                 self.composer.clear();
                 self.popup = None;
@@ -305,7 +305,7 @@ impl App {
                     self.submit(&text);
                 }
             }
-            Some(TextInputEvent::Changed) | None => self.sync_popup(),
+            _ => self.sync_popup(),
         }
         Flow::Continue
     }
@@ -342,9 +342,9 @@ impl App {
             KeyCode::Char('2') if key.plain() => Some(1),
             KeyCode::Char('3') if key.plain() => Some(2),
             _ => match approval.state.handle(event, 3) {
-                SelectOutcome::Confirmed(i) => Some(i),
-                SelectOutcome::Cancelled => Some(2),
-                SelectOutcome::Moved(_) => None,
+                InputOutcome::Submitted => approval.state.selected(),
+                InputOutcome::Cancelled => Some(2),
+                _ => None,
             },
         };
         let Some(index) = picked else { return };
@@ -380,18 +380,21 @@ impl App {
             return true;
         }
         match state.handle(event, items.len()) {
-            SelectOutcome::Confirmed(index) => {
-                let label = items.get(index).map(|(l, _)| l.clone());
+            InputOutcome::Submitted => {
+                let label = state
+                    .selected()
+                    .and_then(|index| items.get(index))
+                    .map(|(l, _)| l.clone());
                 if let (Some(label), Some(kind)) = (label, self.popup.take()) {
                     self.confirm_popup(kind, &label);
                 }
                 true
             }
-            SelectOutcome::Cancelled => {
+            InputOutcome::Cancelled => {
                 self.popup = None;
                 true
             }
-            SelectOutcome::Moved(flow) => flow == EventFlow::Consumed,
+            outcome => outcome.consumed(),
         }
     }
 

@@ -3,30 +3,19 @@
 //! Where [`Tabs`](crate::Tabs) is navigation chrome (a strip you move a focus
 //! ring across, the host deciding what a switch means), `TabSelect` is an input:
 //! moving the cursor changes the selected value immediately, and Enter/Space
-//! activates it. Its [`handle`](TabSelectState::handle) returns a
-//! [`TabSelectOutcome`] so the host can react to a change versus an activation —
-//! the value-select analog of OpenTUI's `TabSelect`.
+//! activates it. Its [`handle`](TabSelectState::handle) returns the shared
+//! [`InputOutcome`] contract so the host can react to a change versus an
+//! activation — the value-select analog of OpenTUI's `TabSelect`.
 
 use ratatui_core::layout::Rect;
 use ratatui_core::style::{Modifier, Style};
 use ratatui_core::text::Line;
 
 use crate::components::text::line_width;
-use crate::event::{Event, KeyCode};
+use crate::event::{Event, InputOutcome, KeyCode};
 use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
-
-/// The result of feeding a key to a [`TabSelectState`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TabSelectOutcome {
-    /// Navigation moved the selection to this index (its value changed).
-    Changed(usize),
-    /// The current index was activated (Enter/Space) without moving.
-    Activated(usize),
-    /// The key was not handled; let it bubble.
-    Ignored,
-}
 
 /// Host-owned selected-option state for a [`TabSelect`].
 #[derive(Clone, Copy, Debug, Default)]
@@ -35,6 +24,11 @@ pub struct TabSelectState {
 }
 
 impl TabSelectState {
+    /// A state with the first option selected.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// A state with `index` selected.
     pub fn with_selected(index: usize) -> Self {
         Self { selected: index }
@@ -52,32 +46,38 @@ impl TabSelectState {
 
     /// Apply a key over `len` options: Left/BackTab and Right/Tab move the
     /// selection (wrapping), Enter/Space activates the current option. Wrapping
-    /// navigation reports [`TabSelectOutcome::Changed`]; activation reports
-    /// [`TabSelectOutcome::Activated`]; anything else is
-    /// [`TabSelectOutcome::Ignored`].
-    pub fn handle(&mut self, event: &Event, len: usize) -> TabSelectOutcome {
+    /// navigation reports [`InputOutcome::Changed`]; activation reports
+    /// [`InputOutcome::Submitted`]; anything else is [`InputOutcome::Ignored`].
+    pub fn handle(&mut self, event: &Event, len: usize) -> InputOutcome {
         if len == 0 {
-            return TabSelectOutcome::Ignored;
+            return InputOutcome::Ignored;
         }
         let Event::Key(key) = event else {
-            return TabSelectOutcome::Ignored;
+            return InputOutcome::Ignored;
         };
         if !key.plain() {
-            return TabSelectOutcome::Ignored;
+            return InputOutcome::Ignored;
         }
-        // Keep the selection in range even if `len` shrank since it was set.
-        self.selected = self.selected.min(len - 1);
+        let before = self.selected;
         match key.code {
             KeyCode::Left | KeyCode::BackTab => {
+                self.selected = self.selected.min(len - 1);
                 self.selected = self.selected.checked_sub(1).unwrap_or(len - 1);
-                TabSelectOutcome::Changed(self.selected)
             }
             KeyCode::Right | KeyCode::Tab => {
+                self.selected = self.selected.min(len - 1);
                 self.selected = (self.selected + 1) % len;
-                TabSelectOutcome::Changed(self.selected)
             }
-            KeyCode::Enter | KeyCode::Char(' ') => TabSelectOutcome::Activated(self.selected),
-            _ => TabSelectOutcome::Ignored,
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                self.selected = self.selected.min(len - 1);
+                return InputOutcome::Submitted;
+            }
+            _ => return InputOutcome::Ignored,
+        }
+        if self.selected == before {
+            InputOutcome::Consumed
+        } else {
+            InputOutcome::Changed
         }
     }
 }
@@ -89,9 +89,9 @@ impl TabSelectState {
 /// use tuika::prelude::*;
 /// let mut state = TabSelectState::default();
 /// let right = Event::Key(Key::new(KeyCode::Right));
-/// assert_eq!(state.handle(&right, 3), TabSelectOutcome::Changed(1));
+/// assert_eq!(state.handle(&right, 3), InputOutcome::Changed);
 /// let enter = Event::Key(Key::new(KeyCode::Enter));
-/// assert_eq!(state.handle(&enter, 3), TabSelectOutcome::Activated(1));
+/// assert_eq!(state.handle(&enter, 3), InputOutcome::Submitted);
 /// ```
 pub struct TabSelect {
     labels: Vec<Line<'static>>,
@@ -172,44 +172,30 @@ mod tests {
     #[test]
     fn navigation_changes_value_and_wraps() {
         let mut s = TabSelectState::default();
-        assert_eq!(
-            s.handle(&key(KeyCode::Right), 3),
-            TabSelectOutcome::Changed(1)
-        );
-        assert_eq!(
-            s.handle(&key(KeyCode::Right), 3),
-            TabSelectOutcome::Changed(2)
-        );
+        assert_eq!(s.handle(&key(KeyCode::Right), 3), InputOutcome::Changed);
+        assert_eq!(s.selected(), 1);
+        assert_eq!(s.handle(&key(KeyCode::Right), 3), InputOutcome::Changed);
+        assert_eq!(s.selected(), 2);
         // Wraps forward past the end...
-        assert_eq!(
-            s.handle(&key(KeyCode::Right), 3),
-            TabSelectOutcome::Changed(0)
-        );
+        assert_eq!(s.handle(&key(KeyCode::Right), 3), InputOutcome::Changed);
+        assert_eq!(s.selected(), 0);
         // ...and backward past the start.
-        assert_eq!(
-            s.handle(&key(KeyCode::Left), 3),
-            TabSelectOutcome::Changed(2)
-        );
+        assert_eq!(s.handle(&key(KeyCode::Left), 3), InputOutcome::Changed);
+        assert_eq!(s.selected(), 2);
     }
 
     #[test]
     fn enter_and_space_activate_without_moving() {
         let mut s = TabSelectState::with_selected(1);
-        assert_eq!(
-            s.handle(&key(KeyCode::Enter), 3),
-            TabSelectOutcome::Activated(1)
-        );
+        assert_eq!(s.handle(&key(KeyCode::Enter), 3), InputOutcome::Submitted);
         assert_eq!(
             s.handle(&key(KeyCode::Char(' ')), 3),
-            TabSelectOutcome::Activated(1)
+            InputOutcome::Submitted
         );
         assert_eq!(s.selected(), 1);
         // Unhandled keys bubble.
-        assert_eq!(
-            s.handle(&key(KeyCode::Char('x')), 3),
-            TabSelectOutcome::Ignored
-        );
-        assert_eq!(s.handle(&key(KeyCode::Up), 0), TabSelectOutcome::Ignored);
+        assert_eq!(s.handle(&key(KeyCode::Char('x')), 3), InputOutcome::Ignored);
+        assert_eq!(s.handle(&key(KeyCode::Up), 0), InputOutcome::Ignored);
     }
 
     #[test]

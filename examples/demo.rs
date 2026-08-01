@@ -1138,7 +1138,7 @@ fn scene_scroll(frame: u64, theme: &Theme) -> Element {
     let steps = (reach * (content_h.saturating_sub(viewport_h) as f32 / 3.0 + 1.0)) as u32;
     let down = Event::Mouse(Mouse::at(MouseKind::ScrollDown, 0, 0));
     for _ in 0..steps {
-        state.handle(&down, content_h, viewport_h);
+        let _ = state.handle(&down, content_h, viewport_h);
     }
     view! {
         col {
@@ -1177,7 +1177,7 @@ fn scene_item_scroll(frame: u64, theme: &Theme) -> Element {
     let steps = (reach * (content_h.saturating_sub(viewport_h) as f32 / 3.0 + 1.0)) as u32;
     let down = Event::Mouse(Mouse::at(MouseKind::ScrollDown, 0, 0));
     for _ in 0..steps {
-        state.handle(&down, content_h, viewport_h);
+        let _ = state.handle(&down, content_h, viewport_h);
     }
     view! {
         col {
@@ -1240,7 +1240,7 @@ fn scene_select(frame: u64, theme: &Theme) -> Element {
     let target = (frame / 10) % items.len() as u64;
     let down = Event::Key(Key::new(KeyCode::Down));
     for _ in 0..target {
-        state.handle(&down, items.len());
+        let _ = state.handle(&down, items.len());
     }
     view! {
         col {
@@ -1258,7 +1258,7 @@ fn scene_tabs(frame: u64, theme: &Theme) -> Element {
     let target = (frame / 16) % labels.len() as u64;
     let right = Event::Key(Key::new(KeyCode::Right));
     for _ in 0..target {
-        state.handle(&right, labels.len());
+        let _ = state.handle(&right, labels.len());
     }
     view! {
         col(gap = 1) {
@@ -1563,7 +1563,7 @@ fn scene_tab_select(frame: u64, theme: &Theme) -> Element {
     let target = (frame / 18) % labels.len() as u64;
     let right = Event::Key(Key::new(KeyCode::Right));
     for _ in 0..target {
-        state.handle(&right, labels.len());
+        let _ = state.handle(&right, labels.len());
     }
     view! {
         col(gap = 1) {

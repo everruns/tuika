@@ -80,9 +80,9 @@ fn main() -> io::Result<()> {
             break;
         }
         match state.handle(&ev, FRUITS.len()) {
-            SelectOutcome::Confirmed(i) => chosen = Some(i),
-            SelectOutcome::Cancelled => break,
-            SelectOutcome::Moved(_) => {}
+            InputOutcome::Submitted => chosen = state.selected(),
+            InputOutcome::Cancelled => break,
+            _ => {}
         }
     }
 

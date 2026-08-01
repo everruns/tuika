@@ -132,7 +132,7 @@ fn paging(rows: usize) -> usize {
     let page_down = Event::Key(Key::new(KeyCode::PageDown));
     // Page from top to bottom; `handle` re-arms stick-to-bottom at the end.
     while !state.is_stuck_to_bottom() {
-        state.handle(black_box(&page_down), rows, HEIGHT as usize);
+        let _ = state.handle(black_box(&page_down), rows, HEIGHT as usize);
     }
     black_box(state.offset())
 }

@@ -451,8 +451,9 @@ let chart = DrawView::new(
 ### `SelectList` + `SelectState`
 
 A selectable list; `SelectState` navigates with the arrow keys (wrapping),
-confirms on Enter, cancels on Esc. Selection is optional:
-`state.select(None)` draws neither caret nor highlight. `.selection_style(style)`
+confirms on Enter, cancels on Esc. `new()` and `default()` select the first row;
+`SelectState::unselected()` starts cursorless, and `state.select(None)` clears an
+existing selection so neither caret nor highlight is drawn. `.selection_style(style)`
 overrides the theme selection style for one list. `handle_with` accepts a
 `SelectNavigation` policy; `SelectNavigation::common()` enables j/k, Ctrl+N/P,
 Tab/Shift+Tab, and numeric shortcuts. `handle_mouse` hit-tests explicit list
@@ -465,9 +466,9 @@ for pickers that retain several checked items.
 ```rust
 use ratatui::style::{Color, Style};
 use tuika::prelude::*;
-let mut state = SelectState::new();
+let mut state = SelectState::unselected();
 let style = Style::default().fg(Color::Blue);
-state.select(None); // cursorless list; use Some(index) to select
+state.select(Some(0)); // select a row when the host is ready
 view! { node(SelectList::new(items, &state).selection_style(style)) }
 ```
 
@@ -518,8 +519,8 @@ view! { node(Tabs::new(labels, &state)) }
 
 A value-selecting segmented control (as opposed to `Tabs`, which is navigation
 chrome): moving the cursor changes the selected value immediately, and
-Enter/Space activates it. `handle` returns a `TabSelectOutcome` distinguishing a
-change from an activation.
+Enter/Space activates it. `handle` returns the shared `InputOutcome`,
+distinguishing a change from submission while the state owns the selected value.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.TabSelect.html)
 
 <img src="demos/tab_select.gif" width="880" alt="TabSelect demo">
@@ -563,6 +564,11 @@ For search fields and command bars, `SingleLineInputState` wraps the same editor
 but guarantees one line: setters and paste normalize CR/LF to spaces, Enter and
 Ctrl+J submit, and `text()` returns a borrowed `&str` without allocation. Render
 it with `TextInput::new(state.as_text_input())`.
+
+Like the other interactive state types, `handle` returns `InputOutcome`:
+`Changed` means persistent state moved, `Consumed` means a recognized action hit
+a bound, `Submitted`/`Cancelled` report lifecycle intent, and only `Ignored`
+should continue through input routing. The edited text remains in the state.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.TextInput.html)
 
 <img src="demos/textinput.gif" width="880" alt="TextInput demo">

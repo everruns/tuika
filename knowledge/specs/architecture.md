@@ -25,6 +25,13 @@ rather than beside it.
   focus registry, text-input cursor, and toast expiry are `*State` structs the
   host owns and passes back in each frame — the `StatefulWidget` idiom. A view
   never hides mutable state a host cannot inspect or persist.
+- **Interactive state has one lifecycle vocabulary.** Component handlers return
+  `InputOutcome`: ignored events may continue routing; recognized no-ops stop;
+  persistent mutations, submission, and cancellation remain distinct. Values
+  are read from the host-owned state rather than duplicated in outcome enums.
+  For state types with a zero-argument constructor, `Default` and `new()` are
+  identical; a meaningful alternate start is explicit (for example,
+  `SelectState::unselected()`).
 - **Layout is a flexbox subset** over a direction-agnostic axis, so rows and
   columns share one solver: `Dimension` (`Auto`/`Fixed`/`Percent`/`Flex`) plus
   `Align`, `Justify`, and `Direction`.

@@ -3,14 +3,14 @@
 //! [`SelectState`] persists an optional highlighted index and handles
 //! up/down/wrap navigation; [`SelectList`] renders the options, marking the
 //! current one with a theme-default or instance selection style and a caret.
-//! Enter is surfaced to the host via [`SelectOutcome`] so the caller decides
-//! what "confirm" means.
+//! Enter is surfaced as [`InputOutcome::Submitted`] so the caller decides what
+//! "confirm" means.
 
 use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
 use ratatui_core::text::Line;
 
-use crate::event::{Event, EventFlow, KeyCode, MouseButton, MouseKind};
+use crate::event::{Event, InputOutcome, KeyCode, MouseButton, MouseKind};
 use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
@@ -44,27 +44,27 @@ impl SelectNavigation {
     }
 }
 
-/// Result of feeding an event to a [`SelectState`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SelectOutcome {
-    /// Highlight moved or nothing happened; event consumed status in `.1`.
-    Moved(EventFlow),
-    /// Enter pressed on the given index.
-    Confirmed(usize),
-    /// Esc pressed.
-    Cancelled,
-}
-
 /// Persisted optional selection index for one list.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct SelectState {
     selected: Option<usize>,
+}
+
+impl Default for SelectState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SelectState {
     /// A fresh state with the first row highlighted.
     pub fn new() -> Self {
         Self { selected: Some(0) }
+    }
+
+    /// A fresh state with no highlighted row.
+    pub fn unselected() -> Self {
+        Self { selected: None }
     }
 
     /// The currently highlighted index, or `None` when no row is selected.
@@ -107,7 +107,7 @@ impl SelectState {
     }
 
     /// Navigate with arrow keys (wrapping), confirm with Enter, cancel on Esc.
-    pub fn handle(&mut self, event: &Event, len: usize) -> SelectOutcome {
+    pub fn handle(&mut self, event: &Event, len: usize) -> InputOutcome {
         self.handle_with(event, len, SelectNavigation::default())
     }
 
@@ -117,23 +117,23 @@ impl SelectState {
         event: &Event,
         len: usize,
         navigation: SelectNavigation,
-    ) -> SelectOutcome {
+    ) -> InputOutcome {
         if len == 0 {
-            return SelectOutcome::Moved(EventFlow::Ignored);
+            return InputOutcome::Ignored;
         }
         let Event::Key(k) = event else {
-            return SelectOutcome::Moved(EventFlow::Ignored);
+            return InputOutcome::Ignored;
         };
 
         if navigation.ctrl_n_p && k.ctrl && !k.alt && !k.shift {
             return match k.code {
                 KeyCode::Char('n') => self.step_down(len),
                 KeyCode::Char('p') => self.step_up(len),
-                _ => SelectOutcome::Moved(EventFlow::Ignored),
+                _ => InputOutcome::Ignored,
             };
         }
         if !k.plain() {
-            return SelectOutcome::Moved(EventFlow::Ignored);
+            return InputOutcome::Ignored;
         }
         match k.code {
             KeyCode::Up => self.step_up(len),
@@ -146,17 +146,14 @@ impl SelectState {
                 let index = digit as usize - '1' as usize;
                 if index < len {
                     self.selected = Some(index);
-                    SelectOutcome::Confirmed(index)
+                    InputOutcome::Submitted
                 } else {
-                    SelectOutcome::Moved(EventFlow::Ignored)
+                    InputOutcome::Ignored
                 }
             }
-            KeyCode::Enter => self.selected.map_or(
-                SelectOutcome::Moved(EventFlow::Ignored),
-                SelectOutcome::Confirmed,
-            ),
-            KeyCode::Esc => SelectOutcome::Cancelled,
-            _ => SelectOutcome::Moved(EventFlow::Ignored),
+            KeyCode::Enter if self.selected.is_some() => InputOutcome::Submitted,
+            KeyCode::Esc => InputOutcome::Cancelled,
+            _ => InputOutcome::Ignored,
         }
     }
 
@@ -171,9 +168,9 @@ impl SelectState {
         len: usize,
         bounds: Rect,
         first_visible: usize,
-    ) -> SelectOutcome {
+    ) -> InputOutcome {
         let Event::Mouse(mouse) = event else {
-            return SelectOutcome::Moved(EventFlow::Ignored);
+            return InputOutcome::Ignored;
         };
         if !mouse.plain()
             || mouse.kind != MouseKind::Down(MouseButton::Left)
@@ -182,39 +179,41 @@ impl SelectState {
             || mouse.row < bounds.y
             || mouse.row >= bounds.bottom()
         {
-            return SelectOutcome::Moved(EventFlow::Ignored);
+            return InputOutcome::Ignored;
         }
         let index = first_visible.saturating_add(usize::from(mouse.row - bounds.y));
         if index >= len {
-            return SelectOutcome::Moved(EventFlow::Ignored);
+            return InputOutcome::Ignored;
         }
         self.selected = Some(index);
-        SelectOutcome::Confirmed(index)
+        InputOutcome::Submitted
     }
 
-    fn step_up(&mut self, len: usize) -> SelectOutcome {
+    fn step_up(&mut self, len: usize) -> InputOutcome {
+        let before = self.selected;
         self.selected = Some(match self.selected {
-            Some(0) | None => len - 1,
-            Some(selected) => selected - 1,
+            Some(selected) if selected > 0 && selected < len => selected - 1,
+            _ => len - 1,
         });
-        SelectOutcome::Moved(EventFlow::Consumed)
+        if self.selected == before {
+            InputOutcome::Consumed
+        } else {
+            InputOutcome::Changed
+        }
     }
 
-    fn step_down(&mut self, len: usize) -> SelectOutcome {
-        self.selected = Some(self.selected.map_or(0, |selected| (selected + 1) % len));
-        SelectOutcome::Moved(EventFlow::Consumed)
+    fn step_down(&mut self, len: usize) -> InputOutcome {
+        let before = self.selected;
+        self.selected = Some(match self.selected {
+            Some(selected) if selected < len - 1 => selected + 1,
+            _ => 0,
+        });
+        if self.selected == before {
+            InputOutcome::Consumed
+        } else {
+            InputOutcome::Changed
+        }
     }
-}
-
-/// Outcome from [`MultiSelectState`] input handling.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MultiSelectOutcome {
-    /// The cursor moved; event consumed status in `.0`.
-    Moved(EventFlow),
-    /// The given item changed checked state.
-    Toggled(usize),
-    /// Escape cancelled the interaction.
-    Cancelled,
 }
 
 /// Cursor and checked-item state for a multiple-selection list.
@@ -264,7 +263,7 @@ impl MultiSelectState {
         event: &Event,
         len: usize,
         navigation: SelectNavigation,
-    ) -> MultiSelectOutcome {
+    ) -> InputOutcome {
         if let Event::Key(key) = event
             && key.plain()
             && key.code == KeyCode::Char(' ')
@@ -272,12 +271,14 @@ impl MultiSelectState {
             return self.toggle_cursor(len);
         }
         match self.cursor.handle_with(event, len, navigation) {
-            SelectOutcome::Moved(flow) => MultiSelectOutcome::Moved(flow),
-            SelectOutcome::Confirmed(index) => {
+            InputOutcome::Submitted => {
+                let Some(index) = self.cursor.selected() else {
+                    return InputOutcome::Ignored;
+                };
                 self.toggle(index);
-                MultiSelectOutcome::Toggled(index)
+                InputOutcome::Changed
             }
-            SelectOutcome::Cancelled => MultiSelectOutcome::Cancelled,
+            outcome => outcome,
         }
     }
 
@@ -288,24 +289,26 @@ impl MultiSelectState {
         len: usize,
         bounds: Rect,
         first_visible: usize,
-    ) -> MultiSelectOutcome {
+    ) -> InputOutcome {
         match self.cursor.handle_mouse(event, len, bounds, first_visible) {
-            SelectOutcome::Confirmed(index) => {
+            InputOutcome::Submitted => {
+                let Some(index) = self.cursor.selected() else {
+                    return InputOutcome::Ignored;
+                };
                 self.toggle(index);
-                MultiSelectOutcome::Toggled(index)
+                InputOutcome::Changed
             }
-            SelectOutcome::Moved(flow) => MultiSelectOutcome::Moved(flow),
-            SelectOutcome::Cancelled => MultiSelectOutcome::Cancelled,
+            outcome => outcome,
         }
     }
 
-    fn toggle_cursor(&mut self, len: usize) -> MultiSelectOutcome {
+    fn toggle_cursor(&mut self, len: usize) -> InputOutcome {
         self.cursor.clamp(len);
         let Some(index) = self.cursor.selected() else {
-            return MultiSelectOutcome::Moved(EventFlow::Ignored);
+            return InputOutcome::Ignored;
         };
         self.toggle(index);
-        MultiSelectOutcome::Toggled(index)
+        InputOutcome::Changed
     }
 
     fn toggle(&mut self, index: usize) {
@@ -503,7 +506,7 @@ impl SelectList {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event::{Event, EventFlow, Key, KeyCode};
+    use crate::event::{Event, InputOutcome, Key, KeyCode};
     use crate::style::Theme;
     use crate::tests::support::{buffer, rainbow_theme, row};
     use crate::view::{RenderCtx, View};
@@ -515,17 +518,14 @@ mod tests {
         let mut s = SelectState::new();
         let down = Event::Key(Key::new(KeyCode::Down));
         let up = Event::Key(Key::new(KeyCode::Up));
-        assert_eq!(s.handle(&up, 3), SelectOutcome::Moved(EventFlow::Consumed));
+        assert_eq!(s.handle(&up, 3), InputOutcome::Changed);
         assert_eq!(s.selected(), Some(2)); // wrapped from 0 to last
-        assert_eq!(
-            s.handle(&down, 3),
-            SelectOutcome::Moved(EventFlow::Consumed)
-        );
+        assert_eq!(s.handle(&down, 3), InputOutcome::Changed);
         assert_eq!(s.selected(), Some(0)); // wrapped back
         let enter = Event::Key(Key::new(KeyCode::Enter));
-        assert_eq!(s.handle(&enter, 3), SelectOutcome::Confirmed(0));
+        assert_eq!(s.handle(&enter, 3), InputOutcome::Submitted);
         let esc = Event::Key(Key::new(KeyCode::Esc));
-        assert_eq!(s.handle(&esc, 3), SelectOutcome::Cancelled);
+        assert_eq!(s.handle(&esc, 3), InputOutcome::Cancelled);
     }
 
     #[test]
@@ -534,7 +534,7 @@ mod tests {
         let mut state = SelectState::new();
         assert_eq!(
             state.handle_with(&Event::Key(Key::new(KeyCode::Char('j'))), 4, policy),
-            SelectOutcome::Moved(EventFlow::Consumed)
+            InputOutcome::Changed
         );
         assert_eq!(state.selected(), Some(1));
         assert_eq!(
@@ -548,17 +548,17 @@ mod tests {
                 4,
                 policy
             ),
-            SelectOutcome::Moved(EventFlow::Consumed)
+            InputOutcome::Changed
         );
         assert_eq!(state.selected(), Some(0));
         assert_eq!(
             state.handle_with(&Event::Key(Key::new(KeyCode::BackTab)), 4, policy),
-            SelectOutcome::Moved(EventFlow::Consumed)
+            InputOutcome::Changed
         );
         assert_eq!(state.selected(), Some(3));
         assert_eq!(
             state.handle_with(&Event::Key(Key::new(KeyCode::Char('2'))), 4, policy),
-            SelectOutcome::Confirmed(1)
+            InputOutcome::Submitted
         );
         assert_eq!(state.selected(), Some(1));
     }
@@ -569,7 +569,7 @@ mod tests {
         for code in [KeyCode::Char('j'), KeyCode::Tab, KeyCode::Char('1')] {
             assert_eq!(
                 state.handle_with(&Event::Key(Key::new(code)), 3, SelectNavigation::default()),
-                SelectOutcome::Moved(EventFlow::Ignored)
+                InputOutcome::Ignored
             );
         }
         assert_eq!(state.selected(), Some(0));
@@ -586,7 +586,7 @@ mod tests {
         ));
         assert_eq!(
             state.handle_mouse(&click, 10, bounds, 4),
-            SelectOutcome::Confirmed(5)
+            InputOutcome::Submitted
         );
         assert_eq!(state.selected(), Some(5));
 
@@ -597,7 +597,7 @@ mod tests {
         ));
         assert_eq!(
             state.handle_mouse(&outside, 10, bounds, 4),
-            SelectOutcome::Moved(EventFlow::Ignored)
+            InputOutcome::Ignored
         );
     }
 
@@ -607,21 +607,21 @@ mod tests {
         let policy = SelectNavigation::common();
         assert_eq!(
             state.handle(&Event::Key(Key::new(KeyCode::Char(' '))), 3, policy),
-            MultiSelectOutcome::Toggled(0)
+            InputOutcome::Changed
         );
         assert!(state.contains(0));
         assert_eq!(
             state.handle(&Event::Key(Key::new(KeyCode::Char('j'))), 3, policy),
-            MultiSelectOutcome::Moved(EventFlow::Consumed)
+            InputOutcome::Changed
         );
         assert_eq!(
             state.handle(&Event::Key(Key::new(KeyCode::Enter)), 3, policy),
-            MultiSelectOutcome::Toggled(1)
+            InputOutcome::Changed
         );
         assert_eq!(state.selected().collect::<Vec<_>>(), vec![0, 1]);
         assert_eq!(
             state.handle(&Event::Key(Key::new(KeyCode::Char('1'))), 3, policy),
-            MultiSelectOutcome::Toggled(0)
+            InputOutcome::Changed
         );
         assert_eq!(state.selected().collect::<Vec<_>>(), vec![1]);
     }
@@ -657,13 +657,12 @@ mod tests {
 
     #[test]
     fn select_state_and_list_support_no_selection() {
-        assert_eq!(SelectState::default().selected(), None);
-        let mut state = SelectState::new();
-        state.select(None);
+        assert_eq!(SelectState::default().selected(), Some(0));
+        let mut state = SelectState::unselected();
         assert_eq!(state.selected(), None);
         assert_eq!(
             state.handle(&Event::Key(Key::new(KeyCode::Enter)), 2),
-            SelectOutcome::Moved(EventFlow::Ignored)
+            InputOutcome::Ignored
         );
 
         let list = SelectList::new(vec![Line::from("a"), Line::from("b")], &state);
@@ -691,7 +690,7 @@ mod tests {
     fn select_highlights_current_row() {
         let items = vec![Line::from("alpha"), Line::from("beta")];
         let mut state = SelectState::new();
-        state.handle(&Event::Key(Key::new(KeyCode::Down)), 2); // select beta
+        let _ = state.handle(&Event::Key(Key::new(KeyCode::Down)), 2); // select beta
         let list = SelectList::new(items, &state);
         let mut buf = buffer(10, 2);
         let theme = Theme::default();
@@ -754,7 +753,7 @@ mod tests {
     fn select_list_selection_uses_theme_slots() {
         let t = rainbow_theme();
         let mut state = SelectState::new();
-        state.handle(&Event::Key(Key::new(KeyCode::Down)), 2); // select row 1
+        let _ = state.handle(&Event::Key(Key::new(KeyCode::Down)), 2); // select row 1
         let list = SelectList::new(vec![Line::from("a"), Line::from("b")], &state);
         let mut buf = buffer(10, 2);
         let area = buf.area;

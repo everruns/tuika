@@ -330,9 +330,11 @@ container passes that context to the children it measures.
 
 `Form` lays out arbitrary control `Element`s beside responsive labels, stacking
 on narrow terminals. Help and validation rows are built in; `FormState` owns
-only focus traversal and submit/cancel outcomes, while values and cursor state
-stay in existing host-owned `TextInputState`, `SelectState`, or application
-models.
+only focus traversal, while values and cursor state stay in existing host-owned
+`TextInputState`, `SelectState`, or application models. Their `handle` methods
+share `InputOutcome`: ignored events bubble, recognized no-ops are consumed,
+state changes are distinct from submit/cancel intent, and submitted values are
+read from the state instead of duplicated in the outcome.
 
 ## Arbitrary-child viewports and drawing
 
