@@ -197,9 +197,10 @@ component. Linked names below jump straight to their demo.
 | [`Scroll`](docs/components.md#scroll--scrollstate) (+ `ScrollState`) | Vertical scroll viewport + scrollbar over lines |
 | [`ItemScroll`](docs/components.md#itemscroll) | The same viewport over laid-out items (panels, tables, nested layouts) |
 | `Viewport` | Two-dimensional clipping/panning over any child view |
+| [`Scrollbar`](docs/components.md#scrollbar--virtualwindow) / `VirtualWindow` | Reusable bars and clamped ranges for virtualized collections |
 | `Form` / `FormField` (+ `FormState`) | Responsive labeled controls and validation |
 | `DrawView` / `CanvasView` | Closure-based custom cell drawing |
-| [`SelectList`](docs/components.md#selectlist--selectstate) (+ `SelectState`) | Selectable list |
+| [`SelectList`](docs/components.md#selectlist--selectstate) (+ `SelectState`) | Selectable list, including host-windowed collections |
 | `Slider` (+ `SliderState`) | One-row value picker over a numeric range |
 | [`TextInput`](docs/components.md#textinput--textinputstate) (+ `TextInputState`) | Multi-line composer: soft-wrap, placeholder, highlighted ranges, `@`/`/` tokens |
 | [`StatusBar`](docs/components.md#statusbar) | One-row left/right status segments |

@@ -332,6 +332,14 @@ const DEMOS: &[Demo] = &[
         scene_item_scroll,
     ),
     demo(
+        "scrollbar",
+        "Scrollbar + VirtualWindow",
+        "one range, vertical or horizontal",
+        12,
+        false,
+        scene_scrollbar,
+    ),
+    demo(
         "primitives",
         "Primitives",
         "owned dialog + form + panning custom viewport",
@@ -1182,6 +1190,27 @@ fn scene_item_scroll(frame: u64, theme: &Theme) -> Element {
     view! {
         col {
             fixed(8) { node(ItemScroll::new(items, &state).gap(1)) }
+        }
+    }
+}
+
+fn scene_scrollbar(_frame: u64, theme: &Theme) -> Element {
+    let window = VirtualWindow::new(100, 24, 38);
+    let labels = Text::new(vec![
+        Line::from(Span::styled("item 38", theme.text_style())),
+        Line::from(Span::styled("   ⋮", theme.muted_style())),
+        Line::from(Span::styled("item 61", theme.text_style())),
+        Line::from(Span::styled("24 visible of 100", theme.muted_style())),
+    ]);
+    view! {
+        col(gap = 1) {
+            fixed(4) {
+                row(gap = 2) {
+                    fixed(1) { node(Scrollbar::vertical(window)) }
+                    grow(1) { node(labels) }
+                }
+            }
+            fixed(1) { node(Scrollbar::horizontal(window)) }
         }
     }
 }

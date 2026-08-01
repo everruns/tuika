@@ -15,6 +15,8 @@ use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
 
+use super::{Scrollbar, VirtualWindow};
+
 /// Optional navigation bindings for [`SelectState`].
 ///
 /// [`Default`] preserves the original arrow/Enter/Escape behavior. Use
@@ -345,6 +347,8 @@ impl MultiSelectState {
 /// ![select demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/select.gif)
 pub struct SelectList {
     items: Vec<Line<'static>>,
+    /// Host-provided source window, or `None` when `items` is the whole list.
+    source_window: Option<VirtualWindow>,
     selected: Option<usize>,
     /// Max visible rows; `None` shows the whole list.
     viewport: Option<u16>,
@@ -357,6 +361,23 @@ impl SelectList {
     pub fn new(items: Vec<Line<'static>>, state: &SelectState) -> Self {
         Self {
             items,
+            source_window: None,
+            selected: state.selected(),
+            viewport: None,
+            scrollbar: true,
+            selection_style: None,
+        }
+    }
+
+    /// Build from only the items in `window` rather than the whole collection.
+    ///
+    /// `items` correspond to `window.range()` in order, while `window.total()`
+    /// preserves absolute selection and scrollbar geometry. This keeps frame
+    /// construction and rendering O(visible rows) for host-backed collections.
+    pub fn windowed(items: Vec<Line<'static>>, window: VirtualWindow, state: &SelectState) -> Self {
+        Self {
+            items,
+            source_window: Some(window),
             selected: state.selected(),
             viewport: None,
             scrollbar: true,
@@ -384,22 +405,21 @@ impl SelectList {
         self
     }
 
-    /// The `(start, visible_rows)` window: the whole list unless a `viewport`
+    /// The visible window: the whole list unless a `viewport`
     /// smaller than the list is set, in which case a slice centered on the
     /// selection and clamped to the ends.
-    fn window(&self) -> (usize, usize) {
-        let total = self.items.len();
-        match self.viewport {
-            Some(v) if total > v as usize => {
-                let v = (v as usize).max(1);
-                let start = self
-                    .selected
-                    .unwrap_or(0)
-                    .saturating_sub(v / 2)
-                    .min(total - v);
-                (start, v)
-            }
-            _ => (0, total),
+    fn window(&self) -> VirtualWindow {
+        match self.source_window {
+            Some(source) => VirtualWindow::new(
+                source.total(),
+                self.viewport
+                    .map_or(source.len(), |rows| source.len().min(usize::from(rows))),
+                source.start(),
+            ),
+            None => match self.viewport {
+                Some(v) => VirtualWindow::around(self.items.len(), usize::from(v), self.selected),
+                None => VirtualWindow::new(self.items.len(), self.items.len(), 0),
+            },
         }
     }
 }
@@ -413,13 +433,18 @@ impl View for SelectList {
             .max()
             .unwrap_or(0)
             .saturating_add(2); // caret + space
-        let (_, rows) = self.window();
-        Size::new(width.min(available.width), rows as u16)
+        let rows = self.window().len();
+        Size::new(
+            width.min(available.width),
+            rows.min(u16::MAX as usize) as u16,
+        )
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
-        let (start, rows) = self.window();
-        let overflow = self.items.len() > rows;
+        let window = self.window();
+        let start = window.start();
+        let rows = window.len();
+        let overflow = window.overflows();
         // Reserve the last column for the scrollbar when the list overflows.
         let row_width = if overflow && self.scrollbar {
             area.width.saturating_sub(1)
@@ -430,9 +455,13 @@ impl View for SelectList {
         let selection_style = self
             .selection_style
             .unwrap_or_else(|| ctx.theme.selection_style());
+        let items_start = self.source_window.map_or(0, VirtualWindow::start);
         for i in 0..rows {
             let idx = start + i;
-            let Some(item) = self.items.get(idx) else {
+            let Some(local) = idx.checked_sub(items_start) else {
+                continue;
+            };
+            let Some(item) = self.items.get(local) else {
                 break;
             };
             let y = area.y.saturating_add(i as u16);
@@ -465,40 +494,16 @@ impl View for SelectList {
             }
         }
         if overflow && self.scrollbar && row_width < area.width {
-            self.draw_scrollbar(area, start, rows, surface, ctx);
-        }
-    }
-}
-
-impl SelectList {
-    /// A right-edge scrollbar whose thumb tracks the window position, mirroring
-    /// [`Scroll`](super::Scroll)'s scrollbar.
-    fn draw_scrollbar(
-        &self,
-        area: Rect,
-        start: usize,
-        rows: usize,
-        surface: &mut Surface,
-        ctx: &RenderCtx,
-    ) {
-        let total = self.items.len();
-        let track_x = area.right() - 1;
-        let track_h = rows as u16;
-        let max_start = total.saturating_sub(rows).max(1) as u32;
-        let thumb_h = (((rows * rows) / total).max(1) as u16).min(track_h);
-        let travel = track_h.saturating_sub(thumb_h);
-        let thumb_y = area.y + ((start as u32 * travel as u32) / max_start) as u16;
-        let track_style = Style::default().fg(ctx.theme.dim);
-        let thumb_style = Style::default().fg(ctx.theme.muted);
-        for row in 0..track_h {
-            let y = area.y + row;
-            let within = y >= thumb_y && y < thumb_y.saturating_add(thumb_h);
-            let (glyph, style) = if within {
-                ('█', thumb_style)
-            } else {
-                ('│', track_style)
-            };
-            surface.set(track_x, y, glyph, style);
+            Scrollbar::vertical(window).render(
+                Rect::new(
+                    area.right() - 1,
+                    area.y,
+                    1,
+                    area.height.min(rows.min(u16::MAX as usize) as u16),
+                ),
+                surface,
+                ctx,
+            );
         }
     }
 }

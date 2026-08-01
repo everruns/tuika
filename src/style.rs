@@ -488,6 +488,10 @@ impl StyleRole {
     pub const KEY_HINT_KEY: Self = Self::new("tuika.key-hint.key");
     /// Label portion of an action hint.
     pub const KEY_HINT_LABEL: Self = Self::new("tuika.key-hint.label");
+    /// Inactive portion of a scrollbar.
+    pub const SCROLLBAR_TRACK: Self = Self::new("tuika.scrollbar.track");
+    /// Visible-window thumb of a scrollbar.
+    pub const SCROLLBAR_THUMB: Self = Self::new("tuika.scrollbar.thumb");
 }
 
 /// Optional host policy for built-in or application-defined [`StyleRole`]s.

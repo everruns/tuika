@@ -136,6 +136,13 @@ scrollbar's column is reserved whenever the bar is enabled — not only while
 content overflows — so the appearance of a bar cannot silently re-wrap and
 re-measure everything above it.
 
+All collection types share `VirtualWindow` for clamped absolute ranges and the
+`Scrollbar` view for vertical or horizontal position. This unifies range and
+thumb math without collapsing the distinct line/item measurement models.
+`SelectList::windowed` and `Table::windowed` let a host supply only that range;
+selection remains absolute and auto-width table columns intentionally measure
+only supplied rows, so stable virtualized widths use fixed or flex columns.
+
 ## Input and focus
 
 The host translates crossterm events into tuika's own `Key`/`Mouse` events
