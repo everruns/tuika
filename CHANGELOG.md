@@ -24,7 +24,7 @@ update their tuika dependency requirement in the same release.
 virtualized collections, semantic styles, and single-line input give hosts a
 coherent framework for complex terminal applications without retained UI state.
 
-![primitives demo](https://raw.githubusercontent.com/everruns/tuika/v0.7.0/docs/demos/primitives.png)
+![primitives demo](https://raw.githubusercontent.com/everruns/tuika/v0.7.0/docs/demos/primitives.gif)
 
 **Rich HTML in Markdown.** Presentational inline HTML now shares Markdown's
 styles, while the new parser-free `HtmlBlockRenderer` seam lets `tuika-html`
