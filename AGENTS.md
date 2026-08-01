@@ -127,8 +127,11 @@ tuika's own suite covers more:
 
 ## Docs layout
 
-- `logo.svg` — the hand-authored vector source for tuika's mark, embedded in the
-  README and shipped so crates.io can resolve the relative path.
+- `logo.svg`, `logo-dark.svg`, and `logo-mono.svg` — the hand-authored vector
+  sources for tuika's primary, dark-surface, and one-color marks. The primary is
+  embedded in the README and ships so crates.io can resolve the relative path.
+  Their 1024 px PNG exports (`logo*.png`) are GitHub-only; regenerate them with
+  `scripts/gen-logo-assets.sh`.
 - `docs/components.md` — the public component gallery (name, description, demo
   per component), covering **every** component, including those published in a
   companion crate. Keep it **presentational only**: no build or regeneration
@@ -169,8 +172,8 @@ tuika's own suite covers more:
   example runs as a real app rather than printing a grid, because a plain-text
   dump would throw away the styling that is half of what the crate does.
 
-The root package's demo, showcase, example, theme, and styling assets are
-GitHub-only: `Cargo.toml`'s `exclude` keeps them (and the repository
+The root package's alternate logo, demo, showcase, example, theme, and styling
+assets are GitHub-only: `Cargo.toml`'s `exclude` keeps them (and the repository
 machinery — `knowledge/`, `.agents/`, `.github/`, `scripts/`) out of tuika's
 published `.crate`, and `tests/packaging.rs` guards that split. Only `logo.svg`,
 `docs/hero.gif`, `docs/demos/image.svg`, and `docs/split-footer.gif`, which
