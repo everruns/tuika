@@ -43,7 +43,7 @@ the reason for a decision is cheapest to write down while it is still at hand.
 
 ## Capabilities
 
-- [Markdown](specs/markdown.md) — CommonMark rendering, streaming, and the highlighter seam.
+- [Markdown](specs/markdown.md) — CommonMark rendering, streaming, highlighting, and structured block parsing.
 - [Images](specs/images.md) — terminal graphics protocols over reserved cells.
 - [Keymap](specs/keymap.md) — declarative key-binding dispatch.
 - [Styling](specs/styling.md) — themes as tokens, stylesheets as rules.

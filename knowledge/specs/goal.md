@@ -62,16 +62,15 @@ a trait the host implements:
 | Concern | tuika owns | Host owns |
 | --- | --- | --- |
 | Syntax highlighting | framing, background, gutter, wrapping (`CodeBlock`) | token spans, via `Highlighter` |
-| Rich fenced blocks | width-aware placement and code fallback (`Markdown`) | parsing and terminal-native rendering, via `FencedBlockRenderer` |
-| Block-level HTML | placement, indentation, and the drop fallback (`Markdown`) | parsing and layout, via `HtmlBlockRenderer` |
+| Structured markdown blocks | width-aware placement, indentation, renderer ordering, and kind-specific fallbacks (`Markdown`) | parsing and terminal-native rendering, via `MarkdownBlockRenderer` |
 | Images | protocol encoding, cell reservation, alt fallback | decoding bytes to RGBA, via `ImageResolver` |
 | Live data | reading shared state at render time | producing it, and requesting redraws |
 | Input | translation to tuika events, keymap dispatch | the event source and the command semantics |
 
 The companion crates exist because of this rule: `tuika-codeformatters`
 supplies tree-sitter grammars behind `Highlighter`, `tuika-mermaid` supplies
-mmdflux parsing and layout behind `FencedBlockRenderer`, and `tuika-html`
-supplies html5ever behind `HtmlBlockRenderer`. They are separately published
+mmdflux parsing and layout behind `MarkdownBlockRenderer`, and `tuika-html`
+supplies html5ever behind the same structured-block seam. They are separately published
 rather than optional tuika features so the core dependency tree cannot grow by
 accident.
 

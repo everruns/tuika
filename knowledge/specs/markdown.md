@@ -86,23 +86,32 @@ means a host that renders no code pays nothing, and a host that renders code can
 choose its own highlighter. `tuika-codeformatters` is the batteries-included
 answer, published separately for exactly that reason.
 
-### Rich fenced blocks are a second seam
+### Structured blocks share one parsing seam
 
 Syntax highlighting must reconstruct the original source line-for-line, so it
 cannot express a fence whose presentation has a different shape than its source.
-`FencedBlockRenderer` handles that case: given the language, source, current
-width, and theme, it may replace the fence with styled lines. Returning `None`
-keeps the ordinary code-block fallback, so unsupported or malformed content
-never disappears.
+`MarkdownBlockRenderer` handles that case: it receives a structured
+`MarkdownBlock` descriptor plus one `MarkdownBlockContext` carrying width,
+theme, and the active stylesheet. Today the descriptor distinguishes fenced
+blocks from raw block HTML; it is non-exhaustive so another parser-backed block
+form does not require another parallel trait. Returning `None` tries the next
+renderer in registration order. If none handle a fence, the ordinary code-block
+fallback remains, so unsupported or malformed content never disappears.
 
 Parsed fenced blocks retain both their source and their already-highlighted
 fallback. Rendering happens during width-dependent flattening: settled blocks
 are rendered once per width, while an in-flight fence may be attempted on each
 streaming frame. Implementations therefore stay deterministic and avoid I/O.
-`tuika-mermaid` is the first companion implementation, keeping mmdflux and its
+`tuika-mermaid` is a companion implementation, keeping mmdflux and its
 diagram grammars outside tuika core. The adapter bounds source and output size,
 disables ANSI output, and strips control bytes before creating cells; a diagram
 fence is untrusted markdown, not permission to emit terminal commands.
+
+The chain is deliberately open rather than one field per syntax. A host can
+register Mermaid, HTML, and its own query-plan renderer in one ordered list;
+each implementation sees every structured block and declines the kinds it does
+not own. `Markdown` and `MarkdownState` both append renderers when their
+`block_renderer` builders are called repeatedly.
 
 ### Inline HTML is a whitelist, not a parser
 
@@ -133,20 +142,22 @@ text matched*.
 (`4ᵗh`) depends on which characters a word happens to use, which is a worse
 result than leaving the text alone.
 
-### Block HTML is a seam for the same reason highlighting is
+### Block HTML reuses the structured-block seam
 
 The presentational inline tags need no parser. Block HTML does — a tree builder
 that recovers implied end tags, inserts the `<tbody>` nobody wrote, and survives
-malformed input is exactly the dependency [goal.md](./goal.md) keeps out. So
-`HtmlBlockRenderer` takes the raw run, the available width, the theme, *and the
-stylesheet*: an implementation resolves the same roles the surrounding markdown
-does, or HTML in one document would look like it came from another. With no
-renderer attached the block is dropped, which is what markdown did with all HTML
-before the seam existed, so attaching one is purely additive.
+malformed input is exactly the dependency [goal.md](./goal.md) keeps out. Raw
+HTML is therefore the second `MarkdownBlock` variant, not a second trait. Its
+renderer receives the raw run through the same context as a fence, including
+the active stylesheet: headings and links resolve the same roles as the
+surrounding markdown. With no renderer attached the block is dropped, which is
+what markdown did with all HTML before the seam existed, so attaching one is
+purely additive.
 
 `tuika-html` is that implementation, and it is also where the line inside this
-capability shows: the same crate serves the fenced-`html` seam, and adds a
-standalone `Html` view for fragments that are not inside markdown at all.
+capability shows: the same renderer serves raw HTML and fenced `html` blocks
+without synthesizing a default stylesheet, and the crate adds a standalone
+`Html` view for fragments that are not inside markdown at all.
 
 One consequence of pulldown-cmark's framing is worth stating, because it looks
 like a bug: an HTML block ends at a blank line, so an element whose content is
@@ -181,8 +192,8 @@ host that restyles headings restyles them in markdown too. See
 
 - No HTML *document* rendering: no DOM, no CSS, no block-level HTML layout.
   Block HTML (`<div>`, `<details>`, `<table>`) is dropped in core; a host that
-  wants it supplies the parser behind a seam, the way `FencedBlockRenderer`
-  already lets a ` ```html ` fence be rendered by a companion crate.
+  wants it supplies the parser behind `MarkdownBlockRenderer`, the same seam a
+  ` ```html ` fence uses.
 - No raw-HTML passthrough: unrecognized markup is never echoed as literal text.
 - No markdown *authoring* or round-tripping — rendering only.
 - No document-level layout beyond a linear block sequence (no columns, no

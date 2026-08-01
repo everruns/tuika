@@ -2,11 +2,9 @@
 //!
 //! Two ways in, one engine behind both:
 //!
-//! - [`HtmlRenderer`] plugs into markdown. It implements tuika's
-//!   [`HtmlBlockRenderer`] seam, so raw `<details>`, `<table>`, and `<div>`
-//!   blocks inside a markdown document lay out instead of being dropped — and
-//!   [`FencedBlockRenderer`], so a ` ```html ` fence renders rather than showing
-//!   its source.
+//! - [`HtmlRenderer`] plugs into markdown through tuika's
+//!   [`MarkdownBlockRenderer`] seam. One implementation handles raw `<details>`,
+//!   `<table>`, and `<div>` blocks as well as ` ```html ` fences.
 //! - [`Html`] is a `View`, the standalone viewer: hand it a fragment, place it
 //!   in a layout, and it paints like [`Markdown`](tuika::components::Markdown)
 //!   does.
@@ -18,7 +16,7 @@
 //! // In markdown:
 //! let renderer = HtmlRenderer::new();
 //! let doc = Markdown::new("<details><summary>Notes</summary>Body</details>")
-//!     .html_renderer(&renderer);
+//!     .block_renderer(&renderer);
 //!
 //! // Standalone:
 //! let view = Html::new("<h1>Title</h1><p>Prose with <b>bold</b>.</p>");
@@ -56,13 +54,12 @@
 //! markup overflows the stack inside the size bound. No network is touched:
 //! `<img>` becomes its alt text, never a fetch.
 //!
-//! [`FencedBlockRenderer`]: tuika::components::FencedBlockRenderer
-//! [`HtmlBlockRenderer`]: tuika::components::HtmlBlockRenderer
+//! [`MarkdownBlockRenderer`]: tuika::components::MarkdownBlockRenderer
 //! [`StyleSheet`]: tuika::style::StyleSheet
 
 use ratatui_core::text::Line;
 use tuika::Theme;
-use tuika::components::{FencedBlockRenderer, HtmlBlockRenderer};
+use tuika::components::{MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer};
 use tuika::style::StyleSheet;
 
 mod block;
@@ -102,13 +99,10 @@ impl Default for Limits {
     }
 }
 
-/// Renders HTML for tuika's markdown seams.
+/// Renders HTML for tuika's structured markdown block seam.
 ///
-/// One value serves both: attach it with
-/// [`Markdown::html_renderer`](tuika::components::Markdown::html_renderer) for raw
-/// block HTML, and with
-/// [`Markdown::block_renderer`](tuika::components::Markdown::block_renderer) for
-/// ` ```html ` fences.
+/// One value serves both raw block HTML and ` ```html ` fences. Attach it with
+/// [`Markdown::block_renderer`](tuika::components::Markdown::block_renderer).
 ///
 /// ```
 /// use tuika::prelude::*;
@@ -116,7 +110,6 @@ impl Default for Limits {
 ///
 /// let renderer = HtmlRenderer::new();
 /// let doc = Markdown::new("<ul><li>one</li><li>two</li></ul>")
-///     .html_renderer(&renderer)
 ///     .block_renderer(&renderer);
 /// # let _ = doc;
 /// ```
@@ -146,40 +139,32 @@ impl HtmlRenderer {
     }
 }
 
-impl HtmlBlockRenderer for HtmlRenderer {
+impl MarkdownBlockRenderer for HtmlRenderer {
     fn render(
         &self,
-        source: &str,
-        width: u16,
-        theme: &Theme,
-        sheet: &StyleSheet,
+        block: MarkdownBlock<'_>,
+        context: MarkdownBlockContext<'_>,
     ) -> Option<Vec<Line<'static>>> {
-        let lines = to_lines_with_limits(source, width, theme, sheet, self.limits)?;
-        // An empty result would silently swallow the block; let markdown's own
-        // "no renderer" path own that case instead.
-        (!lines.is_empty()).then_some(lines)
-    }
-}
-
-impl FencedBlockRenderer for HtmlRenderer {
-    fn render(
-        &self,
-        language: &str,
-        source: &str,
-        width: u16,
-        theme: &Theme,
-    ) -> Option<Vec<Line<'static>>> {
-        if !matches!(
-            language.to_ascii_lowercase().as_str(),
-            "html" | "htm" | "xhtml"
-        ) {
-            return None;
-        }
-        // A fence carries no stylesheet through the seam, so the theme's own
-        // default mapping stands in — the same styles a host that never
-        // customized its sheet would see.
-        let sheet = StyleSheet::from_theme(theme);
-        let lines = to_lines_with_limits(source, width, theme, &sheet, self.limits)?;
+        let source = match block {
+            MarkdownBlock::Html { source } => source,
+            MarkdownBlock::Fenced { language, source }
+                if matches!(
+                    language.to_ascii_lowercase().as_str(),
+                    "html" | "htm" | "xhtml"
+                ) =>
+            {
+                source
+            }
+            _ => return None,
+        };
+        let lines = to_lines_with_limits(
+            source,
+            context.width,
+            context.theme,
+            context.sheet,
+            self.limits,
+        )?;
+        // An empty result would silently swallow a fence's visible fallback.
         (!lines.is_empty()).then_some(lines)
     }
 }
@@ -453,22 +438,49 @@ mod tests {
     }
 
     #[test]
-    fn the_renderer_serves_both_markdown_seams() {
+    fn one_renderer_serves_both_markdown_block_kinds() {
         let theme = Theme::default();
         let sheet = StyleSheet::from_theme(&theme);
         let renderer = HtmlRenderer::new();
+        let context = MarkdownBlockContext::new(20, &theme, &sheet);
 
-        let block = HtmlBlockRenderer::render(&renderer, "<p>hi</p>", 20, &theme, &sheet);
+        let block = renderer.render(
+            MarkdownBlock::Html {
+                source: "<p>hi</p>",
+            },
+            context,
+        );
         assert!(block.is_some());
-        let fence = FencedBlockRenderer::render(&renderer, "html", "<p>hi</p>", 20, &theme);
+        let fence = renderer.render(
+            MarkdownBlock::Fenced {
+                language: "html",
+                source: "<p>hi</p>",
+            },
+            context,
+        );
         assert!(fence.is_some());
         // Other languages stay with markdown's code-block presentation.
         assert!(
-            FencedBlockRenderer::render(&renderer, "rust", "fn main() {}", 20, &theme).is_none()
+            renderer
+                .render(
+                    MarkdownBlock::Fenced {
+                        language: "rust",
+                        source: "fn main() {}",
+                    },
+                    context,
+                )
+                .is_none()
         );
         // Nothing to show is `None`, so markdown's own drop path handles it.
         assert!(
-            HtmlBlockRenderer::render(&renderer, "<!-- note -->", 20, &theme, &sheet).is_none()
+            renderer
+                .render(
+                    MarkdownBlock::Html {
+                        source: "<!-- note -->",
+                    },
+                    context,
+                )
+                .is_none()
         );
     }
 }

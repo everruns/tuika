@@ -54,8 +54,8 @@ repository, so keep it short, factual, and project-specific.
 
 This is a small Cargo **workspace**: the root package is the `tuika` library;
 `crates/tuika-codeformatters/` is the tree-sitter `Highlighter`,
-`crates/tuika-mermaid/` is the mmdflux `FencedBlockRenderer`, and
-`crates/tuika-html/` is the html5ever `HtmlBlockRenderer` (plus its own `Html`
+`crates/tuika-mermaid/` is the mmdflux `MarkdownBlockRenderer`, and
+`crates/tuika-html/` is the html5ever `MarkdownBlockRenderer` (plus its own `Html`
 view). All three are published separately so tuika core stays grammar-,
 diagram-engine-, and HTML-parser-free.
 Cargo defaults to the root package only, so pass `--workspace` to cover the

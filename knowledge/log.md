@@ -2,6 +2,14 @@
 
 ## 2026-08-01
 
+- **Markdown block parsing has one open contract**
+
+- Fenced diagrams and raw HTML now arrive as `MarkdownBlock` variants through
+  one `MarkdownBlockRenderer` trait and one width/theme/stylesheet context.
+- Renderer registration is an ordered chain in one-shot and streaming paths;
+  adding another parser-backed block no longer grows parallel component fields
+  and methods. HTML fences now inherit the active host stylesheet.
+
 - **Character key bindings use logical text**
 
 - Keymap character specs now name the exact Unicode result after keyboard

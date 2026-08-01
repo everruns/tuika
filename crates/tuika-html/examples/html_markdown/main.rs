@@ -41,7 +41,7 @@ impl View for Padded {
             height: area.height.saturating_sub(2),
         };
         Markdown::new(DOCUMENT)
-            .html_renderer(&html)
+            .block_renderer(&html)
             .render(inner, surface, ctx);
     }
 }

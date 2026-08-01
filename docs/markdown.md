@@ -122,19 +122,19 @@ use tuika_html::HtmlRenderer;
 
 let html = HtmlRenderer::new();
 let doc = Markdown::new("<details><summary>Notes</summary>Body</details>")
-    .html_renderer(&html)
     .block_renderer(&html);
 # let _ = doc;
 ```
 
-A streaming host attaches it once, with
-`MarkdownState::with_html_renderer(Box::new(HtmlRenderer::new()))`; a settled
+A streaming host attaches it once with
+`MarkdownState::with_block_renderer(Box::new(HtmlRenderer::new()))`; a settled
 block is then laid out once per width, like a fenced block.
 
-Implementing the seam yourself means `HtmlBlockRenderer`: it receives the raw
-run, the available width, the theme, and the active `StyleSheet` — so headings,
-links, and code resolve the same roles the surrounding markdown does. Returning
-`None` drops the block.
+Implementing the seam yourself means `MarkdownBlockRenderer`: it receives a
+structured `MarkdownBlock` (`Fenced` or `Html`) and one `MarkdownBlockContext`
+with the available width, theme, and active `StyleSheet`. Returning `None`
+passes the block to the next registered renderer; if none handle it, a fence
+keeps its normal code fallback and raw HTML is dropped.
 
 One framing detail is worth knowing, because it looks like a bug: pulldown-cmark
 ends an HTML block at a blank line, so an element whose content is separated by
@@ -221,9 +221,9 @@ lexer implements the two-method trait instead.
 
 ## Mermaid diagrams
 
-`FencedBlockRenderer` can replace a language fence with terminal-native,
-width-aware lines. A renderer returns `None` for languages or inputs it does not
-handle, preserving the normal themed code block. The companion
+`MarkdownBlockRenderer` can replace a language fence with terminal-native,
+width-aware lines. A renderer returns `None` for block kinds, languages, or
+inputs it does not handle, preserving the normal themed code block. The companion
 [`tuika-mermaid`](https://crates.io/crates/tuika-mermaid) crate supplies an
 mmdflux-backed renderer for `mermaid` fences:
 

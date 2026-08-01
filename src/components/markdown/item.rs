@@ -19,7 +19,7 @@ pub(super) enum MdItem {
     /// Word-wrappable prose (a paragraph line, heading, list item, quote line).
     Prose { spans: Vec<RichSpan>, indent: u16 },
     /// A fenced or indented code block. The source stays width-independent so a
-    /// [`FencedBlockRenderer`](super::FencedBlockRenderer) can lay it out for
+    /// [`MarkdownBlockRenderer`](super::MarkdownBlockRenderer) can lay it out for
     /// the current viewport; the ordinary themed presentation is the fallback.
     CodeBlock {
         language: String,
@@ -30,7 +30,7 @@ pub(super) enum MdItem {
     /// A GFM table, laid out to the available width when flattened.
     Table { table: TableData, indent: u16 },
     /// A raw block-level HTML run, kept verbatim for an
-    /// [`HtmlBlockRenderer`](super::HtmlBlockRenderer) to lay out at flatten
+    /// [`MarkdownBlockRenderer`](super::MarkdownBlockRenderer) to lay out at flatten
     /// time. With no renderer attached it renders as nothing, which is what
     /// markdown did with all HTML before the seam existed.
     Html { source: String, indent: u16 },
