@@ -28,9 +28,7 @@ scripts/gen-hero.sh
 scripts/gen-theme-demos.sh
 scripts/gen-styling-demos.sh
 
-echo "Generating split-footer SVG…"
-cargo build -q --example split_footer
-cargo run -q --example split_footer_demo
+scripts/gen-split-footer-demo.sh
 
 echo "Generating image SVG…"
 cargo run -q --example image_demo

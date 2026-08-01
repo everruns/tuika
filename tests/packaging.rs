@@ -64,7 +64,9 @@ fn heavy_doc_assets_are_excluded_from_the_package() {
     let files = packaged_files("tuika");
 
     // No demo/showcase/theme/styling asset, and no example recording, may ship:
-    // those are GitHub-only assets.
+    // those are GitHub-only assets. The two recordings the crates.io README
+    // embeds by relative path — the hero and the split footer — sit directly
+    // under `docs/` for exactly this reason, and are asserted below.
     let bundled_heavy_assets: Vec<&String> = files
         .iter()
         .filter(|f| {
@@ -131,7 +133,7 @@ fn crates_io_readme_assets_and_source_are_kept() {
         "README image-protocol asset must ship"
     );
     assert!(
-        has("docs/demos/split-footer.svg"),
+        has("docs/split-footer.gif"),
         "README split-footer recording must ship"
     );
     // Sanity: the crate still carries its source and manifest.

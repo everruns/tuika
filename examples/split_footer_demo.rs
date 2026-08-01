@@ -1,27 +1,33 @@
-//! Generate `docs/demos/split-footer.svg` — the recording for the split-footer
-//! screen mode.
+//! Picture the split-footer screen mode **without a recorder** — the offline
+//! path to what `scripts/gen-split-footer-demo.sh` records under VHS for
+//! `docs/split-footer.gif`.
 //!
 //! A split footer cannot be photographed from a `Buffer`: the interesting part
 //! is the *whole terminal*, and tuika's buffer only ever holds the footer's own
 //! rows. What is above them belongs to the terminal, so the picture has to come
 //! from one.
 //!
-//! So this records a real terminal session, with no VHS, ttyd, or ffmpeg
+//! So this records a real terminal session with no VHS, ttyd, or ffmpeg
 //! anywhere: it runs the built [`split_footer`](../split_footer.rs) example
 //! under a pseudo-terminal — the same harness `tests/pty_smoke.rs` asserts
 //! against, including answering the cursor-position query an inline viewport is
 //! anchored with — samples the resulting cell grid through a reference terminal
 //! (vt100), and serializes those frames to a self-contained animated SVG. The
-//! example is the source of truth, so the recording cannot drift from it.
+//! example is the source of truth, so neither picture can drift from it.
 //!
 //! The session is started from a real shell, so the prompt line above the
 //! footer is genuine terminal output, and the last frame is captured *after*
 //! the example exits — that frame is the promise of the mode: the published
 //! output is still there, the footer's rows are gone.
 //!
+//! Nothing here is committed: the doc asset is the VHS recording, and this
+//! writes to `target/` unless pointed somewhere else. Reach for it when the
+//! recording toolchain is unavailable, when a vector asset is wanted, or —
+//! via `--dump` — to read what the mode actually puts on the screen as text.
+//!
 //! ```text
-//! cargo build --example split_footer          # the recording's subject
-//! cargo run --example split_footer_demo       # writes docs/demos/split-footer.svg
+//! cargo build --example split_footer          # the subject, either way
+//! cargo run --example split_footer_demo       # writes target/split-footer.svg
 //! cargo run --example split_footer_demo -- out.svg
 //! cargo run --example split_footer_demo -- --dump  # print the frames as text
 //! ```
@@ -33,6 +39,8 @@ use std::thread;
 use std::time::Duration;
 
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
+use ratatui::style::Color;
+use tuika::prelude::Theme;
 
 /// Recorded grid. Wide enough for the footer's key hints, tall enough to show
 /// several published blocks plus the shell line that started the session.
@@ -50,7 +58,7 @@ fn main() -> io::Result<()> {
     let arg = std::env::args().nth(1);
     let dump = arg.as_deref() == Some("--dump");
     let out = arg.filter(|_| !dump).map(PathBuf::from).unwrap_or_else(|| {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs/demos/split-footer.svg")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/split-footer.svg")
     });
 
     let frames = record()?;
@@ -118,10 +126,16 @@ fn record() -> io::Result<Vec<Frame>> {
     // Through a shell, so the command line above the footer is real terminal
     // output rather than something painted into the picture afterwards.
     let mut cmd = CommandBuilder::new("/bin/sh");
+    // The prompt's own color comes from the theme too, so the one line the
+    // shell contributes does not sit outside the palette of everything below it.
+    let prompt = match Theme::default().accent_alt {
+        Color::Rgb(r, g, b) => format!("\x1b[38;2;{r};{g};{b}m"),
+        _ => String::new(),
+    };
     cmd.args([
         "-c",
         &format!(
-            "printf '\\033[38;5;108m~/src/tuika\\033[0m $ cargo run --example split_footer\\n'; \
+            "printf '{prompt}~/src/tuika\\033[0m $ cargo run --example split_footer\\n'; \
              exec {}",
             bin.display()
         ),
@@ -219,10 +233,20 @@ const SCREEN_MARGIN: f32 = 14.0;
 const GRID_PAD: f32 = 12.0;
 const TITLE_BAR: f32 = 40.0;
 
-/// The terminal's own colors, for cells painted in the default color. The
-/// recording is of a dark session, matching the other assets in `docs/`.
-const TERM_BG: &str = "#0d0e10";
-const TERM_FG: &str = "#dfe2e6";
+/// The session's palette is `Theme::default()` — tuika's own identity, and the
+/// palette every other generated asset in `docs/` is captured against (the VHS
+/// generators pass the same pair as `Set Theme`). Deriving it here instead of
+/// hand-picking a second one keeps this asset from reading as a different
+/// product beside the rest of the gallery: `background`/`text` are what the
+/// terminal paints a default-colored cell with, `surface`/`border`/`muted` are
+/// the window chrome around it.
+fn term_bg() -> String {
+    hex(Theme::default().background)
+}
+
+fn term_fg() -> String {
+    hex(Theme::default().text)
+}
 
 /// The fully resolved appearance of one cell in one frame.
 #[derive(Clone, PartialEq)]
@@ -256,7 +280,7 @@ impl Paint {
     fn blank() -> Self {
         Self {
             sym: String::new(),
-            fg: TERM_FG.to_string(),
+            fg: term_fg(),
             bg: None,
             bold: false,
             dim: false,
@@ -273,11 +297,11 @@ impl Paint {
         // would paint invisible text.
         let (fg, bg) = if cell.inverse() {
             (
-                raw_bg.unwrap_or_else(|| TERM_BG.to_string()),
-                Some(raw_fg.unwrap_or_else(|| TERM_FG.to_string())),
+                raw_bg.unwrap_or_else(term_bg),
+                Some(raw_fg.unwrap_or_else(term_fg)),
             )
         } else {
-            (raw_fg.unwrap_or_else(|| TERM_FG.to_string()), raw_bg)
+            (raw_fg.unwrap_or_else(term_fg), raw_bg)
         };
         Self {
             sym: cell.contents().to_string(),
@@ -380,12 +404,15 @@ the program exits.\">\n"
 <feDropShadow dx=\"0\" dy=\"10\" stdDeviation=\"16\" flood-color=\"#000\" flood-opacity=\"0.45\"/>\
 </filter></defs>\n",
     );
+    let theme = Theme::default();
     s.push_str(&format!(
         "<rect x=\"{m:.1}\" y=\"{m:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" rx=\"12\" \
-fill=\"#17181c\" stroke=\"#2b2d33\" stroke-width=\"1\" filter=\"url(#sh)\"/>\n",
+fill=\"{chrome}\" stroke=\"{stroke}\" stroke-width=\"1\" filter=\"url(#sh)\"/>\n",
         m = SCREEN_MARGIN / 2.0,
         w = width - SCREEN_MARGIN,
         h = height - SCREEN_MARGIN,
+        chrome = hex(theme.surface),
+        stroke = hex(theme.border),
     ));
     let ty = SCREEN_MARGIN / 2.0 + TITLE_BAR / 2.0;
     for (i, color) in ["#ff5f56", "#ffbd2e", "#27c93f"].iter().enumerate() {
@@ -396,13 +423,15 @@ fill=\"#17181c\" stroke=\"#2b2d33\" stroke-width=\"1\" filter=\"url(#sh)\"/>\n",
     }
     s.push_str(&format!(
         "<text x=\"{cx:.1}\" y=\"{cy:.1}\" text-anchor=\"middle\" font-size=\"13\" \
-fill=\"#8a8f98\">tuika · split-footer screen mode</text>\n",
+fill=\"{muted}\">tuika · split-footer screen mode</text>\n",
         cx = width / 2.0,
         cy = ty + 4.5,
+        muted = hex(theme.muted),
     ));
     s.push_str(&format!(
         "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" rx=\"6\" \
-fill=\"{TERM_BG}\"/>\n",
+fill=\"{bg}\"/>\n",
+        bg = term_bg(),
         x = SCREEN_MARGIN,
         y = TITLE_BAR,
         w = screen_w,
@@ -542,6 +571,18 @@ xml:space=\"preserve\">{}</text>",
 /// xterm color index → hex. `Default` is `None`, so the cell keeps whatever the
 /// terminal's own colors are (which is exactly what an unstyled published block
 /// wants).
+/// A `Theme` slot as an SVG color. The bundled themes are all truecolor; an
+/// indexed or named slot falls back to the same table a cell's own color uses.
+fn hex(color: Color) -> String {
+    match color {
+        Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+        Color::Indexed(i) => indexed_hex(i),
+        // No bundled theme uses a named color; `currentColor` keeps a custom
+        // one from silently painting the chrome black.
+        _ => "currentColor".to_string(),
+    }
+}
+
 fn color_hex(color: vt100::Color) -> Option<String> {
     match color {
         vt100::Color::Default => None,
