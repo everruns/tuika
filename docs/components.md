@@ -477,7 +477,9 @@ overrides the theme selection style for one list. `handle_with` accepts a
 `SelectNavigation` policy; `SelectNavigation::common()` enables j/k, Ctrl+N/P,
 Tab/Shift+Tab, and numeric shortcuts. `handle_mouse` hit-tests explicit list
 bounds and a viewport offset. `MultiSelectState` adds Enter/Space/click toggling
-for pickers that retain several checked items.
+for pickers that retain several checked items. The runnable
+[`select` example](https://github.com/everruns/tuika/blob/main/examples/select.rs)
+combines every navigation mode in one picker.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.SelectList.html)
 
 <img src="demos/select.gif" width="880" alt="SelectList demo">
