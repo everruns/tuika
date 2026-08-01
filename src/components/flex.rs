@@ -10,13 +10,13 @@ use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
 
 use crate::geometry::Size;
-use crate::layout::{Dimension, Item, LayoutStyle, solve};
+use crate::layout::{AlignContent, Dimension, FlexItemStyle, FlexWrap, Item, LayoutStyle, solve};
 use crate::surface::Surface;
-use crate::view::{Element, RenderCtx, ScopedElement, View};
+use crate::view::{AvailableSpace, Element, MeasureRequest, RenderCtx, ScopedElement, View};
 
 struct Child<V: View> {
     view: V,
-    dimension: Dimension,
+    style: FlexItemStyle,
 }
 
 /// A flexbox container of child views.
@@ -60,7 +60,32 @@ impl<V: View> Flex<V> {
 
     /// Set the gap between children (passthrough to the layout style).
     pub fn gap(mut self, gap: u16) -> Self {
-        self.style.gap = gap;
+        self.style.row_gap = gap;
+        self.style.column_gap = gap;
+        self
+    }
+
+    /// Set the gap between flex rows.
+    pub fn row_gap(mut self, gap: u16) -> Self {
+        self.style.row_gap = gap;
+        self
+    }
+
+    /// Set the gap between flex columns.
+    pub fn column_gap(mut self, gap: u16) -> Self {
+        self.style.column_gap = gap;
+        self
+    }
+
+    /// Configure whether overflowing children form additional flex lines.
+    pub fn wrap(mut self, wrap: FlexWrap) -> Self {
+        self.style.wrap = wrap;
+        self
+    }
+
+    /// Set cross-axis distribution of multiple flex lines.
+    pub fn align_content(mut self, align: AlignContent) -> Self {
+        self.style.align_content = align;
         self
     }
 
@@ -84,7 +109,16 @@ impl<V: View> Flex<V> {
 
     /// Add a child with an explicit main-axis dimension.
     pub fn child(mut self, dimension: Dimension, view: V) -> Self {
-        self.children.push(Child { view, dimension });
+        self.children.push(Child {
+            view,
+            style: FlexItemStyle::from_dimension(dimension),
+        });
+        self
+    }
+
+    /// Add a child with independent basis, grow, shrink, and alignment.
+    pub fn styled(mut self, style: FlexItemStyle, view: V) -> Self {
+        self.children.push(Child { view, style });
         self
     }
 
@@ -107,15 +141,15 @@ impl<V: View> Flex<V> {
         let axis = self.style.direction.axis();
         let total_gap = self
             .style
-            .gap
+            .main_gap()
             .saturating_mul(self.children.len().saturating_sub(1) as u16);
         axis.main(inner_available).saturating_sub(total_gap)
     }
 
-    fn child_available(&self, inner_available: Size, dimension: Dimension) -> Size {
+    fn child_available(&self, inner_available: Size, style: FlexItemStyle) -> Size {
         let axis = self.style.direction.axis();
         let space_for_children = self.space_for_children(inner_available);
-        let main = match dimension {
+        let main = match style.basis {
             Dimension::Fixed(cells) => cells.min(space_for_children),
             Dimension::Percent(percent) => {
                 ((space_for_children as u32 * percent.min(100) as u32) / 100) as u16
@@ -125,35 +159,67 @@ impl<V: View> Flex<V> {
         axis.size(main, axis.cross(inner_available))
     }
 
+    fn child_request(
+        &self,
+        inner_available: Size,
+        style: FlexItemStyle,
+        mut request: MeasureRequest,
+    ) -> MeasureRequest {
+        let main = self
+            .style
+            .direction
+            .axis()
+            .main(self.child_available(inner_available, style));
+        let resolves_main = matches!(style.basis, Dimension::Fixed(_) | Dimension::Percent(_));
+        match (self.style.direction, resolves_main) {
+            (crate::layout::Direction::Row, true) => {
+                request.available_width = AvailableSpace::Definite(main);
+                request.known_width = Some(main);
+            }
+            (crate::layout::Direction::Column, true) => {
+                request.available_height = AvailableSpace::Definite(main);
+                request.known_height = Some(main);
+            }
+            (_, false) => {}
+        }
+        request
+    }
+
     fn items(&self, area: Rect, ctx: &RenderCtx) -> Vec<Item> {
         let inner_available = Size::from(self.style.padding.inner(area));
         let mut items: Vec<Item> = self
             .children
             .iter()
             .map(|child| {
-                let available = self.child_available(inner_available, child.dimension);
-                Item::new(child.dimension, child.view.measure(available, ctx))
+                let available = self.child_available(inner_available, child.style);
+                let request = self.child_request(
+                    inner_available,
+                    child.style,
+                    MeasureRequest::new(available),
+                );
+                Item::styled(child.style, child.view.measure_request(request, ctx))
             })
             .collect();
 
         // Flex widths/heights are only known after auto/fixed/percent children
         // have consumed their space. Refine flex intrinsic cross sizes against
         // their actual main-axis allocation, then solve once more below.
-        if !matches!(self.style.align_items, crate::layout::Align::Stretch)
-            && self
-                .children
-                .iter()
-                .any(|child| matches!(child.dimension, Dimension::Flex(_)))
-        {
+        if !matches!(self.style.align_items, crate::layout::Align::Stretch) {
             let preliminary = solve(area, &self.style, &items);
             let axis = self.style.direction.axis();
             for ((child, item), rect) in self.children.iter().zip(items.iter_mut()).zip(preliminary)
             {
-                if matches!(child.dimension, Dimension::Flex(_)) {
-                    let main = axis.main(Size::from(rect));
-                    let available = axis.size(main, axis.cross(inner_available));
-                    item.intrinsic = child.view.measure(available, ctx);
-                }
+                let main = axis.main(Size::from(rect));
+                let available = axis.size(main, axis.cross(inner_available));
+                let request = match self.style.direction {
+                    crate::layout::Direction::Row => {
+                        MeasureRequest::new(available).with_known_width(main)
+                    }
+                    crate::layout::Direction::Column => {
+                        MeasureRequest::new(available).with_known_height(main)
+                    }
+                };
+                item.intrinsic = child.view.measure_request(request, ctx);
             }
         }
 
@@ -222,6 +288,23 @@ impl Flex<Element> {
 
 impl<V: View> View for Flex<V> {
     fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        if self.style.wrap != FlexWrap::NoWrap {
+            let area = Rect::new(0, 0, available.width, available.height);
+            let rects = self.solve(area, ctx);
+            let width = rects
+                .iter()
+                .map(|rect| rect.right())
+                .max()
+                .unwrap_or(self.style.padding.left)
+                .saturating_add(self.style.padding.right);
+            let height = rects
+                .iter()
+                .map(|rect| rect.bottom())
+                .max()
+                .unwrap_or(self.style.padding.top)
+                .saturating_add(self.style.padding.bottom);
+            return Size::new(width, height).clamp_to(available);
+        }
         // Sum children on the main axis, max on the cross axis, plus gaps and
         // padding. Used when this Flex is itself an Auto child.
         let axis = self.style.direction.axis();
@@ -234,11 +317,11 @@ impl<V: View> View for Flex<V> {
         let mut main_total: u16 = 0;
         let mut cross_max: u16 = 0;
         for (i, c) in self.children.iter().enumerate() {
-            let sz = c
-                .view
-                .measure(self.child_available(inner_avail, c.dimension), ctx);
+            let available = self.child_available(inner_avail, c.style);
+            let request = self.child_request(inner_avail, c.style, MeasureRequest::new(available));
+            let sz = c.view.measure_request(request, ctx);
             let intrinsic_main = axis.main(sz);
-            let resolved_main = match c.dimension {
+            let resolved_main = match c.style.basis {
                 Dimension::Auto | Dimension::Flex(_) => intrinsic_main,
                 Dimension::Fixed(cells) => cells,
                 Dimension::Percent(percent) => {
@@ -248,7 +331,7 @@ impl<V: View> View for Flex<V> {
             .min(space_for_children);
             main_total = main_total.saturating_add(resolved_main);
             if i > 0 {
-                main_total = main_total.saturating_add(self.style.gap);
+                main_total = main_total.saturating_add(self.style.main_gap());
             }
             cross_max = cross_max.max(axis.cross(sz));
         }
@@ -260,6 +343,42 @@ impl<V: View> View for Flex<V> {
             content.height.saturating_add(self.style.padding.vertical()),
         )
         .clamp_to(available)
+    }
+
+    fn measure_request(&self, request: MeasureRequest, ctx: &RenderCtx) -> Size {
+        if matches!(request.available_width, AvailableSpace::Definite(_))
+            && matches!(request.available_height, AvailableSpace::Definite(_))
+        {
+            return request.resolve(self.measure(request.fallback_available(), ctx));
+        }
+
+        let axis = self.style.direction.axis();
+        let available = request.fallback_available();
+        let inner = Size::from(self.style.padding.inner(Rect::new(
+            0,
+            0,
+            available.width,
+            available.height,
+        )));
+        let mut main = 0u16;
+        let mut cross = 0u16;
+        for (index, child) in self.children.iter().enumerate() {
+            let measured = child
+                .view
+                .measure_request(self.child_request(inner, child.style, request), ctx);
+            main = main.saturating_add(axis.main(measured));
+            if index > 0 {
+                main = main.saturating_add(self.style.main_gap());
+            }
+            cross = cross.max(axis.cross(measured));
+        }
+        let content = axis.size(main, cross);
+        request.resolve(Size::new(
+            content
+                .width
+                .saturating_add(self.style.padding.horizontal()),
+            content.height.saturating_add(self.style.padding.vertical()),
+        ))
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {

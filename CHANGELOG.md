@@ -18,6 +18,21 @@ block-HTML seam.
 
 ### Added
 
+- Wrapped flex lines with independent row/column gaps, grow and shrink weights,
+  min/max constraints, `align_self`, cross-line `AlignContent`, and exact
+  boundary-based cell rounding. `FlexItemStyle` separates child properties from
+  `LayoutStyle`; `solve_layout` also reports resolved line geometry.
+- `Flow` for intrinsic-width wrapping and a deliberately small equal-column
+  row-major `Grid` component.
+- Extensible `MeasureRequest` / `AvailableSpace` measurement, with known axes
+  and definite/min-content/max-content modes. The default adapter preserves
+  existing `View::measure` implementations.
+- Runtime-neutral `RunnerCore`, configurable `TerminalSessionConfig`, and
+  `testing::TestHarness` for state/signal/view application tests without a
+  terminal or async runtime.
+- `render_once` / `write_once` for ANSI-styled ordinary output, and `view!`
+  `when(...)` / `for(... in ...)` composition.
+
 - `Clock` and `SystemClock` provide one monotonic time seam.
   `SelectionState::handle_with_clock` makes double-click gestures deterministic,
   and `Runner::with_clock` lets replayable synchronous hosts own tick time;
@@ -93,6 +108,11 @@ block-HTML seam.
   `block_renderer`, and build free-function chains with
   `Renderers::new().renderer(&first).renderer(&second)`. HTML fences now receive
   the host's active stylesheet instead of synthesizing theme defaults.
+- **Breaking:** `LayoutStyle::gap` is split into `row_gap` and `column_gap`
+  (the `.gap(...)` builder still sets both), and `Item::dimension` is replaced
+  by `Item::style`. Use `Item::new` for the compatible compact path or
+  `Item::styled(FlexItemStyle, ...)` for independent flex properties.
+
 - **Breaking:** keymap character specs are now explicitly logical text. Write
   the character produced by the active layout (`A`, `?`, `ctrl+R`) rather than
   `shift+a` or `shift+/`; `Shift` remains valid for non-character chords such as

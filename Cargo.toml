@@ -188,6 +188,10 @@ harness = false
 name = "scroll_iai"
 harness = false
 
+[[bench]]
+name = "layout"
+harness = false
+
 [[example]]
 name = "async_dashboard"
 required-features = ["async"]

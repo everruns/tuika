@@ -315,6 +315,22 @@ const DEMOS: &[Demo] = &[
         false,
         scene_flex,
     ),
+    demo(
+        "flow",
+        "Flow",
+        "intrinsic-width items wrapping into flex lines",
+        12,
+        false,
+        scene_flow,
+    ),
+    demo(
+        "grid",
+        "Grid",
+        "a small equal-column terminal grid",
+        15,
+        false,
+        scene_grid,
+    ),
     filling_demo(
         "scroll",
         "Scroll",
@@ -1128,6 +1144,49 @@ fn scene_flex(frame: u64, theme: &Theme) -> Element {
             fixed(1) { node(Text::new(vec![Line::from(Span::styled("row · gap 1 · grow shares leftover width", theme.muted_style()))])) }
         }
     }
+}
+
+fn scene_flow(frame: u64, theme: &Theme) -> Element {
+    let _ = frame;
+    let labels = [
+        "build",
+        "test",
+        "docs",
+        "release-ready",
+        "terminal UI",
+        "Rust",
+    ];
+    let mut flow = tuika::components::Flow::new().gap(1);
+    for label in labels {
+        flow = flow.item(element(
+            tuika::components::Boxed::new(element(Text::raw(label)))
+                .border_color(theme.accent)
+                .padding(Padding::symmetric(1, 0)),
+        ));
+    }
+    element(flow)
+}
+
+fn scene_grid(frame: u64, theme: &Theme) -> Element {
+    let _ = frame;
+    let mut grid = tuika::components::Grid::new(3).gap(1);
+    for (label, value) in [
+        ("jobs", "12"),
+        ("passed", "12"),
+        ("failed", "0"),
+        ("time", "4.2s"),
+        ("target", "all"),
+        ("status", "ready"),
+    ] {
+        grid = grid.cell(element(
+            tuika::components::Boxed::new(element(Text::new(vec![
+                Line::from(Span::styled(label, theme.muted_style())),
+                Line::from(Span::styled(value, theme.accent_style())),
+            ])))
+            .padding(Padding::symmetric(1, 0)),
+        ));
+    }
+    element(grid)
 }
 
 fn scene_scroll(frame: u64, theme: &Theme) -> Element {

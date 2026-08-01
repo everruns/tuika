@@ -75,12 +75,89 @@ pub enum UpdateResult {
     Exit,
 }
 
+/// Runtime-neutral decision produced by [`RunnerCore`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RunnerAction {
+    /// Wait for another signal or an external redraw request.
+    Wait,
+    /// Render the given animation frame number.
+    Render(u64),
+    /// End the application loop.
+    Exit,
+}
+
+/// Pure runner state machine shared by the synchronous and async runners and
+/// available to custom runtimes and test hosts.
+///
+/// It knows nothing about Crossterm, Tokio, clocks, sleeping, or backends. A
+/// host supplies signals to application code, passes the resulting
+/// [`UpdateResult`] here, and performs the returned [`RunnerAction`].
+#[derive(Clone, Debug)]
+pub struct RunnerCore {
+    next_frame: u64,
+    dirty: bool,
+    exited: bool,
+}
+
+impl Default for RunnerCore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RunnerCore {
+    /// Create a core that requests an initial frame.
+    pub const fn new() -> Self {
+        Self {
+            next_frame: 0,
+            dirty: true,
+            exited: false,
+        }
+    }
+
+    /// Apply an application's update result.
+    pub fn apply(&mut self, result: UpdateResult) {
+        match result {
+            UpdateResult::Clean => {}
+            UpdateResult::Dirty => self.dirty = true,
+            UpdateResult::Exit => self.exited = true,
+        }
+    }
+
+    /// Request a frame independently of an application signal.
+    pub fn request_redraw(&mut self) {
+        self.dirty = true;
+    }
+
+    /// Whether an exit result has made this core terminal.
+    pub const fn is_exited(&self) -> bool {
+        self.exited
+    }
+
+    /// Take the next action. A render consumes the dirty flag and advances the
+    /// wrapping animation frame counter.
+    pub fn next_action(&mut self) -> RunnerAction {
+        if self.exited {
+            return RunnerAction::Exit;
+        }
+        if self.dirty {
+            self.dirty = false;
+            let frame = self.next_frame;
+            self.next_frame = self.next_frame.wrapping_add(1);
+            RunnerAction::Render(frame)
+        } else {
+            RunnerAction::Wait
+        }
+    }
+}
+
 /// A synchronous Crossterm event and rendering loop.
 pub struct Runner {
     config: RunnerConfig,
     clock: Arc<dyn Clock + Send + Sync>,
     redraw: RedrawHandle,
     scrollback: Scrollback,
+    session_config: Option<crate::host::TerminalSessionConfig>,
 }
 
 impl Runner {
@@ -104,6 +181,7 @@ impl Runner {
             clock: Arc::new(clock),
             redraw: RedrawHandle::default(),
             scrollback: Scrollback::new(),
+            session_config: None,
         }
     }
 
@@ -118,6 +196,13 @@ impl Runner {
     /// Return a handle that background producers can use to request redraws.
     pub fn redraw_handle(&self) -> RedrawHandle {
         self.redraw.clone()
+    }
+
+    /// Override terminal lifecycle policy while retaining the runner's loop.
+    pub fn with_session_config(mut self, config: crate::host::TerminalSessionConfig) -> Self {
+        self.config.screen_mode = config.screen_mode;
+        self.session_config = Some(config);
+        self
     }
 
     /// Run until `update` returns [`UpdateResult::Exit`].
@@ -156,27 +241,37 @@ impl Runner {
     {
         let mode = self.config.screen_mode;
         let split = !mode.is_alternate();
-        let _session = TerminalSession::enter_with(mode)?;
+        let _session = if let Some(config) = self.session_config {
+            TerminalSession::enter_config(config)?
+        } else {
+            TerminalSession::enter_with(mode)?
+        };
         let mut terminal = Terminal::with_options(
             backend,
             TerminalOptions {
                 viewport: mode.viewport(),
             },
         )?;
-        let mut frame = 0u64;
+        let mut core = RunnerCore::new();
         let mut last_tick = self.clock.now();
 
         if split {
             pin_footer(&mut terminal)?;
         }
-        draw(&mut terminal, theme, &mut view, state, &mut frame)?;
+        if let RunnerAction::Render(frame) = core.next_action() {
+            draw(&mut terminal, theme, &mut view, state, frame)?;
+        }
 
         'running: loop {
-            let mut dirty = self.redraw.take();
+            if self.redraw.take() {
+                core.request_redraw();
+            }
             if split {
                 // Publishing scrolls the terminal and may clear the viewport,
                 // so a committed block always makes the footer dirty.
-                dirty |= self.scrollback.flush(&mut terminal, theme)?;
+                if self.scrollback.flush(&mut terminal, theme)? {
+                    core.request_redraw();
+                }
             } else {
                 self.scrollback.clear();
             }
@@ -184,17 +279,18 @@ impl Runner {
             let now = self.clock.now();
             if now.saturating_duration_since(last_tick) >= self.config.tick_rate {
                 last_tick = now;
-                if apply_update(update(state, Signal::Tick), &mut dirty) {
+                core.apply(update(state, Signal::Tick));
+                if core.is_exited() {
                     break;
                 }
             }
 
-            if dirty {
+            if let RunnerAction::Render(frame) = core.next_action() {
                 if split {
                     terminal.autoresize()?;
                     pin_footer(&mut terminal)?;
                 }
-                draw(&mut terminal, theme, &mut view, state, &mut frame)?;
+                draw(&mut terminal, theme, &mut view, state, frame)?;
             }
 
             let elapsed = self.clock.now().saturating_duration_since(last_tick);
@@ -202,12 +298,9 @@ impl Runner {
             if event::poll(timeout)?
                 && let Some(event) = translate_event(event::read()?)
             {
-                let mut event_dirty = false;
-                if apply_update(update(state, Signal::Event(event)), &mut event_dirty) {
+                core.apply(update(state, Signal::Event(event)));
+                if core.is_exited() {
                     break 'running;
-                }
-                if event_dirty {
-                    self.redraw.request();
                 }
             }
         }
@@ -225,24 +318,13 @@ impl Runner {
     }
 }
 
-fn apply_update(result: UpdateResult, dirty: &mut bool) -> bool {
-    match result {
-        UpdateResult::Clean => false,
-        UpdateResult::Dirty => {
-            *dirty = true;
-            false
-        }
-        UpdateResult::Exit => true,
-    }
-}
-
-/// Paint one frame from immutable state and advance the animation frame.
+/// Paint one numbered frame from immutable state.
 fn draw<S, B, V, Er>(
     terminal: &mut Terminal<B>,
     theme: &Theme,
     view: &mut V,
     state: &S,
-    frame: &mut u64,
+    frame: u64,
 ) -> Result<(), Er>
 where
     B: Backend<Error = Er>,
@@ -250,10 +332,9 @@ where
 {
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
-        let root = view(state, *frame);
+        let root = view(state, frame);
         paint(terminal_frame.buffer_mut(), area, theme, root.as_ref(), &[]);
     })?;
-    *frame = frame.wrapping_add(1);
     Ok(())
 }
 
@@ -273,27 +354,6 @@ mod tests {
     }
 
     #[test]
-    fn clean_updates_do_not_request_a_repaint() {
-        let mut dirty = false;
-        assert!(!apply_update(UpdateResult::Clean, &mut dirty));
-        assert!(!dirty);
-    }
-
-    #[test]
-    fn dirty_updates_request_a_repaint() {
-        let mut dirty = false;
-        assert!(!apply_update(UpdateResult::Dirty, &mut dirty));
-        assert!(dirty);
-    }
-
-    #[test]
-    fn exit_updates_stop_without_forcing_a_repaint() {
-        let mut dirty = false;
-        assert!(apply_update(UpdateResult::Exit, &mut dirty));
-        assert!(!dirty);
-    }
-
-    #[test]
     fn zero_tick_rate_is_clamped() {
         let runner = Runner::new(RunnerConfig {
             tick_rate: Duration::ZERO,
@@ -307,6 +367,17 @@ mod tests {
         let now = Instant::now();
         let runner = Runner::with_clock(RunnerConfig::default(), FixedClock(now));
         assert_eq!(runner.clock.now(), now);
+    }
+
+    #[test]
+    fn runner_core_is_deterministic_and_runtime_free() {
+        let mut core = RunnerCore::new();
+        assert_eq!(core.next_action(), RunnerAction::Render(0));
+        assert_eq!(core.next_action(), RunnerAction::Wait);
+        core.apply(UpdateResult::Dirty);
+        assert_eq!(core.next_action(), RunnerAction::Render(1));
+        core.apply(UpdateResult::Exit);
+        assert_eq!(core.next_action(), RunnerAction::Exit);
     }
 
     #[test]

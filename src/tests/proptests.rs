@@ -15,9 +15,12 @@ use ratatui_core::layout::{Position, Rect};
 use ratatui_core::terminal::{Terminal, TerminalOptions};
 use ratatui_core::text::Line;
 
-use crate::components::Text;
+use crate::components::{Grid, Text};
 use crate::geometry::{Axis, Padding, Size};
-use crate::layout::{Align, Dimension, Direction, Item, Justify, LayoutStyle, solve};
+use crate::layout::{
+    Align, AlignContent, Dimension, Direction, FlexItemStyle, FlexWrap, Item, Justify, LayoutStyle,
+    solve, solve_layout,
+};
 use crate::overlay::{Anchor, Extent, OverlaySpec, TargetAlign, TargetPlacement, TargetSide};
 use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
 use crate::style::Theme;
@@ -106,9 +109,12 @@ proptest! {
         let style = LayoutStyle {
             direction: dir,
             padding: Padding::all(pad),
-            gap,
+            row_gap: gap,
+            column_gap: gap,
+            wrap: crate::layout::FlexWrap::NoWrap,
             align_items: align,
             justify,
+            align_content: crate::layout::AlignContent::Start,
         };
         let rects = solve(area, &style, &items);
         prop_assert_eq!(rects.len(), items.len());
@@ -147,6 +153,131 @@ proptest! {
         let rects = solve(Rect::new(0, 0, w, 1), &LayoutStyle::row(), &items);
         let total: u16 = rects.iter().map(|r| r.width).fold(0, u16::saturating_add);
         prop_assert_eq!(total, w, "flex children must fill width exactly");
+    }
+
+    /// Arbitrary wrapped layouts preserve bounds and expose contiguous line
+    /// metadata that covers every item exactly once.
+    #[test]
+    fn wrapped_layout_lines_are_bounded_and_complete(
+        w in 0u16..160,
+        h in 0u16..80,
+        bases in proptest::collection::vec(0u16..50, 1..12),
+        gap in 0u16..8,
+        row_gap in 0u16..6,
+        grow in 0u16..4,
+        shrink in 0u16..4,
+        align_content in prop_oneof![
+            Just(AlignContent::Start), Just(AlignContent::Center),
+            Just(AlignContent::End), Just(AlignContent::Stretch),
+            Just(AlignContent::SpaceBetween),
+        ],
+    ) {
+        let items: Vec<_> = bases
+            .into_iter()
+            .map(|basis| Item::styled(
+                FlexItemStyle::default()
+                    .basis(Dimension::Fixed(basis))
+                    .grow(grow)
+                    .shrink(shrink),
+                Size::new(basis, 1 + basis % 5),
+            ))
+            .collect();
+        let style = LayoutStyle::row()
+            .wrap(FlexWrap::Wrap)
+            .column_gap(gap)
+            .row_gap(row_gap)
+            .align_content(align_content);
+        let area = Rect::new(0, 0, w, h);
+        let result = solve_layout(area, &style, &items);
+        prop_assert_eq!(result.rects.len(), items.len());
+        let covered: Vec<_> = result.lines.iter().flat_map(|line| line.items.clone()).collect();
+        prop_assert_eq!(covered, (0..items.len()).collect::<Vec<_>>());
+        for rect in result.rects.iter().chain(result.lines.iter().map(|line| &line.rect)) {
+            prop_assert!(rect.x >= area.x && rect.right() <= area.right(), "{rect:?} outside {area:?}");
+            prop_assert!(rect.y >= area.y && rect.bottom() <= area.bottom(), "{rect:?} outside {area:?}");
+        }
+    }
+
+    /// Shrink distribution consumes all negative free space until min
+    /// constraints are reached, without violating either min or max.
+    #[test]
+    fn shrink_distribution_respects_min_and_max(
+        basis_a in 2u16..80,
+        basis_b in 2u16..80,
+        min_a in 0u16..40,
+        min_b in 0u16..40,
+        slack in 0u16..80,
+    ) {
+        let min_a = min_a.min(basis_a);
+        let min_b = min_b.min(basis_b);
+        let minimum = min_a.saturating_add(min_b);
+        let maximum = basis_a.saturating_add(basis_b);
+        let width = minimum.saturating_add(slack).min(maximum);
+        let items = [
+            Item::styled(
+                FlexItemStyle::default().basis(Dimension::Fixed(basis_a)).shrink(1).min_main(min_a).max_main(basis_a),
+                Size::new(basis_a, 1),
+            ),
+            Item::styled(
+                FlexItemStyle::default().basis(Dimension::Fixed(basis_b)).shrink(2).min_main(min_b).max_main(basis_b),
+                Size::new(basis_b, 1),
+            ),
+        ];
+        let rects = solve(Rect::new(0, 0, width, 1), &LayoutStyle::row(), &items);
+        prop_assert_eq!(rects[0].width.saturating_add(rects[1].width), width);
+        prop_assert!((min_a..=basis_a).contains(&rects[0].width));
+        prop_assert!((min_b..=basis_b).contains(&rects[1].width));
+    }
+
+    /// SpaceBetween uses the complete cross axis for multiple wrapped lines.
+    #[test]
+    fn cross_line_space_between_reaches_both_boundaries(
+        width in 1u16..80,
+        heights in proptest::collection::vec(1u16..8, 2..8),
+        extra in 0u16..40,
+    ) {
+        let items: Vec<_> = heights
+            .iter()
+            .map(|height| Item::new(Dimension::Fixed(width), Size::new(width, *height)))
+            .collect();
+        let content_height = heights.iter().copied().fold(0u16, u16::saturating_add);
+        let height = content_height.saturating_add(extra);
+        let style = LayoutStyle::row()
+            .wrap(FlexWrap::Wrap)
+            .align(Align::Start)
+            .align_content(AlignContent::SpaceBetween);
+        let result = solve_layout(Rect::new(0, 0, width, height), &style, &items);
+        prop_assert_eq!(result.lines.len(), items.len());
+        prop_assert_eq!(result.lines.first().unwrap().rect.y, 0);
+        prop_assert_eq!(result.lines.last().unwrap().rect.bottom(), height);
+        prop_assert!(result.lines.windows(2).all(|lines| lines[0].rect.bottom() <= lines[1].rect.y));
+    }
+
+    /// The compact Grid never produces a cell outside its padded area, even
+    /// when the screen is smaller than its gaps or has a zero dimension.
+    #[test]
+    fn grid_cells_stay_bounded_at_degenerate_sizes(
+        w in 0u16..40,
+        h in 0u16..20,
+        columns in 1u16..8,
+        count in 0usize..24,
+        row_gap in 0u16..10,
+        column_gap in 0u16..10,
+        padding in 0u16..6,
+    ) {
+        let mut grid = Grid::new(columns)
+            .row_gap(row_gap)
+            .column_gap(column_gap)
+            .padding(Padding::all(padding));
+        for _ in 0..count {
+            grid = grid.cell(element(Text::raw("cell")));
+        }
+        let theme = Theme::default();
+        let area = Rect::new(0, 0, w, h);
+        for rect in grid.solve(area, &crate::view::RenderCtx::new(&theme)) {
+            prop_assert!(rect.x >= area.x && rect.right() <= area.right(), "{rect:?} outside {area:?}");
+            prop_assert!(rect.y >= area.y && rect.bottom() <= area.bottom(), "{rect:?} outside {area:?}");
+        }
     }
 
     /// An overlay always lands inside its screen and never exceeds its max

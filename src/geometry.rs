@@ -25,7 +25,7 @@ impl Size {
     };
 
     /// A size of `width` by `height` cells.
-    pub fn new(width: u16, height: u16) -> Self {
+    pub const fn new(width: u16, height: u16) -> Self {
         Self { width, height }
     }
 

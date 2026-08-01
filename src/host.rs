@@ -95,6 +95,62 @@ pub struct TerminalSession {
     raw_mode_owned: bool,
     keyboard_enhancement: Option<KeyboardEnhancement>,
     mode: ScreenMode,
+    mouse_capture: bool,
+    cursor_hidden: bool,
+}
+
+/// Mouse-capture policy for a [`TerminalSessionConfig`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MouseCapture {
+    /// Follow the selected [`ScreenMode`].
+    #[default]
+    ModeDefault,
+    /// Enable mouse reporting regardless of the mode default.
+    Enabled,
+    /// Leave mouse reporting disabled.
+    Disabled,
+}
+
+/// Independently configurable terminal lifecycle policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TerminalSessionConfig {
+    /// Screen ownership and viewport mode.
+    pub screen_mode: ScreenMode,
+    /// Enable raw input mode for the lifetime of the session.
+    pub raw_mode: bool,
+    /// Negotiate enhanced keyboard reporting where supported.
+    pub enhanced_keyboard: bool,
+    /// Mouse reporting policy.
+    pub mouse_capture: MouseCapture,
+    /// Hide the cursor while the session is active.
+    pub hide_cursor: bool,
+}
+
+impl Default for TerminalSessionConfig {
+    fn default() -> Self {
+        Self::for_mode(ScreenMode::default())
+    }
+}
+
+impl TerminalSessionConfig {
+    /// The established lifecycle defaults for `screen_mode`.
+    pub const fn for_mode(screen_mode: ScreenMode) -> Self {
+        Self {
+            screen_mode,
+            raw_mode: true,
+            enhanced_keyboard: true,
+            mouse_capture: MouseCapture::ModeDefault,
+            hide_cursor: true,
+        }
+    }
+
+    fn captures_mouse(self) -> bool {
+        match self.mouse_capture {
+            MouseCapture::ModeDefault => self.screen_mode.captures_mouse(),
+            MouseCapture::Enabled => true,
+            MouseCapture::Disabled => false,
+        }
+    }
 }
 
 impl TerminalSession {
@@ -106,34 +162,49 @@ impl TerminalSession {
 
     /// Enter a session in `mode`, rolling back on failure.
     pub fn enter_with(mode: ScreenMode) -> io::Result<Self> {
-        let raw_mode_owned = !is_raw_mode_enabled()?;
+        Self::enter_config(TerminalSessionConfig::for_mode(mode))
+    }
+
+    /// Enter a session using independently configurable lifecycle policies.
+    pub fn enter_config(config: TerminalSessionConfig) -> io::Result<Self> {
+        let raw_mode_owned = config.raw_mode && !is_raw_mode_enabled()?;
         if raw_mode_owned {
             enable_raw_mode()?;
         }
         let mut out = io::stdout();
         let keyboard = KeyboardEnhancement::detect();
-        let keyboard_active = match keyboard.enable(&mut out) {
-            Ok(active) => active,
-            Err(error) => {
-                if raw_mode_owned {
-                    let _ = disable_raw_mode();
+        let keyboard_active = if config.enhanced_keyboard {
+            match keyboard.enable(&mut out) {
+                Ok(active) => active,
+                Err(error) => {
+                    if raw_mode_owned {
+                        let _ = disable_raw_mode();
+                    }
+                    return Err(error);
                 }
-                return Err(error);
             }
+        } else {
+            false
         };
+        let mode = config.screen_mode;
+        let mouse_capture = config.captures_mouse();
         let entered = (|| -> io::Result<()> {
             if mode.is_alternate() {
                 execute!(out, EnterAlternateScreen)?;
             }
-            if mode.captures_mouse() {
+            if mouse_capture {
                 execute!(out, EnableMouseCapture)?;
             }
-            execute!(out, Hide)?;
+            if config.hide_cursor {
+                execute!(out, Hide)?;
+            }
             out.flush()
         })();
         if let Err(error) = entered {
-            let _ = execute!(out, Show);
-            if mode.captures_mouse() {
+            if config.hide_cursor {
+                let _ = execute!(out, Show);
+            }
+            if mouse_capture {
                 let _ = execute!(out, DisableMouseCapture);
             }
             if mode.is_alternate() {
@@ -152,6 +223,8 @@ impl TerminalSession {
             raw_mode_owned,
             keyboard_enhancement: keyboard_active.then_some(keyboard),
             mode,
+            mouse_capture,
+            cursor_hidden: config.hide_cursor,
         })
     }
 
@@ -169,8 +242,10 @@ impl TerminalSession {
         let _ = out.write_all(
             crate::term::pointer::encode(crate::term::pointer::PointerShape::Default).as_bytes(),
         );
-        let _ = execute!(out, Show);
-        if self.mode.captures_mouse() {
+        if self.cursor_hidden {
+            let _ = execute!(out, Show);
+        }
+        if self.mouse_capture {
             let _ = execute!(out, DisableMouseCapture);
         }
         if self.mode.is_alternate() {
@@ -441,6 +516,21 @@ mod tests {
     use ratatui_core::buffer::Buffer;
     use ratatui_core::layout::Rect;
     use ratatui_core::text::{Line, Span};
+
+    #[test]
+    fn session_mouse_policy_can_override_screen_mode_defaults() {
+        let alternate = TerminalSessionConfig {
+            mouse_capture: MouseCapture::Disabled,
+            ..TerminalSessionConfig::for_mode(ScreenMode::Alternate)
+        };
+        assert!(!alternate.captures_mouse());
+
+        let footer = TerminalSessionConfig {
+            mouse_capture: MouseCapture::Enabled,
+            ..TerminalSessionConfig::for_mode(ScreenMode::split_footer(3))
+        };
+        assert!(footer.captures_mouse());
+    }
 
     /// A representative tree: a scrollable bordered body, a progress bar, and a
     /// status bar — the shapes the full-screen renderer actually composes.

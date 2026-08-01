@@ -17,7 +17,7 @@
 
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -167,6 +167,14 @@ impl Script {
     /// Spawn the example, follow the script, then collect everything the
     /// terminal received.
     fn run(self) -> ExampleRun {
+        // These are timing-sensitive interactive sessions. Running two Codex
+        // examples concurrently can starve their scripted streams long enough
+        // for one test to snapshot before its turn starts.
+        static PTY_RUN: OnceLock<Mutex<()>> = OnceLock::new();
+        let _serial = PTY_RUN
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("serialize PTY examples");
         let pty = NativePtySystem::default();
         let pair = pty
             .openpty(PtySize {
@@ -444,6 +452,35 @@ fn gallery_drives_altscreen_and_native_progress() {
         text.contains("spinners") && text.contains("progress"),
         "gallery chrome should render: {text:?}"
     );
+}
+
+#[test]
+fn gallery_session_config_can_disable_mouse_without_leaking_terminal_state() {
+    let run = Script::new("gallery")
+        .arg("--no-mouse")
+        .size(24, 80)
+        .settle(Duration::from_millis(900))
+        .run();
+    let out = &run.output;
+    assert!(run.exited_ok, "configured gallery should exit cleanly");
+    assert!(
+        contains(out, b"\x1b[?1049h"),
+        "should enter alternate screen"
+    );
+    assert!(contains(out, b"\x1b[?1049l"), "should restore main screen");
+    assert!(
+        !contains(out, b"\x1b[?1000h"),
+        "mouse override must be honored"
+    );
+    assert!(
+        !contains(out, b"\x1b[?1000l"),
+        "disabled mouse needs no teardown"
+    );
+    assert!(
+        contains(out, b"\x1b[?25l"),
+        "should hide cursor while active"
+    );
+    assert!(contains(out, b"\x1b[?25h"), "should restore cursor on exit");
 }
 
 #[test]

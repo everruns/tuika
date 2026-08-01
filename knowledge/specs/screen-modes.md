@@ -33,6 +33,9 @@ A split footer renders into a ratatui `Viewport::Inline`. The pieces around it:
 
 - `TerminalSession::enter_with(mode)` takes only what the mode needs and
   restores exactly that.
+- `TerminalSession::enter_config` preserves the same transactional rollback but
+  lets a host independently choose raw mode, enhanced keyboard reporting,
+  mouse capture, and cursor hiding. Mode defaults remain the ordinary path.
 - `pin_footer` pushes the viewport to the bottom rows; `close_footer` gives them
   back and parks the cursor so the shell prompt resumes cleanly.
 - `Scrollback` is a cloneable, `Send + Sync` queue of *views*, for publishing

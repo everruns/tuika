@@ -50,6 +50,49 @@ fn the_prelude_alone_can_build_and_render_a_screen() {
     );
 }
 
+/// Application-foundation additions stay available from the documented
+/// one-line import rather than drifting into implementation-only modules.
+#[test]
+fn application_foundations_are_exported_by_the_prelude() {
+    let theme = Theme::default();
+    let item = FlexItemStyle::default()
+        .basis(Dimension::Fixed(2))
+        .grow(1)
+        .shrink(1)
+        .min_main(1)
+        .max_main(4);
+    let flex = Flex::row()
+        .wrap(FlexWrap::Wrap)
+        .align_content(AlignContent::Stretch)
+        .styled(item, element(Text::raw("fx")));
+    let flow = Flow::new().item(element(Text::raw("flow")));
+    let grid = Grid::new(2).cell(element(flex)).cell(element(flow));
+    assert!(
+        grid.measure(Size::new(12, 4), &RenderCtx::new(&theme))
+            .width
+            > 0
+    );
+
+    let request = MeasureRequest::new(Size::new(12, 4))
+        .with_available_width(AvailableSpace::MaxContent)
+        .with_known_height(4);
+    assert_eq!(request.known_height, Some(4));
+
+    let mut core = RunnerCore::new();
+    assert_eq!(core.next_action(), RunnerAction::Render(0));
+    core.apply(UpdateResult::Clean);
+    assert_eq!(core.next_action(), RunnerAction::Wait);
+
+    let session = TerminalSessionConfig {
+        mouse_capture: MouseCapture::Disabled,
+        ..TerminalSessionConfig::for_mode(ScreenMode::Alternate)
+    };
+    assert_eq!(session.mouse_capture, MouseCapture::Disabled);
+
+    let output = render_once(&Text::raw("once"), &theme, OneShotOptions::default()).unwrap();
+    assert!(output.contains("once"));
+}
+
 #[test]
 fn responsive_dock_lifecycle_is_in_the_framework_prelude() {
     let mut dock = DockState::new();

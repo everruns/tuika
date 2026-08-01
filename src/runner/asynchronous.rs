@@ -65,7 +65,7 @@ use ratatui_crossterm::CrosstermBackend;
 use tokio::time::{MissedTickBehavior, interval};
 use tokio_stream::{Stream, StreamExt};
 
-use super::Signal;
+use super::{RunnerAction, RunnerCore, Signal};
 use crate::screen::{Scrollback, close_footer, pin_footer};
 use crate::{
     Element, Event, RunnerConfig, TerminalSession, Theme, UpdateResult, paint, translate_event,
@@ -82,6 +82,7 @@ use crate::{
 pub struct AsyncRunner {
     config: RunnerConfig,
     scrollback: Scrollback,
+    session_config: Option<crate::TerminalSessionConfig>,
 }
 
 impl AsyncRunner {
@@ -94,7 +95,15 @@ impl AsyncRunner {
         Self {
             config,
             scrollback: Scrollback::new(),
+            session_config: None,
         }
+    }
+
+    /// Override terminal lifecycle policy while retaining the async loop.
+    pub fn with_session_config(mut self, config: crate::TerminalSessionConfig) -> Self {
+        self.config.screen_mode = config.screen_mode;
+        self.session_config = Some(config);
+        self
     }
 
     /// Return a handle for publishing content above a
@@ -150,7 +159,11 @@ impl AsyncRunner {
         U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
     {
         let mode = self.config.screen_mode;
-        let _session = TerminalSession::enter_with(mode)?;
+        let _session = if let Some(config) = self.session_config {
+            TerminalSession::enter_config(config)?
+        } else {
+            TerminalSession::enter_with(mode)?
+        };
         let mut terminal = Terminal::with_options(
             backend,
             TerminalOptions {
@@ -213,7 +226,7 @@ impl AsyncRunner {
         U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
     {
         let mut events_done = false;
-        let mut frame = 0u64;
+        let mut core = RunnerCore::new();
         let split = !self.config.screen_mode.is_alternate();
 
         let mut ticker = interval(self.config.tick_rate);
@@ -226,7 +239,9 @@ impl AsyncRunner {
         if split {
             pin_footer(terminal)?;
         }
-        draw(terminal, theme, &mut view, state, &mut frame)?;
+        if let RunnerAction::Render(frame) = core.next_action() {
+            draw(terminal, theme, &mut view, state, frame)?;
+        }
 
         loop {
             let signal = tokio::select! {
@@ -244,26 +259,31 @@ impl AsyncRunner {
                 },
             };
 
-            let mut dirty = match update(state, signal).await {
-                UpdateResult::Clean => false,
-                UpdateResult::Dirty => true,
-                UpdateResult::Exit => break,
-            };
+            core.apply(update(state, signal).await);
+            if core.is_exited() {
+                break;
+            }
             if split {
                 // Publishing scrolls the terminal and may clear the viewport,
                 // so a committed block always makes the footer dirty.
-                dirty |= self.scrollback.flush(terminal, theme)?;
-                if dirty {
-                    terminal.autoresize()?;
-                    pin_footer(terminal)?;
+                if self.scrollback.flush(terminal, theme)? {
+                    core.request_redraw();
                 }
             } else {
                 // Nothing above the frame to publish into; drop queued blocks
                 // rather than let a producer grow the queue without bound.
                 self.scrollback.clear();
             }
-            if dirty {
-                draw(terminal, theme, &mut view, state, &mut frame)?;
+            match core.next_action() {
+                RunnerAction::Render(frame) => {
+                    if split {
+                        terminal.autoresize()?;
+                        pin_footer(terminal)?;
+                    }
+                    draw(terminal, theme, &mut view, state, frame)?;
+                }
+                RunnerAction::Exit => break,
+                RunnerAction::Wait => {}
             }
         }
 
@@ -271,14 +291,13 @@ impl AsyncRunner {
     }
 }
 
-/// Paint one frame from the current `state` and advance the frame counter that
-/// drives motion components (spinners, indeterminate bars).
+/// Paint one numbered frame from the current `state`.
 fn draw<S, B, V, Er>(
     terminal: &mut Terminal<B>,
     theme: &Theme,
     view: &mut V,
     state: &S,
-    frame: &mut u64,
+    frame: u64,
 ) -> Result<(), Er>
 where
     B: Backend<Error = Er>,
@@ -286,10 +305,9 @@ where
 {
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
-        let root = view(state, *frame);
+        let root = view(state, frame);
         paint(terminal_frame.buffer_mut(), area, theme, root.as_ref(), &[]);
     })?;
-    *frame = frame.wrapping_add(1);
     Ok(())
 }
 

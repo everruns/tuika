@@ -138,6 +138,8 @@ tuika's own suite covers more:
   instructions belong here (they live in this file). The README links to entries
   here rather than explaining a component itself; see
   `knowledge/specs/documentation.md`.
+- `docs/layout.md` — the public layout guide: wrapping, flex-item sizing,
+  Flow/Grid selection, measurement requests, and migration notes.
 - `docs/markdown.md` — the markdown guide: streaming, GFM tables, the
   highlighter seam, link policy, and images in one page. It reuses the gallery's
   `DEMOS` recordings, so it is inside the `demo -- check` reference invariant.

@@ -46,9 +46,11 @@ line endings, so neither a Windows CI leg nor a contributor's `core.autocrlf`
 can turn a green suite red.
 
 The consumer-facing subset of this machinery — `testing::{render,
-render_with_sheet, render_sizes, grid}` — is public API, so hosts test their own
-views with the same theme and stylesheet contexts used in production. Changes
-to it are API changes.
+render_with_sheet, render_sizes, grid}` plus `TestHarness` — is public API, so
+hosts test their views and full state/update/view applications with the same
+signals, theme, and stylesheet contexts used in production. The harness owns
+no terminal or runtime; a dirty update returns an in-memory frame. Changes to
+this surface are API changes.
 
 ## Why a PTY layer exists at all
 

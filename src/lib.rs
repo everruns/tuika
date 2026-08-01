@@ -93,6 +93,7 @@ pub mod keymap;
 pub mod layout;
 pub mod live;
 pub mod mouse;
+mod output;
 pub mod overlay;
 pub mod prelude;
 pub mod probe;
@@ -128,18 +129,23 @@ pub use dock::{DockEdge, DockLayout, DockPlacement, DockSpec, DockState};
 pub use event::{Event, EventFlow, InputOutcome, Key, KeyCode, Mouse, MouseButton, MouseKind};
 pub use geometry::{Padding, Size};
 pub use host::{
-    TerminalSession, paint, paint_scene, paint_with_context, paint_with_sheet, translate_event,
+    MouseCapture, TerminalSession, TerminalSessionConfig, paint, paint_scene, paint_with_context,
+    paint_with_sheet, translate_event,
 };
-pub use layout::{Align, Dimension, Direction, Justify, LayoutStyle};
+pub use layout::{
+    Align, AlignContent, Dimension, Direction, FlexItemStyle, FlexLine, FlexWrap, Item, Justify,
+    LayoutResult, LayoutStyle, solve, solve_layout,
+};
+pub use output::{OneShotOptions, render_once, write_once};
 pub use overlay::{Overlay, OverlaySpec, TargetAlign, TargetPlacement, TargetSide};
 #[cfg(feature = "async")]
 pub use runner::AsyncRunner;
-pub use runner::{Runner, RunnerConfig, Signal, UpdateResult};
+pub use runner::{Runner, RunnerAction, RunnerConfig, RunnerCore, Signal, UpdateResult};
 pub use scene::{Backdrop, Scene, SceneOverlay, ScopedScene};
 pub use screen::{ScreenMode, Scrollback};
 pub use style::{SemanticRole, StyleResolver, StyleRole, StyleSheet, Theme};
 pub use surface::Surface;
-pub use view::{Element, RenderCtx, ScopedElement, View, element};
+pub use view::{AvailableSpace, Element, MeasureRequest, RenderCtx, ScopedElement, View, element};
 
 #[cfg(test)]
 mod tests;
