@@ -13,10 +13,10 @@ use crate::style::{StyleSheet, Theme};
 use crate::term::hyperlink::BufferLink;
 use crate::width::grapheme_cols;
 
-use super::Renderers;
 use super::image::{MarkdownImage, image_cell_size};
 use super::item::{MdItem, RichSpan};
 use super::table::render_table_linked;
+use super::{MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer};
 
 /// Trim surrounding whitespace from a cell's span run: the leading edge of the
 /// first span and the trailing edge of the last, dropping any span left empty.
@@ -41,12 +41,12 @@ pub(super) fn spans_cols(spans: &[RichSpan]) -> usize {
 
 /// Flatten parsed items into lines plus [`BufferLink`]s for every hyperlink run
 /// that survived wrapping — labeled markdown links included.
-pub(super) fn flatten_linked(
+pub(super) fn flatten_linked<R: MarkdownBlockRenderer + ?Sized>(
     items: &[MdItem],
     width: u16,
     theme: &Theme,
     sheet: &StyleSheet,
-    renderers: Renderers<'_>,
+    renderers: &R,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let mut images = Vec::new();
     flatten_linked_into(items, width, theme, sheet, renderers, &mut images)
@@ -55,23 +55,23 @@ pub(super) fn flatten_linked(
 /// Flatten into lines and collect the block images reserved, with the row each
 /// landed on, so the [`Markdown`](super::Markdown) view can overlay an [`Image`](crate::components::Image) at the matching
 /// screen rect. A block image reserves `rows` blank lines here.
-pub(super) fn flatten_into(
+pub(super) fn flatten_into<R: MarkdownBlockRenderer + ?Sized>(
     items: &[MdItem],
     width: u16,
     theme: &Theme,
     sheet: &StyleSheet,
-    renderers: Renderers<'_>,
+    renderers: &R,
     images: &mut Vec<MarkdownImage>,
 ) -> Vec<Line<'static>> {
     flatten_linked_into(items, width, theme, sheet, renderers, images).0
 }
 
-pub(super) fn flatten_linked_into(
+pub(super) fn flatten_linked_into<R: MarkdownBlockRenderer + ?Sized>(
     items: &[MdItem],
     width: u16,
     theme: &Theme,
     sheet: &StyleSheet,
-    renderers: Renderers<'_>,
+    renderers: &R,
     images: &mut Vec<MarkdownImage>,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let mut out = Vec::new();
@@ -107,9 +107,10 @@ pub(super) fn flatten_linked_into(
                 indent,
             } => {
                 let avail = width.saturating_sub(*indent).max(1);
-                let rendered = renderers
-                    .fenced
-                    .and_then(|renderer| renderer.render(language, source, avail, theme));
+                let rendered = renderers.render(
+                    MarkdownBlock::Fenced { language, source },
+                    MarkdownBlockContext::new(avail, theme, sheet),
+                );
                 for line in rendered.as_ref().unwrap_or(fallback) {
                     out.push(prefix_rendered_line(*indent, line));
                 }
@@ -132,10 +133,10 @@ pub(super) fn flatten_linked_into(
             // all HTML before the seam existed.
             MdItem::Html { source, indent } => {
                 let avail = width.saturating_sub(*indent).max(1);
-                if let Some(rendered) = renderers
-                    .html
-                    .and_then(|renderer| renderer.render(source, avail, theme, sheet))
-                {
+                if let Some(rendered) = renderers.render(
+                    MarkdownBlock::Html { source },
+                    MarkdownBlockContext::new(avail, theme, sheet),
+                ) {
                     for line in &rendered {
                         out.push(prefix_rendered_line(*indent, line));
                     }

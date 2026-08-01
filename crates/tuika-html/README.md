@@ -9,9 +9,9 @@ crate exists separately.
 
 ## In Markdown
 
-`HtmlRenderer` implements both of tuika's markdown seams: `HtmlBlockRenderer`
-for raw `<details>` / `<table>` / `<div>` blocks, and `FencedBlockRenderer` for
-` ```html ` fences.
+`HtmlRenderer` implements tuika's `MarkdownBlockRenderer` seam. One value
+handles raw `<details>` / `<table>` / `<div>` blocks and ` ```html ` fences,
+using the same active stylesheet for both.
 
 ```rust
 use tuika::components::Markdown;
@@ -19,7 +19,6 @@ use tuika_html::HtmlRenderer;
 
 let html = HtmlRenderer::new();
 let document = Markdown::new("<details><summary>Notes</summary>Body</details>")
-    .html_renderer(&html)
     .block_renderer(&html);
 # let _ = document;
 ```

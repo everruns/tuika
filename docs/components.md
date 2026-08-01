@@ -155,7 +155,7 @@ definition lists, block quotes, `<pre>`, `<hr>`, `<table>`,
 resolves a `StyleSheet` role, so HTML inherits the app's theme like everything
 else. No CSS — this renders content, not pages. Ships in the companion crate
 [`tuika-html`](../crates/tuika-html/), which also supplies the
-`HtmlBlockRenderer` that lays out HTML blocks inside
+`MarkdownBlockRenderer` that lays out HTML blocks inside
 [Markdown](markdown.md#block-html).
 [API](https://docs.rs/tuika-html/latest/tuika_html/struct.Html.html)
 

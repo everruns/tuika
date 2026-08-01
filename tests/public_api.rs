@@ -198,14 +198,15 @@ fn component_modules_own_their_constants_and_free_functions() {
     assert_eq!(text::wrap_lines(&[], 10).len(), 0);
 
     struct Blocks;
-    impl FencedBlockRenderer for Blocks {
+    impl MarkdownBlockRenderer for Blocks {
         fn render(
             &self,
-            language: &str,
-            _source: &str,
-            _width: u16,
-            _theme: &Theme,
+            block: MarkdownBlock<'_>,
+            _context: MarkdownBlockContext<'_>,
         ) -> Option<Vec<ratatui_core::text::Line<'static>>> {
+            let MarkdownBlock::Fenced { language, .. } = block else {
+                return None;
+            };
             (language == "demo").then(|| vec![ratatui_core::text::Line::raw("rendered")])
         }
     }
@@ -223,17 +224,16 @@ fn component_modules_own_their_constants_and_free_functions() {
         "rendered"
     );
 
-    // Both seams reach markdown through one `Renderers` value.
+    // Independent block parsers compose through one ordered `Renderers` value.
     struct Html;
-    impl HtmlBlockRenderer for Html {
+    impl MarkdownBlockRenderer for Html {
         fn render(
             &self,
-            _source: &str,
-            _width: u16,
-            _theme: &Theme,
-            _sheet: &StyleSheet,
+            block: MarkdownBlock<'_>,
+            _context: MarkdownBlockContext<'_>,
         ) -> Option<Vec<ratatui_core::text::Line<'static>>> {
-            Some(vec![ratatui_core::text::Line::raw("html")])
+            matches!(block, MarkdownBlock::Html { .. })
+                .then(|| vec![ratatui_core::text::Line::raw("html")])
         }
     }
     let lines = markdown::to_lines_with(
@@ -242,7 +242,7 @@ fn component_modules_own_their_constants_and_free_functions() {
         &theme,
         &sheet,
         plain,
-        markdown::Renderers::new().fenced(&Blocks).html(&Html),
+        markdown::Renderers::new().renderer(&Blocks).renderer(&Html),
     );
     let rendered: Vec<String> = lines
         .iter()

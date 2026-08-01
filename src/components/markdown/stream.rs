@@ -10,11 +10,11 @@ use ratatui_core::text::Line;
 use crate::highlight::CodeHighlighter;
 use crate::style::{StyleSheet, Theme};
 
+use super::MarkdownBlockRenderer;
 use super::flatten::flatten_into;
 use super::image::{ImageResolver, MarkdownImage};
 use super::item::MdItem;
 use super::parse::parse_with;
-use super::{FencedBlockRenderer, HtmlBlockRenderer, Renderers};
 
 /// Byte offset of the last *stable block boundary* in `source[from..]`, in
 /// absolute bytes: the position just past the last blank line that sits outside
@@ -90,10 +90,8 @@ pub struct MarkdownState {
     rendered_width: Option<u16>,
     /// Optional host hook turning image URLs into pixels; off ⇒ text placeholders.
     resolver: Option<Box<dyn ImageResolver>>,
-    /// Optional host hook replacing recognized fenced blocks with rendered lines.
-    block_renderer: Option<Box<dyn FencedBlockRenderer>>,
-    /// Optional host hook laying out raw block-level HTML.
-    html_renderer: Option<Box<dyn HtmlBlockRenderer>>,
+    /// Ordered host hooks parsing and laying out structured blocks.
+    block_renderers: Vec<Box<dyn MarkdownBlockRenderer>>,
     /// Block images in the settled prefix, with their absolute `rendered` rows —
     /// accumulated once as blocks settle, mirroring `settled_lines`.
     settled_images: Vec<MarkdownImage>,
@@ -121,38 +119,17 @@ impl MarkdownState {
         self
     }
 
-    /// Render recognized fenced blocks through `renderer`.
+    /// Append a renderer for structured blocks such as fenced diagrams or raw
+    /// block HTML.
     ///
-    /// A renderer returns `None` for languages or inputs it does not handle, and
-    /// markdown preserves the ordinary themed code block in that case.
-    pub fn with_block_renderer(mut self, renderer: Box<dyn FencedBlockRenderer>) -> Self {
-        self.block_renderer = Some(renderer);
+    /// Renderers are consulted in registration order; the first returning
+    /// `Some` owns a block. Call this repeatedly to compose independent
+    /// companion renderers. A settled block is laid out once per width, while
+    /// one still in the streaming tail may be attempted on each frame.
+    pub fn with_block_renderer(mut self, renderer: Box<dyn MarkdownBlockRenderer>) -> Self {
+        self.block_renderers.push(renderer);
         self.reset_cache();
         self
-    }
-
-    /// Lay out raw block-level HTML through `renderer`.
-    ///
-    /// Without one, block HTML is dropped; the presentational *inline* tags
-    /// render either way. Like a fenced block, a settled HTML block is laid out
-    /// once per width, while one still in the streaming tail is re-rendered each
-    /// frame.
-    pub fn with_html_renderer(mut self, renderer: Box<dyn HtmlBlockRenderer>) -> Self {
-        self.html_renderer = Some(renderer);
-        self.reset_cache();
-        self
-    }
-
-    /// The renderers this state consults, as flatten wants them.
-    fn renderers(&self) -> Renderers<'_> {
-        let mut renderers = Renderers::new();
-        if let Some(r) = self.block_renderer.as_deref() {
-            renderers = renderers.fenced(r);
-        }
-        if let Some(r) = self.html_renderer.as_deref() {
-            renderers = renderers.html(r);
-        }
-        renderers
     }
 
     /// The block images reserved by the last [`lines`](Self::lines) call, with
@@ -259,7 +236,7 @@ impl MarkdownState {
                 width,
                 theme,
                 sheet,
-                self.renderers(),
+                self.block_renderers.as_slice(),
                 &mut settled_imgs,
             );
             for mut img in settled_imgs {
@@ -279,7 +256,14 @@ impl MarkdownState {
             self.resolver.as_deref(),
         );
         let mut tail_imgs = Vec::new();
-        let tail_lines = flatten_into(&tail, width, theme, sheet, self.renderers(), &mut tail_imgs);
+        let tail_lines = flatten_into(
+            &tail,
+            width,
+            theme,
+            sheet,
+            self.block_renderers.as_slice(),
+            &mut tail_imgs,
+        );
         // The tail begins just past the boundary's blank line; keep that gap.
         if !self.rendered.is_empty()
             && !tail_lines.is_empty()
@@ -312,7 +296,7 @@ fn is_blank_line(line: &Line) -> bool {
 #[cfg(test)]
 mod tests {
     use super::super::testutil::*;
-    use super::super::{to_lines, to_lines_with};
+    use super::super::{Renderers, to_lines, to_lines_with};
     use super::*;
 
     use crate::style::StyleBundle;
@@ -324,7 +308,7 @@ mod tests {
     use std::cell::Cell;
     use std::rc::Rc;
 
-    use super::super::FencedBlockRenderer;
+    use super::super::{MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer};
 
     #[test]
     fn sheet_change_invalidates_stream_cache() {
@@ -403,17 +387,18 @@ mod tests {
     fn streaming_caches_settled_rendered_blocks_until_resize() {
         struct CountingRenderer(Rc<Cell<usize>>);
 
-        impl FencedBlockRenderer for CountingRenderer {
+        impl MarkdownBlockRenderer for CountingRenderer {
             fn render(
                 &self,
-                language: &str,
-                _source: &str,
-                width: u16,
-                _theme: &Theme,
+                block: MarkdownBlock<'_>,
+                context: MarkdownBlockContext<'_>,
             ) -> Option<Vec<Line<'static>>> {
+                let MarkdownBlock::Fenced { language, .. } = block else {
+                    return None;
+                };
                 (language == "diagram").then(|| {
                     self.0.set(self.0.get() + 1);
-                    vec![Line::raw(format!("width {width}"))]
+                    vec![Line::raw(format!("width {}", context.width))]
                 })
             }
         }
@@ -502,14 +487,15 @@ mod tests {
         // while streaming. That is what lets the cache settle an HTML block at
         // all: the framing does not depend on how much source has arrived.
         struct CountingHtml(Rc<Cell<usize>>);
-        impl HtmlBlockRenderer for CountingHtml {
+        impl MarkdownBlockRenderer for CountingHtml {
             fn render(
                 &self,
-                source: &str,
-                _: u16,
-                _: &Theme,
-                _: &StyleSheet,
+                block: MarkdownBlock<'_>,
+                _: MarkdownBlockContext<'_>,
             ) -> Option<Vec<Line<'static>>> {
+                let MarkdownBlock::Html { source } = block else {
+                    return None;
+                };
                 self.0.set(self.0.get() + 1);
                 Some(vec![Line::from(source.trim().to_string())])
             }
@@ -524,7 +510,7 @@ mod tests {
             &theme,
             &sheet,
             CodeHighlighter::Plain,
-            Renderers::new().html(&CountingHtml(Rc::new(Cell::new(0)))),
+            Renderers::new().renderer(&CountingHtml(Rc::new(Cell::new(0)))),
         )
         .iter()
         .map(text)
@@ -532,7 +518,7 @@ mod tests {
 
         let calls = Rc::new(Cell::new(0));
         let mut state =
-            MarkdownState::new().with_html_renderer(Box::new(CountingHtml(Rc::clone(&calls))));
+            MarkdownState::new().with_block_renderer(Box::new(CountingHtml(Rc::clone(&calls))));
         for ch in full.chars() {
             state.push_str(&ch.to_string());
             let _ = state.lines(40, &theme, &sheet, CodeHighlighter::Plain);

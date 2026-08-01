@@ -55,20 +55,17 @@ block-HTML seam.
   parser: this is a fixed tag whitelist, so anything outside it — block-level
   HTML, `<script>`, unlisted attributes — is dropped as before, and never echoed
   as literal markup.
-- **`HtmlBlockRenderer`, the block-HTML seam.** Raw block-level HTML
-  (`<details>`, `<table>`, `<div>`) is handed to a host-supplied renderer with
-  the source, the available width, the theme, and the active `StyleSheet`;
-  returning `None` drops the block, which is the previous behavior. The parser
-  stays out of tuika — [`tuika-html`](https://crates.io/crates/tuika-html) is
-  the ready-made implementation. Reachable as `Markdown::html_renderer`,
-  `MarkdownState::with_html_renderer`, and `markdown::Renderers`.
+- **One structured markdown block seam.** `MarkdownBlockRenderer` receives a
+  non-exhaustive `MarkdownBlock` descriptor (`Fenced` or `Html`) and a shared
+  `MarkdownBlockContext` containing width, theme, and the active stylesheet.
+  `Markdown::block_renderer` and `MarkdownState::with_block_renderer` append to
+  an ordered renderer chain, so Mermaid, HTML, and host-defined block parsers
+  compose without adding another trait or field for every syntax.
 - `tuika-html` bounds nesting on the source before parsing, so a fragment deep
   enough to overflow html5ever's recursive tree building is refused rather than
   crashing the host.
-- **`markdown::Renderers`** bundles the fenced-block and HTML-block seams into
-  one value, with `markdown::to_lines_with` / `to_linked_lines_with` taking it.
-  The existing `to_lines_with_renderer` / `to_linked_lines_with_renderer` are
-  unchanged.
+- **`markdown::Renderers`** builds the same ordered block-renderer chain for
+  `markdown::to_lines_with` / `to_linked_lines_with`.
 - `ProgressBar::label` draws a centered, clipped caption over determinate and
   indeterminate bars.
 - `Scroll::wrap(true)` reflows owned styled lines at render width before
@@ -90,6 +87,12 @@ block-HTML seam.
 
 ### Changed
 
+- **Breaking:** `FencedBlockRenderer` and `HtmlBlockRenderer` are replaced by
+  `MarkdownBlockRenderer`. Match on `MarkdownBlock`, read width/theme/sheet from
+  `MarkdownBlockContext`, register every implementation through
+  `block_renderer`, and build free-function chains with
+  `Renderers::new().renderer(&first).renderer(&second)`. HTML fences now receive
+  the host's active stylesheet instead of synthesizing theme defaults.
 - **Breaking:** keymap character specs are now explicitly logical text. Write
   the character produced by the active layout (`A`, `?`, `ctrl+R`) rather than
   `shift+a` or `shift+/`; `Shift` remains valid for non-character chords such as

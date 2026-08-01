@@ -66,140 +66,151 @@ pub use view::Markdown;
 use flatten::flatten_linked;
 use parse::parse;
 
-/// Replaces a fenced code block with width-aware rendered lines.
+/// A parsed block whose presentation may be supplied outside tuika.
 ///
-/// This is the extension seam for languages whose presentation is more than
-/// syntax coloring: diagrams, mathematical notation, query plans, and similar
-/// block content. Implementations inspect `language` and return `None` when they
-/// do not handle it (or when rendering fails); markdown then falls back to the
-/// ordinary themed [`CodeBlock`](crate::components::CodeBlock).
+/// The descriptor is width-independent: parsing identifies the block and keeps
+/// its source; layout happens later through [`MarkdownBlockRenderer`]. This is
+/// what lets [`MarkdownState`] cache settled parsing across resizes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum MarkdownBlock<'a> {
+    /// A fenced code block, including its first info-string word as `language`.
+    Fenced {
+        /// The first word of the fence info string, or empty.
+        language: &'a str,
+        /// The verbatim fence body.
+        source: &'a str,
+    },
+    /// One raw block-level HTML run as framed by pulldown-cmark.
+    Html {
+        /// The raw HTML run.
+        source: &'a str,
+    },
+}
+
+impl<'a> MarkdownBlock<'a> {
+    /// The verbatim source carried by this block.
+    pub fn source(self) -> &'a str {
+        match self {
+            Self::Fenced { source, .. } | Self::Html { source } => source,
+        }
+    }
+}
+
+/// Render-time facts shared by every markdown block renderer.
+#[derive(Clone, Copy)]
+#[non_exhaustive]
+pub struct MarkdownBlockContext<'a> {
+    /// Columns available after markdown nesting indentation.
+    pub width: u16,
+    /// The active color theme.
+    pub theme: &'a Theme,
+    /// The active semantic stylesheet.
+    pub sheet: &'a StyleSheet,
+}
+
+impl<'a> MarkdownBlockContext<'a> {
+    /// A block context using the host's complete active styling policy.
+    pub const fn new(width: u16, theme: &'a Theme, sheet: &'a StyleSheet) -> Self {
+        Self {
+            width,
+            theme,
+            sheet,
+        }
+    }
+}
+
+/// Parses and lays out host-defined presentations for structured markdown blocks.
 ///
-/// Renderers should be deterministic for `(language, source, width, theme)`.
-/// [`MarkdownState`] caches settled blocks and calls the renderer again only
-/// when a block is still streaming, the width changes, or the theme changes.
-pub trait FencedBlockRenderer {
-    /// Render a fenced block, or return `None` to use the normal code-block
-    /// presentation.
+/// One contract covers every block that needs a dependency kept outside core:
+/// fenced diagrams, mathematical notation, raw block HTML, query plans, and
+/// future parsed block forms. Implementations inspect [`MarkdownBlock`] and
+/// return `None` when they do not handle it or parsing fails. Renderer chains
+/// try each implementation in order.
+///
+/// An unhandled fence keeps the ordinary themed
+/// [`CodeBlock`](crate::components::CodeBlock) fallback. Unhandled block HTML is
+/// dropped, matching markdown's behavior without an HTML parser.
+/// Implementations should be deterministic, perform no I/O, bound work and
+/// output for untrusted source, and never emit control bytes into cells.
+pub trait MarkdownBlockRenderer {
+    /// Render `block` at the current width and styling context.
     fn render(
         &self,
-        language: &str,
-        source: &str,
-        width: u16,
-        theme: &Theme,
+        block: MarkdownBlock<'_>,
+        context: MarkdownBlockContext<'_>,
     ) -> Option<Vec<Line<'static>>>;
 }
 
-/// Lays out a raw block-level HTML run (`<details>`, `<table>`, `<div>`, …).
+/// An ordered chain of host-supplied markdown block renderers.
 ///
-/// Markdown's own HTML support stops at the presentational *inline* tags, which
-/// need no parser. Block HTML does need one, and an HTML parser is exactly the
-/// kind of dependency tuika keeps out of the crate — so it is a seam, like
-/// [`FencedBlockRenderer`] and [`ImageResolver`] before it. `source` is the
-/// verbatim run pulldown-cmark reported, `width` the columns available at this
-/// block's indentation. Returning `None` drops the block, which is what markdown
-/// did with all block HTML before a renderer could be attached.
-///
-/// Implementations should be deterministic for `(source, width, theme, sheet)`, must
-/// not perform I/O, and are handed **untrusted** markup: bound the work and the
-/// output, and never emit control bytes into the cells.
-/// [`tuika-html`](https://crates.io/crates/tuika-html) is the batteries-included
-/// implementation.
-///
-/// Note that pulldown-cmark ends an HTML block at a blank line, so one element
-/// with blank lines inside arrives as several calls.
-///
-/// With [`tuika-html`](https://crates.io/crates/tuika-html) attached, the
-/// `<details>`, its nested `<ul>`, and the `<table>` below are raw HTML inside
-/// an otherwise ordinary markdown document:
-///
-/// ![HTML blocks in markdown](https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-html/examples/html_markdown/html.png)
+/// The first renderer returning `Some` owns the block. The chain stores borrowed
+/// renderer references and lets unrelated companion crates compose:
 ///
 /// ```
-/// use ratatui_core::text::{Line, Span};
-/// use tuika::components::HtmlBlockRenderer;
-/// use tuika::style::{StyleSheet, Theme};
-///
-/// /// A renderer that shows `<details>` as a collapsed summary line.
-/// struct Details;
-///
-/// impl HtmlBlockRenderer for Details {
-///     fn render(
-///         &self,
-///         source: &str,
-///         _width: u16,
-///         _theme: &Theme,
-///         sheet: &StyleSheet,
-///     ) -> Option<Vec<Line<'static>>> {
-///         let summary = source.split("<summary>").nth(1)?.split('<').next()?;
-///         let style = sheet.heading.to_style();
-///         Some(vec![Line::from(Span::styled(format!("▸ {summary}"), style))])
-///     }
-/// }
-///
-/// let theme = Theme::default();
-/// let sheet = StyleSheet::from_theme(&theme);
-/// let lines = tuika::components::markdown::to_lines_with(
-///     "<details><summary>Notes</summary>Body</details>",
-///     40,
-///     &theme,
-///     &sheet,
-///     tuika::highlight::CodeHighlighter::Plain,
-///     tuika::components::Renderers::new().html(&Details),
-/// );
-/// assert_eq!(lines[0].spans[0].content, "▸ Notes");
-/// ```
-///
-/// See the [markdown guide](https://github.com/everruns/tuika/blob/main/docs/markdown.md#block-html).
-pub trait HtmlBlockRenderer {
-    /// Render a block of raw HTML, or return `None` to drop it.
-    ///
-    /// `sheet` is the active stylesheet, so an implementation resolves its
-    /// headings, links, and code through the same roles the surrounding markdown
-    /// does instead of inventing colors.
-    fn render(
-        &self,
-        source: &str,
-        width: u16,
-        theme: &Theme,
-        sheet: &StyleSheet,
-    ) -> Option<Vec<Line<'static>>>;
-}
-
-/// The host-supplied renderers a markdown render may consult.
-///
-/// Both are optional and independent; the default consults neither, which is
-/// the plain CommonMark rendering.
-///
-/// ```
-/// # use tuika::components::markdown::Renderers;
-/// # fn f(fenced: &dyn tuika::components::FencedBlockRenderer) {
-/// let renderers = Renderers::new().fenced(fenced);
+/// # use tuika::components::{MarkdownBlockRenderer, Renderers};
+/// # fn f(mermaid: &dyn MarkdownBlockRenderer, html: &dyn MarkdownBlockRenderer) {
+/// let renderers = Renderers::new().renderer(mermaid).renderer(html);
 /// # let _ = renderers;
 /// # }
 /// ```
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone)]
 pub struct Renderers<'a> {
-    fenced: Option<&'a dyn FencedBlockRenderer>,
-    html: Option<&'a dyn HtmlBlockRenderer>,
+    blocks: Vec<&'a dyn MarkdownBlockRenderer>,
 }
 
 impl<'a> Renderers<'a> {
-    /// No renderers: fenced blocks keep the themed code presentation, and block
-    /// HTML is dropped.
-    pub fn new() -> Self {
-        Self::default()
+    /// No structured block renderers.
+    pub const fn new() -> Self {
+        Self { blocks: Vec::new() }
     }
 
-    /// Render recognized fenced blocks through `renderer`.
-    pub fn fenced(mut self, renderer: &'a dyn FencedBlockRenderer) -> Self {
-        self.fenced = Some(renderer);
+    /// Append `renderer` to the ordered chain.
+    pub fn renderer(mut self, renderer: &'a dyn MarkdownBlockRenderer) -> Self {
+        self.blocks.push(renderer);
         self
     }
 
-    /// Render raw block-level HTML through `renderer`.
-    pub fn html(mut self, renderer: &'a dyn HtmlBlockRenderer) -> Self {
-        self.html = Some(renderer);
-        self
+    fn render_block(
+        &self,
+        block: MarkdownBlock<'_>,
+        context: MarkdownBlockContext<'_>,
+    ) -> Option<Vec<Line<'static>>> {
+        self.blocks
+            .iter()
+            .find_map(|renderer| renderer.render(block, context))
+    }
+}
+
+impl MarkdownBlockRenderer for Renderers<'_> {
+    fn render(
+        &self,
+        block: MarkdownBlock<'_>,
+        context: MarkdownBlockContext<'_>,
+    ) -> Option<Vec<Line<'static>>> {
+        self.render_block(block, context)
+    }
+}
+
+impl MarkdownBlockRenderer for [&dyn MarkdownBlockRenderer] {
+    fn render(
+        &self,
+        block: MarkdownBlock<'_>,
+        context: MarkdownBlockContext<'_>,
+    ) -> Option<Vec<Line<'static>>> {
+        self.iter()
+            .find_map(|renderer| renderer.render(block, context))
+    }
+}
+
+impl MarkdownBlockRenderer for [Box<dyn MarkdownBlockRenderer>] {
+    fn render(
+        &self,
+        block: MarkdownBlock<'_>,
+        context: MarkdownBlockContext<'_>,
+    ) -> Option<Vec<Line<'static>>> {
+        self.iter()
+            .find_map(|renderer| renderer.render(block, context))
     }
 }
 
@@ -217,17 +228,18 @@ pub fn to_lines(
     to_linked_lines(source, width, theme, sheet, highlighter).0
 }
 
-/// Render markdown with a host-supplied fenced-block renderer.
+/// Render markdown with one host-supplied structured-block renderer.
 ///
-/// The renderer can replace any language fence with width-aware lines; returning
-/// `None` preserves the ordinary [`CodeBlock`](crate::components::CodeBlock).
+/// The renderer may handle fenced or raw HTML blocks. Returning `None` preserves
+/// the ordinary [`CodeBlock`](crate::components::CodeBlock) fallback for a fence
+/// and drops raw block HTML.
 pub fn to_lines_with_renderer(
     source: &str,
     width: u16,
     theme: &Theme,
     sheet: &StyleSheet,
     highlighter: CodeHighlighter,
-    block_renderer: &dyn FencedBlockRenderer,
+    block_renderer: &dyn MarkdownBlockRenderer,
 ) -> Vec<Line<'static>> {
     to_lines_with(
         source,
@@ -235,12 +247,11 @@ pub fn to_lines_with_renderer(
         theme,
         sheet,
         highlighter,
-        Renderers::new().fenced(block_renderer),
+        Renderers::new().renderer(block_renderer),
     )
 }
 
-/// Render markdown with any combination of host-supplied [`Renderers`] — a
-/// fenced-block renderer, an HTML-block renderer, or both.
+/// Render markdown with an ordered chain of host-supplied [`Renderers`].
 pub fn to_lines_with(
     source: &str,
     width: u16,
@@ -265,17 +276,24 @@ pub fn to_linked_lines(
     sheet: &StyleSheet,
     highlighter: CodeHighlighter,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
-    to_linked_lines_with(source, width, theme, sheet, highlighter, Renderers::new())
+    to_linked_lines_with(
+        source,
+        width,
+        theme,
+        sheet,
+        highlighter,
+        Renderers::default(),
+    )
 }
 
-/// Like [`to_linked_lines`], with a host-supplied [`FencedBlockRenderer`].
+/// Like [`to_linked_lines`], with a host-supplied [`MarkdownBlockRenderer`].
 pub fn to_linked_lines_with_renderer(
     source: &str,
     width: u16,
     theme: &Theme,
     sheet: &StyleSheet,
     highlighter: CodeHighlighter,
-    block_renderer: &dyn FencedBlockRenderer,
+    block_renderer: &dyn MarkdownBlockRenderer,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     to_linked_lines_with(
         source,
@@ -283,7 +301,7 @@ pub fn to_linked_lines_with_renderer(
         theme,
         sheet,
         highlighter,
-        Renderers::new().fenced(block_renderer),
+        Renderers::new().renderer(block_renderer),
     )
 }
 
@@ -298,7 +316,7 @@ pub fn to_linked_lines_with(
     renderers: Renderers<'_>,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let items = parse(source, theme, sheet, highlighter);
-    flatten_linked(&items, width, theme, sheet, renderers)
+    flatten_linked(&items, width, theme, sheet, &renderers)
 }
 
 #[cfg(test)]
@@ -511,18 +529,19 @@ mod tests {
 
     struct DiagramRenderer;
 
-    impl FencedBlockRenderer for DiagramRenderer {
+    impl MarkdownBlockRenderer for DiagramRenderer {
         fn render(
             &self,
-            language: &str,
-            source: &str,
-            width: u16,
-            theme: &Theme,
+            block: MarkdownBlock<'_>,
+            context: MarkdownBlockContext<'_>,
         ) -> Option<Vec<Line<'static>>> {
+            let MarkdownBlock::Fenced { language, source } = block else {
+                return None;
+            };
             (language == "diagram").then(|| {
                 vec![Line::from(Span::styled(
-                    format!("rendered at {width}: {source}"),
-                    ratatui_core::style::Style::default().fg(theme.accent),
+                    format!("rendered at {}: {source}", context.width),
+                    ratatui_core::style::Style::default().fg(context.theme.accent),
                 ))]
             })
         }
@@ -566,6 +585,50 @@ mod tests {
             output.iter().any(|line| line.contains("fn main()")),
             "{output:?}"
         );
+    }
+
+    #[test]
+    fn fenced_block_renderer_receives_the_active_stylesheet() {
+        use ratatui_core::style::Color;
+
+        struct StyledFence;
+        impl MarkdownBlockRenderer for StyledFence {
+            fn render(
+                &self,
+                block: MarkdownBlock<'_>,
+                context: MarkdownBlockContext<'_>,
+            ) -> Option<Vec<Line<'static>>> {
+                matches!(
+                    block,
+                    MarkdownBlock::Fenced {
+                        language: "styled",
+                        ..
+                    }
+                )
+                .then(|| {
+                    vec![Line::from(Span::styled(
+                        "styled",
+                        context.sheet.heading.to_style(),
+                    ))]
+                })
+            }
+        }
+
+        let theme = Theme::default();
+        let sheet = StyleSheet {
+            heading: StyleBundle::new().fg(Color::Green),
+            ..StyleSheet::from_theme(&theme)
+        };
+        let lines = to_lines_with_renderer(
+            "```styled\nsource\n```",
+            20,
+            &theme,
+            &sheet,
+            CodeHighlighter::Plain,
+            &StyledFence,
+        );
+
+        assert_eq!(lines[0].spans[0].style.fg, Some(Color::Green));
     }
 
     #[test]
@@ -846,19 +909,20 @@ mod tests {
     /// Renders any HTML block as one line quoting its source and the width.
     struct EchoHtml;
 
-    impl HtmlBlockRenderer for EchoHtml {
+    impl MarkdownBlockRenderer for EchoHtml {
         fn render(
             &self,
-            source: &str,
-            width: u16,
-            theme: &Theme,
-            _: &StyleSheet,
+            block: MarkdownBlock<'_>,
+            context: MarkdownBlockContext<'_>,
         ) -> Option<Vec<Line<'static>>> {
+            let MarkdownBlock::Html { source } = block else {
+                return None;
+            };
             let text = source.split_whitespace().collect::<Vec<_>>().join(" ");
             (!text.is_empty()).then(|| {
                 vec![Line::from(Span::styled(
-                    format!("[{width}] {text}"),
-                    ratatui_core::style::Style::default().fg(theme.accent),
+                    format!("[{}] {text}", context.width),
+                    ratatui_core::style::Style::default().fg(context.theme.accent),
                 ))]
             })
         }
@@ -872,7 +936,7 @@ mod tests {
             &theme,
             &StyleSheet::from_theme(&theme),
             CodeHighlighter::Plain,
-            Renderers::new().html(&EchoHtml),
+            Renderers::new().renderer(&EchoHtml),
         )
         .iter()
         .map(text)
@@ -880,7 +944,7 @@ mod tests {
     }
 
     #[test]
-    fn html_block_renderer_lays_out_raw_html() {
+    fn structured_block_renderer_lays_out_raw_html() {
         let out = with_html(
             "before\n\n<details><summary>S</summary>body</details>\n\nafter",
             40,
@@ -918,15 +982,13 @@ mod tests {
     }
 
     #[test]
-    fn html_renderer_returning_none_drops_the_block() {
+    fn block_renderer_returning_none_drops_html() {
         struct Decline;
-        impl HtmlBlockRenderer for Decline {
+        impl MarkdownBlockRenderer for Decline {
             fn render(
                 &self,
-                _: &str,
-                _: u16,
-                _: &Theme,
-                _: &StyleSheet,
+                _: MarkdownBlock<'_>,
+                _: MarkdownBlockContext<'_>,
             ) -> Option<Vec<Line<'static>>> {
                 None
             }
@@ -938,7 +1000,7 @@ mod tests {
             &theme,
             &StyleSheet::from_theme(&theme),
             CodeHighlighter::Plain,
-            Renderers::new().html(&Decline),
+            Renderers::new().renderer(&Decline),
         )
         .iter()
         .map(text)
@@ -948,7 +1010,7 @@ mod tests {
     }
 
     #[test]
-    fn both_renderers_compose() {
+    fn independent_block_renderers_compose() {
         let theme = Theme::default();
         let out: Vec<String> = to_lines_with(
             "```diagram\nA --> B\n```\n\n<div>html</div>",
@@ -956,13 +1018,43 @@ mod tests {
             &theme,
             &StyleSheet::from_theme(&theme),
             CodeHighlighter::Plain,
-            Renderers::new().fenced(&DiagramRenderer).html(&EchoHtml),
+            Renderers::new()
+                .renderer(&DiagramRenderer)
+                .renderer(&EchoHtml),
         )
         .iter()
         .map(text)
         .collect();
         assert!(out.iter().any(|l| l.contains("rendered at 37")), "{out:?}");
         assert!(out.iter().any(|l| l.contains("[37] <div>html")), "{out:?}");
+    }
+
+    #[test]
+    fn renderer_chain_uses_the_first_handler() {
+        struct Named(&'static str);
+        impl MarkdownBlockRenderer for Named {
+            fn render(
+                &self,
+                block: MarkdownBlock<'_>,
+                _: MarkdownBlockContext<'_>,
+            ) -> Option<Vec<Line<'static>>> {
+                matches!(block, MarkdownBlock::Html { .. }).then(|| vec![Line::raw(self.0)])
+            }
+        }
+
+        let theme = Theme::default();
+        let first = Named("first");
+        let second = Named("second");
+        let out = to_lines_with(
+            "<div>html</div>",
+            20,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+            Renderers::new().renderer(&first).renderer(&second),
+        );
+
+        assert_eq!(text(&out[0]), "first");
     }
 
     #[test]

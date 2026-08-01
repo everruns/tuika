@@ -16,10 +16,10 @@ use crate::term::hyperlink::{BufferLink, LinkPolicy, apply_buffer_links};
 use crate::term::image::{ImageLayer, ImageSupport};
 use crate::view::{RenderCtx, View};
 
+use super::MarkdownBlockRenderer;
 use super::flatten::flatten_linked_into;
 use super::image::{ImageResolver, MarkdownImage};
 use super::parse::parse_with;
-use super::{FencedBlockRenderer, HtmlBlockRenderer, Renderers};
 
 /// A view that renders a static markdown string to its area — word-wrapping
 /// prose to the width and drawing code and tables verbatim.
@@ -36,7 +36,7 @@ use super::{FencedBlockRenderer, HtmlBlockRenderer, Renderers};
 ///
 /// ![markdown inline HTML demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/markdown_html.png)
 ///
-/// Block-level HTML is a seam — see [`html_renderer`](Self::html_renderer).
+/// Block-level HTML is a seam handled by [`block_renderer`](Self::block_renderer).
 ///
 /// GFM tables are laid out to the render width, cells keeping their inline
 /// styles, emoji, and links:
@@ -49,8 +49,7 @@ use super::{FencedBlockRenderer, HtmlBlockRenderer, Renderers};
 /// | --- | --- | --- |
 /// | [`new(source)`](Self::new) | — | the markdown source to render |
 /// | [`highlighter(&h)`](Self::highlighter) | plain | syntax-highlight fenced code |
-/// | [`block_renderer(&r)`](Self::block_renderer) | off | replace recognized fences with rendered blocks |
-/// | [`html_renderer(&r)`](Self::html_renderer) | off | lay out raw block-level HTML |
+/// | [`block_renderer(&r)`](Self::block_renderer) | off | append a structured block renderer |
 /// | [`images(&r, s, &l)`](Self::images) | off | render `![alt](url)` as real pixels |
 /// | [`link_policy(p)`](Self::link_policy) | [`LinkPolicy::WEB`] | OSC 8 schemes for links |
 ///
@@ -63,8 +62,7 @@ use super::{FencedBlockRenderer, HtmlBlockRenderer, Renderers};
 pub struct Markdown<'a> {
     source: String,
     highlighter: CodeHighlighter<'a>,
-    block_renderer: Option<&'a dyn FencedBlockRenderer>,
-    html_renderer: Option<&'a dyn HtmlBlockRenderer>,
+    block_renderers: Vec<&'a dyn MarkdownBlockRenderer>,
     resolver: Option<&'a dyn ImageResolver>,
     image_support: ImageSupport,
     image_layer: Option<ImageLayer>,
@@ -79,8 +77,7 @@ impl<'a> Markdown<'a> {
         Self {
             source: source.into(),
             highlighter: CodeHighlighter::Plain,
-            block_renderer: None,
-            html_renderer: None,
+            block_renderers: Vec::new(),
             resolver: None,
             image_support: ImageSupport::None,
             image_layer: None,
@@ -94,24 +91,15 @@ impl<'a> Markdown<'a> {
         self
     }
 
-    /// Render recognized fenced code blocks through `renderer`.
+    /// Append a renderer for structured blocks such as fenced diagrams or raw
+    /// block HTML.
     ///
-    /// The renderer receives the current viewport width. Returning `None` leaves
-    /// a fence in the ordinary themed code-block presentation.
-    pub fn block_renderer(mut self, renderer: &'a dyn FencedBlockRenderer) -> Self {
-        self.block_renderer = Some(renderer);
-        self
-    }
-
-    /// Render raw block-level HTML (`<details>`, `<table>`, `<div>`, …) through
-    /// `renderer`.
-    ///
-    /// Without one, block HTML is dropped; the presentational *inline* tags
-    /// (`<b>`, `<a>`, `<br>`, …) render either way and need no renderer.
-    ///
-    /// ![HTML blocks in markdown](https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-html/examples/html_markdown/html.png)
-    pub fn html_renderer(mut self, renderer: &'a dyn HtmlBlockRenderer) -> Self {
-        self.html_renderer = Some(renderer);
+    /// Renderers are consulted in registration order; the first returning
+    /// `Some` owns the block. Returning `None` leaves a fence in the ordinary
+    /// themed code-block presentation and drops raw block HTML. Call this
+    /// repeatedly to compose independent companion renderers.
+    pub fn block_renderer(mut self, renderer: &'a dyn MarkdownBlockRenderer) -> Self {
+        self.block_renderers.push(renderer);
         self
     }
 
@@ -154,15 +142,14 @@ impl<'a> Markdown<'a> {
     ) -> (Vec<Line<'static>>, Vec<MarkdownImage>, Vec<BufferLink>) {
         let items = parse_with(&self.source, theme, sheet, self.highlighter, self.resolver);
         let mut images = Vec::new();
-        let mut renderers = Renderers::new();
-        if let Some(r) = self.block_renderer {
-            renderers = renderers.fenced(r);
-        }
-        if let Some(r) = self.html_renderer {
-            renderers = renderers.html(r);
-        }
-        let (lines, links) =
-            flatten_linked_into(&items, width, theme, sheet, renderers, &mut images);
+        let (lines, links) = flatten_linked_into(
+            &items,
+            width,
+            theme,
+            sheet,
+            self.block_renderers.as_slice(),
+            &mut images,
+        );
         (lines, images, links)
     }
 }
@@ -228,7 +215,7 @@ impl View for Markdown<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::HtmlBlockRenderer;
+    use crate::components::{MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer};
     use crate::style::StyleBundle;
     use crate::testing::{grid, render_with_sheet};
     use ratatui_core::style::Color;
@@ -236,15 +223,18 @@ mod tests {
 
     struct ContextBlock;
 
-    impl HtmlBlockRenderer for ContextBlock {
+    impl MarkdownBlockRenderer for ContextBlock {
         fn render(
             &self,
-            _source: &str,
-            _width: u16,
-            theme: &Theme,
-            sheet: &StyleSheet,
+            block: MarkdownBlock<'_>,
+            context: MarkdownBlockContext<'_>,
         ) -> Option<Vec<Line<'static>>> {
-            if theme.accent == Color::Cyan && sheet.heading.fg == Some(Color::Magenta) {
+            if !matches!(block, MarkdownBlock::Html { .. }) {
+                return None;
+            }
+            if context.theme.accent == Color::Cyan
+                && context.sheet.heading.fg == Some(Color::Magenta)
+            {
                 Some(vec![
                     Line::from(Span::raw("alpha")),
                     Line::from(Span::raw("beta")),
@@ -267,7 +257,7 @@ mod tests {
             ..StyleSheet::from_theme(&theme)
         };
         let renderer = ContextBlock;
-        let view = Markdown::new("<div>context</div>").html_renderer(&renderer);
+        let view = Markdown::new("<div>context</div>").block_renderer(&renderer);
         let ctx = RenderCtx::new(&theme).with_sheet(sheet);
 
         assert_eq!(view.measure(Size::new(10, 10), &ctx), Size::new(5, 3));

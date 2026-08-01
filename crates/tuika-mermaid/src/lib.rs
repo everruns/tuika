@@ -2,7 +2,7 @@
 //! [`tuika::components::Markdown`].
 //!
 //! [`MermaidRenderer`] adapts mmdflux's Unicode text output to tuika's generic
-//! [`FencedBlockRenderer`] seam. It
+//! [`MarkdownBlockRenderer`] seam. It
 //! handles `mermaid` fences and returns `None` for every other language or for
 //! Mermaid input mmdflux cannot render, preserving tuika's ordinary code-block
 //! fallback.
@@ -11,7 +11,7 @@ use mmdflux::{OutputFormat, RenderConfig, TextColorMode, render_diagram};
 use ratatui_core::style::Style;
 use ratatui_core::text::{Line, Span};
 use tuika::Theme;
-use tuika::components::FencedBlockRenderer;
+use tuika::components::{MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer};
 
 /// Upper bound for one Mermaid fence handed to mmdflux.
 const MAX_SOURCE_BYTES: usize = 64 * 1024;
@@ -32,14 +32,15 @@ impl MermaidRenderer {
     }
 }
 
-impl FencedBlockRenderer for MermaidRenderer {
+impl MarkdownBlockRenderer for MermaidRenderer {
     fn render(
         &self,
-        language: &str,
-        source: &str,
-        _width: u16,
-        theme: &Theme,
+        block: MarkdownBlock<'_>,
+        context: MarkdownBlockContext<'_>,
     ) -> Option<Vec<Line<'static>>> {
+        let MarkdownBlock::Fenced { language, source } = block else {
+            return None;
+        };
         if !language.eq_ignore_ascii_case("mermaid") {
             return None;
         }
@@ -58,7 +59,7 @@ impl FencedBlockRenderer for MermaidRenderer {
         Some(
             rendered
                 .lines()
-                .map(|line| styled_line(line, theme))
+                .map(|line| styled_line(line, context.theme))
                 .collect(),
         )
     }
@@ -109,6 +110,7 @@ fn diagram_glyph(ch: char) -> bool {
 mod tests {
     use super::*;
     use tuika::components::Markdown;
+    use tuika::style::StyleSheet;
     use tuika::testing::{grid, render};
 
     fn text(line: &Line) -> String {
@@ -116,6 +118,16 @@ mod tests {
             .iter()
             .map(|span| span.content.as_ref())
             .collect()
+    }
+
+    fn render_block(block: MarkdownBlock<'_>) -> Option<Vec<Line<'static>>> {
+        let theme = Theme::default();
+        let sheet = StyleSheet::from_theme(&theme);
+        MarkdownBlockRenderer::render(
+            &MermaidRenderer::new(),
+            block,
+            MarkdownBlockContext::new(80, &theme, &sheet),
+        )
     }
 
     #[test]
@@ -138,18 +150,22 @@ mod tests {
     #[test]
     fn ignores_other_fence_languages() {
         assert!(
-            MermaidRenderer::new()
-                .render("rust", "fn main() {}", 80, &Theme::default())
-                .is_none()
+            render_block(MarkdownBlock::Fenced {
+                language: "rust",
+                source: "fn main() {}",
+            })
+            .is_none()
         );
     }
 
     #[test]
     fn invalid_mermaid_uses_markdown_fallback() {
         assert!(
-            MermaidRenderer::new()
-                .render("mermaid", "this is not Mermaid", 80, &Theme::default())
-                .is_none()
+            render_block(MarkdownBlock::Fenced {
+                language: "mermaid",
+                source: "this is not Mermaid",
+            })
+            .is_none()
         );
     }
 
@@ -157,9 +173,11 @@ mod tests {
     fn oversized_source_uses_markdown_fallback() {
         let oversized = "x".repeat(MAX_SOURCE_BYTES + 1);
         assert!(
-            MermaidRenderer::new()
-                .render("mermaid", &oversized, 80, &Theme::default())
-                .is_none()
+            render_block(MarkdownBlock::Fenced {
+                language: "mermaid",
+                source: &oversized,
+            })
+            .is_none()
         );
     }
 

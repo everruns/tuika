@@ -386,8 +386,8 @@ crates. The companion crate
 [`tuika-codeformatters`](https://crates.io/crates/tuika-codeformatters) ships a
 ready-made tree-sitter `Highlighter`.
 
-Fenced blocks can replace their source with a different, width-aware
-presentation through `FencedBlockRenderer`. The
+Structured blocks can replace their source with a different, width-aware
+presentation through `MarkdownBlockRenderer`. The
 [`tuika-mermaid`](crates/tuika-mermaid/) companion uses that seam with mmdflux:
 a `mermaid` fence becomes a Unicode cell diagram inside the surrounding
 Markdown, with no browser, SVG, or image protocol. Unsupported or invalid input
@@ -417,8 +417,10 @@ Markdown in the wild carries HTML. The presentational inline tags — `<b>`,
 `<em>`, `<code>`, `<kbd>`, `<mark>`, `<a>`, `<br>`, `<sub>`/`<sup>` — render in
 tuika itself, each through the same `StyleSheet` role as the markdown it
 mirrors. Block-level HTML is a seam, for the same reason highlighting is: an
-HTML parser is a dependency tuika will not carry. Attach an `HtmlBlockRenderer`
-and `<details>`, `<table>`, and `<div>` lay out too.
+HTML parser is a dependency tuika will not carry. Attach a
+`MarkdownBlockRenderer` and `<details>`, `<table>`, and `<div>` lay out too. The
+same ordered renderer chain handles fenced diagrams and block HTML with one
+context, including the active stylesheet.
 [`tuika-html`](crates/tuika-html/) is the ready-made one, and it also supplies
 the [`Html`](docs/components.md#html) component for markup that is not inside
 markdown at all. See the markdown guide for
@@ -860,8 +862,8 @@ The separately published companion crates live in this repository:
 - [`tuika-mermaid`](crates/tuika-mermaid/) renders Mermaid fences as Unicode
   terminal diagrams through mmdflux.
 - [`tuika-html`](crates/tuika-html/) lays out block-level HTML with html5ever —
-  inside Markdown through the `HtmlBlockRenderer` seam, or standalone through
-  its own [`Html`](docs/components.md#html) component.
+  inside Markdown through the `MarkdownBlockRenderer` seam, or standalone
+  through its own [`Html`](docs/components.md#html) component.
 
 All three keep their heavier parsers and grammars out of tuika core.
 
