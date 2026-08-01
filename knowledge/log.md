@@ -52,6 +52,9 @@
   pairing the toolkit's base-view/overlay model with Everruns' navy-and-gold
   visual language. The authored SVG is the canonical source and ships with the
   crate because the crates.io README embeds it by relative path.
+- Added exact-geometry dark-surface and monochrome SVG variants plus generated
+  1024 px PNG exports. Only the README's primary SVG ships in the crate; the
+  alternate brand assets remain repository-only.
 
 - **Semantic styling is open and complete**
 

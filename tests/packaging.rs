@@ -143,6 +143,24 @@ fn crates_io_readme_assets_and_source_are_kept() {
 }
 
 #[test]
+fn alternate_logo_assets_are_repository_only() {
+    let files = packaged_files("tuika");
+
+    for asset in [
+        "logo-dark.svg",
+        "logo-mono.svg",
+        "logo.png",
+        "logo-dark.png",
+        "logo-mono.png",
+    ] {
+        assert!(
+            !files.iter().any(|f| f == asset),
+            "non-README logo asset must not ship: {asset}"
+        );
+    }
+}
+
+#[test]
 fn codeformatters_ships_source_but_not_its_demo_recording() {
     let files = packaged_files("tuika-codeformatters");
 
