@@ -127,7 +127,7 @@ pub use host::{
     TerminalSession, paint, paint_scene, paint_with_context, paint_with_sheet, translate_event,
 };
 pub use layout::{Align, Dimension, Direction, Justify, LayoutStyle};
-pub use overlay::{Overlay, OverlaySpec};
+pub use overlay::{Overlay, OverlaySpec, TargetAlign, TargetPlacement, TargetSide};
 #[cfg(feature = "async")]
 pub use runner::AsyncRunner;
 pub use runner::{Runner, RunnerConfig, Signal, UpdateResult};

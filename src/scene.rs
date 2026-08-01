@@ -96,7 +96,8 @@ use ratatui_core::style::{Modifier, Style};
 
 use crate::focus::FocusRegistry;
 use crate::geometry::Size;
-use crate::overlay::OverlaySpec;
+use crate::overlay::{OverlaySpec, TargetPlacement};
+use crate::probe::RectProbe;
 use crate::surface::Surface;
 use crate::view::{Element, RenderCtx, View};
 
@@ -117,6 +118,7 @@ pub struct SceneOverlay {
     clear: bool,
     backdrop: Backdrop,
     focus_owner: Option<String>,
+    target: Option<(RectProbe, TargetPlacement)>,
 }
 
 impl SceneOverlay {
@@ -128,6 +130,7 @@ impl SceneOverlay {
             clear: true,
             backdrop: Backdrop::None,
             focus_owner: None,
+            target: None,
         }
     }
 
@@ -149,9 +152,24 @@ impl SceneOverlay {
         self
     }
 
+    /// Place this overlay relative to the rect reported by `target`.
+    ///
+    /// A target in the scene root is available in the same render because the
+    /// root is painted before overlays. Rebuild the scene without this overlay
+    /// whenever the target view is absent; an unpainted probe reports
+    /// [`Rect::ZERO`].
+    pub fn target(mut self, target: &RectProbe, placement: TargetPlacement) -> Self {
+        self.target = Some((target.clone(), placement));
+        self
+    }
+
     /// Resolve this overlay's current rectangle.
     pub fn resolve(&self, area: Rect) -> Rect {
-        self.spec.resolve(area)
+        if let Some((target, placement)) = &self.target {
+            self.spec.resolve_target(area, target.rect(), *placement)
+        } else {
+            self.spec.resolve(area)
+        }
     }
 
     /// The input owner associated with this overlay, if any.
@@ -352,6 +370,8 @@ mod tests {
 
     use super::*;
     use crate::components::Text;
+    use crate::overlay::{Extent, TargetAlign, TargetPlacement};
+    use crate::probe::RectProbe;
     use crate::testing::{grid, render};
     use crate::{Theme, element};
 
@@ -424,6 +444,34 @@ mod tests {
 
         let _ = render(&scene, 8, 4, &Theme::default());
         assert_eq!(&*focus.borrow(), &[false, false, true]);
+    }
+
+    #[test]
+    fn scene_resolves_target_overlay_after_the_root_is_laid_out() {
+        let target = RectProbe::new();
+        let root = crate::components::Flex::column()
+            .fixed(2, element(Text::raw("header")))
+            .fixed(1, target.wrap(Text::raw("trigger")))
+            .grow(1, element(Text::raw("body")));
+        let spec = OverlaySpec {
+            width: Extent::Cells(10),
+            height: Extent::Cells(2),
+            ..OverlaySpec::centered(0, 0)
+        };
+        let scene = ScopedScene::new(&root).overlay(
+            SceneOverlay::new(element(Text::raw("popover")), spec)
+                .target(&target, TargetPlacement::below().align(TargetAlign::Start)),
+        );
+
+        let rendered = render(&scene, 20, 8, &Theme::default());
+
+        assert_eq!(target.rect(), Rect::new(0, 2, 20, 1));
+        assert!(
+            grid(&rendered)
+                .lines()
+                .nth(3)
+                .is_some_and(|line| line.starts_with("popover"))
+        );
     }
 
     #[test]

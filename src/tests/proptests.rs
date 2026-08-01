@@ -18,7 +18,7 @@ use ratatui_core::text::Line;
 use crate::components::Text;
 use crate::geometry::{Axis, Padding, Size};
 use crate::layout::{Align, Dimension, Direction, Item, Justify, LayoutStyle, solve};
-use crate::overlay::{Anchor, Extent, OverlaySpec};
+use crate::overlay::{Anchor, Extent, OverlaySpec, TargetAlign, TargetPlacement, TargetSide};
 use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
 use crate::style::Theme;
 use crate::tests::support::row;
@@ -200,6 +200,52 @@ proptest! {
         );
         prop_assert!(r.width <= max_w, "width exceeds max");
         prop_assert!(r.height <= max_h, "height exceeds max");
+    }
+
+    /// A target-relative overlay remains inside the screen for every side,
+    /// alignment, target rectangle, margin, and degenerate screen size.
+    #[test]
+    fn target_overlay_stays_within_screen(
+        x in 0u16..200,
+        y in 0u16..100,
+        w in 0u16..300,
+        h in 0u16..120,
+        target_x in 0u16..500,
+        target_y in 0u16..220,
+        target_w in 0u16..100,
+        target_h in 0u16..80,
+        overlay_w in 0u16..350,
+        overlay_h in 0u16..160,
+        margin in 0u16..20,
+        side_i in 0usize..4,
+        align_i in 0usize..3,
+        gap in 0u16..20,
+        flip in any::<bool>(),
+    ) {
+        let sides = [TargetSide::Above, TargetSide::Below, TargetSide::Left, TargetSide::Right];
+        let aligns = [TargetAlign::Start, TargetAlign::Center, TargetAlign::End];
+        let screen = Rect::new(x, y, w.min(u16::MAX - x), h.min(u16::MAX - y));
+        let target = Rect::new(
+            target_x,
+            target_y,
+            target_w.min(u16::MAX - target_x),
+            target_h.min(u16::MAX - target_y),
+        );
+        let spec = OverlaySpec {
+            width: Extent::Cells(overlay_w),
+            height: Extent::Cells(overlay_h),
+            margin,
+            ..OverlaySpec::centered(0, 0)
+        };
+        let placement = TargetPlacement::new(sides[side_i])
+            .align(aligns[align_i])
+            .gap(gap)
+            .flip(flip);
+
+        let r = spec.resolve_target(screen, target, placement);
+
+        prop_assert!(r.x >= screen.x && r.right() <= screen.right(), "overlay x out of bounds: {:?} in {:?}", r, screen);
+        prop_assert!(r.y >= screen.y && r.bottom() <= screen.bottom(), "overlay y out of bounds: {:?} in {:?}", r, screen);
     }
 }
 

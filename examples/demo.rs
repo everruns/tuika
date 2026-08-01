@@ -447,8 +447,8 @@ const DEMOS: &[Demo] = &[
     demo(
         "overlay",
         "Overlay",
-        "anchored dialog composited over the base tree",
-        16,
+        "target-relative popover with edge-aware flipping",
+        18,
         false,
         scene_overlay,
     ),
@@ -1449,56 +1449,64 @@ fn scene_mouse(frame: u64, theme: &Theme) -> Element {
 
 fn scene_overlay(frame: u64, theme: &Theme) -> Element {
     let _ = frame;
-    // Overlays composite a view over the base tree at an anchored, sized rect
-    // (see `OverlaySpec`). The demo harness paints a single tree, so this scene
-    // arranges the same look — a centered dialog over the base content — that
-    // `OverlaySpec::centered(..).resolve(area)` plus `paint`'s overlay slice
-    // produce at runtime; the `overlay` example drives the real compositing.
+    use tuika::overlay::Extent;
+    use tuika::probe::RectProbe;
+
+    let target = RectProbe::new();
     let base = |s: &str| {
         Text::new(vec![Line::from(Span::styled(
             s.to_string(),
             theme.muted_style(),
         ))])
     };
-    let dialog = view! {
+    let trigger = target.wrap(Text::new(vec![Line::from(Span::styled(
+        "[ Open actions ▾ ]",
+        theme.accent_style(),
+    ))]));
+    let root: Element = view! {
+        col(gap = 0) {
+            fixed(1) { node(base("base layer stays independently laid out")) }
+            fixed(1) { node(base("the popover follows its trigger after layout")) }
+            grow(1) { spacer() }
+            fixed(1) {
+                row {
+                    grow(1) { spacer() }
+                    fixed(20) { node(trigger) }
+                    fixed(2) { spacer() }
+                }
+            }
+            fixed(1) { node(base("preferred below · flipped above at the edge")) }
+        }
+    };
+    let popover = view! {
         boxed(
-            title = Line::from(Span::styled(" confirm ", theme.accent_style())),
+            title = Line::from(Span::styled(" actions ", theme.accent_style())),
             border = BorderStyle::Rounded,
             padding = Padding::all(1)
         ) {
             col(gap = 1) {
                 node(Text::new(vec![Line::from(Span::styled(
-                    "Proceed with the action?",
+                    "Run command",
                     theme.text_style(),
                 ))]))
                 node(Text::new(vec![Line::from(Span::styled(
-                    "enter = yes · esc = no",
+                    "Inspect logs",
                     theme.muted_style(),
                 ))]))
             }
         }
     };
-    view! {
-        col(gap = 0) {
-            fixed(1) { node(base("base layer stays visible around the panel")) }
-            fixed(1) { node(base("… app content continues behind …")) }
-            fixed(1) { spacer() }
-            fixed(7) {
-                row(gap = 0) {
-                    grow(1) { spacer() }
-                    fixed(46) { node(dialog) }
-                    grow(1) { spacer() }
-                }
-            }
-            grow(1) { spacer() }
-            fixed(1) {
-                node(Text::new(vec![Line::from(Span::styled(
-                    "OverlaySpec::centered(50, 40).min_size(34, 7)",
-                    theme.muted_style(),
-                ))]))
-            }
-        }
-    }
+    let spec = OverlaySpec {
+        width: Extent::Cells(28),
+        height: Extent::Cells(7),
+        ..OverlaySpec::centered(0, 0).margin(1)
+    };
+    element(
+        Scene::new(root).overlay(SceneOverlay::new(popover, spec).target(
+            &target,
+            TargetPlacement::below().align(TargetAlign::End).gap(1),
+        )),
+    )
 }
 
 /// A muted caption line, reused by several scenes below.

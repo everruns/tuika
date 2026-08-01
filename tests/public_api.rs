@@ -104,6 +104,8 @@ fn components_are_reachable_flat() {
 #[test]
 fn scene_and_custom_drawing_follow_the_surface_policy() {
     use ratatui_core::layout::Rect;
+    use tuika::overlay::Extent;
+    use tuika::probe::RectProbe;
     use tuika::view::{CanvasView, DrawView};
 
     let canvas: CanvasView<_> = DrawView::new(
@@ -122,6 +124,28 @@ fn scene_and_custom_drawing_follow_the_surface_policy() {
     let scoped =
         ScopedScene::new(&borrowed).dialog(Dialog::new("scoped", element(Text::raw("overlay"))));
     assert!(grid(&render(&scoped, 30, 8, &Theme::default())).contains("overlay"));
+
+    // Placement policy belongs to the spine, while the less-common geometry
+    // handle remains at its explicit probe module path.
+    let target = RectProbe::new();
+    let root = element(
+        Flex::column()
+            .fixed(1, target.wrap(Text::raw("trigger")))
+            .grow(1, element(Text::raw("base"))),
+    );
+    let placement = OverlaySpec {
+        width: Extent::Cells(8),
+        height: Extent::Cells(1),
+        ..OverlaySpec::centered(0, 0)
+    };
+    let popover = Scene::new(root).overlay(
+        SceneOverlay::new(element(Text::raw("popover")), placement)
+            .target(&target, TargetPlacement::below().align(TargetAlign::Start)),
+    );
+    assert_eq!(
+        grid(&render(&popover, 10, 3, &Theme::default())),
+        "trigger   \npopover   \n          "
+    );
 
     assert_eq!(
         Theme::default().semantic_style(SemanticRole::Info),

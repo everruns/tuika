@@ -2,6 +2,16 @@
 
 ## 2026-07-31
 
+- **Overlay placement can follow laid-out targets**
+
+- Popovers, menus, and tooltips can resolve on any side of a probed root view,
+  align on the cross axis, keep a gap, and flip when the terminal edge leaves
+  more room on the opposite side. Placement remains a scene concern; the
+  trigger and overlay do not depend on each other's component types.
+- The root paints before scene overlays, so a target uses current-frame layout
+  rather than a retained geometry cache. Every result is finally clamped to the
+  screen, including tiny and degenerate sizes.
+
 - **A composable visual identity**
 
 - Added tuika's first logo: two offset interface panels meet at a gold anchor,
