@@ -86,6 +86,10 @@ block-HTML seam.
 
 ### Changed
 
+- **Breaking:** `AsyncRunner` update closures now return `UpdateResult` instead
+  of `ControlFlow<()>`, matching synchronous `Runner`; clean ticks and events no
+  longer rebuild or repaint the view.
+
 - **Breaking:** interactive component handlers now return one root/prelude
   `InputOutcome` (`Ignored`, `Consumed`, `Changed`, `Submitted`, or `Cancelled`).
   Read the submitted value back from its host-owned state. Replace

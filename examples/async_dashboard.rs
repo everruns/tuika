@@ -11,7 +11,6 @@
 //! Run with: `cargo run --example async_dashboard --features async`.
 //! Press `q`/`esc` to quit, `r` to refresh now.
 
-use std::ops::ControlFlow;
 use std::time::Duration;
 
 use ratatui::layout::Constraint;
@@ -108,17 +107,17 @@ async fn main() -> std::io::Result<()> {
                 // Poll on the tick and on `r`; both simply await the fetch.
                 Signal::Tick => {
                     metrics.ingest(fetch_stats(metrics.requests).await);
-                    ControlFlow::Continue(())
+                    UpdateResult::Dirty
                 }
                 Signal::Event(Event::Key(key)) if key.plain() => match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => ControlFlow::Break(()),
+                    KeyCode::Char('q') | KeyCode::Esc => UpdateResult::Exit,
                     KeyCode::Char('r') => {
                         metrics.ingest(fetch_stats(metrics.requests).await);
-                        ControlFlow::Continue(())
+                        UpdateResult::Dirty
                     }
-                    _ => ControlFlow::Continue(()),
+                    _ => UpdateResult::Clean,
                 },
-                _ => ControlFlow::Continue(()),
+                _ => UpdateResult::Clean,
             },
         )
         .await
