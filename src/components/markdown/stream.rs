@@ -312,7 +312,7 @@ fn is_blank_line(line: &Line) -> bool {
 #[cfg(test)]
 mod tests {
     use super::super::testutil::*;
-    use super::super::{to_lines, to_lines_with};
+    use super::super::{RenderedBlock, to_lines, to_lines_with};
     use super::*;
 
     use crate::style::StyleBundle;
@@ -509,9 +509,9 @@ mod tests {
                 _: u16,
                 _: &Theme,
                 _: &StyleSheet,
-            ) -> Option<Vec<Line<'static>>> {
+            ) -> Option<RenderedBlock> {
                 self.0.set(self.0.get() + 1);
-                Some(vec![Line::from(source.trim().to_string())])
+                Some(vec![Line::from(source.trim().to_string())].into())
             }
         }
 

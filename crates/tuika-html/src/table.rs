@@ -7,7 +7,8 @@
 
 use ratatui_core::style::Style;
 use ratatui_core::text::{Line, Span};
-use tuika::components::text::wrap_lines;
+use tuika::components::text::{LinkedSpan, wrap_linked};
+use tuika::term::hyperlink::BufferLink;
 use tuika::width::str_cols;
 
 use markup5ever_rcdom::Handle;
@@ -20,16 +21,20 @@ use crate::inline::{InlineBuf, collect};
 const MIN_COL: u16 = 3;
 
 /// One cell's inline content.
-type Cell = Vec<Span<'static>>;
+type Cell = Vec<LinkedSpan>;
 
 /// Render a `<table>` element to `width` columns.
-pub(crate) fn render(node: &Handle, width: u16, cx: &mut Layout<'_>) -> Vec<Line<'static>> {
+pub(crate) fn render(
+    node: &Handle,
+    width: u16,
+    cx: &mut Layout<'_>,
+) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let mut header: Vec<Cell> = Vec::new();
     let mut rows: Vec<Vec<Cell>> = Vec::new();
     collect_rows(node, cx, &mut header, &mut rows);
 
     if header.is_empty() && rows.is_empty() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
     // A table with no `<th>` anywhere is all body; the box still needs a top.
     if header.is_empty() {
@@ -39,7 +44,7 @@ pub(crate) fn render(node: &Handle, width: u16, cx: &mut Layout<'_>) -> Vec<Line
         .len()
         .max(rows.iter().map(Vec::len).max().unwrap_or(0));
     if cols == 0 {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
     pad(&mut header, cols);
     for row in &mut rows {
@@ -114,7 +119,7 @@ fn cell_spans(node: &Handle, cx: &mut Layout<'_>, header: bool) -> Cell {
     let mut spans: Cell = Vec::new();
     for (i, line) in buf.take().into_iter().enumerate() {
         if i > 0 {
-            spans.push(Span::styled(" ".to_string(), style));
+            spans.push(LinkedSpan::styled(" ", style, None));
         }
         spans.extend(line);
     }
@@ -123,10 +128,10 @@ fn cell_spans(node: &Handle, cx: &mut Layout<'_>, header: bool) -> Cell {
 
 fn trim(mut spans: Cell) -> Cell {
     if let Some(first) = spans.first_mut() {
-        first.content = first.content.trim_start().to_string().into();
+        first.content = first.content.trim_start().to_string();
     }
     if let Some(last) = spans.last_mut() {
-        last.content = last.content.trim_end().to_string().into();
+        last.content = last.content.trim_end().to_string();
     }
     spans.retain(|s| !s.content.is_empty());
     spans
@@ -174,16 +179,30 @@ fn cell_cols(cell: &Cell) -> u16 {
     cell.iter().map(|s| str_cols(&s.content)).sum()
 }
 
-fn boxed(header: &[Cell], rows: &[Vec<Cell>], widths: &[u16]) -> Vec<Line<'static>> {
+fn boxed(
+    header: &[Cell],
+    rows: &[Vec<Cell>],
+    widths: &[u16],
+) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let mut out = Vec::new();
+    let mut links = Vec::new();
+    let emit = |row: &[Cell], out: &mut Vec<Line<'static>>, links: &mut Vec<BufferLink>| {
+        let base = out.len().min(u16::MAX as usize) as u16;
+        let (lines, mut row_links) = row_lines(row, widths);
+        for link in &mut row_links {
+            link.line = link.line.saturating_add(base);
+        }
+        links.append(&mut row_links);
+        out.extend(lines);
+    };
     out.push(rule('╭', '┬', '╮', widths));
-    out.extend(row_lines(header, widths));
+    emit(header, &mut out, &mut links);
     out.push(rule('├', '┼', '┤', widths));
     for row in rows {
-        out.extend(row_lines(row, widths));
+        emit(row, &mut out, &mut links);
     }
     out.push(rule('╰', '┴', '╯', widths));
-    out
+    (out, links)
 }
 
 fn rule(left: char, mid: char, right: char, widths: &[u16]) -> Line<'static> {
@@ -200,60 +219,86 @@ fn rule(left: char, mid: char, right: char, widths: &[u16]) -> Line<'static> {
 }
 
 /// One table row, which is as tall as its tallest wrapped cell.
-fn row_lines(row: &[Cell], widths: &[u16]) -> Vec<Line<'static>> {
-    let wrapped: Vec<Vec<Line<'static>>> = row
+fn row_lines(row: &[Cell], widths: &[u16]) -> (Vec<Line<'static>>, Vec<BufferLink>) {
+    // Each cell wraps to its own column width, keeping its link runs.
+    type WrappedCell = Vec<(Vec<LinkedSpan>, Vec<BufferLink>)>;
+    let wrapped: Vec<WrappedCell> = row
         .iter()
         .zip(widths)
         .map(|(cell, w)| {
-            let line = Line::from(cell.clone());
-            let lines = wrap_lines(std::slice::from_ref(&line), *w);
-            if lines.is_empty() {
-                vec![Line::default()]
+            let rows = wrap_linked(cell, *w);
+            if rows.is_empty() {
+                vec![(Vec::new(), Vec::new())]
             } else {
-                lines
+                rows
             }
         })
         .collect();
     let height = wrapped.iter().map(Vec::len).max().unwrap_or(1);
-    (0..height)
-        .map(|r| {
-            let mut spans = vec![Span::raw("│ ".to_string())];
-            for (c, w) in widths.iter().enumerate() {
-                if c > 0 {
-                    spans.push(Span::raw(" │ ".to_string()));
-                }
-                // `.get` on both axes: the row/width lengths are equalized by
-                // `pad` above, but that is an invariant maintained at a
-                // distance, and this runs on untrusted markup.
-                let cell = wrapped.get(c).and_then(|lines| lines.get(r));
-                let used = cell.map(|l| l.spans.iter().map(|s| str_cols(&s.content)).sum::<u16>());
-                if let Some(cell) = cell {
-                    spans.extend(cell.spans.iter().cloned());
-                }
-                let pad = w.saturating_sub(used.unwrap_or(0));
-                if pad > 0 {
-                    spans.push(Span::raw(" ".repeat(pad as usize)));
-                }
+    let mut lines = Vec::with_capacity(height);
+    let mut links = Vec::new();
+    for r in 0..height {
+        let mut spans = vec![Span::raw("│ ".to_string())];
+        // Column where the current cell's content begins: the border and its
+        // padding, plus every column and separator already emitted.
+        let mut col = 2u16;
+        for (c, w) in widths.iter().enumerate() {
+            if c > 0 {
+                spans.push(Span::raw(" │ ".to_string()));
+                col = col.saturating_add(3);
             }
-            spans.push(Span::raw(" │".to_string()));
-            Line::from(spans)
-        })
-        .collect()
+            // `.get` on both axes: the row/width lengths are equalized by `pad`
+            // above, but that is an invariant maintained at a distance, and this
+            // runs on untrusted markup.
+            let cell = wrapped.get(c).and_then(|rows| rows.get(r));
+            let used = cell
+                .map(|(spans, _)| spans.iter().map(|s| str_cols(&s.content)).sum::<u16>())
+                .unwrap_or(0);
+            if let Some((cell_spans, cell_links)) = cell {
+                for link in cell_links {
+                    let mut link = link.clone();
+                    link.line = r.min(u16::MAX as usize) as u16;
+                    link.start_col = link.start_col.saturating_add(col);
+                    link.end_col = link.end_col.saturating_add(col);
+                    links.push(link);
+                }
+                spans.extend(cell_spans.iter().map(LinkedSpan::to_span));
+            }
+            let pad = w.saturating_sub(used);
+            if pad > 0 {
+                spans.push(Span::raw(" ".repeat(pad as usize)));
+            }
+            col = col.saturating_add(*w);
+        }
+        spans.push(Span::raw(" │".to_string()));
+        lines.push(Line::from(spans));
+    }
+    (lines, links)
 }
 
 /// Too narrow for a grid: ` | `-joined rows that word-wrap, so the content
 /// survives even when the shape cannot.
-fn plain(header: &[Cell], rows: &[Vec<Cell>], width: u16) -> Vec<Line<'static>> {
+fn plain(header: &[Cell], rows: &[Vec<Cell>], width: u16) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let mut lines = Vec::new();
+    let mut links = Vec::new();
     for row in std::iter::once(header).chain(rows.iter().map(Vec::as_slice)) {
-        let mut spans: Vec<Span<'static>> = Vec::new();
+        let mut spans: Cell = Vec::new();
         for (i, cell) in row.iter().enumerate() {
             if i > 0 {
-                spans.push(Span::styled(" | ".to_string(), Style::default()));
+                spans.push(LinkedSpan::styled(" | ", Style::default(), None));
             }
             spans.extend(cell.iter().cloned());
         }
-        lines.push(Line::from(spans));
+        for (wrapped, row_links) in wrap_linked(&spans, width.max(1)) {
+            let row_index = lines.len().min(u16::MAX as usize) as u16;
+            for mut link in row_links {
+                link.line = row_index;
+                links.push(link);
+            }
+            lines.push(Line::from(
+                wrapped.iter().map(LinkedSpan::to_span).collect::<Vec<_>>(),
+            ));
+        }
     }
-    wrap_lines(&lines, width.max(1))
+    (lines, links)
 }

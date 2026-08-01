@@ -243,15 +243,18 @@ mod tests {
             _width: u16,
             theme: &Theme,
             sheet: &StyleSheet,
-        ) -> Option<Vec<Line<'static>>> {
+        ) -> Option<crate::components::markdown::RenderedBlock> {
             if theme.accent == Color::Cyan && sheet.heading.fg == Some(Color::Magenta) {
-                Some(vec![
-                    Line::from(Span::raw("alpha")),
-                    Line::from(Span::raw("beta")),
-                    Line::from(Span::raw("omega")),
-                ])
+                Some(
+                    vec![
+                        Line::from(Span::raw("alpha")),
+                        Line::from(Span::raw("beta")),
+                        Line::from(Span::raw("omega")),
+                    ]
+                    .into(),
+                )
             } else {
-                Some(vec![Line::from(Span::raw("wrong context"))])
+                Some(vec![Line::from(Span::raw("wrong context"))].into())
             }
         }
     }

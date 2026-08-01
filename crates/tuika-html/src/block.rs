@@ -8,8 +8,9 @@
 
 use ratatui_core::style::{Modifier, Style};
 use ratatui_core::text::{Line, Span};
-use tuika::components::text::wrap_lines;
+use tuika::components::text::{LinkedSpan, wrap_linked};
 use tuika::style::{StyleSheet, Theme};
+use tuika::term::hyperlink::BufferLink;
 use tuika::width::str_cols;
 
 use markup5ever_rcdom::{Handle, NodeData};
@@ -28,6 +29,9 @@ pub(crate) struct Layout<'a> {
     pub(crate) sheet: &'a StyleSheet,
     pub(crate) limits: Limits,
     out: Vec<Line<'static>>,
+    /// Hyperlink runs in `out`, block-relative: rows from the block's first
+    /// line, columns from its left edge. The caller rebases them.
+    links: Vec<BufferLink>,
     /// Lines still allowed. Kept separately from `out.len()` because list items
     /// render into a detached buffer, so the length there is not the total.
     budget: usize,
@@ -44,18 +48,27 @@ impl<'a> Layout<'a> {
             sheet,
             limits,
             out: Vec::new(),
+            links: Vec::new(),
             budget: limits.max_lines,
             suppress_blank: false,
         }
     }
 
-    /// Render `node`'s children as blocks and return the finished lines.
-    pub(crate) fn render(mut self, node: &Handle, width: u16) -> Vec<Line<'static>> {
+    /// Render `node`'s children as blocks, with the link runs inside them.
+    pub(crate) fn render(
+        mut self,
+        node: &Handle,
+        width: u16,
+    ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
         self.blocks(node, 0, width, 0);
         while self.out.last().is_some_and(is_blank) {
             self.out.pop();
         }
-        self.out
+        // A trailing blank cannot carry a link, but a truncated render can leave
+        // one pointing past the end.
+        let rows = self.out.len() as u16;
+        self.links.retain(|l| l.line < rows);
+        (self.out, self.links)
     }
 
     pub(crate) fn base_style(&self) -> Style {
@@ -120,18 +133,27 @@ impl<'a> Layout<'a> {
             return;
         }
         self.blank();
-        let lines: Vec<Line<'static>> = buf
-            .take()
-            .into_iter()
-            .map(|spans| Line::from(trim_edges(spans)))
-            .collect();
-        self.emit_wrapped(lines, indent, width);
+        let runs: Vec<Vec<LinkedSpan>> = buf.take().into_iter().map(trim_edges).collect();
+        self.emit_linked(runs, indent, width);
     }
 
-    fn emit_wrapped(&mut self, lines: Vec<Line<'static>>, indent: u16, width: u16) {
+    /// Wrap linked runs to the available width and emit them, recording each
+    /// surviving link run at the row it landed on and the column it starts at
+    /// once the indent is applied.
+    fn emit_linked(&mut self, runs: Vec<Vec<LinkedSpan>>, indent: u16, width: u16) {
         let avail = width.saturating_sub(indent).max(1);
-        for line in wrap_lines(&lines, avail) {
-            self.push(prefix(indent, line));
+        for run in runs {
+            for (spans, links) in wrap_linked(&run, avail) {
+                let row = self.out.len().min(u16::MAX as usize) as u16;
+                for mut link in links {
+                    link.line = row;
+                    link.start_col = link.start_col.saturating_add(indent);
+                    link.end_col = link.end_col.saturating_add(indent);
+                    self.links.push(link);
+                }
+                let line = Line::from(spans.iter().map(LinkedSpan::to_span).collect::<Vec<_>>());
+                self.push(prefix(indent, line));
+            }
         }
     }
 
@@ -193,7 +215,15 @@ impl<'a> Layout<'a> {
             "table" => {
                 self.blank();
                 let avail = width.saturating_sub(indent).max(1);
-                for line in table::render(node, avail, self) {
+                let (lines, table_links) = table::render(node, avail, self);
+                let base = self.out.len().min(u16::MAX as usize) as u16;
+                for mut link in table_links {
+                    link.line = link.line.saturating_add(base);
+                    link.start_col = link.start_col.saturating_add(indent);
+                    link.end_col = link.end_col.saturating_add(indent);
+                    self.links.push(link);
+                }
+                for line in lines {
                     self.push(prefix(indent, line));
                 }
             }
@@ -248,8 +278,17 @@ impl<'a> Layout<'a> {
     /// the first line and the rest hang under it.
     fn item(&mut self, node: &Handle, marker: String, indent: u16, width: u16, depth: usize) {
         let hang = str_cols(&marker);
-        let inner = self.detached(node, width.saturating_sub(indent + hang).max(1), depth + 1);
+        let (inner, inner_links) =
+            self.detached(node, width.saturating_sub(indent + hang).max(1), depth + 1);
         let marker_style = self.sheet.list_marker.apply(self.base_style());
+        // The item's own rows start here, and every row hangs past the marker.
+        let base = self.out.len().min(u16::MAX as usize) as u16;
+        for mut link in inner_links {
+            link.line = link.line.saturating_add(base);
+            link.start_col = link.start_col.saturating_add(indent + hang);
+            link.end_col = link.end_col.saturating_add(indent + hang);
+            self.links.push(link);
+        }
         for (row, line) in inner.into_iter().enumerate() {
             let mut spans = Vec::with_capacity(line.spans.len() + 1);
             if row == 0 {
@@ -287,25 +326,30 @@ impl<'a> Layout<'a> {
                 );
             }
         }
-        let mut head: Vec<Line<'static>> = buf
-            .take()
-            .into_iter()
-            .map(|spans| Line::from(trim_edges(spans)))
-            .collect();
+        let mut head: Vec<LinkedSpan> = buf.take().into_iter().flat_map(trim_edges).collect();
         if head.is_empty() {
-            head.push(Line::from(Span::styled("Details", style)));
+            head.push(LinkedSpan::styled("Details", style, None));
         }
+        let hang = str_cols(marker);
         let marker_span = Span::styled(marker.to_string(), self.sheet.list_marker.apply(style));
-        let avail = width.saturating_sub(indent + str_cols(marker)).max(1);
-        for (row, line) in wrap_lines(&head, avail).into_iter().enumerate() {
-            let mut spans = Vec::with_capacity(line.spans.len() + 1);
-            spans.push(if row == 0 {
+        let avail = width.saturating_sub(indent + hang).max(1);
+        for (row, (spans, links)) in wrap_linked(&head, avail).into_iter().enumerate() {
+            let line_row = self.out.len().min(u16::MAX as usize) as u16;
+            for mut link in links {
+                link.line = line_row;
+                // The marker hangs to the left of every row of the summary.
+                link.start_col = link.start_col.saturating_add(indent + hang);
+                link.end_col = link.end_col.saturating_add(indent + hang);
+                self.links.push(link);
+            }
+            let mut out_spans = Vec::with_capacity(spans.len() + 1);
+            out_spans.push(if row == 0 {
                 marker_span.clone()
             } else {
-                Span::raw("  ".to_string())
+                Span::raw(" ".repeat(hang as usize))
             });
-            spans.extend(line.spans);
-            self.push(prefix(indent, Line::from(spans)));
+            out_spans.extend(spans.iter().map(LinkedSpan::to_span));
+            self.push(prefix(indent, Line::from(out_spans)));
         }
 
         // The body is everything but the summary, indented under it.
@@ -361,12 +405,20 @@ impl<'a> Layout<'a> {
     }
 
     /// Lay out a subtree into its own line buffer, sharing this render's budget.
-    fn detached(&mut self, node: &Handle, width: u16, depth: usize) -> Vec<Line<'static>> {
+    fn detached(
+        &mut self,
+        node: &Handle,
+        width: u16,
+        depth: usize,
+    ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
         let saved = std::mem::take(&mut self.out);
+        let saved_links = std::mem::take(&mut self.links);
         let saved_suppress = std::mem::replace(&mut self.suppress_blank, true);
         self.blocks(node, 0, width, depth);
         self.suppress_blank = saved_suppress;
-        std::mem::replace(&mut self.out, saved)
+        let lines = std::mem::replace(&mut self.out, saved);
+        let links = std::mem::replace(&mut self.links, saved_links);
+        (lines, links)
     }
 }
 
@@ -391,12 +443,12 @@ fn raw_text(node: &Handle) -> String {
 }
 
 /// Drop the collapsed whitespace at a wrapped line's edges.
-fn trim_edges(mut spans: Vec<Span<'static>>) -> Vec<Span<'static>> {
+fn trim_edges(mut spans: Vec<LinkedSpan>) -> Vec<LinkedSpan> {
     if let Some(first) = spans.first_mut() {
-        first.content = first.content.trim_start().to_string().into();
+        first.content = first.content.trim_start().to_string();
     }
     if let Some(last) = spans.last_mut() {
-        last.content = last.content.trim_end().to_string().into();
+        last.content = last.content.trim_end().to_string();
     }
     spans.retain(|s| !s.content.is_empty());
     spans

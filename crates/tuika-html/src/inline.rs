@@ -7,7 +7,7 @@
 //! this one walks a real tree and can see attributes and nesting.
 
 use ratatui_core::style::{Modifier, Style};
-use ratatui_core::text::Span;
+use tuika::components::text::LinkedSpan;
 use tuika::style::{StyleSheet, Theme};
 
 use crate::dom::{self, attr, tag};
@@ -16,7 +16,7 @@ use markup5ever_rcdom::{Handle, NodeData};
 /// Accumulated inline content for one block, already split at `<br>`.
 #[derive(Default)]
 pub(crate) struct InlineBuf {
-    lines: Vec<Vec<Span<'static>>>,
+    lines: Vec<Vec<LinkedSpan>>,
 }
 
 impl InlineBuf {
@@ -31,11 +31,11 @@ impl InlineBuf {
     }
 
     /// Take the accumulated lines, leaving the buffer empty.
-    pub(crate) fn take(&mut self) -> Vec<Vec<Span<'static>>> {
+    pub(crate) fn take(&mut self) -> Vec<Vec<LinkedSpan>> {
         std::mem::take(&mut self.lines)
     }
 
-    fn cur(&mut self) -> &mut Vec<Span<'static>> {
+    fn cur(&mut self) -> &mut Vec<LinkedSpan> {
         if self.lines.is_empty() {
             self.lines.push(Vec::new());
         }
@@ -51,11 +51,11 @@ impl InlineBuf {
         }
     }
 
-    fn push(&mut self, content: String, style: Style) {
+    fn push(&mut self, content: String, style: Style, href: Option<String>) {
         if content.is_empty() {
             return;
         }
-        self.cur().push(Span::styled(content, style));
+        self.cur().push(LinkedSpan::styled(content, style, href));
     }
 
     /// A `<br>`, or a block boundary inside otherwise inline content.
@@ -107,14 +107,31 @@ pub(crate) fn collect(
     max_depth: usize,
     buf: &mut InlineBuf,
 ) {
-    collect_scoped(node, style, None, theme, sheet, depth, max_depth, buf);
+    collect_scoped(
+        node,
+        style,
+        &Scope::default(),
+        theme,
+        sheet,
+        depth,
+        max_depth,
+        buf,
+    );
+}
+
+/// What the enclosing inline elements contribute beyond style: a transliteration
+/// and a link destination, both inherited by nested runs.
+#[derive(Clone, Default)]
+struct Scope {
+    script: Option<Script>,
+    href: Option<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
 fn collect_scoped(
     node: &Handle,
     style: Style,
-    script: Option<Script>,
+    scope: &Scope,
     theme: &Theme,
     sheet: &StyleSheet,
     depth: usize,
@@ -134,10 +151,11 @@ fn collect_scoped(
             };
             // Inside `<sub>`/`<sup>`, text becomes Unicode when it fully maps;
             // otherwise it falls through and renders unchanged.
-            let text = script
+            let text = scope
+                .script
                 .and_then(|script| transliterate(&text, script))
                 .unwrap_or(text);
-            buf.push(text, style);
+            buf.push(text, style, scope.href.clone());
         }
         NodeData::Element { .. } => {
             let name = tag(node).unwrap_or_default();
@@ -154,23 +172,43 @@ fn collect_scoped(
                     let src = attr(node, "src").unwrap_or_default();
                     let label = if alt.trim().is_empty() { src } else { alt };
                     if !label.is_empty() {
-                        buf.push("🖼 ".to_string(), sheet.image_marker.apply(style));
-                        buf.push(dom::sanitize(&label), sheet.link.apply(style));
+                        let src = attr(node, "src").filter(|s| !s.trim().is_empty());
+                        buf.push(
+                            "🖼 ".to_string(),
+                            sheet.image_marker.apply(style),
+                            scope.href.clone(),
+                        );
+                        // An unresolved image still points somewhere: its own
+                        // source, unless an enclosing anchor already claims it.
+                        buf.push(
+                            dom::sanitize(&label),
+                            sheet.link.apply(style),
+                            scope.href.clone().or(src),
+                        );
                     }
                 }
                 "wbr" => {}
                 _ => {
                     let inner = inline_style(&name, style, theme, sheet);
-                    let script = match name.as_str() {
-                        "sub" => Some(Script::Sub),
-                        "sup" => Some(Script::Sup),
-                        _ => script,
-                    };
+                    let mut scope = scope.clone();
+                    match name.as_str() {
+                        "sub" => scope.script = Some(Script::Sub),
+                        "sup" => scope.script = Some(Script::Sup),
+                        // A nested anchor is malformed HTML; the innermost one
+                        // wins, which is what the parser's nesting already says.
+                        "a" => {
+                            if let Some(href) = attr(node, "href").filter(|h| !h.trim().is_empty())
+                            {
+                                scope.href = Some(dom::sanitize(&href));
+                            }
+                        }
+                        _ => {}
+                    }
                     for child in node.children.borrow().iter() {
                         collect_scoped(
                             child,
                             inner,
-                            script,
+                            &scope,
                             theme,
                             sheet,
                             depth + 1,

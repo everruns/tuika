@@ -5,8 +5,7 @@
 //! only re-flattened when the render width changes.
 
 use pulldown_cmark::Alignment;
-use ratatui_core::style::Style;
-use ratatui_core::text::{Line, Span};
+use ratatui_core::text::Line;
 
 use crate::term::image::ImageData;
 
@@ -45,33 +44,15 @@ pub(super) enum MdItem {
     Blank,
 }
 
-/// An inline run that may carry an OSC 8 hyperlink target.
+/// Markdown's name for the shared linked-span primitive: an inline run that may
+/// carry an OSC 8 hyperlink target.
 ///
-/// ratatui's [`Span`] has no href field, so markdown keeps the destination here
-/// through wrapping; [`flatten_linked`] turns contiguous href runs into
-/// [`BufferLink`]s the host (or [`Markdown`](super::Markdown) view) applies with
-/// [`apply_buffer_links`](crate::term::hyperlink::apply_buffer_links).
-#[derive(Clone, Debug)]
-pub(super) struct RichSpan {
-    pub(super) content: String,
-    pub(super) style: Style,
-    /// When set, this run is a hyperlink to `href` (the visible label may differ).
-    pub(super) href: Option<String>,
-}
-
-impl RichSpan {
-    pub(super) fn styled(content: impl Into<String>, style: Style, href: Option<String>) -> Self {
-        Self {
-            content: content.into(),
-            style,
-            href,
-        }
-    }
-
-    pub(super) fn to_span(&self) -> Span<'static> {
-        Span::styled(self.content.clone(), self.style)
-    }
-}
+/// ratatui's [`Span`] has no href field, so the destination is kept here through
+/// wrapping, and contiguous href runs become [`BufferLink`]s at flatten time. It
+/// lives in [`components::text`](crate::components::text) rather than here
+/// because a block renderer needs the same wrap to make *its* output clickable;
+/// markdown is one caller of it.
+pub(super) use crate::components::text::LinkedSpan as RichSpan;
 
 /// Table contents captured during parsing: each cell is a run of pre-styled
 /// inline spans (bold, links, inline code, emoji), boxed and width-fitted at

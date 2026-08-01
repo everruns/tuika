@@ -115,30 +115,43 @@ pub trait FencedBlockRenderer {
 /// ![HTML blocks in markdown](https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-html/examples/html_markdown/html.png)
 ///
 /// ```
-/// use ratatui_core::text::{Line, Span};
-/// use tuika::components::HtmlBlockRenderer;
+/// use tuika::components::text::{LinkedSpan, wrap_linked};
+/// use tuika::components::{HtmlBlockRenderer, RenderedBlock};
 /// use tuika::style::{StyleSheet, Theme};
 ///
-/// /// A renderer that shows `<details>` as a collapsed summary line.
+/// /// A renderer that shows `<details>` as a collapsed, clickable summary.
 /// struct Details;
 ///
 /// impl HtmlBlockRenderer for Details {
 ///     fn render(
 ///         &self,
 ///         source: &str,
-///         _width: u16,
+///         width: u16,
 ///         _theme: &Theme,
 ///         sheet: &StyleSheet,
-///     ) -> Option<Vec<Line<'static>>> {
+///     ) -> Option<RenderedBlock> {
 ///         let summary = source.split("<summary>").nth(1)?.split('<').next()?;
-///         let style = sheet.heading.to_style();
-///         Some(vec![Line::from(Span::styled(format!("▸ {summary}"), style))])
+///         let spans = vec![LinkedSpan::styled(
+///             format!("▸ {summary}"),
+///             sheet.link.to_style(),
+///             Some("https://example.com/notes".into()),
+///         )];
+///         // Wrapping reports where each link run landed, per row.
+///         let mut block = RenderedBlock::default();
+///         for (row, (spans, links)) in wrap_linked(&spans, width).into_iter().enumerate() {
+///             block.lines.push(spans.iter().map(|s| s.to_span()).collect());
+///             block.links.extend(links.into_iter().map(|mut l| {
+///                 l.line = row as u16;
+///                 l
+///             }));
+///         }
+///         Some(block)
 ///     }
 /// }
 ///
 /// let theme = Theme::default();
 /// let sheet = StyleSheet::from_theme(&theme);
-/// let lines = tuika::components::markdown::to_lines_with(
+/// let (lines, links) = tuika::components::markdown::to_linked_lines_with(
 ///     "<details><summary>Notes</summary>Body</details>",
 ///     40,
 ///     &theme,
@@ -147,6 +160,7 @@ pub trait FencedBlockRenderer {
 ///     tuika::components::Renderers::new().html(&Details),
 /// );
 /// assert_eq!(lines[0].spans[0].content, "▸ Notes");
+/// assert_eq!(links[0].url, "https://example.com/notes");
 /// ```
 ///
 /// See the [markdown guide](https://github.com/everruns/tuika/blob/main/docs/markdown.md#block-html).
@@ -156,13 +170,63 @@ pub trait HtmlBlockRenderer {
     /// `sheet` is the active stylesheet, so an implementation resolves its
     /// headings, links, and code through the same roles the surrounding markdown
     /// does instead of inventing colors.
+    ///
+    /// A [`RenderedBlock`] is lines plus any hyperlink runs in them. Returning
+    /// bare lines works — `Vec<Line>` converts — but then an `<a href>` in the
+    /// block is styled and not clickable, because nothing else in the pipeline
+    /// knows where it points.
     fn render(
         &self,
         source: &str,
         width: u16,
         theme: &Theme,
         sheet: &StyleSheet,
-    ) -> Option<Vec<Line<'static>>>;
+    ) -> Option<RenderedBlock>;
+}
+
+/// What a block renderer produces: width-fitted lines, and the hyperlink runs
+/// inside them.
+///
+/// Links carry coordinates **relative to the block** — `line` counts from the
+/// block's first row, columns from its left edge — because a renderer cannot
+/// know where markdown will place it. Markdown rebases them onto the finished
+/// document, so the host's
+/// [`apply_buffer_links`](crate::term::hyperlink::apply_buffer_links) emits OSC 8
+/// for HTML anchors exactly as it does for markdown's own.
+///
+/// [`wrap_linked`](crate::components::text::wrap_linked) produces both halves at
+/// once, which is the usual way to build one.
+///
+/// ```
+/// use ratatui_core::text::Line;
+/// use tuika::components::markdown::RenderedBlock;
+///
+/// // Lines with no links convert directly.
+/// let plain: RenderedBlock = vec![Line::raw("no links here")].into();
+/// assert!(plain.links.is_empty());
+/// ```
+#[derive(Debug, Default, Clone)]
+pub struct RenderedBlock {
+    /// The block's lines, already fitted to the width the renderer was given.
+    pub lines: Vec<Line<'static>>,
+    /// Hyperlink runs within `lines`, in block-relative coordinates.
+    pub links: Vec<BufferLink>,
+}
+
+impl RenderedBlock {
+    /// A block of `lines` carrying `links`.
+    pub fn new(lines: Vec<Line<'static>>, links: Vec<BufferLink>) -> Self {
+        Self { lines, links }
+    }
+}
+
+impl From<Vec<Line<'static>>> for RenderedBlock {
+    fn from(lines: Vec<Line<'static>>) -> Self {
+        Self {
+            lines,
+            links: Vec::new(),
+        }
+    }
 }
 
 /// The host-supplied renderers a markdown render may consult.
@@ -853,13 +917,14 @@ mod tests {
             width: u16,
             theme: &Theme,
             _: &StyleSheet,
-        ) -> Option<Vec<Line<'static>>> {
+        ) -> Option<RenderedBlock> {
             let text = source.split_whitespace().collect::<Vec<_>>().join(" ");
             (!text.is_empty()).then(|| {
                 vec![Line::from(Span::styled(
                     format!("[{width}] {text}"),
                     ratatui_core::style::Style::default().fg(theme.accent),
                 ))]
+                .into()
             })
         }
     }
@@ -908,6 +973,51 @@ mod tests {
         assert!(block.contains("[38]"), "width less the indent: {block:?}");
     }
 
+    /// A renderer whose single line is one clickable anchor.
+    struct LinkedHtml;
+
+    impl HtmlBlockRenderer for LinkedHtml {
+        fn render(&self, _: &str, _: u16, _: &Theme, _: &StyleSheet) -> Option<RenderedBlock> {
+            Some(RenderedBlock::new(
+                vec![Line::from(Span::raw("the docs"))],
+                vec![crate::term::hyperlink::BufferLink {
+                    line: 0,
+                    start_col: 0,
+                    end_col: 8,
+                    url: "https://example.com".into(),
+                }],
+            ))
+        }
+    }
+
+    #[test]
+    fn html_block_links_are_rebased_onto_the_document() {
+        // The renderer numbers from its own first row and left edge; markdown
+        // has to translate both, or a clickable region lands somewhere else
+        // entirely once the block is indented and preceded by prose.
+        let theme = Theme::default();
+        let (lines, links) = to_linked_lines_with(
+            "intro\n\n> <div>x</div>",
+            40,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+            Renderers::new().html(&LinkedHtml),
+        );
+        let link = links
+            .first()
+            .expect("the anchor survives into the document");
+        assert_eq!(link.url, "https://example.com");
+
+        let row = lines
+            .iter()
+            .position(|l| text(l).contains("the docs"))
+            .expect("rendered row");
+        assert_eq!(link.line as usize, row, "row rebased past the intro");
+        // The quote indents by two columns, so the run moves with it.
+        assert_eq!((link.start_col, link.end_col), (2, 10));
+    }
+
     #[test]
     fn html_block_without_a_renderer_is_dropped() {
         let out: Vec<String> = render("a\n\n<div>x</div>\n\nb", 40)
@@ -921,13 +1031,7 @@ mod tests {
     fn html_renderer_returning_none_drops_the_block() {
         struct Decline;
         impl HtmlBlockRenderer for Decline {
-            fn render(
-                &self,
-                _: &str,
-                _: u16,
-                _: &Theme,
-                _: &StyleSheet,
-            ) -> Option<Vec<Line<'static>>> {
+            fn render(&self, _: &str, _: u16, _: &Theme, _: &StyleSheet) -> Option<RenderedBlock> {
                 None
             }
         }

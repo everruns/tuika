@@ -62,7 +62,7 @@
 
 use ratatui_core::text::Line;
 use tuika::Theme;
-use tuika::components::{FencedBlockRenderer, HtmlBlockRenderer};
+use tuika::components::{FencedBlockRenderer, HtmlBlockRenderer, RenderedBlock};
 use tuika::style::StyleSheet;
 
 mod block;
@@ -153,11 +153,11 @@ impl HtmlBlockRenderer for HtmlRenderer {
         width: u16,
         theme: &Theme,
         sheet: &StyleSheet,
-    ) -> Option<Vec<Line<'static>>> {
-        let lines = to_lines_with_limits(source, width, theme, sheet, self.limits)?;
+    ) -> Option<RenderedBlock> {
+        let block = to_block_with_limits(source, width, theme, sheet, self.limits)?;
         // An empty result would silently swallow the block; let markdown's own
         // "no renderer" path own that case instead.
-        (!lines.is_empty()).then_some(lines)
+        (!block.lines.is_empty()).then_some(block)
     }
 }
 
@@ -179,8 +179,11 @@ impl FencedBlockRenderer for HtmlRenderer {
         // default mapping stands in — the same styles a host that never
         // customized its sheet would see.
         let sheet = StyleSheet::from_theme(theme);
-        let lines = to_lines_with_limits(source, width, theme, &sheet, self.limits)?;
-        (!lines.is_empty()).then_some(lines)
+        // A fence reaches the terminal as lines only — the fenced seam has
+        // nowhere to carry link runs — so anchors inside one are styled but not
+        // clickable. Block HTML, which does carry them, is the richer path.
+        let block = to_block_with_limits(source, width, theme, &sheet, self.limits)?;
+        (!block.lines.is_empty()).then_some(block.lines)
     }
 }
 
@@ -201,7 +204,29 @@ impl FencedBlockRenderer for HtmlRenderer {
 /// assert_eq!(page.len(), 3); // heading, blank, prose
 /// ```
 pub fn to_lines(html: &str, width: u16, theme: &Theme, sheet: &StyleSheet) -> Vec<Line<'static>> {
-    to_lines_with_limits(html, width, theme, sheet, Limits::default()).unwrap_or_default()
+    to_block(html, width, theme, sheet).lines
+}
+
+/// Render an HTML fragment to lines **and** the hyperlink runs inside them.
+///
+/// The full result: [`to_lines`] is this with the links dropped. Feed the links
+/// to [`apply_buffer_links`](tuika::term::hyperlink::apply_buffer_links) after
+/// painting, and an `<a href>` becomes a real OSC 8 hyperlink.
+///
+/// ```
+/// use tuika::prelude::*;
+/// let theme = Theme::default();
+/// let sheet = StyleSheet::from_theme(&theme);
+/// let block = tuika_html::to_block(
+///     r#"<p>see <a href="https://docs.rs/tuika">the docs</a></p>"#,
+///     40,
+///     &theme,
+///     &sheet,
+/// );
+/// assert_eq!(block.links[0].url, "https://docs.rs/tuika");
+/// ```
+pub fn to_block(html: &str, width: u16, theme: &Theme, sheet: &StyleSheet) -> RenderedBlock {
+    to_block_with_limits(html, width, theme, sheet, Limits::default()).unwrap_or_default()
 }
 
 /// [`to_lines`] with explicit [`Limits`]: `None` when the input is over
@@ -213,6 +238,18 @@ pub fn to_lines_with_limits(
     sheet: &StyleSheet,
     limits: Limits,
 ) -> Option<Vec<Line<'static>>> {
+    to_block_with_limits(html, width, theme, sheet, limits).map(|block| block.lines)
+}
+
+/// [`to_block`] with explicit [`Limits`]: `None` when the fragment is over
+/// `max_input_bytes` or nested deeper than `max_depth`.
+pub fn to_block_with_limits(
+    html: &str,
+    width: u16,
+    theme: &Theme,
+    sheet: &StyleSheet,
+    limits: Limits,
+) -> Option<RenderedBlock> {
     if html.len() > limits.max_input_bytes {
         return None;
     }
@@ -221,7 +258,8 @@ pub fn to_lines_with_limits(
         return None;
     }
     let root = dom::parse(html);
-    Some(block::Layout::new(theme, sheet, limits).render(&root, width))
+    let (lines, links) = block::Layout::new(theme, sheet, limits).render(&root, width);
+    Some(RenderedBlock::new(lines, links))
 }
 
 #[cfg(test)]
@@ -433,6 +471,103 @@ mod tests {
         let many = "<p>x</p>".repeat(100);
         let lines = to_lines_with_limits(&many, 40, &theme, &sheet, limits).expect("rendered");
         assert!(lines.len() <= 5, "{}", lines.len());
+    }
+
+    /// The hyperlink runs of a render, as `(line, start_col, end_col, url)`.
+    fn links(html: &str, width: u16) -> Vec<(u16, u16, u16, String)> {
+        let theme = Theme::default();
+        to_block(html, width, &theme, &StyleSheet::from_theme(&theme))
+            .links
+            .into_iter()
+            .map(|l| (l.line, l.start_col, l.end_col, l.url))
+            .collect()
+    }
+
+    /// The columns a link covers must be the columns its label was painted at,
+    /// whatever chrome the block pass put in front of it — otherwise OSC 8 lands
+    /// on the wrong cells and the wrong text becomes clickable.
+    #[test]
+    fn anchors_report_the_columns_their_label_occupies() {
+        let out = plain(r#"<p>see <a href="https://e.co">docs</a> now</p>"#, 40);
+        assert_eq!(out, vec!["see docs now"]);
+        assert_eq!(
+            links(r#"<p>see <a href="https://e.co">docs</a> now</p>"#, 40),
+            vec![(0, 4, 8, "https://e.co".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_list_items_anchor_clears_the_marker_and_the_indent() {
+        let html = r#"<ul><li>x</li><li><a href="https://e.co">go</a></li></ul>"#;
+        let out = plain(html, 40);
+        assert_eq!(out[1], "• go");
+        // Past the `• ` hang, on the second item's row.
+        assert_eq!(links(html, 40), vec![(1, 2, 4, "https://e.co".to_string())]);
+    }
+
+    #[test]
+    fn a_table_cells_anchor_clears_the_box_chrome() {
+        let html = r#"<table><tr><td>a</td><td><a href="https://e.co">go</a></td></tr></table>"#;
+        let out = plain(html, 40);
+        let (row, _, start, end, _) = {
+            let (i, line) = out
+                .iter()
+                .enumerate()
+                .find(|(_, l)| l.contains("go"))
+                .expect("cell row");
+            let start = line.chars().position(|c| c == 'g').unwrap() as u16;
+            (i as u16, line, start, start + 2, ())
+        };
+        assert_eq!(
+            links(html, 40),
+            vec![(row, start, end, "https://e.co".into())]
+        );
+    }
+
+    #[test]
+    fn a_details_summary_can_be_clickable() {
+        let html = r#"<details><summary><a href="https://e.co">More</a></summary>x</details>"#;
+        let out = plain(html, 40);
+        assert_eq!(out[0], "▸ More");
+        // Past the disclosure marker.
+        assert_eq!(links(html, 40), vec![(0, 2, 6, "https://e.co".to_string())]);
+    }
+
+    #[test]
+    fn a_link_wrapped_across_rows_becomes_one_run_per_row() {
+        let html = r#"<p><a href="https://e.co">alpha beta gamma</a></p>"#;
+        let out = plain(html, 12);
+        assert!(out.len() > 1, "{out:?}");
+        let got = links(html, 12);
+        assert_eq!(got.len(), out.len(), "one run per row: {got:?}");
+        for ((row, start, end, url), line) in got.iter().zip(&out) {
+            assert_eq!(url, "https://e.co");
+            assert_eq!(*start, 0);
+            assert_eq!(*end as usize, line.chars().count());
+            assert!((*row as usize) < out.len());
+        }
+    }
+
+    #[test]
+    fn an_unresolved_image_links_to_its_own_source() {
+        let html = "<p><img src='https://e.co/cat.png' alt='a cat'></p>";
+        assert_eq!(
+            links(html, 40)
+                .iter()
+                .map(|(_, _, _, u)| u.clone())
+                .collect::<Vec<_>>(),
+            vec!["https://e.co/cat.png".to_string()]
+        );
+        // Inside an anchor, the anchor wins — one destination, not two.
+        let wrapped =
+            "<p><a href='https://e.co/page'><img src='https://e.co/cat.png' alt='a cat'></a></p>";
+        assert!(
+            links(wrapped, 40)
+                .iter()
+                .all(|(_, _, _, u)| u == "https://e.co/page"),
+            "{:?}",
+            links(wrapped, 40)
+        );
     }
 
     #[test]

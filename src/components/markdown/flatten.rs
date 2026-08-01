@@ -5,13 +5,11 @@
 //! meaningful. Tables are wide enough a concern to live in
 //! [`table`](super::table).
 
-use ratatui_core::style::Style;
 use ratatui_core::text::{Line, Span};
-use unicode_segmentation::UnicodeSegmentation;
 
+use crate::components::text::wrap_linked;
 use crate::style::{StyleSheet, Theme};
 use crate::term::hyperlink::BufferLink;
-use crate::width::grapheme_cols;
 
 use super::Renderers;
 use super::image::{MarkdownImage, image_cell_size};
@@ -88,7 +86,7 @@ pub(super) fn flatten_linked_into(
             }
             MdItem::Prose { spans, indent } => {
                 let avail = width.saturating_sub(*indent).max(1);
-                for (row, row_links) in wrap_rich(spans, avail) {
+                for (row, row_links) in wrap_linked(spans, avail) {
                     let line_idx = out.len() as u16;
                     let line = prefix_line(*indent, row);
                     for mut bl in row_links {
@@ -136,7 +134,19 @@ pub(super) fn flatten_linked_into(
                     .html
                     .and_then(|renderer| renderer.render(source, avail, theme, sheet))
                 {
-                    for line in &rendered {
+                    // The renderer numbers rows from its own first line and
+                    // columns from its own left edge, since it cannot know where
+                    // the block lands; rebase both onto the finished document so
+                    // an `<a href>` inside the block is as clickable as one in
+                    // the markdown around it.
+                    let base = out.len().min(u16::MAX as usize) as u16;
+                    for mut link in rendered.links {
+                        link.line = link.line.saturating_add(base);
+                        link.start_col = link.start_col.saturating_add(*indent);
+                        link.end_col = link.end_col.saturating_add(*indent);
+                        links.push(link);
+                    }
+                    for line in &rendered.lines {
                         out.push(prefix_rendered_line(*indent, line));
                     }
                 }
@@ -181,143 +191,6 @@ pub(super) fn prefix_line(indent: u16, mut spans: Vec<RichSpan>) -> Line<'static
     let mut line = vec![Span::raw(" ".repeat(indent as usize))];
     line.extend(spans.drain(..).map(|s| s.to_span()));
     Line::from(line)
-}
-
-/// Word-wrap rich spans to `width`, preserving style and href across the reflow.
-/// Returns each output row as `(spans, link runs relative to column 0)`.
-pub(super) fn wrap_rich(spans: &[RichSpan], width: u16) -> Vec<(Vec<RichSpan>, Vec<BufferLink>)> {
-    if width == 0 {
-        let links = link_runs(spans, 0);
-        return vec![(spans.to_vec(), links)];
-    }
-    // Grapheme cells carry style + href so a multi-scalar emoji stays intact and
-    // a labeled link keeps its destination across the wrap.
-    let cells: Vec<(&str, Style, Option<&str>)> = spans
-        .iter()
-        .flat_map(|s| {
-            let href = s.href.as_deref();
-            s.content.graphemes(true).map(move |g| (g, s.style, href))
-        })
-        .collect();
-    let mut out: Vec<(Vec<RichSpan>, Vec<BufferLink>)> = Vec::new();
-    let mut cur: Vec<(&str, Style, Option<&str>)> = Vec::new();
-    let mut cur_w = 0u16;
-    let mut i = 0;
-    let n = cells.len();
-    let is_break = |g: &str| g.chars().all(char::is_whitespace);
-    while i < n {
-        if is_break(cells[i].0) {
-            i += 1;
-            continue;
-        }
-        let start = i;
-        let mut word_w = 0u16;
-        while i < n && !is_break(cells[i].0) {
-            word_w = word_w.saturating_add(grapheme_cols(cells[i].0));
-            i += 1;
-        }
-        let word = &cells[start..i];
-        let sep = u16::from(!cur.is_empty());
-        if word_w <= width && cur_w + sep + word_w <= width {
-            if sep == 1 {
-                let (_, st, href) = *cur.last().expect("sep implies non-empty cur");
-                cur.push((" ", st, href));
-                cur_w += 1;
-            }
-            cur.extend_from_slice(word);
-            cur_w += word_w;
-        } else if word_w <= width {
-            if !cur.is_empty() {
-                out.push(coalesce_rich(&cur));
-                cur.clear();
-            }
-            cur.extend_from_slice(word);
-            cur_w = word_w;
-        } else {
-            if !cur.is_empty() {
-                out.push(coalesce_rich(&cur));
-                cur.clear();
-                cur_w = 0;
-            }
-            for &cell in word {
-                let w = grapheme_cols(cell.0);
-                if cur_w + w > width && !cur.is_empty() {
-                    out.push(coalesce_rich(&cur));
-                    cur.clear();
-                    cur_w = 0;
-                }
-                cur.push(cell);
-                cur_w += w;
-            }
-        }
-    }
-    if !cur.is_empty() {
-        out.push(coalesce_rich(&cur));
-    }
-    if out.is_empty() {
-        out.push((Vec::new(), Vec::new()));
-    }
-    out
-}
-
-pub(super) fn coalesce_rich(
-    cells: &[(&str, Style, Option<&str>)],
-) -> (Vec<RichSpan>, Vec<BufferLink>) {
-    let mut spans: Vec<RichSpan> = Vec::new();
-    let mut buf = String::new();
-    let mut run_style: Option<Style> = None;
-    let mut run_href: Option<String> = None;
-    let flush = |spans: &mut Vec<RichSpan>,
-                 buf: &mut String,
-                 style: &mut Option<Style>,
-                 href: &mut Option<String>| {
-        if let Some(st) = style.take() {
-            spans.push(RichSpan::styled(std::mem::take(buf), st, href.take()));
-        }
-    };
-    for &(g, st, href) in cells {
-        let href = href.map(str::to_string);
-        match (&run_style, &run_href) {
-            (Some(s), h) if *s == st && *h == href => buf.push_str(g),
-            _ => {
-                flush(&mut spans, &mut buf, &mut run_style, &mut run_href);
-                run_style = Some(st);
-                run_href = href;
-                buf.push_str(g);
-            }
-        }
-    }
-    flush(&mut spans, &mut buf, &mut run_style, &mut run_href);
-    let links = link_runs(&spans, 0);
-    (spans, links)
-}
-
-/// Contiguous href runs in `spans`, with columns relative to `col_offset`.
-pub(super) fn link_runs(spans: &[RichSpan], col_offset: u16) -> Vec<BufferLink> {
-    let mut links = Vec::new();
-    let mut col = col_offset;
-    let mut i = 0;
-    while i < spans.len() {
-        let Some(url) = spans[i].href.clone() else {
-            col = col.saturating_add(crate::width::str_cols(&spans[i].content));
-            i += 1;
-            continue;
-        };
-        let start = col;
-        while i < spans.len() && spans[i].href.as_deref() == Some(url.as_str()) {
-            col = col.saturating_add(crate::width::str_cols(&spans[i].content));
-            i += 1;
-        }
-        if col > start {
-            links.push(BufferLink {
-                line: 0, // filled in by flatten
-                start_col: start,
-                end_col: col,
-                url,
-            });
-        }
-    }
-    links
 }
 
 /// True for a spacer line — one this pass emitted for [`MdItem::Blank`].

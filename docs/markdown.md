@@ -136,6 +136,14 @@ run, the available width, the theme, and the active `StyleSheet` — so headings
 links, and code resolve the same roles the surrounding markdown does. Returning
 `None` drops the block.
 
+A renderer returns a `RenderedBlock`: lines, plus the `BufferLink`s inside them.
+Markdown rebases those runs onto the document, so an `<a href>` in block HTML
+gets the same OSC 8 treatment — and the same [link policy](#links) — as a
+markdown `[label](url)`. Building them by hand is not necessary:
+`text::wrap_linked` is the wrap markdown uses for its own prose, and it hands
+back the runs with the rows. A renderer with nothing to link returns its
+`Vec<Line>` with `.into()`.
+
 One framing detail is worth knowing, because it looks like a bug: pulldown-cmark
 ends an HTML block at a blank line, so an element whose content is separated by
 blank lines reaches the renderer as several independent blocks. Keep an

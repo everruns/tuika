@@ -2,6 +2,16 @@
 
 ## 2026-08-01
 
+- **Block HTML carries its links**
+
+- The block-HTML seam reports hyperlink runs alongside its lines, so an `<a
+  href>` laid out by a renderer is clickable rather than only styled — in
+  markdown and in the standalone `Html` view alike, under the host's link
+  policy.
+- The linked-span wrap markdown uses for its own prose is now public, so a
+  renderer reports the columns its layout produced instead of reimplementing
+  wrapping.
+
 - **Virtualized collections share one range and scrollbar model**
 
 - `VirtualWindow` now supplies clamped, selection-centered absolute ranges,

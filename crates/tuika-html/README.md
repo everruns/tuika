@@ -59,6 +59,11 @@ content.
 Every element resolves a tuika `StyleSheet` role rather than a color of its own,
 so HTML inherits the host's theme along with everything else on screen.
 
+An `<a href>` is clickable, not merely styled: the renderer reports where each
+anchor's label landed — through wrapping, list indents, and table borders alike
+— and markdown and the `Html` view both emit OSC 8 for it under the host's
+`LinkPolicy`. `to_block` exposes the same pair for a direct caller.
+
 There is **no CSS**, no `style` attribute, no floats, and no positioning. This
 renders content, not pages: the goal is that HTML in a transcript reads as well
 as the markdown around it, not that a terminal becomes a browser.

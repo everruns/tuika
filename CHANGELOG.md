@@ -53,7 +53,15 @@ block-HTML seam.
   returning `None` drops the block, which is the previous behavior. The parser
   stays out of tuika — [`tuika-html`](https://crates.io/crates/tuika-html) is
   the ready-made implementation. Reachable as `Markdown::html_renderer`,
-  `MarkdownState::with_html_renderer`, and `markdown::Renderers`.
+  `MarkdownState::with_html_renderer`, and `markdown::Renderers`. A renderer
+  returns a `RenderedBlock` — lines *and* the hyperlink runs inside them — so an
+  anchor in block HTML is clickable, not merely styled; markdown rebases those
+  runs onto the document. `Vec<Line>` still converts with `.into()` for a
+  renderer with nothing to link.
+- **`components::text::{LinkedSpan, wrap_linked, link_runs}`**, the linked-span
+  primitives markdown wraps its own prose with, made public so a block renderer
+  can produce `BufferLink`s the same way instead of reimplementing the wrap. A
+  wrapped link keeps its destination across every row it spans.
 - `tuika-html` bounds nesting on the source before parsing, so a fragment deep
   enough to overflow html5ever's recursive tree building is refused rather than
   crashing the host.
@@ -146,6 +154,9 @@ block-HTML seam.
   the markdown seam. `<sub>`/`<sup>` now transliterate there too, so one
   document cannot render `H₂O` through markdown and `H2O` through the crate,
   and `<dd>` hangs directly under its `<dt>` instead of a blank line below.
+- A link run now ends at its label: the space wrapping re-inserts after a
+  `[label](url)` is no longer part of the hyperlink, so the gap before the next
+  word is not clickable.
 - `Table` now windows rows to its assigned render height by default.
   `Table::viewport(rows)` remains an optional upper bound.
 - ratatui `Line` styles are composed underneath their `Span` styles in text,

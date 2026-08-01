@@ -10,8 +10,9 @@ use ratatui_core::style::Style;
 use crate::style::Theme;
 use crate::term::hyperlink::BufferLink;
 
-use super::flatten::{spans_cols, wrap_rich};
+use super::flatten::spans_cols;
 use super::item::{Cell, RichSpan, TableData};
+use crate::components::text::wrap_linked;
 
 /// Lay a table out to `width` columns with box-drawing borders. Column widths
 /// fit the content, shrinking the widest columns (and wrapping their cells)
@@ -107,9 +108,9 @@ pub(super) fn render_table_plain_linked(
     };
 
     let mut out = Vec::new();
-    out.extend(wrap_rich(&join(&table.header), width));
+    out.extend(wrap_linked(&join(&table.header), width));
     for row in &table.rows {
-        out.extend(wrap_rich(&join(row), width));
+        out.extend(wrap_linked(&join(row), width));
     }
     out
 }
@@ -142,7 +143,7 @@ fn cell_rows_linked(
             if cell.is_empty() {
                 vec![(Vec::new(), Vec::new())]
             } else {
-                let lines = wrap_rich(cell, widths[c].max(1) as u16);
+                let lines = wrap_linked(cell, widths[c].max(1) as u16);
                 if lines.is_empty() {
                     vec![(Vec::new(), Vec::new())]
                 } else {

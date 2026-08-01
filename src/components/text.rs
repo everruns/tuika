@@ -20,6 +20,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::geometry::Size;
 use crate::surface::Surface;
+use crate::term::hyperlink::BufferLink;
 use crate::view::{RenderCtx, View};
 use crate::width::{grapheme_cols, str_cols};
 
@@ -351,6 +352,199 @@ impl View for Wrap {
     }
 }
 
+/// A styled run of text that may carry a hyperlink destination.
+///
+/// The unit [`wrap_linked`] reflows. Unlike a bare [`Span`], it remembers where
+/// a run points, so a labeled link survives being split across rows — which is
+/// what lets a block renderer hand back clickable output. See
+/// [`HtmlBlockRenderer`](crate::components::HtmlBlockRenderer).
+#[derive(Clone, Debug, PartialEq)]
+pub struct LinkedSpan {
+    /// The visible text.
+    pub content: String,
+    /// How it is painted.
+    pub style: Style,
+    /// Where it points, if anywhere. The visible label may differ from the URL.
+    pub href: Option<String>,
+}
+
+impl LinkedSpan {
+    /// A run of `content` painted with `style`, linking to `href` when set.
+    pub fn styled(content: impl Into<String>, style: Style, href: Option<String>) -> Self {
+        Self {
+            content: content.into(),
+            style,
+            href,
+        }
+    }
+
+    /// The plain ratatui span, dropping the destination.
+    pub fn to_span(&self) -> Span<'static> {
+        Span::styled(self.content.clone(), self.style)
+    }
+}
+
+/// Word-wrap linked spans to `width`, preserving style **and destination**
+/// across the reflow.
+///
+/// [`wrap_lines`] is the same wrap for content that carries no links; this is
+/// the variant that also reports where each surviving link run landed, which is
+/// what a block renderer needs to make its output clickable. Returns one entry
+/// per output row: its spans, and that row's link runs with columns relative to
+/// column 0. Rows are numbered by the caller — only it knows where the block
+/// starts on screen.
+///
+/// ```
+/// use ratatui_core::style::Style;
+/// use tuika::components::text::{LinkedSpan, wrap_linked};
+///
+/// let spans = vec![
+///     LinkedSpan::styled("see ", Style::default(), None),
+///     LinkedSpan::styled("the docs", Style::default(), Some("https://docs.rs".into())),
+/// ];
+/// let rows = wrap_linked(&spans, 40);
+/// assert_eq!(rows.len(), 1);
+/// assert_eq!(rows[0].1[0].url, "https://docs.rs");
+/// assert_eq!(rows[0].1[0].start_col, 4); // after "see "
+/// ```
+pub fn wrap_linked(spans: &[LinkedSpan], width: u16) -> Vec<(Vec<LinkedSpan>, Vec<BufferLink>)> {
+    if width == 0 {
+        let links = link_runs(spans, 0);
+        return vec![(spans.to_vec(), links)];
+    }
+    // Grapheme cells carry style + href so a multi-scalar emoji stays intact and
+    // a labeled link keeps its destination across the wrap.
+    let cells: Vec<(&str, Style, Option<&str>)> = spans
+        .iter()
+        .flat_map(|s| {
+            let href = s.href.as_deref();
+            s.content.graphemes(true).map(move |g| (g, s.style, href))
+        })
+        .collect();
+    let mut out: Vec<(Vec<LinkedSpan>, Vec<BufferLink>)> = Vec::new();
+    let mut cur: Vec<(&str, Style, Option<&str>)> = Vec::new();
+    let mut cur_w = 0u16;
+    let mut i = 0;
+    let n = cells.len();
+    let is_break = |g: &str| g.chars().all(char::is_whitespace);
+    while i < n {
+        if is_break(cells[i].0) {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        let mut word_w = 0u16;
+        while i < n && !is_break(cells[i].0) {
+            word_w = word_w.saturating_add(grapheme_cols(cells[i].0));
+            i += 1;
+        }
+        let word = &cells[start..i];
+        let sep = u16::from(!cur.is_empty());
+        if word_w <= width && cur_w + sep + word_w <= width {
+            if sep == 1 {
+                let (_, st, href) = *cur.last().expect("sep implies non-empty cur");
+                // The re-inserted separator keeps the previous run's style, but
+                // only its href when the next word shares it: a link run must
+                // end at its label, or the space after `[docs](url) now` would
+                // be clickable too.
+                let href = href.filter(|h| word.first().is_some_and(|w| w.2 == Some(*h)));
+                cur.push((" ", st, href));
+                cur_w += 1;
+            }
+            cur.extend_from_slice(word);
+            cur_w += word_w;
+        } else if word_w <= width {
+            if !cur.is_empty() {
+                out.push(coalesce_linked(&cur));
+                cur.clear();
+            }
+            cur.extend_from_slice(word);
+            cur_w = word_w;
+        } else {
+            if !cur.is_empty() {
+                out.push(coalesce_linked(&cur));
+                cur.clear();
+                cur_w = 0;
+            }
+            for &cell in word {
+                let w = grapheme_cols(cell.0);
+                if cur_w + w > width && !cur.is_empty() {
+                    out.push(coalesce_linked(&cur));
+                    cur.clear();
+                    cur_w = 0;
+                }
+                cur.push(cell);
+                cur_w += w;
+            }
+        }
+    }
+    if !cur.is_empty() {
+        out.push(coalesce_linked(&cur));
+    }
+    if out.is_empty() {
+        out.push((Vec::new(), Vec::new()));
+    }
+    out
+}
+
+fn coalesce_linked(cells: &[(&str, Style, Option<&str>)]) -> (Vec<LinkedSpan>, Vec<BufferLink>) {
+    let mut spans: Vec<LinkedSpan> = Vec::new();
+    let mut buf = String::new();
+    let mut run_style: Option<Style> = None;
+    let mut run_href: Option<String> = None;
+    let flush = |spans: &mut Vec<LinkedSpan>,
+                 buf: &mut String,
+                 style: &mut Option<Style>,
+                 href: &mut Option<String>| {
+        if let Some(st) = style.take() {
+            spans.push(LinkedSpan::styled(std::mem::take(buf), st, href.take()));
+        }
+    };
+    for &(g, st, href) in cells {
+        let href = href.map(str::to_string);
+        match (&run_style, &run_href) {
+            (Some(s), h) if *s == st && *h == href => buf.push_str(g),
+            _ => {
+                flush(&mut spans, &mut buf, &mut run_style, &mut run_href);
+                run_style = Some(st);
+                run_href = href;
+                buf.push_str(g);
+            }
+        }
+    }
+    flush(&mut spans, &mut buf, &mut run_style, &mut run_href);
+    let links = link_runs(&spans, 0);
+    (spans, links)
+}
+
+/// Contiguous href runs in `spans`, with columns relative to `col_offset`.
+pub fn link_runs(spans: &[LinkedSpan], col_offset: u16) -> Vec<BufferLink> {
+    let mut links = Vec::new();
+    let mut col = col_offset;
+    let mut i = 0;
+    while i < spans.len() {
+        let Some(url) = spans[i].href.clone() else {
+            col = col.saturating_add(crate::width::str_cols(&spans[i].content));
+            i += 1;
+            continue;
+        };
+        let start = col;
+        while i < spans.len() && spans[i].href.as_deref() == Some(url.as_str()) {
+            col = col.saturating_add(crate::width::str_cols(&spans[i].content));
+            i += 1;
+        }
+        if col > start {
+            links.push(BufferLink {
+                line: 0, // filled in by flatten
+                start_col: start,
+                end_col: col,
+                url,
+            });
+        }
+    }
+    links
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,6 +558,32 @@ mod tests {
     /// Concatenated text of a line's spans.
     fn line_text(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn a_link_run_ends_at_its_label_not_at_the_next_word() {
+        let spans = vec![
+            LinkedSpan::styled("see ", Style::default(), None),
+            LinkedSpan::styled("docs", Style::default(), Some("https://e.co".into())),
+            LinkedSpan::styled(" now", Style::default(), None),
+        ];
+        let rows = wrap_linked(&spans, 40);
+        assert_eq!(rows.len(), 1);
+        let links = &rows[0].1;
+        // The space wrapping re-inserts between "docs" and "now" belongs to
+        // neither run: covering it would make the gap clickable.
+        assert_eq!(links.len(), 1);
+        assert_eq!((links[0].start_col, links[0].end_col), (4, 8));
+
+        // Two words *inside* one label stay a single run across the separator.
+        let spans = vec![LinkedSpan::styled(
+            "the docs",
+            Style::default(),
+            Some("https://e.co".into()),
+        )];
+        let links = wrap_linked(&spans, 40).remove(0).1;
+        assert_eq!(links.len(), 1);
+        assert_eq!((links[0].start_col, links[0].end_col), (0, 8));
     }
 
     #[test]

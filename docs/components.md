@@ -153,7 +153,9 @@ Renders an HTML fragment to styled lines: headings, paragraphs, lists,
 definition lists, block quotes, `<pre>`, `<hr>`, `<table>`,
 `<details>`/`<summary>`, and the presentational inline elements. Every element
 resolves a `StyleSheet` role, so HTML inherits the app's theme like everything
-else. No CSS — this renders content, not pages. Ships in the companion crate
+else. An `<a href>` becomes a real OSC 8 hyperlink under the view's
+`link_policy`, the same knob `Markdown` offers. No CSS — this renders content,
+not pages. Ships in the companion crate
 [`tuika-html`](../crates/tuika-html/), which also supplies the
 `HtmlBlockRenderer` that lays out HTML blocks inside
 [Markdown](markdown.md#block-html).

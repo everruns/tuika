@@ -144,6 +144,17 @@ does, or HTML in one document would look like it came from another. With no
 renderer attached the block is dropped, which is what markdown did with all HTML
 before the seam existed, so attaching one is purely additive.
 
+The seam returns lines *and* the hyperlink runs inside them, because links are
+the one thing a renderer cannot express in lines alone: a destination that is
+not the visible label reaches the terminal only as OSC 8, and only the renderer
+knows which columns its own layout put a label at. Markdown rebases those runs
+onto the document and applies the host's link policy, so an anchor in block HTML
+is not a second-class link. That obligation is also why the linked-span wrap
+markdown uses for its own prose is public rather than private to markdown: a
+renderer that had to reimplement wrapping to report columns would get it subtly
+wrong. The fenced seam deliberately keeps the narrower shape — a fence is code,
+and code has no anchors to carry.
+
 `tuika-html` is that implementation, and it is also where the line inside this
 capability shows: the same crate serves the fenced-`html` seam, and adds a
 standalone `Html` view for fragments that are not inside markdown at all.

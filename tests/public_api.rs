@@ -182,6 +182,18 @@ fn component_modules_own_their_constants_and_free_functions() {
     assert!(qr::encode(b"hi", tuika::components::QrEcc::Low).is_some());
     assert_eq!(text::wrap_lines(&[], 10).len(), 0);
 
+    // The linked-span primitives a block renderer reuses to make its own output
+    // clickable: wrap once, and the hyperlink runs come back with the rows.
+    let label = text::LinkedSpan::styled(
+        "the docs",
+        ratatui_core::style::Style::default(),
+        Some("https://example.com".into()),
+    );
+    let (row, links) = text::wrap_linked(std::slice::from_ref(&label), 20).remove(0);
+    assert_eq!(row[0].to_span().content, "the docs");
+    assert_eq!(links, text::link_runs(&row, 0));
+    assert_eq!(links[0].url, "https://example.com");
+
     struct Blocks;
     impl FencedBlockRenderer for Blocks {
         fn render(
@@ -217,8 +229,10 @@ fn component_modules_own_their_constants_and_free_functions() {
             _width: u16,
             _theme: &Theme,
             _sheet: &StyleSheet,
-        ) -> Option<Vec<ratatui_core::text::Line<'static>>> {
-            Some(vec![ratatui_core::text::Line::raw("html")])
+        ) -> Option<tuika::components::RenderedBlock> {
+            // Lines alone convert; a renderer with clickable output builds the
+            // block from both halves instead.
+            Some(vec![ratatui_core::text::Line::raw("html")].into())
         }
     }
     let lines = markdown::to_lines_with(
