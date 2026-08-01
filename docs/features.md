@@ -140,7 +140,7 @@ selection, and the output the app publishes, which is still there after it
 exits.
 
 <p align="center">
-  <img src="demos/split-footer.svg" width="880" alt="A terminal running the split_footer example: a bordered status box pinned to the last rows while published build lines accumulate above it as ordinary scrollback; after the example exits the lines remain and the box's rows are gone.">
+  <img src="split-footer.gif" width="880" alt="A terminal running the split_footer example: a bordered status box pinned to the last rows while published build lines accumulate above it as ordinary scrollback; after the example exits the lines remain and the box's rows are gone.">
 </p>
 
 Because the footer owns the cursor, a host publishes through tuika instead of

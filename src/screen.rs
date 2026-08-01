@@ -83,7 +83,7 @@ pub const DEFAULT_FOOTER_HEIGHT: u16 = 12;
 /// See the [module documentation](self) for the model and the split-footer
 /// contract.
 ///
-/// <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/split-footer.svg" width="880" alt="A terminal running the split_footer example: a bordered status box pinned to the last rows while published build lines accumulate above it as ordinary scrollback; after the example exits the lines remain and the box's rows are gone.">
+/// <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/split-footer.gif" width="880" alt="A terminal running the split_footer example: a bordered status box pinned to the last rows while published build lines accumulate above it as ordinary scrollback; after the example exits the lines remain and the box's rows are gone.">
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ScreenMode {
     /// Own the whole window on the terminal's alternate buffer, restoring the

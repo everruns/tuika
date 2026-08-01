@@ -113,6 +113,27 @@
   This keeps the public tracker for intentional external coordination rather
   than exposing internal scratch queues.
 
+- **The split-footer demo is a VHS recording in the default palette**
+
+- The asset was drawn on a cold gray of its own — terminal background, window
+  chrome, and shell prompt all hand-picked — while every other asset in `docs/`
+  is captured against `Theme::default()`. Beside them it read as a screenshot of
+  a different program. Every generator now takes its palette from the theme,
+  recorded in [Documentation](specs/documentation.md#capture-palette).
+- It was a hand-rolled SVG because VHS was assumed to be unable to record
+  the mode. It can: ttyd runs the session in a real terminal, and the scrollback
+  above the footer — and what is left after `q` — comes through intact. Only the
+  image demo genuinely defeats a recorder, because `xterm.js` implements no
+  graphics protocol.
+- `docs/split-footer.gif` is now captured by
+  `scripts/gen-split-footer-demo.sh` at the component gallery's density, so it
+  sits beside the demos instead of at its own scale. The PTY/SVG generator stays
+  as the recorder-free path and its output is no longer committed.
+- It lives at `docs/split-footer.gif`, beside the hero rather than in
+  `docs/demos/`: that directory belongs to the `DEMOS` registry — `demo -- check`
+  rejects an asset there with no scene behind it — and is excluded from the
+  `.crate`, which this recording must be in for the crates.io README to render.
+
 ## 2026-07-30
 
 - **Render-time facts stay in render-time components**

@@ -572,7 +572,7 @@ lifecycle.
   panel over output the user wants to keep.
 
 <p align="center">
-  <img src="docs/demos/split-footer.svg" width="880" alt="A terminal running the split_footer example: a bordered status box pinned to the last rows while published build lines accumulate above it as ordinary scrollback; after the example exits the lines remain and the box's rows are gone.">
+  <img src="docs/split-footer.gif" width="880" alt="A terminal running the split_footer example: a bordered status box pinned to the last rows while published build lines accumulate above it as ordinary scrollback; after the example exits the lines remain and the box's rows are gone.">
 </p>
 
 In split-footer mode a host must not `println!` — the footer owns the cursor.

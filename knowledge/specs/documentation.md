@@ -160,12 +160,24 @@ generated demos follow the rule that the *scene registry is the source of truth*
   gallery; `scripts/gen-language-demo.sh` records the real `languages` example.
 - `scripts/gen-all-demos.sh` is the repository-wide inventory and regeneration
   entry point. A default run includes component assets, the hero, theme and
-  styling galleries, generated SVGs, companion-crate galleries, the Codex
-  example, and external showcases. Local-only work may explicitly pass
-  `--skip-showcases`; it must not be described as refreshing the showcases.
+  styling galleries, the split-footer recording, the generated image SVG,
+  companion-crate galleries, the Codex example, and external showcases.
+  Local-only work may explicitly pass `--skip-showcases`; it must not be
+  described as refreshing the showcases.
+- The split-footer demo is a *whole terminal*, not a frame: what makes the mode
+  worth documenting is the scrollback above the footer and what survives the
+  program's exit, neither of which a `Buffer` holds. It is therefore recorded
+  from a real session — `scripts/gen-split-footer-demo.sh` drives the built
+  `split_footer` example under VHS, sends `q`, and keeps recording — rather than
+  built from a registry scene. `examples/split_footer_demo.rs` is the
+  recorder-free path to the same picture (a pseudo-terminal, vt100, an animated
+  SVG), the way `examples/screenshot.rs` is for the hero: useful without a VHS
+  toolchain and for a text dump, but what it writes is not committed.
 - The image demo is rendered directly by `examples/image_demo.rs` rather than
   recorded, because VHS captures through `ttyd` + `xterm.js`, which implements
-  no graphics protocol and would only ever show the text fallback.
+  no graphics protocol and would only ever show the text fallback. This is the
+  one asset a recorder genuinely *cannot* produce; the split footer only looked
+  like one until the toolchain was available.
 - Release notes embed demos too — see [Release](../processes/release.md#changelog-format) —
   and they reuse the same `DEMOS` scenes rather than adding one-off assets. They
   are the one place that pins the raw URL to a release tag instead of `main`, so
@@ -260,6 +272,23 @@ than a single component: pick the smallest grid the UI genuinely needs, then the
 largest font whose frame still records in real time, and verify the result — the
 GIF's duration must match the tape's, not merely look sharp in a still.
 
+### Capture palette
+
+Every asset is captured against `Theme::default()` — tuika's own warm red-on-dark
+identity. The VHS generators pass it as the tape's `Set Theme`, and the two
+recorder-free SVG paths (`examples/screenshot.rs` for the hero,
+`examples/split_footer_demo.rs` for the split footer) derive both the terminal's
+default-cell colors and the window chrome around them from the same `Theme`
+rather than a second hand-picked set. The exception is the Codex replica, which
+imitates another product and therefore carries that product's palette
+deliberately.
+
+The rule exists because a hand-picked palette drifts silently: the split-footer
+asset shipped for a while on a cold neutral gray of its own, next to a page of
+warm assets, and read as a screenshot of a different program. Deriving the colors
+also means a change to the default theme reaches the generated assets on the next
+regeneration instead of leaving them stale.
+
 ### The crate/GitHub asset split
 
 The root package's demo, showcase, theme, and styling assets total ~14 MiB and are
@@ -268,8 +297,11 @@ hand-written `//!` header, which references none of them, so bundling them only
 bloats the published `.crate`. Root `Cargo.toml`'s `exclude` keeps them — and the
 repository machinery (`knowledge/`, `.agents/`, `.github/`, `scripts/`) — out
 of that tarball; only `logo.svg`, `docs/hero.gif`, `docs/demos/image.svg`, and
-`docs/demos/split-footer.svg`, which its crates.io README embeds by relative path,
-ship.
+`docs/split-footer.gif`, which its crates.io README embeds by relative path,
+ship. `docs/demos/` is excluded wholesale, so the two recordings that must ship
+live directly under `docs/` — which is also where they belong for a second
+reason: that directory is the registry's, and `demo -- check` fails an asset in
+it with no scene behind it.
 
 The split is per **published crate**, not per repository, and the deciding
 question is how that crate's own README reaches the asset — because that is what
@@ -277,8 +309,8 @@ determines whether the packaged copy is ever read:
 
 - **Relative path** — crates.io renders the page from the tarball, so the asset
   must ship. tuika's README assets (`logo.svg`, `docs/hero.gif`,
-  `docs/demos/image.svg`, and `docs/demos/split-footer.svg`) and
-  `tuika-mermaid`'s ~32 KiB recording beside its example are here.
+  `docs/demos/image.svg`, and `docs/split-footer.gif`) and `tuika-mermaid`'s
+  ~32 KiB recording beside its example are here.
 - **Absolute `raw.githubusercontent.com` URL** — the packaged copy is
   unreachable from inside the `.crate` and is pure weight, so it is excluded
   wherever it lives. `tuika-codeformatters`' `docs/languages.gif` was shipping

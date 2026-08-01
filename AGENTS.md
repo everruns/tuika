@@ -144,6 +144,9 @@ tuika's own suite covers more:
   doc, plus module-level types like `OverlaySpec`.
 - `docs/hero.gif` — the README hero: a recording of a composite gallery screen.
   See [Hero screenshot](#hero-screenshot).
+- `docs/split-footer.gif` — the split-footer screen mode. Beside the hero rather
+  than in `docs/demos/`, because it records a whole terminal session instead of a
+  registry scene. See [Split-footer demo](#split-footer-demo).
 - `docs/showcases.md` + `docs/showcases/*.gif` — applications built on tuika, one
   recording each. See [Showcase demos](#showcase-demos).
 - A recording of a whole runnable example lives **beside that example**, so its
@@ -170,7 +173,7 @@ The root package's demo, showcase, example, theme, and styling assets are
 GitHub-only: `Cargo.toml`'s `exclude` keeps them (and the repository
 machinery — `knowledge/`, `.agents/`, `.github/`, `scripts/`) out of tuika's
 published `.crate`, and `tests/packaging.rs` guards that split. Only `logo.svg`,
-`docs/hero.gif`, `docs/demos/image.svg`, and `docs/demos/split-footer.svg`, which
+`docs/hero.gif`, `docs/demos/image.svg`, and `docs/split-footer.gif`, which
 the crates.io README embeds by relative path, ship in tuika.
 
 Every published member owns the same rule, and how its README embeds a recording
@@ -189,8 +192,8 @@ scene (name, blurb, recording size, builder); the CLI, the tape generator, and
 the integrity check all read it.
 
 For a complete repository-wide refresh, including the hero, theme and styling
-galleries, generated SVGs, companion-crate recordings, the Codex example, and
-the external showcases:
+galleries, the split-footer recording, the generated image SVG, companion-crate
+recordings, the Codex example, and the external showcases:
 
 ```bash
 scripts/gen-all-demos.sh
@@ -330,22 +333,34 @@ ffprobe -v error -show_entries format=duration -of csv=p=0 docs/showcases/yolop.
 
 ## Split-footer demo
 
-`docs/demos/split-footer.svg` (embedded in the README, `docs/features.md`, and
+`docs/split-footer.gif` (embedded in the README, `docs/features.md`, and
 `ScreenMode`'s rustdoc) shows a whole terminal, not a component: the footer *and*
-the scrollback above it, which no `Buffer` holds. VHS can't record it either
-without ttyd, so it is generated the same way the smoke test asserts —
-[`examples/split_footer_demo.rs`](examples/split_footer_demo.rs) runs the built
-`split_footer` example under a pseudo-terminal, samples the grid through a
-reference terminal (vt100), and serializes the frames to an animated SVG. The
-last frame is captured *after* the example exits, which is the point of the mode.
+the scrollback above it, which no `Buffer` holds — so it cannot come from the
+`DEMOS` registry. It is recorded from the real session by
+[`scripts/gen-split-footer-demo.sh`](scripts/gen-split-footer-demo.sh), which
+drives the built `split_footer` example under VHS at the gallery's density
+(66×14 cells, `FontSize 40`), then sends `q` and keeps recording: the last
+seconds are the point of the mode — the published blocks stay, the footer's rows
+are handed back.
 
 ```bash
-cargo build --example split_footer          # the recording's subject
-cargo run --example split_footer_demo       # writes docs/demos/split-footer.svg
+scripts/gen-split-footer-demo.sh
+```
+
+[`examples/split_footer_demo.rs`](examples/split_footer_demo.rs) is the
+**recorder-free** path to the same scene, the way `examples/screenshot.rs` is
+for the hero: it runs the built example under a pseudo-terminal — the same
+harness `tests/pty_smoke.rs` asserts against — samples the grid through vt100,
+and writes an animated SVG. Nothing it produces is committed; use it when
+VHS/ttyd is unavailable, or for the text dump.
+
+```bash
+cargo build --example split_footer          # the subject, either way
+cargo run --example split_footer_demo       # writes target/split-footer.svg
 cargo run --example split_footer_demo -- --dump   # the frames as text
 ```
 
-Being a standalone generated asset, it is outside the registry-based
+Being a whole-terminal recording rather than a registry scene, it is outside the
 `demo -- check` invariant.
 
 ## Image demo
