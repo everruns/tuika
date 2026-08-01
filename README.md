@@ -672,8 +672,9 @@ model for applications that already have a Tokio runtime — anything doing
 network or disk I/O — and lets its update closure `.await`. It ties
 `TerminalSession`, `paint`, and `translate_event` to crossterm's async
 `EventStream` and a tick timer in one `tokio::select!`, so the host keeps a
-single event loop. Its update closure returns `ControlFlow<()>`; asynchronous
-updates currently repaint after every delivered signal.
+single event loop. Its update closure returns the same
+`UpdateResult::{Clean, Dirty, Exit}` as `Runner`, so awaited work only rebuilds
+and repaints when it actually changes visible state.
 
 Enabling `async` adds Tokio (timer + `select!`) and crossterm's `event-stream`
 feature; it stays off by default so sync-only hosts pull in no runtime. The

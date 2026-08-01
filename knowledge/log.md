@@ -22,6 +22,12 @@
 
 ## 2026-07-31
 
+- **Async runner uses explicit invalidation**
+  - Awaited updates return the same clean/dirty/exit result as synchronous
+    updates, so idle ticks and handled-but-invisible events do not rebuild or
+    repaint the view.
+  - State/view/update semantics are now symmetric across both runner variants.
+
 - **Responsive auxiliary panels stay host-owned**
 
 - A small dock state now resolves one panel to wide dock, narrow focused

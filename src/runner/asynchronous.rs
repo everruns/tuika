@@ -17,9 +17,7 @@
 //! `&mut state` at once.
 //!
 //! ```no_run
-//! use std::ops::ControlFlow;
 //! use std::time::Duration;
-//!
 //! use tuika::prelude::*;
 //!
 //! # async fn fetch_stats() -> std::io::Result<u64> { Ok(0) }
@@ -40,17 +38,17 @@
 //!                 // Poll on every tick and on `r`; both may await.
 //!                 Signal::Tick => {
 //!                     *requests = fetch_stats().await.unwrap_or(*requests);
-//!                     ControlFlow::Continue(())
+//!                     UpdateResult::Dirty
 //!                 }
 //!                 Signal::Event(Event::Key(k)) if k.plain() => match k.code {
-//!                     KeyCode::Char('q') | KeyCode::Esc => ControlFlow::Break(()),
+//!                     KeyCode::Char('q') | KeyCode::Esc => UpdateResult::Exit,
 //!                     KeyCode::Char('r') => {
 //!                         *requests = fetch_stats().await.unwrap_or(*requests);
-//!                         ControlFlow::Continue(())
+//!                         UpdateResult::Dirty
 //!                     }
-//!                     _ => ControlFlow::Continue(()),
+//!                     _ => UpdateResult::Clean,
 //!                 },
-//!                 _ => ControlFlow::Continue(()),
+//!                 _ => UpdateResult::Clean,
 //!             },
 //!         )
 //!         .await
@@ -58,7 +56,6 @@
 //! ```
 
 use std::io;
-use std::ops::ControlFlow;
 use std::time::Duration;
 
 use crossterm::event::EventStream;
@@ -70,7 +67,9 @@ use tokio_stream::{Stream, StreamExt};
 
 use super::Signal;
 use crate::screen::{Scrollback, close_footer, pin_footer};
-use crate::{Element, Event, RunnerConfig, TerminalSession, Theme, paint, translate_event};
+use crate::{
+    Element, Event, RunnerConfig, TerminalSession, Theme, UpdateResult, paint, translate_event,
+};
 
 /// An asynchronous Crossterm event and rendering loop.
 ///
@@ -107,7 +106,7 @@ impl AsyncRunner {
         self.scrollback.clone()
     }
 
-    /// Run on the real terminal until `update` returns [`ControlFlow::Break`].
+    /// Run on the real terminal until `update` returns [`UpdateResult::Exit`].
     ///
     /// Enters a [`TerminalSession`] (restored on return, including on error or
     /// panic) and reads input from crossterm's async
@@ -121,7 +120,7 @@ impl AsyncRunner {
     ) -> io::Result<()>
     where
         V: FnMut(&S, u64) -> Element,
-        U: AsyncFnMut(&mut S, Signal) -> ControlFlow<()>,
+        U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
     {
         self.run_with_backend(
             theme,
@@ -148,7 +147,7 @@ impl AsyncRunner {
     where
         B: Backend<Error = io::Error>,
         V: FnMut(&S, u64) -> Element,
-        U: AsyncFnMut(&mut S, Signal) -> ControlFlow<()>,
+        U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
     {
         let mode = self.config.screen_mode;
         let _session = TerminalSession::enter_with(mode)?;
@@ -197,7 +196,7 @@ impl AsyncRunner {
     /// `events` yields already-translated tuika [`Event`]s. An `Err` item ends
     /// the run by propagating out; `None` (a finite stream running dry) stops
     /// event delivery but leaves the tick timer running, so the loop still exits
-    /// only when `update` returns [`ControlFlow::Break`].
+    /// only when `update` returns [`UpdateResult::Exit`].
     pub async fn run_with_events<S, B, V, U, E, Er>(
         &self,
         terminal: &mut Terminal<B>,
@@ -211,7 +210,7 @@ impl AsyncRunner {
         B: Backend<Error = Er>,
         E: Stream<Item = Result<Event, Er>> + Unpin,
         V: FnMut(&S, u64) -> Element,
-        U: AsyncFnMut(&mut S, Signal) -> ControlFlow<()>,
+        U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
     {
         let mut events_done = false;
         let mut frame = 0u64;
@@ -245,25 +244,27 @@ impl AsyncRunner {
                 },
             };
 
-            if update(state, signal).await.is_break() {
-                break;
-            }
+            let mut dirty = match update(state, signal).await {
+                UpdateResult::Clean => false,
+                UpdateResult::Dirty => true,
+                UpdateResult::Exit => break,
+            };
             if split {
-                // Publish first: committing a block scrolls the terminal and
-                // (on the portable path) clears the viewport, so the draw below
-                // is what puts the footer back. Resolve any resize before
-                // re-pinning, so the footer is measured against the new height.
-                self.scrollback.flush(terminal, theme)?;
-                terminal.autoresize()?;
-                pin_footer(terminal)?;
+                // Publishing scrolls the terminal and may clear the viewport,
+                // so a committed block always makes the footer dirty.
+                dirty |= self.scrollback.flush(terminal, theme)?;
+                if dirty {
+                    terminal.autoresize()?;
+                    pin_footer(terminal)?;
+                }
             } else {
                 // Nothing above the frame to publish into; drop queued blocks
                 // rather than let a producer grow the queue without bound.
                 self.scrollback.clear();
             }
-            // Redraws are a ratatui buffer diff, so repainting after every
-            // handled signal only flushes the cells that actually changed.
-            draw(terminal, theme, &mut view, state, &mut frame)?;
+            if dirty {
+                draw(terminal, theme, &mut view, state, &mut frame)?;
+            }
         }
 
         Ok(())
@@ -361,13 +362,13 @@ mod tests {
                 |count, _frame| element(Text::raw(format!("count={count}"))),
                 async |count, signal| match signal {
                     Signal::Event(Event::Key(k)) if k.code == KeyCode::Char('q') => {
-                        ControlFlow::Break(())
+                        UpdateResult::Exit
                     }
                     Signal::Event(Event::Key(_)) => {
                         *count += 1;
-                        ControlFlow::Continue(())
+                        UpdateResult::Dirty
                     }
-                    _ => ControlFlow::Continue(()),
+                    _ => UpdateResult::Clean,
                 },
             )
             .await;
@@ -378,6 +379,42 @@ mod tests {
             buffer_text(&terminal).contains("count=2"),
             "final frame reflects state: {:?}",
             buffer_text(&terminal)
+        );
+    }
+
+    #[tokio::test]
+    async fn clean_updates_do_not_rebuild_or_repaint() {
+        let runner = AsyncRunner::new(RunnerConfig {
+            tick_rate: Duration::from_secs(3600),
+            ..RunnerConfig::default()
+        });
+        let mut terminal = terminal(16, 1);
+        let mut state = 0u8;
+        let views = std::cell::Cell::new(0usize);
+        let events = tokio_stream::iter([key(KeyCode::Char('a')), key(KeyCode::Esc)]);
+
+        runner
+            .run_with_events(
+                &mut terminal,
+                &Theme::default(),
+                &mut state,
+                events,
+                |state, _frame| {
+                    views.set(views.get() + 1);
+                    element(Text::raw(format!("state={state}")))
+                },
+                async |_state, signal| match signal {
+                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
+                    _ => UpdateResult::Clean,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            views.get(),
+            1,
+            "clean input leaves the initial frame intact"
         );
     }
 
@@ -397,7 +434,7 @@ mod tests {
                 &mut state,
                 events,
                 |state, _frame| element(Text::raw(*state)),
-                async |_state, _signal| ControlFlow::Break(()),
+                async |_state, _signal| UpdateResult::Exit,
             )
             .await
             .unwrap();
@@ -433,9 +470,9 @@ mod tests {
                         *ticks += 1;
                     }
                     if *ticks >= 3 {
-                        ControlFlow::Break(())
+                        UpdateResult::Exit
                     } else {
-                        ControlFlow::Continue(())
+                        UpdateResult::Dirty
                     }
                 },
             )
@@ -494,13 +531,13 @@ mod tests {
                 },
                 async |_state, signal| match signal {
                     Signal::Event(Event::Key(k)) if k.code == KeyCode::Char('q') => {
-                        ControlFlow::Break(())
+                        UpdateResult::Exit
                     }
                     Signal::Event(_) => {
                         scrollback.write(|_width| element(Text::raw("published")));
-                        ControlFlow::Continue(())
+                        UpdateResult::Dirty
                     }
-                    _ => ControlFlow::Continue(()),
+                    _ => UpdateResult::Clean,
                 },
             )
             .await
@@ -564,9 +601,9 @@ mod tests {
                     // Enough ticks for the spawned task to be polled and its
                     // blocks flushed.
                     if *ticks >= 8 {
-                        ControlFlow::Break(())
+                        UpdateResult::Exit
                     } else {
-                        ControlFlow::Continue(())
+                        UpdateResult::Clean
                     }
                 },
             )
@@ -609,10 +646,8 @@ mod tests {
                 events,
                 |_state, _frame| element(Text::raw("frame")),
                 async |_state, signal| match signal {
-                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => {
-                        ControlFlow::Break(())
-                    }
-                    _ => ControlFlow::Continue(()),
+                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
+                    _ => UpdateResult::Clean,
                 },
             )
             .await
@@ -654,7 +689,7 @@ mod tests {
                 &mut state,
                 events,
                 |_state, _frame| element(Text::raw("x")),
-                async |_state, _signal| ControlFlow::Continue(()),
+                async |_state, _signal| UpdateResult::Dirty,
             )
             .await;
 
