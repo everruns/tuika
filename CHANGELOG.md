@@ -11,10 +11,26 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
-## Unreleased
+## [0.7.0] - 2026-07-31
 
 Released alongside `tuika-html` 0.1.0, the new companion crate behind the
-block-HTML seam.
+block-HTML seam, plus `tuika-codeformatters` 0.4.0 and `tuika-mermaid` 0.2.0.
+The existing companions adopt tuika 0.7's breaking view-measurement API and
+update their tuika dependency requirement in the same release.
+
+### Highlights
+
+**Responsive application primitives.** Docked panels, target-relative overlays,
+virtualized collections, semantic styles, and single-line input give hosts a
+coherent framework for complex terminal applications without retained UI state.
+
+![primitives demo](https://raw.githubusercontent.com/everruns/tuika/v0.7.0/docs/demos/primitives.gif)
+
+**Rich HTML in Markdown.** Presentational inline HTML now shares Markdown's
+styles, while the new parser-free `HtmlBlockRenderer` seam lets `tuika-html`
+render styled block HTML without adding a parser to tuika core.
+
+![markdown HTML demo](https://raw.githubusercontent.com/everruns/tuika/v0.7.0/docs/demos/markdown_html.png)
 
 ### Added
 
