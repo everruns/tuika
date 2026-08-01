@@ -72,7 +72,9 @@ rather than beside it.
 - **Runners own application state directly**: rendering receives `&State`,
   updates receive `&mut State` plus a tick or input signal, and repaint is an
   explicit dirty result (or, synchronously, an external redraw request).
-  Rendering stays pure, and idle ticks do not churn the terminal.
+  Rendering stays pure, and idle ticks do not churn the terminal. The
+  synchronous runner's monotonic clock defaults to the process clock and is
+  replaceable for deterministic hosts.
 
 `measure` and `render` are the two halves of every view, and both receive the
 same `RenderCtx`: `measure` reports a size in whole cells so the solver can
@@ -173,6 +175,12 @@ highlight spans. Editing nevertheless moves and deletes by grapheme boundary,
 and soft-wrap plus cursor placement use grapheme display width in terminal
 cells. Keeping one cell-width model across measurement, painting, and cursor
 math prevents CJK and multi-scalar emoji from drifting apart.
+
+Time-sensitive component state never owns an unreplaceable wall clock. Mouse
+double-click detection and the synchronous runner consume the root `Clock`
+seam, defaulting to `SystemClock`; animation frames, toast expiry, and keymap
+timeouts remain values or ticks explicitly advanced by the host. The async
+runner uses Tokio time, whose paused-time facility is its deterministic clock.
 
 Inline composer tokens follow the same host-agnostic rule. A `Trigger` declares
 only *where* an opening character counts (`Anywhere`/`WordStart`/`LineStart`/

@@ -667,6 +667,12 @@ runner.run(
 )?;
 ```
 
+`Runner::with_clock` replaces the default `SystemClock` when a replayable host
+or deterministic test owns monotonic time. The same `Clock` seam drives
+`SelectionState::handle_with_clock`, so double-click timing never has to depend
+on wall-clock sleeps. Frame animation, keymap timeouts, and toast expiry remain
+explicitly host-driven and therefore need no internal clock.
+
 `AsyncRunner` (behind `features = ["async"]`) uses the same state/view/signal
 model for applications that already have a Tokio runtime — anything doing
 network or disk I/O — and lets its update closure `.await`. It ties
@@ -744,7 +750,9 @@ you already rendered:
   clears the old selection). `selected_text(buffer, area, range)` reads the text
   back out of the rendered `ratatui::Buffer` — linear/stream selection like a
   terminal's own, wide glyphs intact — and `mouse::paint_selection(buffer, area, range,
-  style)` paints it in.
+  style)` paints it in. A same-cell double click selects a word;
+  `handle_with_clock` accepts a virtual monotonic `Clock`, while `handle` uses
+  `SystemClock`.
 - **Clicks and regions.** `HitMap<T>` maps screen rects to values (a button, a
   link, a row); the last-pushed match wins, so children/overlays registered
   after their parents take precedence. `ClickTracker` turns a same-cell
