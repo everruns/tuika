@@ -247,7 +247,8 @@ event model (`MouseKind` carries `Down`/`Up`/`Drag`, `Moved`, and scroll, with
   pointer. Call `resolve(buffer, area)` after rendering to resolve pending word
   boundaries; `selected_text(buffer, area, range)` then reads the selected text
   back out of the rendered buffer (wide glyphs intact) and `mouse::paint_selection(buffer,
-  area, range, style)` paints it in.
+  area, range, style)` paints it in. `handle_with_clock` accepts a host `Clock`
+  for deterministic gesture timing; `handle` uses `SystemClock`.
 - `ctrl_click_url(event, buffer, area)` returns the URL under a Ctrl+left-button
   release: first an OSC 8 target embedded in the cell run (labeled markdown
   links after `apply_buffer_links`), then a visible bare `http(s)://` run. The

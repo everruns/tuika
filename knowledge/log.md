@@ -2,6 +2,13 @@
 
 ## 2026-08-01
 
+- **Monotonic time is injectable**
+
+- `Clock` gives gesture recognition and synchronous runner scheduling one
+  replaceable monotonic source while preserving system-clock conveniences.
+- Animation, toast expiry, and keymap timeout policy remain host-driven; the
+  async runner retains Tokio's independently controllable time source.
+
 - **Virtualized collections share one range and scrollbar model**
 
 - `VirtualWindow` now supplies clamped, selection-centered absolute ranges,

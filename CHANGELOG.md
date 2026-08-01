@@ -18,6 +18,10 @@ block-HTML seam.
 
 ### Added
 
+- `Clock` and `SystemClock` provide one monotonic time seam.
+  `SelectionState::handle_with_clock` makes double-click gestures deterministic,
+  and `Runner::with_clock` lets replayable synchronous hosts own tick time;
+  existing `handle` and `Runner::new` behavior remains system-clock backed.
 - `VirtualWindow` provides overflow-safe clamped and selection-centered ranges;
   `Scrollbar` renders the same window vertically or horizontally with semantic
   styling and local glyph/style overrides. Scroll, item scroll, viewport,

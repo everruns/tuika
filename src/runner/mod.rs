@@ -23,7 +23,8 @@ mod asynchronous;
 pub use asynchronous::AsyncRunner;
 
 use std::io;
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Duration;
 
 use crossterm::event;
 use ratatui_core::backend::Backend;
@@ -32,7 +33,7 @@ use ratatui_crossterm::CrosstermBackend;
 
 use crate::live::RedrawHandle;
 use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
-use crate::{Element, Event, TerminalSession, Theme, paint, translate_event};
+use crate::{Clock, Element, Event, SystemClock, TerminalSession, Theme, paint, translate_event};
 
 #[derive(Clone, Copy, Debug)]
 /// Options for [`Runner`] and [`AsyncRunner`].
@@ -77,19 +78,30 @@ pub enum UpdateResult {
 /// A synchronous Crossterm event and rendering loop.
 pub struct Runner {
     config: RunnerConfig,
+    clock: Arc<dyn Clock + Send + Sync>,
     redraw: RedrawHandle,
     scrollback: Scrollback,
 }
 
 impl Runner {
     /// Create a runner without touching the terminal.
-    pub fn new(mut config: RunnerConfig) -> Self {
+    pub fn new(config: RunnerConfig) -> Self {
+        Self::with_clock(config, SystemClock)
+    }
+
+    /// Create a runner driven by an explicit monotonic clock.
+    ///
+    /// The system clock remains the default. Supplying a virtual clock makes
+    /// tick scheduling deterministic for replayable hosts and tests; advance a
+    /// shared clock while the runner is waiting so time can progress.
+    pub fn with_clock(mut config: RunnerConfig, clock: impl Clock + Send + Sync + 'static) -> Self {
         // A zero interval would busy-spin even when the application has no
         // events or updates. Keep the public config ergonomic while enforcing
         // a safe scheduling floor at the boundary.
         config.tick_rate = config.tick_rate.max(Duration::from_millis(1));
         Self {
             config,
+            clock: Arc::new(clock),
             redraw: RedrawHandle::default(),
             scrollback: Scrollback::new(),
         }
@@ -152,7 +164,7 @@ impl Runner {
             },
         )?;
         let mut frame = 0u64;
-        let mut last_tick = Instant::now();
+        let mut last_tick = self.clock.now();
 
         if split {
             pin_footer(&mut terminal)?;
@@ -169,8 +181,9 @@ impl Runner {
                 self.scrollback.clear();
             }
 
-            if last_tick.elapsed() >= self.config.tick_rate {
-                last_tick = Instant::now();
+            let now = self.clock.now();
+            if now.saturating_duration_since(last_tick) >= self.config.tick_rate {
+                last_tick = now;
                 if apply_update(update(state, Signal::Tick), &mut dirty) {
                     break;
                 }
@@ -184,7 +197,8 @@ impl Runner {
                 draw(&mut terminal, theme, &mut view, state, &mut frame)?;
             }
 
-            let timeout = self.config.tick_rate.saturating_sub(last_tick.elapsed());
+            let elapsed = self.clock.now().saturating_duration_since(last_tick);
+            let timeout = self.config.tick_rate.saturating_sub(elapsed);
             if event::poll(timeout)?
                 && let Some(event) = translate_event(event::read()?)
             {
@@ -245,7 +259,18 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use super::*;
+
+    #[derive(Clone, Copy)]
+    struct FixedClock(Instant);
+
+    impl Clock for FixedClock {
+        fn now(&self) -> Instant {
+            self.0
+        }
+    }
 
     #[test]
     fn clean_updates_do_not_request_a_repaint() {
@@ -275,6 +300,13 @@ mod tests {
             ..RunnerConfig::default()
         });
         assert_eq!(runner.config.tick_rate, Duration::from_millis(1));
+    }
+
+    #[test]
+    fn explicit_clock_drives_the_runner() {
+        let now = Instant::now();
+        let runner = Runner::with_clock(RunnerConfig::default(), FixedClock(now));
+        assert_eq!(runner.clock.now(), now);
     }
 
     #[test]
