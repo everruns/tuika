@@ -169,7 +169,11 @@ fn run_inherit(args: &[&str], answer: Option<Vec<u8>>) -> Run {
 
 #[test]
 fn the_probe_asks_for_the_palette_and_fences_with_device_attributes() {
-    let run = run_inherit(&["--probe"], Some(replies()));
+    // This test only observes the emitted query bytes. Do not race an unused
+    // reply against the short probe timeout: on macOS, writing after the child
+    // closes the pty slave reports EIO. Reply parsing and fence preservation
+    // are exercised by the dedicated tests below.
+    let run = run_inherit(&["--probe"], None);
     let bytes = &run.output;
     let has = |needle: &[u8]| bytes.windows(needle.len()).any(|w| w == needle);
 
