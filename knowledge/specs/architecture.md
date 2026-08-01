@@ -32,6 +32,11 @@ rather than beside it.
   For state types with a zero-argument constructor, `Default` and `new()` are
   identical; a meaningful alternate start is explicit (for example,
   `SelectState::unselected()`).
+- **Docking is state plus resolved geometry, not a retained panel manager.** A
+  host-owned dock state tracks only visibility and focus; the current frame
+  resolves it to a wide dock, a narrow focused drawer, or a hidden passive
+  panel. Views, focus ids, keymaps, scrolling, and domain state remain with the
+  host.
 - **Layout is a flexbox subset** over a direction-agnostic axis, so rows and
   columns share one solver: `Dimension` (`Auto`/`Fixed`/`Percent`/`Flex`) plus
   `Align`, `Justify`, and `Direction`.

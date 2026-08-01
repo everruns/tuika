@@ -24,6 +24,10 @@ block-HTML seam.
   select, and table now share those primitives. `SelectList::windowed` and
   `Table::windowed` accept only the visible records while preserving absolute
   selection and full-collection scrollbar geometry.
+- `DockState`, `DockSpec`, and `DockLayout` provide a host-owned responsive
+  lifecycle for one auxiliary panel: wide panels dock, narrow passive panels
+  hide, and focused narrow panels resolve as overlay drawers without introducing
+  a retained panel manager.
 - Target-relative overlays: `TargetPlacement` selects above/below/left/right,
   cross-axis alignment, gap, and optional edge-aware flipping;
   `OverlaySpec::resolve_target` resolves it directly and

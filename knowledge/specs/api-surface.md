@@ -26,7 +26,7 @@ Four levels, each with one job:
 
 | Level | Owns | Test for belonging |
 | --- | --- | --- |
-| crate root | the framework spine: `View`/`Element`/`ScopedElement`/`RenderCtx`, owned or scoped scene composition, layout, events, `Theme`/`StyleSheet`/`StyleRole`/`StyleResolver`, `Surface`, host seam, runners | a host touches it on essentially every frame |
+| crate root | the framework spine: `View`/`Element`/`ScopedElement`/`RenderCtx`, owned or scoped scene composition, layout and responsive dock geometry, events, `Theme`/`StyleSheet`/`StyleRole`/`StyleResolver`, `Surface`, host seam, runners | a host touches it on essentially every frame |
 | `components` | every widget | it implements `View` |
 | `term` | escapes outside the cell grid: clipboard, hyperlink, progress, pointer, image, capabilities | it talks to the terminal, not to the buffer |
 | `screen` | which part of the terminal a frame owns, and publishing above a split footer | it decides or manipulates the reserved region |
