@@ -1,5 +1,17 @@
 # Knowledge Log
 
+## 2026-08-05
+
+- **Agent interaction primitives remain host-owned compositions**
+
+- Filter-ranked completions retain only query and selection state; candidate
+  sources, trigger meaning, and accepted replacement behavior remain in the
+  host.
+- Confirm, choice, multi-choice, and input dialogs assemble existing selection,
+  text-input, overlay, and focus primitives instead of adding a modal manager.
+- Activity lists describe lifecycle across steps and optionally compose the
+  existing progress bar for a measurable running step. They own no scheduler.
+
 ## 2026-08-01
 
 - **Markdown block parsing has one open contract**

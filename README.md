@@ -200,6 +200,7 @@ component. Linked names below jump straight to their demo.
 | `Responsive` / `Constrained` | Breakpoint selection and min/max measurement |
 | [`Boxed`](docs/components.md#boxed) | Border + padding + title, focus-aware |
 | `Scene` / `ScopedScene` / `Dialog` | Owned or frame-borrowed root + anchored overlays |
+| [`ConfirmDialog`](docs/components.md#dialog-presets) / `ChoiceDialog` / `MultiChoiceDialog` / `InputDialog` | Stateful presets for common modal flows |
 | `Spacer` | Flexible filler |
 | [`Scroll`](docs/components.md#scroll--scrollstate) (+ `ScrollState`) | Vertical scroll viewport + scrollbar over lines |
 | [`ItemScroll`](docs/components.md#itemscroll) | The same viewport over laid-out items (panels, tables, nested layouts) |
@@ -208,6 +209,7 @@ component. Linked names below jump straight to their demo.
 | `Form` / `FormField` (+ `FormState`) | Responsive labeled controls and validation |
 | `DrawView` / `CanvasView` | Closure-based custom cell drawing |
 | [`SelectList`](docs/components.md#selectlist--selectstate) (+ `SelectState`) | Selectable list, including host-windowed collections |
+| [`CompletionPalette`](docs/components.md#completionpalette--completionstate) (+ `CompletionState`, `CompletionItem`) | Filter-ranked command and token completion |
 | `Slider` (+ `SliderState`) | One-row value picker over a numeric range |
 | [`TextInput`](docs/components.md#textinput--textinputstate) (+ `TextInputState`) | Multi-line composer: soft-wrap, placeholder, highlighted ranges, `@`/`/` tokens |
 | [`StatusBar`](docs/components.md#statusbar) | One-row left/right status segments |
@@ -217,6 +219,7 @@ component. Linked names below jump straight to their demo.
 | `Console` (+ `ConsoleLog`) | Captured stdout/log ring buffer + tailing overlay view |
 | [`Spinner`](docs/components.md#spinner) | Frame-cycled activity glyph |
 | [`ProgressBar`](docs/components.md#progressbar) | Determinate (sub-cell) / indeterminate bar |
+| [`ActivityList`](docs/components.md#activitylist) | Multi-step lifecycle status with optional per-step progress |
 | [`Loader`](docs/components.md#loader) | Spinner + message + hint row |
 
 ## Example
