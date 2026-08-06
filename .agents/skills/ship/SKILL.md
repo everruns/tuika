@@ -153,7 +153,9 @@ Pick only what matches the changed surface:
 
 - Use a Conventional Commit style PR title under 70 characters.
 - In the PR body, explain what changed, why, how it was validated, notable risks, any API change, and an explicit **Follow-ups** section (or "No follow-ups.").
-- For visual changes, include a before/after — a recording or a `--dump` capture.
+- Attach a Before / After with proof a reviewer can check: for visual/TUI changes a
+  before/after screenshot, recording, or `--dump` capture; for other behavior, CLI
+  output or logs. State explicitly when a change has no observable behavior.
 - After CI is green, wait at least 2 minutes for async reviewer bots, then do one last comment sweep before merge.
 - Merge with `gh pr merge --squash` only after CI is green and the final review sweep is clean.
 - Do not use auto-merge: async review bots can post after the last push.
