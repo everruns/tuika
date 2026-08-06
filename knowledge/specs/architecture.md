@@ -59,6 +59,16 @@ rather than beside it.
 - **Single-line input is a state invariant**: search/command inputs normalize
   line boundaries at every public mutation boundary and expose borrowed text;
   hosts do not repair multiline editor state during rendering.
+- **Completion is derived host state.** Candidate ownership and acceptance
+  semantics stay with the application; completion state stores the query,
+  ranked indices, and cursor needed to render command palettes or token popups.
+  Refreshing the same query preserves a stable selected replacement.
+- **Dialog presets compose primitives.** Confirm, choice, multi-choice, and
+  input flows pair host-owned state with a one-frame `Dialog` snapshot. They do
+  not introduce a retained modal manager or a second input-outcome vocabulary.
+- **Activity and progress answer different questions.** Activity items model
+  lifecycle across steps; a progress bar models amount complete for one
+  measurable operation and may be composed inside an activity item.
 - **Owned scenes are frame descriptions, not retained UI.** `Scene` owns the
   root and overlay elements for one frame and resolves each overlay's
   `OverlaySpec` while rendering. This removes borrowed compositor plumbing

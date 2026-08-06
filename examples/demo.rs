@@ -220,6 +220,14 @@ const DEMOS: &[Demo] = &[
         scene_progress,
     ),
     demo(
+        "activity_list",
+        "ActivityList",
+        "task lifecycle with optional per-step progress",
+        15,
+        true,
+        scene_activity_list,
+    ),
+    demo(
         "loader",
         "Loader",
         "spinner + message + hint row",
@@ -364,12 +372,28 @@ const DEMOS: &[Demo] = &[
         scene_primitives,
     ),
     demo(
+        "dialog_presets",
+        "Dialog presets",
+        "confirm, choice, multi-choice, and input flows",
+        17,
+        true,
+        scene_dialog_presets,
+    ),
+    demo(
         "select",
         "SelectList",
         "keyboard-navigable selection list",
         11,
         true,
         scene_select,
+    ),
+    demo(
+        "completion_palette",
+        "CompletionPalette",
+        "filter-ranked commands with host-owned selection",
+        13,
+        true,
+        scene_completion_palette,
     ),
     demo("tabs", "Tabs", "host-state tab strip", 9, true, scene_tabs),
     demo(
@@ -938,6 +962,24 @@ fn scene_progress(frame: u64, theme: &Theme) -> Element {
     }
 }
 
+fn scene_activity_list(frame: u64, theme: &Theme) -> Element {
+    let _ = theme;
+    let progress = tuika::anim::ping_pong(frame, 180);
+    element(
+        ActivityList::new(vec![
+            ActivityItem::new("Resolve dependencies", ActivityStatus::Succeeded)
+                .detail("42 crates"),
+            ActivityItem::new("Compile workspace", ActivityStatus::Running)
+                .detail("tuika")
+                .progress(progress),
+            ActivityItem::new("Run tests", ActivityStatus::Queued),
+            ActivityItem::new("Publish artifacts", ActivityStatus::Skipped),
+        ])
+        .frame(frame)
+        .gap(1),
+    )
+}
+
 fn scene_loader(frame: u64, theme: &Theme) -> Element {
     let _ = theme;
     view! {
@@ -1319,6 +1361,61 @@ fn scene_primitives(frame: u64, theme: &Theme) -> Element {
     )
 }
 
+fn scene_dialog_presets(frame: u64, theme: &Theme) -> Element {
+    let phase = (frame / 48) % 4;
+    let dialog: Dialog = match phase {
+        0 => ConfirmDialog::new(
+            "Apply changes?",
+            "This will update three files in the workspace.",
+            &ConfirmDialogState::new(),
+        )
+        .confirm_label("Apply")
+        .into(),
+        1 => {
+            let mut state = ChoiceDialogState::new();
+            let down = Event::Key(Key::new(KeyCode::Down));
+            let _ = state.handle(&down, 3);
+            ChoiceDialog::new(
+                "Choose model",
+                "Select the model for the next turn.",
+                vec!["Fast".into(), "Balanced".into(), "Deep".into()],
+                &state,
+            )
+            .into()
+        }
+        2 => {
+            let mut state = MultiChoiceDialogState::new();
+            let space = Event::Key(Key::new(KeyCode::Char(' ')));
+            let _ = state.handle(&space, 3);
+            MultiChoiceDialog::new(
+                "Include context",
+                "Choose the sources sent with the request.",
+                vec![
+                    "Current file".into(),
+                    "Diagnostics".into(),
+                    "Git diff".into(),
+                ],
+                &state,
+            )
+            .into()
+        }
+        _ => InputDialog::new(
+            "Rename task",
+            "Give this activity a concise name.",
+            &InputDialogState::from_text("Review parser changes"),
+        )
+        .placeholder("Task name")
+        .into(),
+    };
+    element(
+        Scene::new(element(Text::new(vec![Line::from(Span::styled(
+            "Agent workspace · host content remains independent",
+            theme.muted_style(),
+        ))])))
+        .dialog(dialog),
+    )
+}
+
 fn scene_select(frame: u64, theme: &Theme) -> Element {
     let items: Vec<Line<'static>> = ["Open file…", "Save", "Save As…", "Toggle theme", "Quit"]
         .iter()
@@ -1335,6 +1432,38 @@ fn scene_select(frame: u64, theme: &Theme) -> Element {
             grow(1) { node(SelectList::new(items, &state)) }
         }
     }
+}
+
+fn scene_completion_palette(frame: u64, theme: &Theme) -> Element {
+    let _ = theme;
+    let items = vec![
+        CompletionItem::new("status")
+            .detail("Show session status")
+            .replacement("/status"),
+        CompletionItem::new("model")
+            .detail("Choose a model")
+            .replacement("/model")
+            .keyword("engine"),
+        CompletionItem::new("approvals")
+            .detail("Configure command approvals")
+            .replacement("/approvals"),
+        CompletionItem::new("review")
+            .detail("Review current changes")
+            .replacement("/review"),
+        CompletionItem::new("init")
+            .detail("Create project instructions")
+            .replacement("/init"),
+    ];
+    let queries = ["", "m", "mo", "mod"];
+    let query = queries[((frame / 24) as usize) % queries.len()];
+    let mut state = CompletionState::new();
+    state.sync(query, &items);
+    element(
+        CompletionPalette::new(&items, &state)
+            .title("Commands")
+            .viewport(5)
+            .show_query(true),
+    )
 }
 
 fn scene_tabs(frame: u64, theme: &Theme) -> Element {

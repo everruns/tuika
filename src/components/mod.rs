@@ -18,12 +18,15 @@
 //! module ([`markdown::to_lines`], [`toast::DEFAULT_TTL`]) instead of being
 //! flattened into a hand-prefixed alias.
 
+mod activity;
 pub mod ascii_font;
 mod boxed;
 pub(crate) mod code_block;
+mod completion;
 pub mod console;
 mod constrained;
 mod dialog;
+mod dialog_presets;
 pub mod diff;
 mod flex;
 mod flow;
@@ -54,12 +57,18 @@ pub mod toast;
 mod viewport;
 mod virtualization;
 
+pub use activity::{ActivityItem, ActivityList, ActivityStatus};
 pub use ascii_font::AsciiFont;
 pub use boxed::Boxed;
 pub use code_block::CodeBlock;
+pub use completion::{CompletionItem, CompletionPalette, CompletionState};
 pub use console::{Console, ConsoleLog};
 pub use constrained::Constrained;
 pub use dialog::Dialog;
+pub use dialog_presets::{
+    ChoiceDialog, ChoiceDialogState, ConfirmDialog, ConfirmDialogState, InputDialog,
+    InputDialogState, MultiChoiceDialog, MultiChoiceDialogState,
+};
 pub use diff::{Diff, DiffMode, DiffRow, DiffStyle, DiffTag};
 pub use flex::Flex;
 pub use flow::Flow;

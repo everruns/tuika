@@ -43,6 +43,27 @@ view! {
 }
 ```
 
+### `ActivityList`
+
+A vertical lifecycle view for multi-step work: queued, running, succeeded,
+failed, or skipped. An item may compose a determinate progress bar beneath its
+status row. Use `ActivityList` to answer *which step is in which state*; use a
+standalone `ProgressBar` to answer *how much of one measurable operation is
+complete*. The host still owns the task model and scheduling.
+[API](https://docs.rs/tuika/latest/tuika/components/struct.ActivityList.html)
+
+<img src="demos/activity_list.gif" width="880" alt="ActivityList demo">
+
+```rust
+use tuika::prelude::*;
+let tasks = vec![
+    ActivityItem::new("Resolve dependencies", ActivityStatus::Succeeded),
+    ActivityItem::new("Compile", ActivityStatus::Running).progress(0.42),
+    ActivityItem::new("Test", ActivityStatus::Queued),
+];
+view! { node(ActivityList::new(tasks).frame(frame).gap(1)) }
+```
+
 ### `Loader`
 
 A spinner, a message, and an optional trailing hint on one row.
@@ -490,6 +511,29 @@ let scene = Scene::new(element(base)).dialog(
 );
 ```
 
+### Dialog presets
+
+`ConfirmDialog`, `ChoiceDialog`, `MultiChoiceDialog`, and `InputDialog` assemble
+the common modal flows from `Dialog`, selection controls, and text input. Their
+paired state types remain host-owned and return the same `InputOutcome` used by
+the lower-level components. Every preset converts to `Dialog`, so it works
+with `Scene::dialog` and remains customizable through its builders.
+[Confirm API](https://docs.rs/tuika/latest/tuika/components/struct.ConfirmDialog.html)
+
+<img src="demos/dialog_presets.gif" width="880" alt="Dialog preset demo cycling through confirm, choice, multi-choice, and input dialogs">
+
+```rust
+use tuika::prelude::*;
+let mut state = ConfirmDialogState::new(); // Cancel is the safe default
+let outcome = state.handle(&event);
+let scene = Scene::new(element(base)).dialog(
+    ConfirmDialog::new("Apply changes?", "Update three files?", &state)
+        .confirm_label("Apply")
+        .focus_owner("confirm")
+        .into_dialog(),
+);
+```
+
 ### `DrawView` / `CanvasView`
 
 A closure-backed escape hatch for custom cell drawing. Its callback receives
@@ -532,6 +576,33 @@ let mut state = SelectState::unselected();
 let style = Style::default().fg(Color::Blue);
 state.select(Some(0)); // select a row when the host is ready
 view! { node(SelectList::new(items, &state).selection_style(style)) }
+```
+
+### `CompletionPalette` + `CompletionState`
+
+A reusable completion surface for slash commands, mentions, files, models, or
+any host-provided candidates. `CompletionState::sync` fuzzy-ranks labels,
+details, and hidden keywords; changed queries select the best result, while an
+unchanged query preserves selection across candidate refreshes. The selected
+`CompletionItem` exposes replacement text for the host to insert. Use
+`show_query(true)` for a standalone command palette, or omit it for an editor-
+anchored popup.
+[API](https://docs.rs/tuika/latest/tuika/components/struct.CompletionPalette.html)
+
+<img src="demos/completion_palette.gif" width="880" alt="CompletionPalette filtering slash commands">
+
+```rust
+use tuika::prelude::*;
+let items = vec![
+    CompletionItem::new("model").detail("Choose a model").replacement("/model"),
+    CompletionItem::new("status").detail("Show session status").replacement("/status"),
+];
+let mut state = CompletionState::new();
+state.sync(active_token.query(), &items);
+let palette = CompletionPalette::new(&items, &state).title("Commands");
+if state.handle(&event) == InputOutcome::Submitted {
+    editor.replace_token(&active_token, state.selected(&items).unwrap().replacement_text());
+}
 ```
 
 ### `Table` + `SelectState`

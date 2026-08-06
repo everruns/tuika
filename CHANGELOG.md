@@ -11,6 +11,20 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
+## Unreleased
+
+### Added
+
+- `CompletionItem`, `CompletionState`, and `CompletionPalette` provide reusable
+  fuzzy-ranked command and token completion with host-owned query/selection
+  state and explicit replacement text.
+- `ConfirmDialog`, `ChoiceDialog`, `MultiChoiceDialog`, and `InputDialog`, with
+  paired host-owned state types, provide higher-level modal flows that convert
+  into the general `Dialog` builder.
+- `ActivityItem`, `ActivityStatus`, and `ActivityList` render multi-step task
+  lifecycle state, including optional determinate progress for individual
+  steps, without owning scheduling or workflow state.
+
 ## [0.7.0] - 2026-07-31
 
 Released alongside `tuika-html` 0.1.0, the new companion crate behind the

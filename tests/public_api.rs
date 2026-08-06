@@ -127,8 +127,11 @@ fn the_view_macro_expands_against_the_component_paths() {
 #[test]
 fn components_are_reachable_flat() {
     use tuika::components::{
-        AsciiFont, Boxed, Console, Dialog, Diff, Form, FormField, FormState, Image, Markdown,
-        QrCode, Toasts, Viewport,
+        ActivityItem, ActivityList, ActivityStatus, AsciiFont, Boxed, ChoiceDialog,
+        ChoiceDialogState, CompletionItem, CompletionPalette, CompletionState, ConfirmDialog,
+        ConfirmDialogState, Console, Dialog, Diff, Form, FormField, FormState, Image, InputDialog,
+        InputDialogState, Markdown, MultiChoiceDialog, MultiChoiceDialogState, QrCode, Toasts,
+        Viewport,
     };
 
     let theme = Theme::default();
@@ -155,6 +158,20 @@ fn components_are_reachable_flat() {
     let scroll = ScrollState::default();
     let _ = Viewport::new(element(Text::raw("wide")), Size::new(20, 1), &scroll);
     let _ = Dialog::new("title", element(Text::raw("content")));
+    let activities = vec![ActivityItem::new("compile", ActivityStatus::Running)];
+    let _ = ActivityList::new(activities);
+    let completions = vec![CompletionItem::new("status")];
+    let mut completion_state = CompletionState::new();
+    completion_state.sync("sta", &completions);
+    let _ = CompletionPalette::new(&completions, &completion_state);
+    let confirm_state = ConfirmDialogState::new();
+    let _ = ConfirmDialog::new("confirm", "continue?", &confirm_state);
+    let choice_state = ChoiceDialogState::new();
+    let _ = ChoiceDialog::new("choose", "one", vec!["a".into()], &choice_state);
+    let multi_state = MultiChoiceDialogState::new();
+    let _ = MultiChoiceDialog::new("choose", "many", vec!["a".into()], &multi_state);
+    let input_state = InputDialogState::new();
+    let _ = InputDialog::new("input", "value", &input_state);
 }
 
 /// Owned and scoped composition belong to the framework spine; custom canvases
