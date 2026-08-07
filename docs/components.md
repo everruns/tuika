@@ -634,6 +634,43 @@ let columns = vec![Column::auto("branch"), Column::fixed("ahead", 5), Column::fl
 view! { node(Table::new(columns, rows, &state).selection_style(style).caret('▶')) }
 ```
 
+### `KeyedTable` + `KeyedSelectState`
+
+A virtualized table for large, changing host collections. It borrows domain
+rows for one frame and calls each `KeyedColumn` only for the visible window;
+row data is not cloned into widget-owned cells. `KeyedSelectState<K>` and
+`KeyedMultiSelectState<K>` store application keys rather than positions, so a
+selection follows the same record through reorder, insertion, filtering, and
+streaming refreshes. Keys must be unique within the authoritative collection.
+Filtering preserves absent keys; call `retain_present`
+with the authoritative collection when records are truly deleted.
+
+Columns support fixed, auto, and flex sizing, trailing alignment,
+`hide_below(width)` breakpoints, and optional-column shedding. Styled borrowed
+`Line`s remain styled, with `preserve_selection_fg(true)` retaining semantic
+cell colors under the cursor band, while the built-in caret/check gutter covers
+common leading indicators. Keyboard aliases reuse `SelectNavigation`; Page
+Up/Down, Home/End, wheel scrolling, explicit mouse hit-testing, and configurable
+scroll margin share `VirtualWindow` geometry. Hosts with a key-to-position index
+can pass `selected_index` to avoid a collection scan without making the index
+persistent identity. The runnable
+[`keyed_table` example](https://github.com/everruns/tuika/blob/main/examples/keyed_table.rs)
+reorders, filters, inserts, and deletes rows while selection stays keyed.
+[API](https://docs.rs/tuika/latest/tuika/components/struct.KeyedTable.html)
+
+<img src="demos/keyed_table.gif" width="880" alt="Keyed table selection following a row through reorder and filtering">
+
+```rust
+use tuika::prelude::*;
+struct Job { id: u64, name: String }
+fn key(job: &Job) -> &u64 { &job.id }
+fn name(job: &Job) -> Line<'_> { Line::from(job.name.as_str()) }
+
+let state = KeyedSelectState::with_selected(42);
+let columns = vec![KeyedColumn::flex("job", 1, name)];
+let table = KeyedTable::new(columns, &jobs, key, &state);
+```
+
 ### `Tabs` + `TabsState`
 
 A one-line tab strip; `TabsState` handles left/right and tab navigation.

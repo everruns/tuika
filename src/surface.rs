@@ -184,6 +184,10 @@ impl<'a> Surface<'a> {
             if col >= self.clip.right() {
                 break;
             }
+            if col.saturating_add(w) > self.clip.right() {
+                col = col.saturating_add(w);
+                break;
+            }
             self.set_cluster(col, y, cluster, style);
             // Blank the trailing cell of a wide glyph so stale content behind a
             // double-width cluster never shows through.
@@ -311,6 +315,17 @@ mod tests {
         assert_eq!(buf[(1, 0)].symbol(), " ", "trailing half of the wide glyph");
         assert_eq!(buf[(2, 0)].symbol(), "x", "next glyph starts at column 2");
         assert_eq!(end, 3, "cursor advanced 2 (emoji) + 1 (x)");
+    }
+
+    #[test]
+    fn set_string_drops_a_wide_cluster_that_cannot_fit_the_clip() {
+        let mut buf = Buffer::filled(Rect::new(0, 0, 3, 1), ratatui_core::buffer::Cell::new("."));
+        let end = {
+            let mut surface = Surface::new(&mut buf, Rect::new(0, 0, 1, 1));
+            surface.set_string(0, 0, "界", Style::default())
+        };
+        assert_eq!(end, 2);
+        assert_eq!(row(&buf, 0), "...");
     }
 
     #[test]

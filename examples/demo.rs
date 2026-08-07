@@ -388,6 +388,14 @@ const DEMOS: &[Demo] = &[
         scene_select,
     ),
     demo(
+        "keyed_table",
+        "KeyedTable",
+        "borrowed rows with stable keyed selection",
+        11,
+        true,
+        scene_keyed_table,
+    ),
+    demo(
         "completion_palette",
         "CompletionPalette",
         "filter-ranked commands with host-owned selection",
@@ -1430,6 +1438,119 @@ fn scene_select(frame: u64, theme: &Theme) -> Element {
     view! {
         col {
             grow(1) { node(SelectList::new(items, &state)) }
+        }
+    }
+}
+
+struct KeyedDemoRow {
+    id: u64,
+    name: &'static str,
+    state: &'static str,
+    age: u16,
+}
+
+static KEYED_ROWS: [KeyedDemoRow; 6] = [
+    KeyedDemoRow {
+        id: 101,
+        name: "index workspace",
+        state: "running",
+        age: 4,
+    },
+    KeyedDemoRow {
+        id: 102,
+        name: "review patch",
+        state: "queued",
+        age: 12,
+    },
+    KeyedDemoRow {
+        id: 103,
+        name: "run checks",
+        state: "running",
+        age: 19,
+    },
+    KeyedDemoRow {
+        id: 104,
+        name: "refresh graph",
+        state: "queued",
+        age: 27,
+    },
+    KeyedDemoRow {
+        id: 105,
+        name: "stream logs",
+        state: "running",
+        age: 34,
+    },
+    KeyedDemoRow {
+        id: 106,
+        name: "publish report",
+        state: "queued",
+        age: 41,
+    },
+];
+
+static KEYED_REORDERED: [&KeyedDemoRow; 6] = [
+    &KEYED_ROWS[4],
+    &KEYED_ROWS[0],
+    &KEYED_ROWS[3],
+    &KEYED_ROWS[2],
+    &KEYED_ROWS[5],
+    &KEYED_ROWS[1],
+];
+static KEYED_ORIGINAL: [&KeyedDemoRow; 6] = [
+    &KEYED_ROWS[0],
+    &KEYED_ROWS[1],
+    &KEYED_ROWS[2],
+    &KEYED_ROWS[3],
+    &KEYED_ROWS[4],
+    &KEYED_ROWS[5],
+];
+static KEYED_FILTERED: [&KeyedDemoRow; 2] = [&KEYED_ROWS[0], &KEYED_ROWS[4]];
+static KEYED_SELECTION: KeyedSelectState<u64> = KeyedSelectState::with_selected(103);
+
+fn keyed_demo_key<'row>(row: &'row &KeyedDemoRow) -> &'row u64 {
+    &row.id
+}
+
+fn keyed_demo_name<'row>(row: &'row &KeyedDemoRow) -> Line<'row> {
+    Line::from(row.name)
+}
+
+fn keyed_demo_state<'row>(row: &'row &KeyedDemoRow) -> Line<'row> {
+    Line::from(row.state)
+}
+
+fn keyed_demo_age<'row>(row: &'row &KeyedDemoRow) -> Line<'row> {
+    Line::from(format!("{}s", row.age))
+}
+
+fn scene_keyed_table(frame: u64, _theme: &Theme) -> Element {
+    let phase = (frame / 18) % 3;
+    let rows: &'static [&'static KeyedDemoRow] = match phase {
+        0 => &KEYED_REORDERED,
+        1 => &KEYED_FILTERED,
+        _ => &KEYED_ORIGINAL,
+    };
+    let label = match phase {
+        0 => "reordered · key 103 stays selected",
+        1 => "filtered out · key 103 remains in host state",
+        _ => "stream refreshed · key 103 restored",
+    };
+    view! {
+        col {
+            fixed(1) { node(Text::raw(label)) }
+            grow(1) {
+                node(KeyedTable::new(
+                    vec![
+                        KeyedColumn::fixed("id", 5, |row: &&KeyedDemoRow| Line::from(row.id.to_string())).right(),
+                        KeyedColumn::flex("task", 2, keyed_demo_name),
+                        KeyedColumn::fixed("state", 8, keyed_demo_state).hide_below(34),
+                        KeyedColumn::fixed("age", 5, keyed_demo_age).right().optional(),
+                    ],
+                    rows,
+                    keyed_demo_key,
+                    &KEYED_SELECTION,
+                ))
+            }
         }
     }
 }

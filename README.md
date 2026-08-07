@@ -209,6 +209,7 @@ component. Linked names below jump straight to their demo.
 | `Form` / `FormField` (+ `FormState`) | Responsive labeled controls and validation |
 | `DrawView` / `CanvasView` | Closure-based custom cell drawing |
 | [`SelectList`](docs/components.md#selectlist--selectstate) (+ `SelectState`) | Selectable list, including host-windowed collections |
+| [`KeyedTable`](docs/components.md#keyedtable--keyedselectstate) (+ keyed single/multi-selection) | Borrowed, virtualized rows whose selection follows stable application keys |
 | [`CompletionPalette`](docs/components.md#completionpalette--completionstate) (+ `CompletionState`, `CompletionItem`) | Filter-ranked command and token completion |
 | `Slider` (+ `SliderState`) | One-row value picker over a numeric range |
 | [`TextInput`](docs/components.md#textinput--textinputstate) (+ `TextInputState`) | Multi-line composer: soft-wrap, placeholder, highlighted ranges, `@`/`/` tokens |
@@ -481,6 +482,7 @@ Each takes over the terminal — the alternate screen, or a pinned footer for
 | [`gallery`](examples/gallery.rs)  | `cargo run --example gallery`    | motion components + native OSC 9;4 progress        |
 | [`markdown`](examples/markdown.rs) | `cargo run --example markdown`   | streaming `MarkdownState` + highlighted `CodeBlock`, following the stream until you scroll back |
 | [`select`](examples/select.rs)   | `cargo run --example select`     | interactive multi-select with aliases, numbers, and mouse hit-testing |
+| [`keyed_table`](examples/keyed_table.rs) | `cargo run --example keyed_table` | dynamic borrowed rows, stable keyed selection, filtering, and reordering |
 | [`overlay`](examples/overlay.rs)  | `cargo run --example overlay`    | Target-following popover + input routing           |
 | [`primitives`](examples/primitives.rs) | `cargo run --example primitives` | owned dialog scene + form + arbitrary-child viewport |
 | [`ratatui_dashboard`](examples/ratatui_dashboard.rs) | `cargo run --example ratatui_dashboard` | mixed Ratatui widgets + responsive live data |

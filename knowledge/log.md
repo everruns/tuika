@@ -11,6 +11,16 @@
   layout even when application data does not change. The owned-element closure
   runner remains compatible.
 
+- **Virtual collections keep domain identity in host-owned keys**
+
+- Borrowed keyed tables adapt application rows directly and render only the
+  resolved viewport, avoiding a cloned cell model for large tool collections.
+- Single and multi-selection store stable row keys rather than indexes. A key
+  remains selected while filtered out; hosts explicitly reconcile against an
+  authoritative collection when deletion should remove it.
+- These keys are domain identity only. Views remain ephemeral and Tuika gains
+  no virtual DOM, keyed lifecycle, or retained row components.
+
 ## 2026-08-05
 
 - **Agent interaction primitives remain host-owned compositions**
