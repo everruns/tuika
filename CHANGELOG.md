@@ -25,6 +25,9 @@ described in the release process begins with the entry below.
   preserving application-key selection across reorder, filtering, and
   streaming updates, with scrolling margins, keyboard/mouse navigation,
   responsive columns, aligned styled cells, and leading cursor/check indicators.
+- `AppShell` composes a responsive tool-style application frame from borrowed
+  or owned header, main, status, and footer views, with optional theme-aware
+  rules and short-terminal chrome collapse.
 - `CompletionItem`, `CompletionState`, and `CompletionPalette` provide reusable
   fuzzy-ranked command and token completion with host-owned query/selection
   state and explicit replacement text.

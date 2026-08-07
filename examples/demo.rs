@@ -323,6 +323,14 @@ const DEMOS: &[Demo] = &[
         false,
         scene_flex,
     ),
+    filling_demo(
+        "app_shell",
+        "AppShell",
+        "responsive tool chrome around growing content",
+        15,
+        false,
+        scene_app_shell,
+    ),
     demo(
         "flow",
         "Flow",
@@ -1194,6 +1202,36 @@ fn scene_flex(frame: u64, theme: &Theme) -> Element {
             fixed(1) { node(Text::new(vec![Line::from(Span::styled("row · gap 1 · grow shares leftover width", theme.muted_style()))])) }
         }
     }
+}
+
+fn scene_app_shell(frame: u64, theme: &Theme) -> Element {
+    let _ = frame;
+    let header = Text::new(vec![Line::from(vec![
+        Span::styled("tuika inspect", theme.accent_style()),
+        Span::styled("  workspace", theme.muted_style()),
+    ])]);
+    let content = Boxed::new(element(Text::new(vec![
+        Line::from(Span::styled("app_shell.rs", theme.text_style())),
+        Line::from(Span::styled("flex.rs", theme.text_style())),
+        Line::from(Span::styled("responsive.rs", theme.text_style())),
+    ])))
+    .title(" Files ");
+    let status = StatusBar::new()
+        .left(vec![Span::styled(" READY ", theme.selection_style())])
+        .right(vec![Span::styled("3 files ", theme.muted_style())]);
+
+    element(
+        AppShell::new(content)
+            .header(header)
+            .top_rule()
+            .status(status)
+            .bottom_rule()
+            .footer(KeyHints::new([
+                ("↑/↓", "move"),
+                ("enter", "open"),
+                ("q", "quit"),
+            ])),
+    )
 }
 
 fn scene_flow(frame: u64, theme: &Theme) -> Element {

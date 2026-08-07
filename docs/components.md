@@ -222,6 +222,30 @@ view! {
 See the [layout guide](layout.md) for wrapping, grow/shrink, line alignment,
 measurement requests, migration notes, and choosing Flex, Flow, or Grid.
 
+### `AppShell`
+
+A compact application frame for tool-style TUIs: intrinsic header and status
+regions, optional theme-aware rules, one growing main view, and a footer that
+fits `KeyHints` or any custom view. Every region is optional except main;
+`before_main` and `after_main` accept borrowed views and preserve call order
+when an application needs different chrome. On short screens rules and status
+collapse before the one-row main/footer minimums; width-sensitive children
+receive the terminal's actual width.
+[API](https://docs.rs/tuika/latest/tuika/components/struct.AppShell.html)
+
+<img src="demos/app_shell.png" width="880" alt="AppShell with header, file-list content, status, rules, and responsive key hints">
+
+```rust
+use tuika::prelude::*;
+
+let screen = AppShell::new(content)
+    .header(Text::raw("my tool"))
+    .top_rule()
+    .status(StatusBar::new().left(status_spans))
+    .bottom_rule()
+    .footer(KeyHints::from_keymap(&keymap));
+```
+
 ### `Flex`
 
 The flexbox container and composition primitive — `grow(n)` children share

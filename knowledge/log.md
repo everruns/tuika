@@ -21,6 +21,12 @@
 - These keys are domain identity only. Views remain ephemeral and Tuika gains
   no virtual DOM, keyed lifecycle, or retained row components.
 
+- **Composable application chrome remains frame-scoped**
+
+- `AppShell` records one growing main view plus optional ordinary view regions;
+  its short-height behavior reuses flex allocation and adds no retained screen,
+  navigation, input, or host policy.
+
 ## 2026-08-05
 
 - **Agent interaction primitives remain host-owned compositions**
