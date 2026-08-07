@@ -31,6 +31,10 @@
   authoritative collection when deletion should remove it.
 - These keys are domain identity only. Views remain ephemeral and Tuika gains
   no virtual DOM, keyed lifecycle, or retained row components.
+- Indirect keyed row sources project visible indices into authoritative storage,
+  compare computed composite identity without allocation, and join parallel
+  metadata through indexed cells. Owned keys are created only on selection
+  changes, not during frame rendering.
 
 - **Composable application chrome remains frame-scoped**
 

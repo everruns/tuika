@@ -9,6 +9,7 @@
 //! indistinguishable to selection state.
 
 use std::collections::BTreeSet;
+use std::marker::PhantomData;
 
 use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
@@ -31,6 +32,8 @@ enum CellAlign {
     Right,
 }
 
+type KeyedCell<'a, R> = dyn for<'r> Fn(usize, &'r R) -> Line<'r> + 'a;
+
 /// One column in a [`KeyedTable`].
 ///
 /// The cell callback returns a borrowed, styled [`Line`]. It is invoked only
@@ -42,7 +45,7 @@ pub struct KeyedColumn<'a, R> {
     align: CellAlign,
     hide_below: Option<u16>,
     optional: bool,
-    cell: Box<dyn for<'r> Fn(&'r R) -> Line<'r> + 'a>,
+    cell: Box<KeyedCell<'a, R>>,
 }
 
 impl<'a, R> KeyedColumn<'a, R> {
@@ -50,6 +53,16 @@ impl<'a, R> KeyedColumn<'a, R> {
     pub fn new<F>(header: impl Into<Line<'a>>, width: Dimension, cell: F) -> Self
     where
         F: for<'r> Fn(&'r R) -> Line<'r> + 'a,
+    {
+        Self::new_indexed(header, width, move |_, row| cell(row))
+    }
+
+    /// A column whose borrowed cell callback also receives the row's visible index.
+    ///
+    /// Use the index to project parallel metadata such as fuzzy-match positions.
+    pub fn new_indexed<F>(header: impl Into<Line<'a>>, width: Dimension, cell: F) -> Self
+    where
+        F: for<'r> Fn(usize, &'r R) -> Line<'r> + 'a,
     {
         Self {
             header: header.into(),
@@ -69,6 +82,14 @@ impl<'a, R> KeyedColumn<'a, R> {
         Self::new(header, Dimension::Auto, cell)
     }
 
+    /// An auto-width column with a visible-index-aware cell callback.
+    pub fn auto_indexed<F>(header: impl Into<Line<'a>>, cell: F) -> Self
+    where
+        F: for<'r> Fn(usize, &'r R) -> Line<'r> + 'a,
+    {
+        Self::new_indexed(header, Dimension::Auto, cell)
+    }
+
     /// A column with a fixed cell width.
     pub fn fixed<F>(header: impl Into<Line<'a>>, cells: u16, cell: F) -> Self
     where
@@ -77,12 +98,28 @@ impl<'a, R> KeyedColumn<'a, R> {
         Self::new(header, Dimension::Fixed(cells), cell)
     }
 
+    /// A fixed-width column with a visible-index-aware cell callback.
+    pub fn fixed_indexed<F>(header: impl Into<Line<'a>>, cells: u16, cell: F) -> Self
+    where
+        F: for<'r> Fn(usize, &'r R) -> Line<'r> + 'a,
+    {
+        Self::new_indexed(header, Dimension::Fixed(cells), cell)
+    }
+
     /// A column sharing leftover width by `weight`.
     pub fn flex<F>(header: impl Into<Line<'a>>, weight: u16, cell: F) -> Self
     where
         F: for<'r> Fn(&'r R) -> Line<'r> + 'a,
     {
         Self::new(header, Dimension::Flex(weight), cell)
+    }
+
+    /// A flex-width column with a visible-index-aware cell callback.
+    pub fn flex_indexed<F>(header: impl Into<Line<'a>>, weight: u16, cell: F) -> Self
+    where
+        F: for<'r> Fn(usize, &'r R) -> Line<'r> + 'a,
+    {
+        Self::new_indexed(header, Dimension::Flex(weight), cell)
     }
 
     /// Align cells against the trailing edge of the column.
@@ -102,6 +139,125 @@ impl<'a, R> KeyedColumn<'a, R> {
     pub fn optional(mut self) -> Self {
         self.optional = true;
         self
+    }
+}
+
+/// Borrowed visible rows with application-defined stable identity.
+///
+/// A source can project an ordered view over authoritative storage without
+/// allocating wrapper rows. [`key_eq`](Self::key_eq) compares a row to an owned
+/// selection key without constructing or cloning that key during rendering.
+///
+/// ```
+/// use tuika::prelude::*;
+///
+/// #[derive(PartialEq)]
+/// struct Key { namespace: u8, id: String }
+/// struct Row { namespace: u8, id: String }
+/// struct Visible<'a> { rows: &'a [Row], order: &'a [usize] }
+///
+/// impl KeyedRowSource<Key> for Visible<'_> {
+///     type Row = Row;
+///     fn len(&self) -> usize { self.order.len() }
+///     fn row(&self, index: usize) -> Option<&Row> {
+///         self.order.get(index).and_then(|&source| self.rows.get(source))
+///     }
+///     fn key_eq(&self, _index: usize, row: &Row, key: &Key) -> bool {
+///         row.namespace == key.namespace && row.id == key.id
+///     }
+/// }
+/// ```
+pub trait KeyedRowSource<K> {
+    /// The authoritative row type borrowed by the table.
+    type Row;
+
+    /// Number of rows in the current visible order.
+    fn len(&self) -> usize;
+
+    /// Whether the current visible order is empty.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Borrow the row at a visible index.
+    ///
+    /// This must return `Some` for every index below [`len`](Self::len).
+    fn row(&self, index: usize) -> Option<&Self::Row>;
+
+    /// Compare a row's stable identity with a host-owned key.
+    ///
+    /// Exactly one authoritative row may match a key.
+    fn key_eq(&self, index: usize, row: &Self::Row, key: &K) -> bool;
+}
+
+/// A keyed row source that can materialize identity when selection changes.
+///
+/// Rendering and lookup use [`KeyedRowSource::key_eq`]; this method is called
+/// only for keyboard or mouse actions that select a row.
+pub trait NavigableKeyedRowSource<K>: KeyedRowSource<K> {
+    /// Materialize the selected row's stable key for host-owned state.
+    ///
+    /// The result must compare equal through [`KeyedRowSource::key_eq`] for
+    /// this row.
+    fn key(&self, index: usize, row: &Self::Row) -> K;
+}
+
+impl<K, S: KeyedRowSource<K> + ?Sized> KeyedRowSource<K> for &S {
+    type Row = S::Row;
+
+    fn len(&self) -> usize {
+        (**self).len()
+    }
+
+    fn row(&self, index: usize) -> Option<&Self::Row> {
+        (**self).row(index)
+    }
+
+    fn key_eq(&self, index: usize, row: &Self::Row, key: &K) -> bool {
+        (**self).key_eq(index, row, key)
+    }
+}
+
+impl<K, S: NavigableKeyedRowSource<K> + ?Sized> NavigableKeyedRowSource<K> for &S {
+    fn key(&self, index: usize, row: &Self::Row) -> K {
+        (**self).key(index, row)
+    }
+}
+
+/// Slice adapter used by the existing [`KeyedTable::new`] API.
+#[doc(hidden)]
+pub struct SliceKeyedRows<'a, R, F> {
+    rows: &'a [R],
+    key: F,
+}
+
+impl<'a, R, F> SliceKeyedRows<'a, R, F> {
+    fn new(rows: &'a [R], key: F) -> Self {
+        Self { rows, key }
+    }
+}
+
+impl<R, K: PartialEq, F: Fn(&R) -> &K> KeyedRowSource<K> for SliceKeyedRows<'_, R, F> {
+    type Row = R;
+
+    fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    fn row(&self, index: usize) -> Option<&Self::Row> {
+        self.rows.get(index)
+    }
+
+    fn key_eq(&self, _index: usize, row: &Self::Row, key: &K) -> bool {
+        (self.key)(row) == key
+    }
+}
+
+impl<R, K: Clone + PartialEq, F: Fn(&R) -> &K> NavigableKeyedRowSource<K>
+    for SliceKeyedRows<'_, R, F>
+{
+    fn key(&self, _index: usize, row: &Self::Row) -> K {
+        (self.key)(row).clone()
     }
 }
 
@@ -177,11 +333,24 @@ impl<K> KeyedSelectState<K> {
         K: PartialEq,
         F: Fn(&R) -> &K,
     {
-        if self
-            .selected
-            .as_ref()
-            .is_some_and(|selected| !rows.iter().any(|row| key(row) == selected))
-        {
+        self.retain_present_source(&SliceKeyedRows::new(rows, key));
+    }
+
+    /// Remove a selected key only when it is absent from an authoritative source.
+    ///
+    /// As with [`retain_present`](Self::retain_present), do not call this on a
+    /// filtered source when temporary absence should preserve selection.
+    pub fn retain_present_source<S>(&mut self, source: &S)
+    where
+        S: KeyedRowSource<K>,
+    {
+        if self.selected.as_ref().is_some_and(|selected| {
+            !(0..source.len()).any(|index| {
+                source
+                    .row(index)
+                    .is_some_and(|row| source.key_eq(index, row, selected))
+            })
+        }) {
             self.selected = None;
         }
     }
@@ -192,11 +361,22 @@ impl<K> KeyedSelectState<K> {
         K: PartialEq,
         F: Fn(&R) -> &K,
     {
-        let selected_index = self
-            .selected
-            .as_ref()
-            .and_then(|selected| rows.iter().position(|row| key(row) == selected));
-        self.window_at(rows.len(), visible, selected_index)
+        self.window_source(&SliceKeyedRows::new(rows, key), visible)
+    }
+
+    /// Resolve the visible window for a projected row source.
+    pub fn window_source<S>(&self, source: &S, visible: usize) -> VirtualWindow
+    where
+        S: KeyedRowSource<K>,
+    {
+        let selected_index = self.selected.as_ref().and_then(|selected| {
+            (0..source.len()).find(|&index| {
+                source
+                    .row(index)
+                    .is_some_and(|row| source.key_eq(index, row, selected))
+            })
+        });
+        self.window_at(source.len(), visible, selected_index)
     }
 
     fn window_at(
@@ -253,9 +433,28 @@ impl<K: Clone + PartialEq> KeyedSelectState<K> {
     where
         F: Fn(&R) -> &K,
     {
+        self.handle_source(
+            event,
+            &SliceKeyedRows::new(rows, key),
+            viewport_rows,
+            navigation,
+        )
+    }
+
+    /// Handle keyboard navigation and wheel scrolling over a projected source.
+    pub fn handle_source<S>(
+        &mut self,
+        event: &Event,
+        source: &S,
+        viewport_rows: usize,
+        navigation: SelectNavigation,
+    ) -> InputOutcome
+    where
+        S: NavigableKeyedRowSource<K>,
+    {
         if let Event::Mouse(mouse) = event {
-            let max = VirtualWindow::max_start_for(rows.len(), viewport_rows);
-            let before = self.window(rows, viewport_rows, &key).start();
+            let max = VirtualWindow::max_start_for(source.len(), viewport_rows);
+            let before = self.window_source(source, viewport_rows).start();
             self.offset = before;
             match mouse.kind {
                 MouseKind::ScrollUp => self.offset = self.offset.saturating_sub(3),
@@ -272,17 +471,20 @@ impl<K: Clone + PartialEq> KeyedSelectState<K> {
         let Event::Key(k) = event else {
             return InputOutcome::Ignored;
         };
-        if rows.is_empty() {
+        if source.is_empty() {
             return match k.code {
                 KeyCode::Esc if k.plain() => InputOutcome::Cancelled,
                 _ => InputOutcome::Ignored,
             };
         }
 
-        let current = self
-            .selected
-            .as_ref()
-            .and_then(|selected| rows.iter().position(|row| key(row) == selected));
+        let current = self.selected.as_ref().and_then(|selected| {
+            (0..source.len()).find(|&index| {
+                source
+                    .row(index)
+                    .is_some_and(|row| source.key_eq(index, row, selected))
+            })
+        });
         let page = viewport_rows.saturating_sub(1).max(1);
         let command = if navigation.ctrl_n_p && k.ctrl && !k.alt && !k.shift {
             match k.code {
@@ -306,8 +508,8 @@ impl<K: Clone + PartialEq> KeyedSelectState<K> {
                 KeyCode::End => Some(isize::MAX),
                 KeyCode::Char(digit @ '1'..='9') if navigation.numeric => {
                     let index = digit as usize - '1' as usize;
-                    if let Some(row) = rows.get(index) {
-                        self.selected = Some(key(row).clone());
+                    if let Some(row) = source.row(index) {
+                        self.selected = Some(source.key(index, row));
                         self.follow_selection = true;
                         return InputOutcome::Submitted;
                     }
@@ -325,17 +527,22 @@ impl<K: Clone + PartialEq> KeyedSelectState<K> {
         };
         let next = match delta {
             isize::MIN => 0,
-            isize::MAX => rows.len() - 1,
+            isize::MAX => source.len() - 1,
             d if d < 0 => current
-                .unwrap_or(rows.len())
+                .unwrap_or(source.len())
                 .saturating_sub(d.unsigned_abs()),
             d => current
                 .map_or(0, |index| index.saturating_add(d as usize))
-                .min(rows.len() - 1),
+                .min(source.len() - 1),
         };
-        let before = self.selected.as_ref();
-        let changed = before != Some(key(&rows[next]));
-        self.selected = Some(key(&rows[next]).clone());
+        let Some(row) = source.row(next) else {
+            return InputOutcome::Ignored;
+        };
+        let changed = !self
+            .selected
+            .as_ref()
+            .is_some_and(|selected| source.key_eq(next, row, selected));
+        self.selected = Some(source.key(next, row));
         self.follow_selection = true;
         if changed {
             InputOutcome::Changed
@@ -356,6 +563,20 @@ impl<K: Clone + PartialEq> KeyedSelectState<K> {
     where
         F: Fn(&R) -> &K,
     {
+        self.handle_mouse_source(event, &SliceKeyedRows::new(rows, key), bounds, window)
+    }
+
+    /// Select a clicked row in an already resolved projected-source viewport.
+    pub fn handle_mouse_source<S>(
+        &mut self,
+        event: &Event,
+        source: &S,
+        bounds: Rect,
+        window: VirtualWindow,
+    ) -> InputOutcome
+    where
+        S: NavigableKeyedRowSource<K>,
+    {
         let Event::Mouse(mouse) = event else {
             return InputOutcome::Ignored;
         };
@@ -369,10 +590,10 @@ impl<K: Clone + PartialEq> KeyedSelectState<K> {
             return InputOutcome::Ignored;
         }
         let index = window.start() + usize::from(mouse.row - bounds.y);
-        let Some(row) = rows.get(index).filter(|_| index < window.end()) else {
+        let Some(row) = source.row(index).filter(|_| index < window.end()) else {
             return InputOutcome::Ignored;
         };
-        self.selected = Some(key(row).clone());
+        self.selected = Some(source.key(index, row));
         self.follow_selection = true;
         InputOutcome::Submitted
     }
@@ -444,9 +665,23 @@ impl<K> KeyedMultiSelectState<K> {
         K: Ord,
         F: Fn(&R) -> &K + Copy,
     {
-        self.cursor.retain_present(rows, key);
-        self.selected
-            .retain(|selected| rows.iter().any(|row| key(row) == selected));
+        self.retain_present_source(&SliceKeyedRows::new(rows, key));
+    }
+
+    /// Remove checked and cursor keys absent from an authoritative source.
+    pub fn retain_present_source<S>(&mut self, source: &S)
+    where
+        K: Ord,
+        S: KeyedRowSource<K>,
+    {
+        self.cursor.retain_present_source(source);
+        self.selected.retain(|selected| {
+            (0..source.len()).any(|index| {
+                source
+                    .row(index)
+                    .is_some_and(|row| source.key_eq(index, row, selected))
+            })
+        });
     }
 }
 
@@ -463,14 +698,36 @@ impl<K: Clone + Ord> KeyedMultiSelectState<K> {
     where
         F: Fn(&R) -> &K + Copy,
     {
+        self.handle_source(
+            event,
+            &SliceKeyedRows::new(rows, key),
+            viewport_rows,
+            navigation,
+        )
+    }
+
+    /// Navigate and toggle rows from a projected source.
+    pub fn handle_source<S>(
+        &mut self,
+        event: &Event,
+        source: &S,
+        viewport_rows: usize,
+        navigation: SelectNavigation,
+    ) -> InputOutcome
+    where
+        S: NavigableKeyedRowSource<K>,
+    {
         if let Event::Key(k) = event
             && k.plain()
             && k.code == KeyCode::Char(' ')
         {
-            let visible = self
-                .cursor
-                .selected()
-                .is_some_and(|selected| rows.iter().any(|row| key(row) == selected));
+            let visible = self.cursor.selected().is_some_and(|selected| {
+                (0..source.len()).any(|index| {
+                    source
+                        .row(index)
+                        .is_some_and(|row| source.key_eq(index, row, selected))
+                })
+            });
             return if visible {
                 self.toggle_cursor()
             } else {
@@ -479,7 +736,7 @@ impl<K: Clone + Ord> KeyedMultiSelectState<K> {
         }
         match self
             .cursor
-            .handle_with(event, rows, viewport_rows, key, navigation)
+            .handle_source(event, source, viewport_rows, navigation)
         {
             InputOutcome::Submitted => self.toggle_cursor(),
             outcome => outcome,
@@ -498,7 +755,24 @@ impl<K: Clone + Ord> KeyedMultiSelectState<K> {
     where
         F: Fn(&R) -> &K,
     {
-        match self.cursor.handle_mouse(event, rows, bounds, window, key) {
+        self.handle_mouse_source(event, &SliceKeyedRows::new(rows, key), bounds, window)
+    }
+
+    /// Hit-test and toggle a row from a projected source.
+    pub fn handle_mouse_source<S>(
+        &mut self,
+        event: &Event,
+        source: &S,
+        bounds: Rect,
+        window: VirtualWindow,
+    ) -> InputOutcome
+    where
+        S: NavigableKeyedRowSource<K>,
+    {
+        match self
+            .cursor
+            .handle_mouse_source(event, source, bounds, window)
+        {
             InputOutcome::Submitted => self.toggle_cursor(),
             outcome => outcome,
         }
@@ -532,10 +806,15 @@ impl<K: PartialEq> Selection<'_, K> {
         }
     }
 
-    fn checked(&self, key: &K) -> bool {
+    fn checked_source<S>(&self, source: &S, index: usize, row: &S::Row) -> bool
+    where
+        S: KeyedRowSource<K>,
+    {
         match self {
             Self::Single(_) => false,
-            Self::Multi(state) => state.selected().any(|selected| selected == key),
+            Self::Multi(state) => state
+                .selected()
+                .any(|selected| source.key_eq(index, row, selected)),
         }
     }
 
@@ -571,10 +850,10 @@ impl<K: PartialEq> Selection<'_, K> {
 /// ![keyed table demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/keyed_table.gif)
 ///
 /// Run the dynamic example with `cargo run --example keyed_table`.
-pub struct KeyedTable<'a, R, K, F> {
+pub struct KeyedTable<'a, R, K, F, S = SliceKeyedRows<'a, R, F>> {
     columns: Vec<KeyedColumn<'a, R>>,
-    rows: &'a [R],
-    key: F,
+    source: S,
+    slice_key: PhantomData<F>,
     selection: Selection<'a, K>,
     selected_index: Option<Option<usize>>,
     viewport: Option<u16>,
@@ -598,7 +877,11 @@ impl<'a, R, K: PartialEq, F: Fn(&R) -> &K> KeyedTable<'a, R, K, F> {
         key: F,
         state: &'a KeyedSelectState<K>,
     ) -> Self {
-        Self::build(columns, rows, key, Selection::Single(state))
+        Self::build(
+            columns,
+            SliceKeyedRows::new(rows, key),
+            Selection::Single(state),
+        )
     }
 
     /// Build a table with keyed cursor and checked-row state.
@@ -609,19 +892,40 @@ impl<'a, R, K: PartialEq, F: Fn(&R) -> &K> KeyedTable<'a, R, K, F> {
         key: F,
         state: &'a KeyedMultiSelectState<K>,
     ) -> Self {
-        Self::build(columns, rows, key, Selection::Multi(state))
+        Self::build(
+            columns,
+            SliceKeyedRows::new(rows, key),
+            Selection::Multi(state),
+        )
+    }
+}
+
+impl<'a, R, K: PartialEq, S: KeyedRowSource<K, Row = R>> KeyedTable<'a, R, K, (), S> {
+    /// Build a table over an indirect or decorated borrowed row source.
+    pub fn source(
+        columns: Vec<KeyedColumn<'a, R>>,
+        source: S,
+        state: &'a KeyedSelectState<K>,
+    ) -> Self {
+        Self::build(columns, source, Selection::Single(state))
     }
 
-    fn build(
+    /// Build a multi-selection table over an indirect borrowed row source.
+    pub fn multi_source(
         columns: Vec<KeyedColumn<'a, R>>,
-        rows: &'a [R],
-        key: F,
-        selection: Selection<'a, K>,
+        source: S,
+        state: &'a KeyedMultiSelectState<K>,
     ) -> Self {
+        Self::build(columns, source, Selection::Multi(state))
+    }
+}
+
+impl<'a, R, K: PartialEq, F, S: KeyedRowSource<K, Row = R>> KeyedTable<'a, R, K, F, S> {
+    fn build(columns: Vec<KeyedColumn<'a, R>>, source: S, selection: Selection<'a, K>) -> Self {
         Self {
             columns,
-            rows,
-            key,
+            source,
+            slice_key: PhantomData,
             selection,
             selected_index: None,
             viewport: None,
@@ -693,7 +997,7 @@ impl<'a, R, K: PartialEq, F: Fn(&R) -> &K> KeyedTable<'a, R, K, F> {
         self
     }
 
-    /// Supply the selected key's position in the current ordered `rows` slice.
+    /// Supply the selected key's position in the current ordered rows.
     ///
     /// This optional virtualization hint avoids scanning the whole collection
     /// to anchor the viewport. Keys remain the only persistent identity; the
@@ -717,12 +1021,12 @@ impl<'a, R, K: PartialEq, F: Fn(&R) -> &K> KeyedTable<'a, R, K, F> {
             Some(index) => {
                 self.selection
                     .cursor()
-                    .window_at(self.rows.len(), usize::from(visible), index)
+                    .window_at(self.source.len(), usize::from(visible), index)
             }
             None => self
                 .selection
                 .cursor()
-                .window(self.rows, usize::from(visible), &self.key),
+                .window_source(&self.source, usize::from(visible)),
         }
     }
 
@@ -769,8 +1073,8 @@ impl<'a, R, K: PartialEq, F: Fn(&R) -> &K> KeyedTable<'a, R, K, F> {
                 let column = &self.columns[index];
                 let cells = window
                     .range()
-                    .filter_map(|row| self.rows.get(row))
-                    .map(|row| line_width(&(column.cell)(row)))
+                    .filter_map(|index| self.source.row(index).map(|row| (index, row)))
+                    .map(|(index, row)| line_width(&(column.cell)(index, row)))
                     .max()
                     .unwrap_or(0);
                 Item::new(
@@ -809,7 +1113,7 @@ impl<'a, R, K: PartialEq, F: Fn(&R) -> &K> KeyedTable<'a, R, K, F> {
     }
 }
 
-impl<R, K: PartialEq, F: Fn(&R) -> &K> View for KeyedTable<'_, R, K, F> {
+impl<R, K: PartialEq, F, S: KeyedRowSource<K, Row = R>> View for KeyedTable<'_, R, K, F, S> {
     fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let body = available.height.saturating_sub(self.header_rows());
         let window = self.window(body);
@@ -825,8 +1129,8 @@ impl<R, K: PartialEq, F: Fn(&R) -> &K> View for KeyedTable<'_, R, K, F> {
                 let column = &self.columns[index];
                 window
                     .range()
-                    .filter_map(|row| self.rows.get(row))
-                    .map(|row| line_width(&(column.cell)(row)))
+                    .filter_map(|index| self.source.row(index).map(|row| (index, row)))
+                    .map(|(index, row)| line_width(&(column.cell)(index, row)))
                     .max()
                     .unwrap_or(0)
                     .max(line_width(&column.header))
@@ -879,15 +1183,18 @@ impl<R, K: PartialEq, F: Fn(&R) -> &K> View for KeyedTable<'_, R, K, F> {
 
         let body_y = area.y.saturating_add(self.header_rows());
         for (screen_row, index) in window.range().enumerate() {
-            let Some(row) = self.rows.get(index) else {
+            let Some(row) = self.source.row(index) else {
                 break;
             };
             let y = body_y.saturating_add(screen_row as u16);
             if y >= area.bottom() {
                 break;
             }
-            let key = (self.key)(row);
-            let focused = self.selection.cursor().selected() == Some(key);
+            let focused = self
+                .selection
+                .cursor()
+                .selected()
+                .is_some_and(|key| self.source.key_eq(index, row, key));
             let row_style = focused.then(|| {
                 self.selection_style
                     .unwrap_or_else(|| ctx.theme.selection_style())
@@ -919,7 +1226,7 @@ impl<R, K: PartialEq, F: Fn(&R) -> &K> View for KeyedTable<'_, R, K, F> {
                 surface.set(
                     area.x.saturating_add(2),
                     y,
-                    if self.selection.checked(key) {
+                    if self.selection.checked_source(&self.source, index, row) {
                         self.checked
                     } else {
                         self.unchecked
@@ -929,7 +1236,7 @@ impl<R, K: PartialEq, F: Fn(&R) -> &K> View for KeyedTable<'_, R, K, F> {
             }
             for (&column_index, &rect) in indices.iter().zip(&rects) {
                 let column = &self.columns[column_index];
-                let cell = (column.cell)(row);
+                let cell = (column.cell)(index, row);
                 self.draw_line(&cell, rect, y, column.align, cell_style, surface);
             }
         }
@@ -951,9 +1258,12 @@ impl<R, K: PartialEq, F: Fn(&R) -> &K> View for KeyedTable<'_, R, K, F> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+    use std::rc::Rc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use ratatui_core::style::{Color, Style};
+    use ratatui_core::text::Span;
 
     use super::*;
     use crate::event::{Key, Mouse};
@@ -1386,5 +1696,240 @@ mod tests {
             &state,
         );
         assert!(grid(&render(&table, 10, 2, &Theme::default())).contains("alpha"));
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    enum Agent {
+        Claude,
+        Codex,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    struct SessionKey {
+        agent: Agent,
+        session_id: String,
+    }
+
+    struct Session {
+        agent: Agent,
+        session_id: String,
+        summary: String,
+        branch: Option<String>,
+        pinned: bool,
+    }
+
+    struct SessionRows<'a> {
+        sessions: &'a [Session],
+        visible: &'a [usize],
+        fuzzy: &'a [Vec<usize>],
+        key_checks: Rc<Cell<usize>>,
+        key_builds: Rc<Cell<usize>>,
+    }
+
+    impl KeyedRowSource<SessionKey> for SessionRows<'_> {
+        type Row = Session;
+
+        fn len(&self) -> usize {
+            self.visible.len()
+        }
+
+        fn row(&self, index: usize) -> Option<&Self::Row> {
+            self.visible
+                .get(index)
+                .and_then(|&source_index| self.sessions.get(source_index))
+        }
+
+        fn key_eq(&self, _index: usize, row: &Self::Row, key: &SessionKey) -> bool {
+            self.key_checks.set(self.key_checks.get() + 1);
+            row.agent == key.agent && row.session_id == key.session_id
+        }
+    }
+
+    impl NavigableKeyedRowSource<SessionKey> for SessionRows<'_> {
+        fn key(&self, _index: usize, row: &Self::Row) -> SessionKey {
+            self.key_builds.set(self.key_builds.get() + 1);
+            SessionKey {
+                agent: row.agent,
+                session_id: row.session_id.clone(),
+            }
+        }
+    }
+
+    fn sessions() -> Vec<Session> {
+        vec![
+            Session {
+                agent: Agent::Claude,
+                session_id: "same".into(),
+                summary: "alpha".into(),
+                branch: Some("main".into()),
+                pinned: false,
+            },
+            Session {
+                agent: Agent::Codex,
+                session_id: "same".into(),
+                summary: "bravo".into(),
+                branch: None,
+                pinned: true,
+            },
+            Session {
+                agent: Agent::Codex,
+                session_id: "third".into(),
+                summary: "charlie".into(),
+                branch: Some("feat".into()),
+                pinned: false,
+            },
+        ]
+    }
+
+    fn session_rows<'a>(
+        sessions: &'a [Session],
+        visible: &'a [usize],
+        fuzzy: &'a [Vec<usize>],
+    ) -> SessionRows<'a> {
+        SessionRows {
+            sessions,
+            visible,
+            fuzzy,
+            key_checks: Rc::new(Cell::new(0)),
+            key_builds: Rc::new(Cell::new(0)),
+        }
+    }
+
+    #[test]
+    fn projected_rows_keep_composite_identity_through_collection_changes() {
+        let sessions = sessions();
+        let fuzzy = vec![vec![], vec![0, 2], vec![]];
+        let state = KeyedSelectState::with_selected(SessionKey {
+            agent: Agent::Codex,
+            session_id: "same".into(),
+        });
+
+        let original = [0, 1, 2];
+        let source = session_rows(&sessions, &original, &fuzzy);
+        assert_eq!(
+            state.window_source(&source, 1).range(),
+            1..2,
+            "the same id in another agent namespace is not selected"
+        );
+
+        let reordered = [2, 1, 0];
+        let source = session_rows(&sessions, &reordered, &fuzzy);
+        assert_eq!(state.window_source(&source, 2).range(), 0..2);
+
+        let filtered = [0, 2];
+        let source = session_rows(&sessions, &filtered, &fuzzy);
+        assert_eq!(state.window_source(&source, 2).range(), 0..2);
+        assert_eq!(state.selected().unwrap().agent, Agent::Codex);
+
+        let inserted = [2, 0, 1];
+        let source = session_rows(&sessions, &inserted, &fuzzy);
+        assert!(state.window_source(&source, 2).contains(2));
+
+        let mut state = state;
+        state.retain_present_source(&source);
+        assert!(state.selected().is_some());
+        let deleted = [0, 2];
+        state.retain_present_source(&session_rows(&sessions, &deleted, &fuzzy));
+        assert!(state.selected().is_none());
+    }
+
+    #[test]
+    fn projected_metadata_renders_styled_optional_cells_and_stays_virtualized() {
+        let sessions = sessions();
+        let visible = [0, 1, 2];
+        let fuzzy = vec![vec![0], vec![0, 2], vec![]];
+        let source = session_rows(&sessions, &visible, &fuzzy);
+        let cell_calls = Rc::new(Cell::new(0));
+        let calls = Rc::clone(&cell_calls);
+        let state = KeyedSelectState::with_selected(SessionKey {
+            agent: Agent::Codex,
+            session_id: "same".into(),
+        });
+        let table = KeyedTable::source(
+            vec![
+                KeyedColumn::fixed_indexed("", 1, |index, _row: &Session| {
+                    Line::from(if source.fuzzy[index].is_empty() {
+                        " "
+                    } else {
+                        "*"
+                    })
+                }),
+                KeyedColumn::flex_indexed("summary", 1, move |index, row: &Session| {
+                    calls.set(calls.get() + 1);
+                    let split = source.fuzzy[index]
+                        .first()
+                        .copied()
+                        .unwrap_or(0)
+                        .min(row.summary.len());
+                    Line::from(vec![
+                        Span::raw(&row.summary[..split]),
+                        Span::styled(
+                            &row.summary[split..split.saturating_add(1).min(row.summary.len())],
+                            Style::default().fg(Color::Yellow),
+                        ),
+                        Span::raw(&row.summary[split.saturating_add(1).min(row.summary.len())..]),
+                    ])
+                }),
+                KeyedColumn::fixed("pin", 3, |row: &Session| {
+                    Line::from(if row.pinned { "yes" } else { "" })
+                })
+                .hide_below(24),
+                KeyedColumn::fixed("branch", 6, |row: &Session| {
+                    Line::from(row.branch.as_deref().unwrap_or(""))
+                })
+                .optional(),
+            ],
+            &source,
+            &state,
+        )
+        .selected_index(Some(1))
+        .viewport(2)
+        .gap(1)
+        .preserve_selection_fg(true);
+        let buf = render(&table, 8, 3, &Theme::default());
+        let text = grid(&buf);
+        assert!(text.contains("bra"));
+        assert!(!text.contains("pin"), "narrow breakpoint hides pin");
+        assert!(!text.contains("branch"), "optional branch is shed");
+        assert_eq!(buf[(4, 2)].fg, Color::Yellow, "fuzzy span keeps style");
+        assert_eq!(cell_calls.get(), 4, "cell work is twice the visible rows");
+        assert_eq!(source.key_builds.get(), 0, "rendering never clones a key");
+        assert_eq!(
+            source.key_checks.get(),
+            2,
+            "the index hint limits identity work"
+        );
+    }
+
+    #[test]
+    fn projected_keyboard_and_mouse_materialize_only_selected_keys() {
+        let sessions = sessions();
+        let visible = [2, 0, 1];
+        let fuzzy = vec![vec![], vec![], vec![]];
+        let source = session_rows(&sessions, &visible, &fuzzy);
+        let mut state = KeyedSelectState::new();
+        assert_eq!(
+            state.handle_source(
+                &Event::Key(Key::new(KeyCode::Down)),
+                &source,
+                2,
+                SelectNavigation::default(),
+            ),
+            InputOutcome::Changed
+        );
+        assert_eq!(state.selected().unwrap().session_id, "third");
+        assert_eq!(source.key_builds.get(), 1);
+
+        state.set_offset(1);
+        let window = state.window_source(&source, 2);
+        let body = Rect::new(4, 7, 12, 2);
+        let click = Event::Mouse(Mouse::at(MouseKind::Down(MouseButton::Left), 5, 8));
+        assert_eq!(
+            state.handle_mouse_source(&click, &source, body, window),
+            InputOutcome::Submitted
+        );
+        assert_eq!(state.selected().unwrap().agent, Agent::Codex);
+        assert_eq!(state.selected().unwrap().session_id, "same");
+        assert_eq!(source.key_builds.get(), 2);
     }
 }

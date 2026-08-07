@@ -398,7 +398,7 @@ const DEMOS: &[Demo] = &[
     demo(
         "keyed_table",
         "KeyedTable",
-        "borrowed rows with stable keyed selection",
+        "projected borrowed rows with stable keyed selection",
         11,
         true,
         scene_keyed_table,
@@ -1559,44 +1559,48 @@ static KEYED_ROWS: [KeyedDemoRow; 6] = [
     },
 ];
 
-static KEYED_REORDERED: [&KeyedDemoRow; 6] = [
-    &KEYED_ROWS[4],
-    &KEYED_ROWS[0],
-    &KEYED_ROWS[3],
-    &KEYED_ROWS[2],
-    &KEYED_ROWS[5],
-    &KEYED_ROWS[1],
-];
-static KEYED_ORIGINAL: [&KeyedDemoRow; 6] = [
-    &KEYED_ROWS[0],
-    &KEYED_ROWS[1],
-    &KEYED_ROWS[2],
-    &KEYED_ROWS[3],
-    &KEYED_ROWS[4],
-    &KEYED_ROWS[5],
-];
-static KEYED_FILTERED: [&KeyedDemoRow; 2] = [&KEYED_ROWS[0], &KEYED_ROWS[4]];
+static KEYED_REORDERED: [usize; 6] = [4, 0, 3, 2, 5, 1];
+static KEYED_ORIGINAL: [usize; 6] = [0, 1, 2, 3, 4, 5];
+static KEYED_FILTERED: [usize; 2] = [0, 4];
 static KEYED_SELECTION: KeyedSelectState<u64> = KeyedSelectState::with_selected(103);
 
-fn keyed_demo_key<'row>(row: &'row &KeyedDemoRow) -> &'row u64 {
-    &row.id
+struct KeyedDemoRows {
+    visible: &'static [usize],
 }
 
-fn keyed_demo_name<'row>(row: &'row &KeyedDemoRow) -> Line<'row> {
+impl KeyedRowSource<u64> for KeyedDemoRows {
+    type Row = KeyedDemoRow;
+
+    fn len(&self) -> usize {
+        self.visible.len()
+    }
+
+    fn row(&self, index: usize) -> Option<&Self::Row> {
+        self.visible
+            .get(index)
+            .and_then(|&index| KEYED_ROWS.get(index))
+    }
+
+    fn key_eq(&self, _index: usize, row: &Self::Row, key: &u64) -> bool {
+        row.id == *key
+    }
+}
+
+fn keyed_demo_name(row: &KeyedDemoRow) -> Line<'_> {
     Line::from(row.name)
 }
 
-fn keyed_demo_state<'row>(row: &'row &KeyedDemoRow) -> Line<'row> {
+fn keyed_demo_state(row: &KeyedDemoRow) -> Line<'_> {
     Line::from(row.state)
 }
 
-fn keyed_demo_age<'row>(row: &'row &KeyedDemoRow) -> Line<'row> {
+fn keyed_demo_age(row: &KeyedDemoRow) -> Line<'_> {
     Line::from(format!("{}s", row.age))
 }
 
 fn scene_keyed_table(frame: u64, _theme: &Theme) -> Element {
     let phase = (frame / 18) % 3;
-    let rows: &'static [&'static KeyedDemoRow] = match phase {
+    let visible: &'static [usize] = match phase {
         0 => &KEYED_REORDERED,
         1 => &KEYED_FILTERED,
         _ => &KEYED_ORIGINAL,
@@ -1610,15 +1614,14 @@ fn scene_keyed_table(frame: u64, _theme: &Theme) -> Element {
         col {
             fixed(1) { node(Text::raw(label)) }
             grow(1) {
-                node(KeyedTable::new(
+                node(KeyedTable::source(
                     vec![
-                        KeyedColumn::fixed("id", 5, |row: &&KeyedDemoRow| Line::from(row.id.to_string())).right(),
+                        KeyedColumn::fixed("id", 5, |row: &KeyedDemoRow| Line::from(row.id.to_string())).right(),
                         KeyedColumn::flex("task", 2, keyed_demo_name),
                         KeyedColumn::fixed("state", 8, keyed_demo_state).hide_below(34),
                         KeyedColumn::fixed("age", 5, keyed_demo_age).right().optional(),
                     ],
-                    rows,
-                    keyed_demo_key,
+                    KeyedDemoRows { visible },
                     &KEYED_SELECTION,
                 ))
             }

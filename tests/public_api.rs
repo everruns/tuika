@@ -143,8 +143,9 @@ fn components_are_reachable_flat() {
         ActivityItem, ActivityList, ActivityStatus, AsciiFont, Boxed, ChoiceDialog,
         ChoiceDialogState, CompletionItem, CompletionPalette, CompletionState, ConfirmDialog,
         ConfirmDialogState, Console, Dialog, Diff, Form, FormField, FormState, Image, InputDialog,
-        InputDialogState, KeyedColumn, KeyedMultiSelectState, KeyedSelectState, KeyedTable,
-        Markdown, MultiChoiceDialog, MultiChoiceDialogState, QrCode, Toasts, Viewport,
+        InputDialogState, KeyedColumn, KeyedMultiSelectState, KeyedRowSource, KeyedSelectState,
+        KeyedTable, Markdown, MultiChoiceDialog, MultiChoiceDialogState, NavigableKeyedRowSource,
+        QrCode, Toasts, Viewport,
     };
 
     let theme = Theme::default();
@@ -194,13 +195,33 @@ fn components_are_reachable_flat() {
     }
     let rows = [Row(1)];
     let keyed = KeyedSelectState::with_selected(1);
-    let _ = KeyedTable::new(
+    let _: KeyedTable<'_, Row, u64, fn(&Row) -> &u64> = KeyedTable::new(
         vec![KeyedColumn::auto("id", row_cell)],
         &rows,
-        row_key,
+        row_key as fn(&Row) -> &u64,
         &keyed,
     );
     let _ = KeyedMultiSelectState::<u64>::new();
+    struct Source([Row; 1]);
+    impl KeyedRowSource<u64> for Source {
+        type Row = Row;
+        fn len(&self) -> usize {
+            1
+        }
+        fn row(&self, index: usize) -> Option<&Row> {
+            self.0.get(index)
+        }
+        fn key_eq(&self, _index: usize, row: &Row, key: &u64) -> bool {
+            row.0 == *key
+        }
+    }
+    impl NavigableKeyedRowSource<u64> for Source {
+        fn key(&self, _index: usize, row: &Row) -> u64 {
+            row.0
+        }
+    }
+    let source = Source([Row(1)]);
+    let _ = KeyedTable::source(vec![KeyedColumn::auto("id", row_cell)], &source, &keyed);
 }
 
 /// Owned and scoped composition belong to the framework spine; custom canvases

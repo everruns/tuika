@@ -28,6 +28,11 @@ described in the release process begins with the entry below.
   preserving application-key selection across reorder, filtering, and
   streaming updates, with scrolling margins, keyboard/mouse navigation,
   responsive columns, aligned styled cells, and leading cursor/check indicators.
+- `KeyedRowSource` and `NavigableKeyedRowSource` let `KeyedTable` borrow an
+  indirect visible order from authoritative storage, compare computed composite
+  identity without per-frame key clones, and materialize a key only when input
+  changes selection. Indexed `KeyedColumn` constructors project parallel row
+  metadata such as fuzzy-match spans without cached wrapper rows.
 - `AppShell` composes a responsive tool-style application frame from borrowed
   or owned header, main, status, and footer views, with optional theme-aware
   rules and short-terminal chrome collapse.
