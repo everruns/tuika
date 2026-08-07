@@ -1,5 +1,16 @@
 # Knowledge Log
 
+## 2026-08-07
+
+- **Inline custom regions remain ordinary borrowed views**
+
+- Separate `Fn` measurement and rendering closures adapt into the existing
+  `View` contract without a region-specific API or secondary layout language.
+- Closures may borrow frame state, but the resulting lifetime still flows
+  through `ScopedElement`; owned `Element` cannot hide or extend that borrow.
+- The adapter allocates nothing and retains no identity. Heterogeneous
+  containers box it exactly as they box named views.
+
 ## 2026-08-06
 
 - **Application frames may borrow application state**

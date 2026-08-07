@@ -1206,19 +1206,52 @@ fn scene_flex(frame: u64, theme: &Theme) -> Element {
 
 fn scene_app_shell(frame: u64, theme: &Theme) -> Element {
     let _ = frame;
-    let header = Text::new(vec![Line::from(vec![
-        Span::styled("tuika inspect", theme.accent_style()),
-        Span::styled("  workspace", theme.muted_style()),
-    ])]);
+    let query = "view";
+    let header_text = theme.text_style();
+    let header_accent = theme.accent_style();
+    let header = view_fn(
+        |available, _ctx| Size::new(available.width, available.height.min(2)),
+        move |area, surface, _ctx| {
+            surface.set_string(
+                area.x.saturating_add(2),
+                area.bottom().saturating_sub(1),
+                "Search: ",
+                header_text,
+            );
+            surface.set_string(
+                area.x.saturating_add(10),
+                area.bottom().saturating_sub(1),
+                query,
+                header_text,
+            );
+            surface.set_string(
+                area.right().saturating_sub(10),
+                area.bottom().saturating_sub(1),
+                " 3 matches ",
+                header_accent,
+            );
+        },
+    );
     let content = Boxed::new(element(Text::new(vec![
         Line::from(Span::styled("app_shell.rs", theme.text_style())),
         Line::from(Span::styled("flex.rs", theme.text_style())),
         Line::from(Span::styled("responsive.rs", theme.text_style())),
     ])))
     .title(" Files ");
-    let status = StatusBar::new()
-        .left(vec![Span::styled(" READY ", theme.selection_style())])
-        .right(vec![Span::styled("3 files ", theme.muted_style())]);
+    let status_ready = theme.selection_style();
+    let status_muted = theme.muted_style();
+    let status = view_fn(
+        |available, _ctx| Size::new(available.width, available.height.min(1)),
+        move |area, surface, _ctx| {
+            surface.set_string(area.x, area.y, " READY ", status_ready);
+            surface.set_string(
+                area.right().saturating_sub(15),
+                area.y,
+                "borrowed state ",
+                status_muted,
+            );
+        },
+    );
 
     element(
         AppShell::new(content)

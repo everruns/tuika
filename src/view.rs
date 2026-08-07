@@ -252,6 +252,74 @@ pub fn element<'view, V: View + 'view>(view: V) -> ScopedElement<'view> {
     Box::new(view)
 }
 
+/// Build a view from separate measurement and rendering closures.
+///
+/// This is the concise form of a one-off [`View`] implementation. Both
+/// callbacks are `Fn`, may borrow application state for the lifetime of the
+/// returned view, and may be called more than once in any order during a
+/// frame. They must therefore describe the same immutable state without
+/// relying on call counts. Rendering receives an already-clipped [`Surface`],
+/// including when the assigned area is empty.
+///
+/// The adapter itself does not allocate. Boxing it with [`element`] or placing
+/// it in a heterogeneous container allocates exactly as any other view does.
+///
+/// ```
+/// use tuika::prelude::*;
+///
+/// fn status<'state>(message: &'state str) -> ScopedElement<'state> {
+///     element(view_fn(
+///         |available, _ctx| Size::new(available.width, available.height.min(1)),
+///         move |area, surface, ctx| {
+///             surface.set_string(area.x, area.y, message, ctx.theme.muted_style());
+///         },
+///     ))
+/// }
+/// # let message = String::from("ready");
+/// # let _status = status(&message);
+/// ```
+///
+/// A borrowed view cannot escape into an owned element:
+///
+/// ```compile_fail
+/// use tuika::prelude::*;
+///
+/// fn invalid(message: &str) -> Element {
+///     element(view_fn(
+///         |available, _ctx| available,
+///         move |area, surface, ctx| {
+///             surface.set_string(area.x, area.y, message, ctx.theme.text_style());
+///         },
+///     ))
+/// }
+/// ```
+pub fn view_fn<M, R>(measure: M, render: R) -> impl View
+where
+    M: Fn(Size, &RenderCtx<'_>) -> Size,
+    R: Fn(Rect, &mut Surface<'_>, &RenderCtx<'_>),
+{
+    ClosureView { measure, render }
+}
+
+struct ClosureView<M, R> {
+    measure: M,
+    render: R,
+}
+
+impl<M, R> View for ClosureView<M, R>
+where
+    M: Fn(Size, &RenderCtx<'_>) -> Size,
+    R: Fn(Rect, &mut Surface<'_>, &RenderCtx<'_>),
+{
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        (self.measure)(available, ctx)
+    }
+
+    fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
+        (self.render)(area, surface, ctx);
+    }
+}
+
 /// A closure-backed view for custom terminal-cell drawing.
 ///
 /// The callback receives the assigned area, an already-clipped [`Surface`],
@@ -370,5 +438,49 @@ mod draw_view_tests {
             theme.accent,
             "unset resolver bg inherits"
         );
+    }
+
+    #[test]
+    fn view_fn_borrows_state_and_repeats_measure_and_render() {
+        let label = String::from("ready");
+        let label_ref = label.as_str();
+        let view = view_fn(
+            move |available, _ctx| {
+                Size::new(
+                    available.width.min(label_ref.len() as u16),
+                    available.height.min(1),
+                )
+            },
+            move |area, surface, ctx| {
+                surface.set_string(area.x, area.y, label_ref, ctx.theme.text_style());
+            },
+        );
+        let theme = Theme::default();
+        let ctx = RenderCtx::new(&theme);
+
+        assert_eq!(view.measure(Size::new(8, 2), &ctx), Size::new(5, 1));
+        assert_eq!(view.measure(Size::new(3, 1), &ctx), Size::new(3, 1));
+        assert_eq!(grid(&render(&view, 5, 1, &theme)), "ready");
+        assert_eq!(grid(&render(&view, 5, 1, &theme)), "ready");
+    }
+
+    #[test]
+    fn view_fn_is_clipped_at_degenerate_sizes() {
+        let view = view_fn(
+            |available, _ctx| available,
+            |area, surface, ctx| {
+                surface.set_string(area.x, area.y, "borrowed region", ctx.theme.text_style());
+                surface.set(area.right(), area.bottom(), 'x', ctx.theme.text_style());
+            },
+        );
+
+        for width in 0..=3 {
+            for height in 0..=2 {
+                let buffer = render(&view, width, height, &Theme::default());
+                assert_eq!(buffer.area.width, width);
+                assert_eq!(buffer.area.height, height);
+            }
+        }
+        assert_eq!(grid(&render(&view, 3, 1, &Theme::default())), "bor");
     }
 }

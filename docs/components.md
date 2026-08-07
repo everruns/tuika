@@ -562,8 +562,11 @@ let scene = Scene::new(element(base)).dialog(
 
 A closure-backed escape hatch for custom cell drawing. Its callback receives
 the assigned area, clipped `Surface`, and `RenderCtx`, and composes as a normal
-view.
-[API](https://docs.rs/tuika/latest/tuika/view/struct.DrawView.html)
+view. For application regions that also need custom intrinsic measurement,
+`view_fn(measure, render)` is available from the crate root and prelude; both
+closures may borrow frame-scoped application state.
+[Inline view API](https://docs.rs/tuika/latest/tuika/fn.view_fn.html) ·
+[Draw view API](https://docs.rs/tuika/latest/tuika/view/struct.DrawView.html)
 
 ```rust
 use ratatui::layout::Rect;

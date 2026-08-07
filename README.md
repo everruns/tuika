@@ -163,7 +163,7 @@ Four places, so you can guess where something is:
 
 | Path | Holds |
 | --- | --- |
-| `tuika::` | the framework spine — `View`, `Element`, `ScopedElement`, `RenderCtx`, layout, events, `Theme`, `Surface`, the host seam |
+| `tuika::` | the framework spine — `View`, `view_fn`, `Element`, `ScopedElement`, `RenderCtx`, layout, events, `Theme`, `Surface`, the host seam |
 | `tuika::components` | every widget: `Flex`, `Boxed`, `Text`, `Scroll`, `Markdown`, `Table`, … |
 | `tuika::term` | everything out-of-band: `clipboard` (OSC 52), `hyperlink` (OSC 8), `progress` (OSC 9;4), `pointer` (OSC 22), `image`, `capabilities`, `palette` (the terminal's own colors) |
 | `tuika::prelude` | the spine and the components in one glob import |
@@ -340,6 +340,55 @@ Measurement receives the same `RenderCtx` as rendering. A custom view whose
 geometry depends on the active theme or stylesheet resolves it there, and every
 container passes that context to the children it measures.
 
+For a bespoke region, `view_fn` takes those two methods as closures and returns
+a normal `View`. The closures can borrow the same application state as the
+surrounding frame; they are `Fn`, so repeated measurement or rendering observes
+that state without cloning it or requiring `Rc<RefCell<_>>`:
+
+```rust
+use tuika::prelude::*;
+
+struct App {
+    query: String,
+    match_label: String,
+    results: Vec<String>,
+}
+
+let app = App {
+    query: "view".into(),
+    match_label: "3 matches".into(),
+    results: vec!["src/view.rs".into(), "src/components/app_shell.rs".into()],
+};
+let search_header = view_fn(
+    |available, _ctx| Size::new(available.width, available.height.min(2)),
+    |area, surface, ctx| {
+        let row = area.bottom().saturating_sub(1);
+        surface.set_string(area.x, row, &app.query, ctx.theme.text_style());
+        surface.set_string(
+            area.right().saturating_sub(10),
+            row,
+            &app.match_label,
+            ctx.theme.muted_style(),
+        );
+    },
+);
+let screen = AppShell::new(view_fn(
+    |available, _ctx| available, // growing body
+    |area, surface, ctx| {
+        for (row, result) in app.results.iter().take(area.height as usize).enumerate() {
+            surface.set_string(area.x, area.y + row as u16, result, ctx.theme.text_style());
+        }
+    },
+))
+.header(search_header);
+let _ = screen;
+```
+
+In the AGF search-header port that motivated this adapter, the named wrapper's
+`struct` plus `View` scaffold is 9 nonblank lines around the render logic; the
+equivalent `view_fn` scaffold is 5. The render body is unchanged, and the call
+site no longer needs a named type.
+
 `Form` lays out arbitrary control `Element`s beside responsive labels, stacking
 on narrow terminals. Help and validation rows are built in; `FormState` owns
 only focus traversal, while values and cursor state stay in existing host-owned
@@ -355,11 +404,12 @@ full content `Size` and mirrors offsets through the same `ScrollState` used by
 line-oriented `Scroll`. It renders only the visible source window, so a large
 logical canvas does not allocate a full off-screen buffer.
 
-`DrawView` (also named `CanvasView`) turns a closure receiving `(Rect,
+`DrawView` (also named `CanvasView`) turns a render-only closure receiving `(Rect,
 &mut Surface, &RenderCtx)` into a normal view. The surface is already clipped,
 making it suitable for terminal grids, charts, emulators, and incremental
-migrations. Import it explicitly from `tuika::view`; custom canvases stay
-outside the application prelude.
+migrations. It reports either all available space or a fixed intrinsic size;
+use `view_fn` when measurement itself is custom. Import `DrawView` explicitly
+from `tuika::view`; custom canvases stay outside the application prelude.
 
 Run `cargo run --example primitives` for one composition using `Scene`,
 `Dialog`, `Form`, `Viewport`, and `DrawView`.

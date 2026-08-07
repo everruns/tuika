@@ -11,6 +11,19 @@ use tuika::prelude::*;
 use tuika::testing::{grid, render, render_with_context};
 
 #[test]
+fn inline_view_is_available_from_the_framework_surface() {
+    let state = String::from("borrowed");
+    let view: ScopedElement<'_> = element(view_fn(
+        |available, _ctx| Size::new(available.width, available.height.min(1)),
+        |area, surface, ctx| {
+            surface.set_string(area.x, area.y, &state, ctx.theme.text_style());
+        },
+    ));
+
+    assert_eq!(grid(&render(&view, 8, 1, &Theme::default())), "borrowed");
+}
+
+#[test]
 fn semantic_style_resolver_is_a_public_host_seam() {
     const APP_STATUS: StyleRole = StyleRole::new("test.app-status");
 

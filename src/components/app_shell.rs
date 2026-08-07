@@ -58,7 +58,12 @@ impl Region<'_> {
 /// use tuika::prelude::*;
 ///
 /// let shell = AppShell::new(Text::raw("content"))
-///     .header(Text::raw("my tool"))
+///     .header(view_fn(
+///         |available, _ctx| Size::new(available.width, available.height.min(2)),
+///         |area, surface, ctx| {
+///             surface.set_string(area.x, area.y, "Search: ", ctx.theme.muted_style());
+///         },
+///     ))
 ///     .top_rule()
 ///     .status(StatusBar::new())
 ///     .bottom_rule()
@@ -198,7 +203,7 @@ mod tests {
     use crate::probe::RectProbe;
     use crate::style::{StyleBundle, StyleSheet};
     use crate::testing::{grid, render, render_sizes, render_with_sheet};
-    use crate::{RenderCtx, Surface, Theme, ui::Color, ui::Rect, ui::Style};
+    use crate::{Theme, ui::Color, ui::Rect, ui::Style, view_fn};
 
     #[test]
     fn allocates_conventional_regions_at_normal_size() {
@@ -290,20 +295,14 @@ mod tests {
 
     #[test]
     fn borrowed_views_can_be_composed_without_cloning() {
-        struct Borrowed<'a>(&'a str);
-
-        impl View for Borrowed<'_> {
-            fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
-                Size::new(self.0.len().min(available.width as usize) as u16, 1)
-            }
-
-            fn render(&self, area: Rect, surface: &mut Surface, _ctx: &RenderCtx) {
-                surface.set_string(area.x, area.y, self.0, Style::default());
-            }
-        }
-
         let label = String::from("borrowed");
-        let shell = AppShell::new(Borrowed(&label)).footer(Text::raw("footer"));
+        let shell = AppShell::new(view_fn(
+            |available, _ctx| Size::new(label.len().min(available.width as usize) as u16, 1),
+            |area, surface, _ctx| {
+                surface.set_string(area.x, area.y, &label, Style::default());
+            },
+        ))
+        .footer(Text::raw("footer"));
         let buffer = render(&shell, 8, 2, &Theme::default());
         assert_eq!(grid(&buffer), "borrowed\nfooter  ");
     }
