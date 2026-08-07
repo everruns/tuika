@@ -15,6 +15,11 @@ described in the release process begins with the entry below.
 
 ### Added
 
+- `Application` and `Runner::{run_app, run_app_with_backend}` provide a
+  data-driven synchronous runtime whose frame tree can borrow application state
+  through `ScopedElement<'_>`; `TestHarness::{render_app, step_app}` exercises
+  the same contract without a terminal, and the existing owned-element closure
+  API remains.
 - `CompletionItem`, `CompletionState`, and `CompletionPalette` provide reusable
   fuzzy-ranked command and token completion with host-owned query/selection
   state and explicit replacement text.
@@ -24,6 +29,12 @@ described in the release process begins with the entry below.
 - `ActivityItem`, `ActivityStatus`, and `ActivityList` render multi-step task
   lifecycle state, including optional determinate progress for individual
   steps, without owning scheduling or workflow state.
+
+### Changed
+
+- Runner resize signals now force a frame even when application updates return
+  `UpdateResult::Clean`; headless harness resize signals also apply their new
+  viewport dimensions automatically.
 
 ## [0.7.0] - 2026-07-31
 

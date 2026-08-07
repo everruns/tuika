@@ -83,10 +83,14 @@ rather than beside it.
 - **The host owns the terminal**: the screen mode (alternate screen or a split
   footer over live scrollback — see [screen-modes.md](./screen-modes.md)), raw
   mode, mouse capture, input translation, and frame compositing.
-- **Runners own application state directly**: rendering receives `&State`,
-  updates receive `&mut State` plus a tick or input signal, and repaint is an
-  explicit dirty result (or, synchronously, an external redraw request).
-  Rendering stays pure, and idle ticks do not churn the terminal. The
+- **Runners own application state directly**: `Application` receives signals
+  through `&mut self` and builds a `ScopedElement<'_>` through `&self`, so a
+  frame can borrow application data without shared interior mutability. The
+  compatible closure seam renders an owned `Element` from `&State` and updates
+  through `&mut State`. Repaint is an explicit dirty result (or, synchronously,
+  an external redraw request); terminal resize is the exception because layout
+  must be repainted even when application state is unchanged. Rendering stays
+  pure, and idle ticks do not churn the terminal. The
   synchronous runner's monotonic clock defaults to the process clock and is
   replaceable for deterministic hosts.
   `RunnerCore` is the runtime-neutral dirty/render/exit state machine used by

@@ -661,10 +661,11 @@ uses that policy without replacing the runner loop.
 
 `Runner` is an optional synchronous event loop for dashboards and small tools.
 It owns `TerminalSession`, frame scheduling, Crossterm event translation, and
-state-driven redraws. It threads one state value through a pure `view(&State)`
-and an `update(&mut State, Signal)` function. The initial frame is painted once;
-a tick or input only repaints when update returns `UpdateResult::Dirty`, while a
-`RedrawHandle` can wake the loop from another thread:
+state-driven redraws. An `Application` keeps state and update policy together;
+its pure `view(&self)` may return a `ScopedElement<'_>` that borrows that state
+for exactly one frame. The initial frame is painted once; a tick or input only
+repaints when update returns `UpdateResult::Dirty`, while resize always repaints
+and a `RedrawHandle` can wake the loop from another thread:
 
 ```rust,ignore
 use std::time::Duration;
@@ -674,19 +675,29 @@ let runner = Runner::new(RunnerConfig {
     tick_rate: Duration::from_secs(2),
     ..RunnerConfig::default()
 });
-let mut stats = Stats::default();
-runner.run(
-    &Theme::default(),
-    &mut stats,
-    |stats, _frame| element(Text::raw(stats.summary())),
-    |stats, signal| match signal {
-        Signal::Tick if stats.refresh() => UpdateResult::Dirty,
-        Signal::Event(Event::Key(k)) if k.plain() && k.code == KeyCode::Char('q') =>
-            UpdateResult::Exit,
-        _ => UpdateResult::Clean,
-    },
-)?;
+impl Application for Stats {
+    fn update(&mut self, signal: Signal) -> UpdateResult {
+        match signal {
+            Signal::Tick if self.refresh() => UpdateResult::Dirty,
+            Signal::Event(Event::Key(k))
+                if k.plain() && k.code == KeyCode::Char('q') => UpdateResult::Exit,
+            _ => UpdateResult::Clean,
+        }
+    }
+
+    fn view(&self, _frame: u64) -> ScopedElement<'_> {
+        element(Text::raw(self.summary()))
+    }
+}
+
+let mut app = Stats::default();
+runner.run_app(&Theme::default(), &mut app)?;
 ```
+
+`Runner::run` and `run_with_backend` retain the separate state/view/update
+closure API for owned `Element` trees. The
+[`borrowed_app`](examples/borrowed_app.rs) example implements a custom `View`
+that directly borrows a `String` from its application.
 
 `Runner::with_clock` replaces the default `SystemClock` when a replayable host
 or deterministic test owns monotonic time. The same `Clock` seam drives
@@ -817,6 +828,8 @@ module draws a `View` into an in-memory ratatui `Buffer` and reads it back:
   of sizes, for resize and degenerate-size sweeps.
 - `TestHarness<State>` — drive `Signal`s through state/update/view functions,
   resize deterministically, and receive a buffer only for dirty updates.
+  `render_app` / `step_app` do the same for an `Application`, including scoped
+  views and mandatory resize redraws.
 
 ```rust
 use tuika::testing::{grid, render};

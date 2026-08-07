@@ -1,5 +1,16 @@
 # Knowledge Log
 
+## 2026-08-06
+
+- **Application frames may borrow application state**
+
+- The synchronous runner accepts an `Application` whose pure frame builder
+  returns `ScopedElement<'_>` from `&self`; persistent mutations remain confined
+  to signal updates through `&mut self`.
+- Resize signals always invalidate the frame because terminal geometry changes
+  layout even when application data does not change. The owned-element closure
+  runner remains compatible.
+
 ## 2026-08-05
 
 - **Agent interaction primitives remain host-owned compositions**

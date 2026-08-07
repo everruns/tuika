@@ -4,8 +4,8 @@ use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 
 use crate::{
-    Element, RenderCtx, Signal, StyleSheet, Theme, UpdateResult, View, paint, paint_with_context,
-    paint_with_sheet,
+    Application, Element, Event, RenderCtx, Signal, StyleSheet, Theme, UpdateResult, View, paint,
+    paint_with_context, paint_with_sheet,
 };
 
 /// A deterministic, terminal-free application harness.
@@ -79,16 +79,52 @@ impl<S> TestHarness<S> {
 
     /// Deliver a signal, rendering only when the update marks the app dirty.
     ///
-    /// `None` represents both a clean update and exit; inspect the returned
-    /// [`UpdateResult`] to distinguish them.
+    /// Resize updates also render because layout depends on viewport geometry.
+    /// Otherwise, `None` represents both a clean update and exit; inspect the
+    /// returned [`UpdateResult`] to distinguish them.
     pub fn step(
         &mut self,
         signal: Signal,
         update: impl FnOnce(&mut S, Signal) -> UpdateResult,
         view: impl FnOnce(&S, u64) -> Element,
     ) -> (UpdateResult, Option<Buffer>) {
+        let resized = self.apply_resize_signal(&signal);
         let result = update(&mut self.state, signal);
-        let frame = (result == UpdateResult::Dirty).then(|| self.render(view));
+        let frame = (result != UpdateResult::Exit && (result == UpdateResult::Dirty || resized))
+            .then(|| self.render(view));
+        (result, frame)
+    }
+
+    fn apply_resize_signal(&mut self, signal: &Signal) -> bool {
+        if let Signal::Event(Event::Resize { width, height }) = signal {
+            self.resize(*width, *height);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl<A: Application> TestHarness<A> {
+    /// Build and render the application's next frame, including borrowed views.
+    pub fn render_app(&mut self) -> Buffer {
+        let root = self.state.view(self.frame);
+        let buffer = render(root.as_ref(), self.width, self.height, &self.theme);
+        drop(root);
+        self.frame = self.frame.wrapping_add(1);
+        buffer
+    }
+
+    /// Deliver a signal through [`Application::update`] and render when needed.
+    ///
+    /// Resize events always produce a frame unless the application exits,
+    /// matching the terminal runners even when `update` returns
+    /// [`UpdateResult::Clean`].
+    pub fn step_app(&mut self, signal: Signal) -> (UpdateResult, Option<Buffer>) {
+        let resized = self.apply_resize_signal(&signal);
+        let result = self.state.update(signal);
+        let frame = (result != UpdateResult::Exit && (result == UpdateResult::Dirty || resized))
+            .then(|| self.render_app());
         (result, frame)
     }
 }

@@ -259,9 +259,13 @@ impl AsyncRunner {
                 },
             };
 
+            let requires_redraw = signal.requires_redraw();
             core.apply(update(state, signal).await);
             if core.is_exited() {
                 break;
+            }
+            if requires_redraw {
+                core.request_redraw();
             }
             if split {
                 // Publishing scrolls the terminal and may clear the viewport,
@@ -434,6 +438,44 @@ mod tests {
             1,
             "clean input leaves the initial frame intact"
         );
+    }
+
+    #[tokio::test]
+    async fn clean_resize_updates_still_repaint() {
+        let runner = AsyncRunner::new(RunnerConfig {
+            tick_rate: Duration::from_secs(3600),
+            ..RunnerConfig::default()
+        });
+        let mut terminal = terminal(16, 1);
+        let mut state = ();
+        let views = std::cell::Cell::new(0usize);
+        let events = tokio_stream::iter([
+            Ok(Event::Resize {
+                width: 16,
+                height: 1,
+            }),
+            key(KeyCode::Esc),
+        ]);
+
+        runner
+            .run_with_events(
+                &mut terminal,
+                &Theme::default(),
+                &mut state,
+                events,
+                |_state, _frame| {
+                    views.set(views.get() + 1);
+                    element(Text::raw("frame"))
+                },
+                async |_state, signal| match signal {
+                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
+                    _ => UpdateResult::Clean,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(views.get(), 2, "resize repaints after the initial frame");
     }
 
     // The initial frame is painted before any signal is handled, so a run that
