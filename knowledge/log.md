@@ -11,6 +11,13 @@
 - The adapter allocates nothing and retains no identity. Heterogeneous
   containers box it exactly as they box named views.
 
+- **Repeated selection pages share one responsive composition**
+
+- Action, agent, permission, and resume pages can reuse one shell preset while
+  keeping `SelectState` and input policy in the host.
+- Borrowed rows and allocation-derived windowing avoid per-frame collection
+  clones and keep the selected row visible after short-height chrome collapse.
+
 ## 2026-08-06
 
 - **Application frames may borrow application state**

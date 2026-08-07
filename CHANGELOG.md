@@ -18,6 +18,10 @@ described in the release process begins with the entry below.
 - `view_fn(measure, render)` defines one-off borrowed views inline with explicit
   intrinsic measurement and allocation-free `Fn` rendering, and composes anywhere
   a normal `View` is accepted.
+- `SelectionScreen` composes responsive action, agent, permission, and resume
+  pickers from `AppShell`, borrowed selectable rows, semantic heading/rule
+  styles, and optional custom chrome while keeping short-height selections
+  visible.
 - `Application` and `Runner::{run_app, run_app_with_backend}` provide a
   data-driven synchronous runtime whose frame tree can borrow application state
   through `ScopedElement<'_>`; `TestHarness::{render_app, step_app}` exercises
@@ -48,6 +52,9 @@ described in the release process begins with the entry below.
 
 ### Changed
 
+- `SelectList` now further clamps its configured viewport to the height it is
+  actually rendered into, keeping a selected row visible after parent chrome
+  or a terminal resize reduces the allocation.
 - Runner resize signals now force a frame even when application updates return
   `UpdateResult::Clean`; headless harness resize signals also apply their new
   viewport dimensions automatically.

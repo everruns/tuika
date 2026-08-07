@@ -331,6 +331,14 @@ const DEMOS: &[Demo] = &[
         false,
         scene_app_shell,
     ),
+    filling_demo(
+        "selection_screen",
+        "SelectionScreen",
+        "responsive borrowed action picker",
+        15,
+        false,
+        scene_selection_screen,
+    ),
     demo(
         "flow",
         "Flow",
@@ -1263,6 +1271,31 @@ fn scene_app_shell(frame: u64, theme: &Theme) -> Element {
                 ("↑/↓", "move"),
                 ("enter", "open"),
                 ("q", "quit"),
+            ])),
+    )
+}
+
+fn scene_selection_screen(frame: u64, theme: &Theme) -> Element {
+    let _ = (frame, theme);
+    let rows = vec![
+        Line::from("Run the requested command"),
+        Line::from("Delegate to a specialist agent"),
+        Line::from("Allow access for this command"),
+        Line::from("Allow access for this session"),
+        Line::from("Resume the interrupted task"),
+        Line::from("Start a fresh task"),
+    ];
+    let mut state = SelectState::new();
+    state.select(Some(3));
+
+    element(
+        SelectionScreen::new("Choose how to continue", rows, &state)
+            .leading_rule()
+            .trailing_rule()
+            .footer(KeyHints::new([
+                ("↑/↓", "move"),
+                ("enter", "choose"),
+                ("esc", "cancel"),
             ])),
     )
 }

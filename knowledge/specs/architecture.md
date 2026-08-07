@@ -75,6 +75,11 @@ rather than beside it.
   around one growing main view plus intrinsic, optional chrome. Regions remain
   ordinary frame-scoped views; short terminals collapse separators and
   secondary chrome without introducing navigation, input, or host policy.
+- **Selection screens are shell presets, not a new state model.** Action,
+  agent, permission, and resume pickers compose `AppShell`, the borrowed
+  `SelectList` row renderer, `SelectState`, and `KeyHints`. Their viewport is
+  derived from the body rows allocated this frame, while row ownership,
+  navigation, submission, and cancellation remain with the host.
 - **Activity and progress answer different questions.** Activity items model
   lifecycle across steps; a progress bar models amount complete for one
   measurable operation and may be composed inside an activity item.
