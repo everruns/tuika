@@ -107,6 +107,27 @@ diagram grammars outside tuika core. The adapter bounds source and output size,
 disables ANSI output, and strips control bytes before creating cells; a diagram
 fence is untrusted markdown, not permission to emit terminal commands.
 
+A block renderer sits inside `View::render`, so it must not be able to fail the
+frame: an unrenderable fence is a `None` and the code-block fallback, never an
+unwind. That is a constraint on the *adapter*, not on the engine behind it —
+`tuika-mermaid` contains mmdflux's panics rather than trusting a third-party
+layout engine to be total. Containment alone is not enough, though: the same
+upstream defect ([mmdflux#387](https://github.com/kevinswiber/mmdflux/issues/387),
+a multi-line decision-node label) also renders a diagram that merely *looks*
+successful, so the adapter additionally recognises the shape up front. A
+workaround that only catches the loud failure mode leaves the quiet ones.
+Containment does not extend to the panic hook: a
+renderer runs every frame, and swapping a global hook that often would swallow
+unrelated panics for as long as the window is open.
+
+The context carries width because a renderer is expected to *use* it. A diagram
+engine sized for vector output spreads a graph far past a terminal pane, and
+`Markdown` clips rather than scrolls, so the adapter re-lays out an overflowing
+diagram at tighter separations until it fits. Fitting is best-effort: a graph
+can be irreducibly wider than the pane, and the narrowest layout is still the
+right answer there. Diagrams that already fit keep the engine's own spacing, so
+tightening never changes what already renders well.
+
 The chain is deliberately open rather than one field per syntax. A host can
 register Mermaid, HTML, and its own query-plan renderer in one ordered list;
 each implementation sees every structured block and declines the kinds it does
