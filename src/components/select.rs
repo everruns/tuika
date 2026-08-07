@@ -356,9 +356,17 @@ pub struct SelectList {
     selection_style: Option<Style>,
 }
 
-impl SelectList {
-    /// A list of `items` with the row from `state` highlighted.
-    pub fn new(items: Vec<Line<'static>>, state: &SelectState) -> Self {
+pub(crate) struct SelectRows<'items> {
+    items: &'items [Line<'static>],
+    source_window: Option<VirtualWindow>,
+    selected: Option<usize>,
+    viewport: Option<u16>,
+    scrollbar: bool,
+    selection_style: Option<Style>,
+}
+
+impl<'items> SelectRows<'items> {
+    pub(crate) fn borrowed(items: &'items [Line<'static>], state: &SelectState) -> Self {
         Self {
             items,
             source_window: None,
@@ -369,62 +377,55 @@ impl SelectList {
         }
     }
 
-    /// Build from only the items in `window` rather than the whole collection.
-    ///
-    /// `items` correspond to `window.range()` in order, while `window.total()`
-    /// preserves absolute selection and scrollbar geometry. This keeps frame
-    /// construction and rendering O(visible rows) for host-backed collections.
-    pub fn windowed(items: Vec<Line<'static>>, window: VirtualWindow, state: &SelectState) -> Self {
+    pub(crate) fn windowed(
+        items: &'items [Line<'static>],
+        window: VirtualWindow,
+        state: &SelectState,
+    ) -> Self {
         Self {
-            items,
             source_window: Some(window),
-            selected: state.selected(),
-            viewport: None,
-            scrollbar: true,
-            selection_style: None,
+            ..Self::borrowed(items, state)
         }
     }
 
-    /// Cap the visible rows to `rows`, windowing a longer list around the
-    /// selection so the highlighted row stays on screen.
-    pub fn viewport(mut self, rows: u16) -> Self {
-        self.viewport = Some(rows.max(1));
-        self
-    }
-
-    /// Show the overflow scrollbar (default true; only drawn when windowed).
-    pub fn scrollbar(mut self, show: bool) -> Self {
+    pub(crate) fn scrollbar(mut self, show: bool) -> Self {
         self.scrollbar = show;
         self
     }
 
-    /// Override the selected row's style. By default the theme's selection
-    /// style is used.
-    pub fn selection_style(mut self, style: Style) -> Self {
-        self.selection_style = Some(style);
+    pub(crate) fn selection_style(mut self, style: Option<Style>) -> Self {
+        self.selection_style = style;
         self
     }
 
-    /// The visible window: the whole list unless a `viewport`
-    /// smaller than the list is set, in which case a slice centered on the
-    /// selection and clamped to the ends.
-    fn window(&self) -> VirtualWindow {
+    fn window(&self, available_rows: Option<u16>) -> VirtualWindow {
+        let visible = self
+            .viewport
+            .map(usize::from)
+            .unwrap_or(usize::MAX)
+            .min(available_rows.map(usize::from).unwrap_or(usize::MAX));
         match self.source_window {
-            Some(source) => VirtualWindow::new(
-                source.total(),
-                self.viewport
-                    .map_or(source.len(), |rows| source.len().min(usize::from(rows))),
-                source.start(),
-            ),
-            None => match self.viewport {
-                Some(v) => VirtualWindow::around(self.items.len(), usize::from(v), self.selected),
-                None => VirtualWindow::new(self.items.len(), self.items.len(), 0),
-            },
+            Some(source) => {
+                let len = source.len().min(visible);
+                if len == source.len() {
+                    source
+                } else {
+                    let selected = self.selected.unwrap_or(source.start());
+                    let centered = selected.saturating_sub(len / 2);
+                    let max_start = source.end().saturating_sub(len);
+                    VirtualWindow::new(
+                        source.total(),
+                        len,
+                        centered.clamp(source.start(), max_start),
+                    )
+                }
+            }
+            None => VirtualWindow::around(self.items.len(), visible, self.selected),
         }
     }
 }
 
-impl View for SelectList {
+impl View for SelectRows<'_> {
     fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
         let width = self
             .items
@@ -432,8 +433,8 @@ impl View for SelectList {
             .map(super::text::line_width)
             .max()
             .unwrap_or(0)
-            .saturating_add(2); // caret + space
-        let rows = self.window().len();
+            .saturating_add(2);
+        let rows = self.window(None).len();
         Size::new(
             width.min(available.width),
             rows.min(u16::MAX as usize) as u16,
@@ -441,11 +442,10 @@ impl View for SelectList {
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
-        let window = self.window();
+        let window = self.window(Some(area.height));
         let start = window.start();
         let rows = window.len();
         let overflow = window.overflows();
-        // Reserve the last column for the scrollbar when the list overflows.
         let row_width = if overflow && self.scrollbar {
             area.width.saturating_sub(1)
         } else {
@@ -505,6 +505,77 @@ impl View for SelectList {
                 ctx,
             );
         }
+    }
+}
+
+impl SelectList {
+    /// A list of `items` with the row from `state` highlighted.
+    pub fn new(items: Vec<Line<'static>>, state: &SelectState) -> Self {
+        Self {
+            items,
+            source_window: None,
+            selected: state.selected(),
+            viewport: None,
+            scrollbar: true,
+            selection_style: None,
+        }
+    }
+
+    /// Build from only the items in `window` rather than the whole collection.
+    ///
+    /// `items` correspond to `window.range()` in order, while `window.total()`
+    /// preserves absolute selection and scrollbar geometry. This keeps frame
+    /// construction and rendering O(visible rows) for host-backed collections.
+    pub fn windowed(items: Vec<Line<'static>>, window: VirtualWindow, state: &SelectState) -> Self {
+        Self {
+            items,
+            source_window: Some(window),
+            selected: state.selected(),
+            viewport: None,
+            scrollbar: true,
+            selection_style: None,
+        }
+    }
+
+    /// Cap the visible rows to `rows`, windowing a longer list around the
+    /// selection so the highlighted row stays on screen.
+    pub fn viewport(mut self, rows: u16) -> Self {
+        self.viewport = Some(rows.max(1));
+        self
+    }
+
+    /// Show the overflow scrollbar (default true; only drawn when windowed).
+    pub fn scrollbar(mut self, show: bool) -> Self {
+        self.scrollbar = show;
+        self
+    }
+
+    /// Override the selected row's style. By default the theme's selection
+    /// style is used.
+    pub fn selection_style(mut self, style: Style) -> Self {
+        self.selection_style = Some(style);
+        self
+    }
+
+    fn rows(&self) -> SelectRows<'_> {
+        SelectRows {
+            items: &self.items,
+            source_window: self.source_window,
+            selected: self.selected,
+            viewport: self.viewport,
+            scrollbar: self.scrollbar,
+            selection_style: self.selection_style,
+        }
+    }
+}
+
+impl View for SelectList {
+    fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
+        self.rows().measure(available, ctx)
+    }
+
+    fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
+        self.rows().render(area, surface, ctx);
     }
 }
 
@@ -735,6 +806,20 @@ mod tests {
         assert!(
             has_scrollbar,
             "overflowing list should draw a scrollbar:\n{text}"
+        );
+    }
+
+    #[test]
+    fn render_height_smaller_than_viewport_keeps_selection_visible() {
+        let items: Vec<Line> = (0..20).map(|i| Line::from(format!("item{i}"))).collect();
+        let mut state = SelectState::new();
+        state.select(Some(15));
+        let list = SelectList::new(items, &state).viewport(10);
+        let text = crate::testing::grid(&crate::testing::render(&list, 12, 3, &Theme::default()));
+
+        assert!(
+            text.contains("item15"),
+            "selection should be visible:\n{text}"
         );
     }
 

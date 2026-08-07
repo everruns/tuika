@@ -246,6 +246,36 @@ let screen = AppShell::new(content)
     .footer(KeyHints::from_keymap(&keymap));
 ```
 
+### `SelectionScreen`
+
+A responsive full-screen picker for the repeated action, agent, permission,
+and resume shape: optional leading rule, heading-styled header, separator,
+selectable body, optional trailing rule, and a `KeyHints` footer. It composes
+`AppShell`, the same row renderer as `SelectList`, `SelectState`, and semantic
+theme roles. The body automatically windows to its allocated height, keeping
+the current selection visible on short terminals. `borrowed` reuses a host row
+slice without cloning; `windowed` accepts only a host-supplied `VirtualWindow`;
+`new` owns rows. Header and footer builders accept custom
+owned or frame-borrowed views, and per-instance header/selection styles remain
+available without embedding an application palette.
+[API](https://docs.rs/tuika/latest/tuika/components/struct.SelectionScreen.html)
+
+<img src="demos/selection_screen.png" width="880" alt="Responsive SelectionScreen action picker with header, virtualized rows, rules, and key hints">
+
+```rust
+use tuika::prelude::*;
+
+let screen = SelectionScreen::borrowed("Select an action", &rows, &state)
+    .leading_rule()
+    .trailing_rule()
+    .footer(KeyHints::from_keymap(&keymap));
+```
+
+The compilable [AGF-shaped example](https://github.com/everruns/tuika/blob/main/examples/selection_screen.rs)
+measures the caller expression exactly: **8 nonblank LOC before, 4 after**.
+The before form clones the row vector into `SelectList`; the after form borrows
+it and derives virtualization from the allocated body height.
+
 ### `Flex`
 
 The flexbox container and composition primitive — `grow(n)` children share

@@ -209,6 +209,7 @@ component. Linked names below jump straight to their demo.
 | `Form` / `FormField` (+ `FormState`) | Responsive labeled controls and validation |
 | `DrawView` / `CanvasView` | Closure-based custom cell drawing |
 | [`SelectList`](docs/components.md#selectlist--selectstate) (+ `SelectState`) | Selectable list, including host-windowed collections |
+| [`SelectionScreen`](docs/components.md#selectionscreen) | Responsive full-screen action/agent/permission pickers |
 | [`KeyedTable`](docs/components.md#keyedtable--keyedselectstate) (+ keyed single/multi-selection) | Borrowed, virtualized slice or projected rows whose selection follows stable application keys |
 | [`CompletionPalette`](docs/components.md#completionpalette--completionstate) (+ `CompletionState`, `CompletionItem`) | Filter-ranked command and token completion |
 | `Slider` (+ `SliderState`) | One-row value picker over a numeric range |
