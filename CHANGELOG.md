@@ -20,6 +20,11 @@ described in the release process begins with the entry below.
   through `ScopedElement<'_>`; `TestHarness::{render_app, step_app}` exercises
   the same contract without a terminal, and the existing owned-element closure
   API remains.
+- `KeyedTable`, `KeyedColumn`, `KeyedSelectState`, and
+  `KeyedMultiSelectState` adapt and render only visible borrowed rows while
+  preserving application-key selection across reorder, filtering, and
+  streaming updates, with scrolling margins, keyboard/mouse navigation,
+  responsive columns, aligned styled cells, and leading cursor/check indicators.
 - `CompletionItem`, `CompletionState`, and `CompletionPalette` provide reusable
   fuzzy-ranked command and token completion with host-owned query/selection
   state and explicit replacement text.

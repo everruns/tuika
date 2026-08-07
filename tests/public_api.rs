@@ -130,8 +130,8 @@ fn components_are_reachable_flat() {
         ActivityItem, ActivityList, ActivityStatus, AsciiFont, Boxed, ChoiceDialog,
         ChoiceDialogState, CompletionItem, CompletionPalette, CompletionState, ConfirmDialog,
         ConfirmDialogState, Console, Dialog, Diff, Form, FormField, FormState, Image, InputDialog,
-        InputDialogState, Markdown, MultiChoiceDialog, MultiChoiceDialogState, QrCode, Toasts,
-        Viewport,
+        InputDialogState, KeyedColumn, KeyedMultiSelectState, KeyedSelectState, KeyedTable,
+        Markdown, MultiChoiceDialog, MultiChoiceDialogState, QrCode, Toasts, Viewport,
     };
 
     let theme = Theme::default();
@@ -172,6 +172,22 @@ fn components_are_reachable_flat() {
     let _ = MultiChoiceDialog::new("choose", "many", vec!["a".into()], &multi_state);
     let input_state = InputDialogState::new();
     let _ = InputDialog::new("input", "value", &input_state);
+    struct Row(u64);
+    fn row_key(row: &Row) -> &u64 {
+        &row.0
+    }
+    fn row_cell(row: &Row) -> Line<'_> {
+        Line::from(row.0.to_string())
+    }
+    let rows = [Row(1)];
+    let keyed = KeyedSelectState::with_selected(1);
+    let _ = KeyedTable::new(
+        vec![KeyedColumn::auto("id", row_cell)],
+        &rows,
+        row_key,
+        &keyed,
+    );
+    let _ = KeyedMultiSelectState::<u64>::new();
 }
 
 /// Owned and scoped composition belong to the framework spine; custom canvases

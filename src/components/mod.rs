@@ -36,6 +36,7 @@ mod grid;
 mod image;
 mod item_scroll;
 mod key_hints;
+mod keyed_table;
 mod loader;
 pub mod markdown;
 mod progress_bar;
@@ -78,6 +79,7 @@ pub use grid::Grid;
 pub use image::Image;
 pub use item_scroll::ItemScroll;
 pub use key_hints::{KeyHint, KeyHints, KeymapHelp};
+pub use keyed_table::{KeyedColumn, KeyedMultiSelectState, KeyedSelectState, KeyedTable};
 pub use loader::Loader;
 pub use markdown::{
     ImageResolver, Markdown, MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer,

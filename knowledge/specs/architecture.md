@@ -53,6 +53,11 @@ rather than beside it.
   checked-item transitions, while aliases and mouse geometry are explicit
   inputs. Hosts can share picker behavior without inheriting hard-coded keys or
   layout assumptions.
+- **Collection identity can be application-keyed without becoming view
+  identity.** Borrowed keyed tables store stable domain keys in host-owned
+  selection state, so reorder, filters, and streaming inserts do not reinterpret
+  an index as a different record. Rows remain borrowed frame inputs and the view
+  is still ephemeral; keys do not create retained components or lifecycle.
 - **Key bindings are the help source of truth**: active labeled bindings expose
   layer priority, and component adapters derive responsive footer hints and
   complete help rows from the same declarations used for dispatch.
@@ -174,6 +179,12 @@ thumb math without collapsing the distinct line/item measurement models.
 `SelectList::windowed` and `Table::windowed` let a host supply only that range;
 selection remains absolute and auto-width table columns intentionally measure
 only supplied rows, so stable virtualized widths use fixed or flex columns.
+`KeyedTable` instead borrows an ordered row slice, resolves a viewport from its
+host-owned keyed cursor and offset, and invokes cell adapters only inside that
+window. Temporary absence preserves a key because the component cannot infer
+filtering versus deletion; `retain_present` is the explicit authoritative-delete
+boundary. A host may supply the selected key's ephemeral current position to
+avoid a full lookup scan; the key remains the persisted identity.
 
 ## Input and focus
 
@@ -243,7 +254,8 @@ the child's logical extent is much larger.
 
 ## Non-goals
 
-- No virtual DOM, keys, or component identity.
+- No virtual DOM or retained component identity. Application row keys may be
+  used as domain identity by collection state; they do not identify views.
 - No global mutable state inside the library.
 - No layout cache across frames: the solver is cheap and a cache would need
   invalidation the model deliberately lacks. Caching that *is* worth it lives in
