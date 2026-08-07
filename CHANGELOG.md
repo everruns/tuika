@@ -15,6 +15,9 @@ described in the release process begins with the entry below.
 
 ### Added
 
+- `view_fn(measure, render)` defines one-off borrowed views inline with explicit
+  intrinsic measurement and allocation-free `Fn` rendering, and composes anywhere
+  a normal `View` is accepted.
 - `Application` and `Runner::{run_app, run_app_with_backend}` provide a
   data-driven synchronous runtime whose frame tree can borrow application state
   through `ScopedElement<'_>`; `TestHarness::{render_app, step_app}` exercises

@@ -47,7 +47,7 @@ pub use crate::{
     ScopedScene, ScreenMode, Scrollback, SemanticRole, Signal, Size, StyleSheet, Surface,
     SystemClock, TargetAlign, TargetPlacement, TargetSide, TerminalSession, TerminalSessionConfig,
     Theme, UpdateResult, View, element, paint, paint_scene, paint_with_context, paint_with_sheet,
-    render_once, translate_event, write_once,
+    render_once, translate_event, view_fn, write_once,
 };
 
 #[cfg(feature = "async")]

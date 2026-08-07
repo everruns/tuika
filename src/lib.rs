@@ -59,7 +59,8 @@
 //!
 //! Add a component by implementing [`view::View`] in a new module under
 //! [`components`]. No registration step; containers accept owned or
-//! frame-borrowed views.
+//! frame-borrowed views. One-off custom regions can use [`view_fn`] to provide
+//! the same measurement and rendering contract inline.
 //!
 //! Existing ratatui widgets should normally be wrapped in
 //! [`RatatuiView`](interop::RatatuiView), which preserves Tuika clipping without
@@ -147,7 +148,9 @@ pub use scene::{Backdrop, Scene, SceneOverlay, ScopedScene};
 pub use screen::{ScreenMode, Scrollback};
 pub use style::{SemanticRole, StyleResolver, StyleRole, StyleSheet, Theme};
 pub use surface::Surface;
-pub use view::{AvailableSpace, Element, MeasureRequest, RenderCtx, ScopedElement, View, element};
+pub use view::{
+    AvailableSpace, Element, MeasureRequest, RenderCtx, ScopedElement, View, element, view_fn,
+};
 
 #[cfg(test)]
 mod tests;

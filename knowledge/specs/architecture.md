@@ -89,6 +89,10 @@ rather than beside it.
   preserving the ordinary owned path without parallel scoped components.
   `ScopedScene` composes a borrowed base tree with owned overlays and shares the
   same renderer and focus-owner resolution as `Scene`.
+- **One-off views stay in the same model.** `view_fn` adapts separate `Fn`
+  measurement and rendering closures into an ordinary view. Captured frame
+  borrows remain bounded by `ScopedElement`; the adapter adds no allocation,
+  retained identity, mutation, or alternate layout language.
 - **The host owns the terminal**: the screen mode (alternate screen or a split
   footer over live scrollback — see [screen-modes.md](./screen-modes.md)), raw
   mode, mouse capture, input translation, and frame compositing.
