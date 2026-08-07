@@ -71,6 +71,10 @@ rather than beside it.
 - **Dialog presets compose primitives.** Confirm, choice, multi-choice, and
   input flows pair host-owned state with a one-frame `Dialog` snapshot. They do
   not introduce a retained modal manager or a second input-outcome vocabulary.
+- **Application shells compose regions.** `AppShell` is a thin flex allocation
+  around one growing main view plus intrinsic, optional chrome. Regions remain
+  ordinary frame-scoped views; short terminals collapse separators and
+  secondary chrome without introducing navigation, input, or host policy.
 - **Activity and progress answer different questions.** Activity items model
   lifecycle across steps; a progress bar models amount complete for one
   measurable operation and may be composed inside an activity item.
