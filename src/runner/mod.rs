@@ -14,6 +14,10 @@
 //! question about the host's existing runtime, not about which part of tuika to
 //! reach for.
 //!
+//! Synchronous applications whose views borrow their own state implement
+//! [`Application`] and run through [`Runner::run_app`]. The original
+//! state/view/update closure API remains available for owned [`Element`] trees.
+//!
 //! A host with its own event loop needs neither: call [`paint`] directly.
 
 #[cfg(feature = "async")]
@@ -33,7 +37,10 @@ use ratatui_crossterm::CrosstermBackend;
 
 use crate::live::RedrawHandle;
 use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
-use crate::{Clock, Element, Event, SystemClock, TerminalSession, Theme, paint, translate_event};
+use crate::{
+    Clock, Element, Event, ScopedElement, SystemClock, TerminalSession, Theme, View, paint,
+    translate_event,
+};
 
 #[derive(Clone, Copy, Debug)]
 /// Options for [`Runner`] and [`AsyncRunner`].
@@ -59,8 +66,15 @@ impl Default for RunnerConfig {
 pub enum Signal {
     /// The configured tick interval elapsed.
     Tick,
-    /// A translated terminal input event arrived.
+    /// A translated terminal input event arrived. Resize events force a redraw
+    /// after the update unless it exits, even when the update is clean.
     Event(Event),
+}
+
+impl Signal {
+    fn requires_redraw(&self) -> bool {
+        matches!(self, Self::Event(Event::Resize { .. }))
+    }
 }
 
 /// What a runner should do after an update.
@@ -73,6 +87,24 @@ pub enum UpdateResult {
     Dirty,
     /// Stop the runner without painting another frame.
     Exit,
+}
+
+/// A data-driven synchronous terminal application.
+///
+/// The runner mutably borrows the application only while delivering a
+/// [`Signal`], then immutably borrows it to build the next frame. Because the
+/// returned tree is scoped to that immutable borrow, custom views can read
+/// application data directly without cloning it into an owned [`Element`] or
+/// sharing it through `Rc<RefCell<_>>`.
+///
+/// Rendering should be pure: persistent UI and domain state belongs on the
+/// application and changes only in [`update`](Self::update).
+pub trait Application {
+    /// Update application state in response to a tick or terminal event.
+    fn update(&mut self, signal: Signal) -> UpdateResult;
+
+    /// Build the ephemeral view tree for one numbered frame.
+    fn view(&self, frame: u64) -> ScopedElement<'_>;
 }
 
 /// Runtime-neutral decision produced by [`RunnerCore`].
@@ -224,9 +256,65 @@ impl Runner {
         )
     }
 
+    /// Run a data-driven [`Application`] on the real terminal.
+    ///
+    /// This is the borrowed-view counterpart to [`run`](Self::run). It uses the
+    /// same terminal lifecycle, scheduling, redraw, and split-footer behavior.
+    pub fn run_app<A: Application>(&self, theme: &Theme, app: &mut A) -> io::Result<()> {
+        self.run_app_with_backend(theme, CrosstermBackend::new(io::stdout()), app)
+    }
+
     /// Run with a caller-provided backend, such as
     /// [`HyperlinkBackend`](crate::term::hyperlink::HyperlinkBackend).
     pub fn run_with_backend<S, B, V, U>(
+        &self,
+        theme: &Theme,
+        backend: B,
+        state: &mut S,
+        mut view: V,
+        update: U,
+    ) -> io::Result<()>
+    where
+        B: Backend<Error = io::Error>,
+        V: FnMut(&S, u64) -> Element,
+        U: FnMut(&mut S, Signal) -> UpdateResult,
+    {
+        self.run_with_backend_inner(
+            theme,
+            backend,
+            state,
+            |state, frame, paint_root| {
+                let root = view(state, frame);
+                paint_root(root.as_ref());
+            },
+            update,
+        )
+    }
+
+    /// Run a data-driven [`Application`] with a caller-provided backend.
+    pub fn run_app_with_backend<A, B>(
+        &self,
+        theme: &Theme,
+        backend: B,
+        app: &mut A,
+    ) -> io::Result<()>
+    where
+        A: Application,
+        B: Backend<Error = io::Error>,
+    {
+        self.run_with_backend_inner(
+            theme,
+            backend,
+            app,
+            |app, frame, paint_root| {
+                let root = app.view(frame);
+                paint_root(root.as_ref());
+            },
+            Application::update,
+        )
+    }
+
+    fn run_with_backend_inner<S, B, V, U>(
         &self,
         theme: &Theme,
         backend: B,
@@ -236,7 +324,7 @@ impl Runner {
     ) -> io::Result<()>
     where
         B: Backend<Error = io::Error>,
-        V: FnMut(&S, u64) -> Element,
+        V: FnMut(&S, u64, &mut dyn FnMut(&dyn View)),
         U: FnMut(&mut S, Signal) -> UpdateResult,
     {
         let mode = self.config.screen_mode;
@@ -298,9 +386,14 @@ impl Runner {
             if event::poll(timeout)?
                 && let Some(event) = translate_event(event::read()?)
             {
-                core.apply(update(state, Signal::Event(event)));
+                let signal = Signal::Event(event);
+                let requires_redraw = signal.requires_redraw();
+                core.apply(update(state, signal));
                 if core.is_exited() {
                     break 'running;
+                }
+                if requires_redraw {
+                    core.request_redraw();
                 }
             }
         }
@@ -328,12 +421,13 @@ fn draw<S, B, V, Er>(
 ) -> Result<(), Er>
 where
     B: Backend<Error = Er>,
-    V: FnMut(&S, u64) -> Element,
+    V: FnMut(&S, u64, &mut dyn FnMut(&dyn View)),
 {
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
-        let root = view(state, frame);
-        paint(terminal_frame.buffer_mut(), area, theme, root.as_ref(), &[]);
+        view(state, frame, &mut |root| {
+            paint(terminal_frame.buffer_mut(), area, theme, root, &[]);
+        });
     })?;
     Ok(())
 }
