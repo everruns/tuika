@@ -81,7 +81,10 @@ pub use grid::Grid;
 pub use image::Image;
 pub use item_scroll::ItemScroll;
 pub use key_hints::{KeyHint, KeyHints, KeymapHelp};
-pub use keyed_table::{KeyedColumn, KeyedMultiSelectState, KeyedSelectState, KeyedTable};
+pub use keyed_table::{
+    KeyedColumn, KeyedMultiSelectState, KeyedRowSource, KeyedSelectState, KeyedTable,
+    NavigableKeyedRowSource,
+};
 pub use loader::Loader;
 pub use markdown::{
     ImageResolver, Markdown, MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer,

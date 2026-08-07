@@ -1,4 +1,4 @@
-//! Dynamic borrowed rows with stable keyed selection and viewport rendering.
+//! AGF-shaped sessions projected from authoritative storage into a keyed table.
 //!
 //! Run with `cargo run --example keyed_table`. Use arrows, Page Up/Down,
 //! Home/End, the mouse wheel, or click a row. Space/Enter checks a row; `r`
@@ -12,98 +12,205 @@ use ratatui_core::terminal::Terminal;
 use ratatui_crossterm::CrosstermBackend;
 use tuika::prelude::*;
 
-struct Job {
-    id: u64,
-    name: String,
-    status: &'static str,
-    age: u16,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Agent {
+    Claude,
+    Codex,
+}
+
+impl Agent {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct SessionKey {
+    agent: Agent,
+    session_id: String,
+}
+
+struct Session {
+    agent: Agent,
+    session_id: String,
+    summary: String,
+    branch: Option<String>,
+    pinned: bool,
+}
+
+struct SessionRows<'a> {
+    sessions: &'a [Session],
+    visible: &'a [usize],
+}
+
+impl KeyedRowSource<SessionKey> for SessionRows<'_> {
+    type Row = Session;
+
+    fn len(&self) -> usize {
+        self.visible.len()
+    }
+
+    fn row(&self, index: usize) -> Option<&Self::Row> {
+        self.visible
+            .get(index)
+            .and_then(|&source_index| self.sessions.get(source_index))
+    }
+
+    fn key_eq(&self, _index: usize, row: &Self::Row, key: &SessionKey) -> bool {
+        row.agent == key.agent && row.session_id == key.session_id
+    }
+}
+
+impl NavigableKeyedRowSource<SessionKey> for SessionRows<'_> {
+    fn key(&self, _index: usize, row: &Self::Row) -> SessionKey {
+        SessionKey {
+            agent: row.agent,
+            session_id: row.session_id.clone(),
+        }
+    }
 }
 
 struct App {
-    jobs: Vec<Job>,
-    selection: KeyedMultiSelectState<u64>,
-    filter_running: bool,
+    sessions: Vec<Session>,
+    visible: Vec<usize>,
+    fuzzy: Vec<Vec<usize>>,
+    selection: KeyedMultiSelectState<SessionKey>,
+    filter_codex: bool,
     next_id: u64,
 }
 
 impl App {
     fn new() -> Self {
-        let jobs = (1..=30)
-            .map(|id| Job {
-                id,
-                name: format!("worker-{id:02}"),
-                status: if id % 3 == 0 { "queued" } else { "running" },
-                age: id as u16 * 3,
+        let sessions = (1..=30)
+            .map(|id| Session {
+                agent: if id % 2 == 0 {
+                    Agent::Codex
+                } else {
+                    Agent::Claude
+                },
+                // Both agent namespaces deliberately contain the same ids.
+                session_id: format!("session-{:02}", (id + 1) / 2),
+                summary: format!("searchable session {id:02}"),
+                branch: (id % 3 == 0).then(|| format!("feature/{id}")),
+                pinned: id % 7 == 0,
             })
             .collect();
-        let mut selection = KeyedMultiSelectState::new();
-        selection.cursor_mut().select(Some(1));
-        selection.cursor_mut().set_scroll_margin(2);
-        Self {
-            jobs,
-            selection,
-            filter_running: false,
+        let mut app = Self {
+            sessions,
+            visible: Vec::new(),
+            fuzzy: Vec::new(),
+            selection: KeyedMultiSelectState::new(),
+            filter_codex: false,
             next_id: 31,
+        };
+        app.refresh_projection();
+        let first = app.source().row(0).map(|row| SessionKey {
+            agent: row.agent,
+            session_id: row.session_id.clone(),
+        });
+        app.selection.cursor_mut().select(first);
+        app.selection.cursor_mut().set_scroll_margin(2);
+        app
+    }
+
+    fn source(&self) -> SessionRows<'_> {
+        SessionRows {
+            sessions: &self.sessions,
+            visible: &self.visible,
         }
     }
 
-    fn visible(&self) -> Vec<&Job> {
-        visible_jobs(&self.jobs, self.filter_running)
+    fn refresh_projection(&mut self) {
+        self.visible = self
+            .sessions
+            .iter()
+            .enumerate()
+            .filter(|(_, session)| !self.filter_codex || session.agent == Agent::Codex)
+            .map(|(index, _)| index)
+            .collect();
+        self.fuzzy = self
+            .visible
+            .iter()
+            .map(|&index| {
+                self.sessions[index]
+                    .summary
+                    .chars()
+                    .enumerate()
+                    .filter_map(|(position, ch)| (ch == 's').then_some(position))
+                    .collect()
+            })
+            .collect();
     }
 
     fn reorder(&mut self) {
-        let distance = 7.min(self.jobs.len());
-        self.jobs.rotate_left(distance);
+        let distance = 7.min(self.sessions.len());
+        self.sessions.rotate_left(distance);
+        self.refresh_projection();
     }
 
     fn insert(&mut self) {
         let id = self.next_id;
         self.next_id += 1;
-        self.jobs.insert(
+        self.sessions.insert(
             0,
-            Job {
-                id,
-                name: format!("stream-{id:02}"),
-                status: "running",
-                age: 0,
+            Session {
+                agent: Agent::Codex,
+                session_id: format!("stream-{id:02}"),
+                summary: format!("streamed session {id:02}"),
+                branch: None,
+                pinned: false,
             },
         );
+        self.refresh_projection();
     }
 
     fn delete_selected(&mut self) {
-        let selected = self.selection.cursor().selected().copied();
-        if let Some(id) = selected {
-            self.jobs.retain(|job| job.id != id);
-            self.selection.retain_present(&self.jobs, |job| &job.id);
+        let selected = self.selection.cursor().selected().cloned();
+        if let Some(key) = selected {
+            self.sessions.retain(|session| {
+                session.agent != key.agent || session.session_id != key.session_id
+            });
+            self.refresh_projection();
+            let source = SessionRows {
+                sessions: &self.sessions,
+                visible: &self.visible,
+            };
+            self.selection.retain_present_source(&source);
         }
     }
 }
 
-fn visible_jobs(jobs: &[Job], filter_running: bool) -> Vec<&Job> {
-    jobs.iter()
-        .filter(|job| !filter_running || job.status == "running")
-        .collect()
-}
-
-fn visible_key<'row>(row: &'row &Job) -> &'row u64 {
-    &row.id
-}
-
-fn name<'row>(row: &'row &Job) -> Line<'row> {
-    Line::from(row.name.as_str())
-}
-
-fn status<'row>(row: &'row &Job) -> Line<'row> {
-    let color = if row.status == "running" {
-        Color::Green
-    } else {
-        Color::Yellow
-    };
-    Line::styled(row.status, Style::default().fg(color))
-}
-
-fn age<'row>(row: &'row &Job) -> Line<'row> {
-    Line::from(format!("{}s", row.age))
+fn summary_line<'a>(summary: &'a str, positions: &[usize]) -> Line<'a> {
+    let mut spans = Vec::new();
+    let mut run_start = 0;
+    let mut highlighted = false;
+    for (character, (byte, _)) in summary.char_indices().enumerate() {
+        let next_highlighted = positions.contains(&character);
+        if next_highlighted != highlighted {
+            if byte > run_start {
+                let text = &summary[run_start..byte];
+                spans.push(if highlighted {
+                    Span::styled(text, Style::default().fg(Color::Yellow).bold())
+                } else {
+                    Span::raw(text)
+                });
+            }
+            run_start = byte;
+            highlighted = next_highlighted;
+        }
+    }
+    if run_start < summary.len() {
+        let text = &summary[run_start..];
+        spans.push(if highlighted {
+            Span::styled(text, Style::default().fg(Color::Yellow).bold())
+        } else {
+            Span::raw(text)
+        });
+    }
+    Line::from(spans)
 }
 
 fn main() -> io::Result<()> {
@@ -115,17 +222,16 @@ fn main() -> io::Result<()> {
     loop {
         terminal.draw(|frame| {
             let area = frame.area();
-            let visible = app.visible();
             let table_area = Rect::new(
                 area.x,
                 area.y.saturating_add(2),
                 area.width,
                 area.height.saturating_sub(2),
             );
-            let title = if app.filter_running {
-                "Keyed jobs · running only"
+            let title = if app.filter_codex {
+                "Projected sessions · codex only"
             } else {
-                "Keyed jobs · all rows"
+                "Projected sessions · all agents"
             };
             let ctx = RenderCtx::new(&theme);
             let mut surface = Surface::new(frame.buffer_mut(), area);
@@ -135,18 +241,29 @@ fn main() -> io::Result<()> {
                 &mut surface,
                 &ctx,
             );
-            KeyedTable::multi(
+            let source = app.source();
+            KeyedTable::multi_source(
                 vec![
-                    KeyedColumn::fixed("id", 4, |row: &&Job| Line::from(row.id.to_string()))
-                        .right(),
-                    KeyedColumn::flex("worker", 2, name),
-                    KeyedColumn::fixed("status", 8, status).hide_below(34),
-                    KeyedColumn::fixed("age", 6, age).right().optional(),
+                    KeyedColumn::fixed("pin", 3, |row: &Session| {
+                        Line::from(if row.pinned { "pin" } else { "" })
+                    }),
+                    KeyedColumn::fixed("agent", 7, |row: &Session| Line::from(row.agent.label())),
+                    KeyedColumn::flex_indexed("summary", 2, |index, row: &Session| {
+                        summary_line(&row.summary, &app.fuzzy[index])
+                    }),
+                    KeyedColumn::fixed("branch", 12, |row: &Session| {
+                        Line::from(row.branch.as_deref().unwrap_or(""))
+                    })
+                    .hide_below(52),
+                    KeyedColumn::fixed("id", 10, |row: &Session| {
+                        Line::from(row.session_id.as_str())
+                    })
+                    .optional(),
                 ],
-                &visible,
-                visible_key,
+                &source,
                 &app.selection,
             )
+            .preserve_selection_fg(true)
             .render(table_area, &mut surface, &ctx);
         })?;
 
@@ -162,39 +279,46 @@ fn main() -> io::Result<()> {
             match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => break,
                 KeyCode::Char('r') => app.reorder(),
-                KeyCode::Char('f') => app.filter_running = !app.filter_running,
+                KeyCode::Char('f') => {
+                    app.filter_codex = !app.filter_codex;
+                    app.refresh_projection();
+                }
                 KeyCode::Char('a') => app.insert(),
                 KeyCode::Char('d') => app.delete_selected(),
                 _ => {
-                    let visible = visible_jobs(&app.jobs, app.filter_running);
+                    let source = SessionRows {
+                        sessions: &app.sessions,
+                        visible: &app.visible,
+                    };
                     let selection = &mut app.selection;
-                    let _ = selection.handle(
+                    let _ = selection.handle_source(
                         &input,
-                        &visible,
+                        &source,
                         terminal.size()?.height.saturating_sub(3) as usize,
-                        visible_key,
                         SelectNavigation::common(),
                     );
                 }
             }
         } else {
-            let visible = visible_jobs(&app.jobs, app.filter_running);
+            let source = SessionRows {
+                sessions: &app.sessions,
+                visible: &app.visible,
+            };
             let size = terminal.size()?;
             let table = Rect::new(0, 3, size.width, size.height.saturating_sub(3));
-            let window =
-                app.selection
-                    .cursor()
-                    .window(&visible, usize::from(table.height), visible_key);
+            let window = app
+                .selection
+                .cursor()
+                .window_source(&source, usize::from(table.height));
             let selection = &mut app.selection;
             let _ = match input {
                 Event::Mouse(ref mouse) if mouse.kind == MouseKind::Down(MouseButton::Left) => {
-                    selection.handle_mouse(&input, &visible, table, window, visible_key)
+                    selection.handle_mouse_source(&input, &source, table, window)
                 }
-                _ => selection.handle(
+                _ => selection.handle_source(
                     &input,
-                    &visible,
+                    &source,
                     usize::from(table.height),
-                    visible_key,
                     SelectNavigation::common(),
                 ),
             };
@@ -208,17 +332,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dynamic_updates_keep_key_identity() {
+    fn projection_preserves_composite_identity() {
         let mut app = App::new();
-        app.selection.cursor_mut().select(Some(9));
+        app.selection.cursor_mut().select(Some(SessionKey {
+            agent: Agent::Codex,
+            session_id: "session-05".into(),
+        }));
         app.reorder();
-        assert_eq!(app.selection.cursor().selected(), Some(&9));
-        app.filter_running = true;
-        assert!(!app.visible().iter().any(|job| job.id == 9));
-        assert_eq!(app.selection.cursor().selected(), Some(&9));
-        app.filter_running = false;
-        assert!(app.visible().iter().any(|job| job.id == 9));
+        assert_eq!(
+            app.selection.cursor().selected().unwrap().agent,
+            Agent::Codex
+        );
+        app.filter_codex = true;
+        app.refresh_projection();
+        assert!(app.source().row(0).is_some());
         app.delete_selected();
-        assert_eq!(app.selection.cursor().selected(), None);
+        assert!(app.selection.cursor().selected().is_none());
     }
 }

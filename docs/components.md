@@ -664,13 +664,16 @@ view! { node(Table::new(columns, rows, &state).selection_style(style).caret('▶
 ### `KeyedTable` + `KeyedSelectState`
 
 A virtualized table for large, changing host collections. It borrows domain
-rows for one frame and calls each `KeyedColumn` only for the visible window;
-row data is not cloned into widget-owned cells. `KeyedSelectState<K>` and
+rows for one frame—either directly from a slice or through a
+`KeyedRowSource<K>` that maps visible indices into authoritative storage—and
+calls each `KeyedColumn` only for the visible window. Row data is not cloned
+into widget-owned cells. `KeyedSelectState<K>` and
 `KeyedMultiSelectState<K>` store application keys rather than positions, so a
 selection follows the same record through reorder, insertion, filtering, and
 streaming refreshes. Keys must be unique within the authoritative collection.
 Filtering preserves absent keys; call `retain_present`
-with the authoritative collection when records are truly deleted.
+or `retain_present_source` with the authoritative collection when records are
+truly deleted.
 
 Columns support fixed, auto, and flex sizing, trailing alignment,
 `hide_below(width)` breakpoints, and optional-column shedding. Styled borrowed
@@ -680,9 +683,19 @@ common leading indicators. Keyboard aliases reuse `SelectNavigation`; Page
 Up/Down, Home/End, wheel scrolling, explicit mouse hit-testing, and configurable
 scroll margin share `VirtualWindow` geometry. Hosts with a key-to-position index
 can pass `selected_index` to avoid a collection scan without making the index
-persistent identity. The runnable
+persistent identity.
+
+For searchable application rows, `KeyedRowSource::key_eq` compares a projected
+row directly with the owned selection key. Composite identity such as
+`(Agent, session_id)` therefore needs no copied key per visible row, while
+`NavigableKeyedRowSource::key` materializes one only when keyboard or mouse
+input selects a row. The `*_indexed` column constructors receive the visible
+row index, which joins parallel fuzzy positions or other decoration metadata
+without a cached wrapper model. The runnable
 [`keyed_table` example](https://github.com/everruns/tuika/blob/main/examples/keyed_table.rs)
-reorders, filters, inserts, and deletes rows while selection stays keyed.
+uses an AGF-shaped `Vec<Session>` plus `Vec<usize>` visible order and parallel
+fuzzy positions; it reorders, filters, inserts, and deletes rows while
+composite-key selection stays stable.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.KeyedTable.html)
 
 <img src="demos/keyed_table.gif" width="880" alt="Keyed table selection following a row through reorder and filtering">
@@ -696,6 +709,49 @@ fn name(job: &Job) -> Line<'_> { Line::from(job.name.as_str()) }
 let state = KeyedSelectState::with_selected(42);
 let columns = vec![KeyedColumn::flex("job", 1, name)];
 let table = KeyedTable::new(columns, &jobs, key, &state);
+```
+
+An indirect source replaces per-frame wrapper construction. Counting nonblank
+Rust source lines exactly as shown, the per-frame caller falls from **20 LOC to
+8 LOC** (−60%); the source's trait implementation is one-time and shared by
+rendering, keyboard navigation, mouse hit-testing, and deletion reconciliation.
+
+Before—copied composite keys and metadata in wrapper rows:
+
+```rust
+struct VisibleSession<'a> {
+    session: &'a Session,
+    key: SessionKey,
+    fuzzy: &'a [usize],
+}
+let rows = visible.iter().enumerate().map(|(row, &source)| {
+    VisibleSession {
+        session: &sessions[source],
+        key: sessions[source].key(),
+        fuzzy: &fuzzy[row],
+    }
+}).collect::<Vec<_>>();
+let table = KeyedTable::new(
+    vec![KeyedColumn::flex("summary", 1, |row: &VisibleSession<'_>| {
+        highlighted(&row.session.summary, row.fuzzy)
+    })],
+    &rows,
+    |row| &row.key,
+    &state,
+);
+```
+
+After—authoritative rows and parallel metadata stay in place:
+
+```rust
+let source = SessionRows { sessions: &sessions, visible: &visible };
+let table = KeyedTable::source(
+    vec![KeyedColumn::flex_indexed("summary", 1, |row, session: &Session| {
+        highlighted(&session.summary, &fuzzy[row])
+    })],
+    &source,
+    &state,
+);
 ```
 
 ### `Tabs` + `TabsState`

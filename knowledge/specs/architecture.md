@@ -187,12 +187,17 @@ thumb math without collapsing the distinct line/item measurement models.
 `SelectList::windowed` and `Table::windowed` let a host supply only that range;
 selection remains absolute and auto-width table columns intentionally measure
 only supplied rows, so stable virtualized widths use fixed or flex columns.
-`KeyedTable` instead borrows an ordered row slice, resolves a viewport from its
-host-owned keyed cursor and offset, and invokes cell adapters only inside that
-window. Temporary absence preserves a key because the component cannot infer
-filtering versus deletion; `retain_present` is the explicit authoritative-delete
-boundary. A host may supply the selected key's ephemeral current position to
-avoid a full lookup scan; the key remains the persisted identity.
+`KeyedTable` borrows either an ordered row slice or a source that projects
+visible indices into authoritative storage. A projected source compares its
+row fields directly with the host-owned key, so composite identity needs no
+cached key or per-frame allocation; it materializes an owned key only when an
+input action changes selection. Indexed cell adapters join parallel metadata
+without creating wrapper rows, and all cell work remains inside the resolved
+viewport. Temporary absence preserves a key because the component cannot infer
+filtering versus deletion; `retain_present` or `retain_present_source` is the
+explicit authoritative-delete boundary. A host may supply the selected key's
+ephemeral current position to avoid a full lookup scan; the key remains the
+persisted identity.
 
 ## Input and focus
 
