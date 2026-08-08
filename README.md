@@ -950,7 +950,7 @@ Issues and pull requests are welcome at
 
 The separately published companion crates live in this repository:
 
-- [`tuika-charts`](crates/tuika-charts/) renders one line/bar chart grammar as
+- [`tuika-charts`](crates/tuika-charts/) renders one line/bar/area/scatter/step grammar as
   smooth terminal graphics or a portable Unicode cell plot.
 - [`tuika-codeformatters`](crates/tuika-codeformatters/) supplies the
   tree-sitter `Highlighter`.

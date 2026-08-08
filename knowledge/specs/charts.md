@@ -13,9 +13,9 @@ Accepted.
 ## Decision
 
 Charts live in the separately published `tuika-charts` companion, not core.
-The companion exposes one renderer-independent numeric grammar: line and
-vertical-bar series, finite `(x, y)` points, automatic or explicit domains,
-series colors, title, and legend.
+The companion exposes one renderer-independent numeric grammar: line,
+vertical-bar, filled-area, scatter, and stepped-line series; finite `(x, y)`
+points; automatic or explicit domains; series colors; title; and legend.
 
 A chart selects smooth RGBA rasterization only when the host provides both
 terminal graphics support and an `ImageLayer`. It uses core's image machinery
@@ -44,7 +44,7 @@ lifecycle.
 
 ## Non-goals
 
-Categorical axes, interactions, tooltips, custom marks, stacking, curves,
+Categorical axes, interactions, tooltips, custom marks, stacking, smooth curves,
 HTML/SVG configuration, and renderer-specific escape hatches are not part of
 the portable grammar. They require a future design that preserves parity rather
 than silently degrading one renderer.

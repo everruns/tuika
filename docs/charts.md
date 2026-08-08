@@ -23,13 +23,17 @@ The first release intentionally supports only the common portable subset:
 
 - numeric `(x, y)` points;
 - line and vertical bar series;
+- filled area series;
+- independent scatter points;
+- horizontal-then-vertical step series;
 - multiple named series;
 - automatic or explicit x/y domains;
 - per-series colors;
 - an optional title and legend.
 
-Interactions, tooltips, HTML/SVG marks, curves, stacked data, categorical axes,
-and renderer-specific configuration are outside the shared grammar. Keeping the
+Interactions, tooltips, HTML/SVG marks, smoothed curves, stacked data,
+categorical axes, and renderer-specific configuration are outside the shared
+grammar. Keeping the
 model smaller than either renderer prevents charts from silently losing meaning
 when graphics support changes.
 
@@ -44,7 +48,12 @@ let chart = Chart::new()
         Point::new(1.0, 18.0),
         Point::new(2.0, 16.0),
     ]))
-    .series(Series::bar("errors", [
+    .series(Series::area("baseline", [
+        Point::new(0.0, 9.0),
+        Point::new(1.0, 12.0),
+        Point::new(2.0, 11.0),
+    ]))
+    .series(Series::scatter("errors", [
         Point::new(0.0, 2.0),
         Point::new(1.0, 1.0),
         Point::new(2.0, 4.0),
