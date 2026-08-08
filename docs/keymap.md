@@ -1,4 +1,11 @@
-# tuika keymap
+---
+title: Keymap
+description: Declare, dispatch, and query host-agnostic key bindings, chords, sequences, and mode-gated layers.
+sidebar:
+  order: 5
+---
+
+# Keymap
 
 A host-agnostic binding engine: declare an application's key bindings once, as
 data, and resolve incoming key presses to named commands. It sits beside the

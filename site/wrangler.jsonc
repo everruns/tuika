@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tuika-dev",
+  "main": "./src/worker.js",
+  "compatibility_date": "2026-08-08",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "tuika.dev",
+      "custom_domain": true
+    }
+  ],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "not_found_handling": "404-page",
+    "run_worker_first": [
+      "/",
+      "/index.html",
+      "/charts*",
+      "/components*",
+      "/features*",
+      "/getting-started*",
+      "/keymap*",
+      "/layout*",
+      "/markdown*",
+      "/showcases*",
+      "/styling*",
+      "/themes*"
+    ]
+  },
+  "observability": {
+    "enabled": true
+  }
+}

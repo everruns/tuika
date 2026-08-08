@@ -1,4 +1,11 @@
-# tuika terminal features
+---
+title: Terminal features
+description: Images, hyperlinks, clipboard, native progress, terminal palettes, mouse input, and screen modes in tuika.
+sidebar:
+  order: 8
+---
+
+# Terminal features
 
 Cross-cutting terminal capabilities that sit outside the [component
 gallery](components.md): the *out-of-band* escape sequences tuika speaks to the
@@ -314,7 +321,7 @@ Drive the terminal's *own* progress indicator — a bar across the window in
 Ghostty, the taskbar in Windows Terminal and ConEmu. It's fully out-of-band: it
 moves no cursor and paints no cells, so it works in both the inline and
 full-screen renderers and composes with an in-grid
-[`ProgressBar`](components.md#progressbar).
+[`ProgressBar`](components/motion.md#progressbar).
 [API](https://docs.rs/tuika/latest/tuika/term/progress/struct.TerminalProgress.html)
 
 `TerminalProgress` owns the indicator and clears it on drop, so a dropped or

@@ -11,7 +11,7 @@
 [![downloads](https://img.shields.io/crates/d/tuika.svg)](https://crates.io/crates/tuika)
 [![license](https://img.shields.io/crates/l/tuika.svg)](https://github.com/everruns/tuika/blob/main/LICENSE)
 ![msrv](https://img.shields.io/badge/rust-1.88%2B-blue.svg) \
-[Docs](https://docs.rs/tuika) · [Components](docs/components.md) · [Layout](docs/layout.md) ·
+[Docs](https://docs.rs/tuika) · [Getting started](docs/getting-started.md) · [Components](docs/components.md) · [Layout](docs/layout.md) ·
 [Markdown](docs/markdown.md) · [Charts](docs/charts.md) ·
 [Terminal features](docs/features.md) ·
 [Keymap](docs/keymap.md) · [Styling](docs/styling.md) ·
@@ -187,44 +187,44 @@ component. Linked names below jump straight to their demo.
 
 | Component | Purpose |
 | --- | --- |
-| [`Text`](docs/components.md#text) / `Paragraph` | Styled lines / word-wrapped plain text |
+| [`Text`](docs/components/text.md#text) / `Paragraph` | Styled lines / word-wrapped plain text |
 | `Wrap` | Word-wraps pre-styled lines, preserving per-span styles |
 | [`Markdown`](docs/markdown.md) (+ `MarkdownState`) | CommonMark → styled lines; `MarkdownState` streams incrementally — see the [markdown guide](docs/markdown.md) |
-| [`CodeBlock`](docs/components.md#codeblock) | Themed, framed code block with a pluggable `Highlighter` and optional line-number gutter |
-| [`Html`](docs/components.md#html) | HTML fragment → styled lines (companion crate [`tuika-html`](crates/tuika-html/)) |
+| [`CodeBlock`](docs/components/markdown-code.md#codeblock) | Themed, framed code block with a pluggable `Highlighter` and optional line-number gutter |
+| [`Html`](docs/components/markdown-code.md#html) | HTML fragment → styled lines (companion crate [`tuika-html`](crates/tuika-html/)) |
 | `Diff` | Line diff (LCS), unified or side-by-side, with `+`/`-` gutters and line numbers |
 | `AsciiFont` | Large "figlet-style" block-letter banner text |
 | `QrCode` (+ `QrEcc`) | QR code (byte-mode v1–4 encoder) rendered with half-blocks |
-| [`Rule`](docs/components.md#rule) | Horizontal separator: optional title + fill glyph to width |
-| [`Flex`](docs/components.md#flex) | Flexbox container (the composition primitive) |
-| [`Flow`](docs/components.md#flow) | Intrinsic-width items wrapped into flex lines |
-| [`Grid`](docs/components.md#grid) | Small equal-column, row-major terminal grid |
+| [`Rule`](docs/components/text.md#rule) | Horizontal separator: optional title + fill glyph to width |
+| [`Flex`](docs/components/layout.md#flex) | Flexbox container (the composition primitive) |
+| [`Flow`](docs/components/layout.md#flow) | Intrinsic-width items wrapped into flex lines |
+| [`Grid`](docs/components/layout.md#grid) | Small equal-column, row-major terminal grid |
 | `Responsive` / `Constrained` | Breakpoint selection and min/max measurement |
-| [`Boxed`](docs/components.md#boxed) | Border + padding + title, focus-aware |
+| [`Boxed`](docs/components/layout.md#boxed) | Border + padding + title, focus-aware |
 | `Scene` / `ScopedScene` / `Dialog` | Owned or frame-borrowed root + anchored overlays |
-| [`ConfirmDialog`](docs/components.md#dialog-presets) / `ChoiceDialog` / `MultiChoiceDialog` / `InputDialog` | Stateful presets for common modal flows |
+| [`ConfirmDialog`](docs/components/interactive.md#dialog-presets) / `ChoiceDialog` / `MultiChoiceDialog` / `InputDialog` | Stateful presets for common modal flows |
 | `Spacer` | Flexible filler |
-| [`Scroll`](docs/components.md#scroll--scrollstate) (+ `ScrollState`) | Vertical scroll viewport + scrollbar over lines |
-| [`ItemScroll`](docs/components.md#itemscroll) | The same viewport over laid-out items (panels, tables, nested layouts) |
+| [`Scroll`](docs/components/interactive.md#scroll--scrollstate) (+ `ScrollState`) | Vertical scroll viewport + scrollbar over lines |
+| [`ItemScroll`](docs/components/interactive.md#itemscroll) | The same viewport over laid-out items (panels, tables, nested layouts) |
 | `Viewport` | Two-dimensional clipping/panning over any child view |
-| [`Scrollbar`](docs/components.md#scrollbar--virtualwindow) / `VirtualWindow` | Reusable bars and clamped ranges for virtualized collections |
+| [`Scrollbar`](docs/components/layout.md#scrollbar--virtualwindow) / `VirtualWindow` | Reusable bars and clamped ranges for virtualized collections |
 | `Form` / `FormField` (+ `FormState`) | Responsive labeled controls and validation |
 | `DrawView` / `CanvasView` | Closure-based custom cell drawing |
-| [`SelectList`](docs/components.md#selectlist--selectstate) (+ `SelectState`) | Selectable list, including host-windowed collections |
-| [`SelectionScreen`](docs/components.md#selectionscreen) | Responsive full-screen action/agent/permission pickers |
-| [`KeyedTable`](docs/components.md#keyedtable--keyedselectstate) (+ keyed single/multi-selection) | Borrowed, virtualized slice or projected rows whose selection follows stable application keys |
-| [`CompletionPalette`](docs/components.md#completionpalette--completionstate) (+ `CompletionState`, `CompletionItem`) | Filter-ranked command and token completion |
+| [`SelectList`](docs/components/interactive.md#selectlist--selectstate) (+ `SelectState`) | Selectable list, including host-windowed collections |
+| [`SelectionScreen`](docs/components/layout.md#selectionscreen) | Responsive full-screen action/agent/permission pickers |
+| [`KeyedTable`](docs/components/interactive.md#keyedtable--keyedselectstate) (+ keyed single/multi-selection) | Borrowed, virtualized slice or projected rows whose selection follows stable application keys |
+| [`CompletionPalette`](docs/components/interactive.md#completionpalette--completionstate) (+ `CompletionState`, `CompletionItem`) | Filter-ranked command and token completion |
 | `Slider` (+ `SliderState`) | One-row value picker over a numeric range |
-| [`TextInput`](docs/components.md#textinput--textinputstate) (+ `TextInputState`) | Multi-line composer: soft-wrap, placeholder, highlighted ranges, `@`/`/` tokens |
-| [`StatusBar`](docs/components.md#statusbar) | One-row left/right status segments |
-| [`Tabs`](docs/components.md#tabs--tabsstate) / `KeyHints` | Host-state tab navigation and command hints |
+| [`TextInput`](docs/components/interactive.md#textinput--textinputstate) (+ `TextInputState`) | Multi-line composer: soft-wrap, placeholder, highlighted ranges, `@`/`/` tokens |
+| [`StatusBar`](docs/components/layout.md#statusbar) | One-row left/right status segments |
+| [`Tabs`](docs/components/interactive.md#tabs--tabsstate) / `KeyHints` | Host-state tab navigation and command hints |
 | `TabSelect` (+ `TabSelectState`) | Value-selecting segmented control |
 | `Toasts` / `ToastList` | Transient notification stack with frame-driven expiry |
 | `Console` (+ `ConsoleLog`) | Captured stdout/log ring buffer + tailing overlay view |
-| [`Spinner`](docs/components.md#spinner) | Frame-cycled activity glyph |
-| [`ProgressBar`](docs/components.md#progressbar) | Determinate (sub-cell) / indeterminate bar |
-| [`ActivityList`](docs/components.md#activitylist) | Multi-step lifecycle status with optional per-step progress |
-| [`Loader`](docs/components.md#loader) | Spinner + message + hint row |
+| [`Spinner`](docs/components/motion.md#spinner) | Frame-cycled activity glyph |
+| [`ProgressBar`](docs/components/motion.md#progressbar) | Determinate (sub-cell) / indeterminate bar |
+| [`ActivityList`](docs/components/motion.md#activitylist) | Multi-step lifecycle status with optional per-step progress |
+| [`Loader`](docs/components/motion.md#loader) | Spinner + message + hint row |
 
 ## Example
 
@@ -483,7 +483,7 @@ HTML parser is a dependency tuika will not carry. Attach a
 same ordered renderer chain handles fenced diagrams and block HTML with one
 context, including the active stylesheet.
 [`tuika-html`](crates/tuika-html/) is the ready-made one, and it also supplies
-the [`Html`](docs/components.md#html) component for markup that is not inside
+the [`Html`](docs/components/markdown-code.md#html) component for markup that is not inside
 markdown at all. See the markdown guide for
 [inline HTML](docs/markdown.md#inline-html) and
 [block HTML](docs/markdown.md#block-html).
@@ -958,7 +958,7 @@ The separately published companion crates live in this repository:
   terminal diagrams through mmdflux.
 - [`tuika-html`](crates/tuika-html/) lays out block-level HTML with html5ever —
   inside Markdown through the `MarkdownBlockRenderer` seam, or standalone
-  through its own [`Html`](docs/components.md#html) component.
+  through its own [`Html`](docs/components/markdown-code.md#html) component.
 
 All four keep specialized rendering and heavier parsers or grammars out of
 tuika core.

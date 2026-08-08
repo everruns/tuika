@@ -19,8 +19,12 @@ terminal UI with tuika without requiring knowledge of repository internals.
   relative links resolve against the repository, so they must stay valid there.
 - `docs/` is public, task-oriented documentation. A page must stand on its own
   for someone who added `tuika` to their `Cargo.toml`:
-  - `docs/components.md` — the component gallery. **Presentational only**: no
-    build or regeneration instructions.
+  - `docs/getting-started.md` — the shortest complete path from a new Cargo
+    project to a running tuika application; it owns the first-run example and
+    routes readers into the focused guides.
+  - `docs/components.md` — the component-gallery index;
+    `docs/components/*.md` holds its focused family pages. Together they remain
+    **presentational only**: no build or regeneration instructions.
   - `docs/features.md`, `docs/keymap.md`, `docs/layout.md`, `docs/markdown.md`,
     `docs/styling.md`, `docs/themes.md` — focused guides, each with its generated assets in a
     same-named subdirectory, except `docs/markdown.md`, which reuses the
@@ -33,6 +37,18 @@ terminal UI with tuika without requiring knowledge of repository internals.
     like carrying a real product?", which the component gallery cannot. Entries
     are host-owned software, so the page states what it shows and links out; it
     does not document the hosts.
+- `tuika.dev` is the browsable home for the same material. Its guide pages are
+  generated from public Markdown below `docs/` before each Nimbus build; the generated copies are
+  ignored, so the website cannot become a competing documentation source. The
+  custom home page explains the framework model and routes readers into those
+  guides without duplicating them.
+- The website is a static Cloudflare Workers asset deployment with a small
+  request worker for content negotiation. Every guide has canonical HTML and a
+  Markdown twin, and the site publishes a single `/sitemap.xml` with
+  source-derived `lastmod` dates, structured metadata, `robots.txt`, `llms.txt`,
+  and `llms-full.txt`. These discovery surfaces are
+  part of the documentation contract: browsers, search engines, and coding
+  agents should reach the same current content.
 - rustdoc is public documentation too. The crate-level `//!` header in `lib.rs`
   is what docs.rs renders as the front page; component demos are embedded inline
   on the relevant type via `raw.githubusercontent.com` URLs so they resolve
@@ -55,12 +71,14 @@ terminal UI with tuika without requiring knowledge of repository internals.
 
 ### Every public component is in the gallery
 
-`docs/components.md` carries **every** component: a name, a description, an API
-link, and its demo — including a component that ships in a companion crate,
-whose entry names the crate. A reader asking "does tuika have an X view?" must be
-able to answer it from one page, without knowing how the workspace is split
-across published crates. A component whose only documentation is its rustdoc is
-undiscoverable to someone who does not already know it exists.
+The index at `docs/components.md` names **every** component and routes it to one
+focused family page below `docs/components/`. That family page carries the
+description, API link, and demo — including for a component shipped in a
+companion crate, whose entry names the crate. A reader asking "does tuika have
+an X view?" must be able to answer it from the index without knowing how the
+workspace is split across published crates. A component whose only
+documentation is its rustdoc is undiscoverable to someone who does not already
+know it exists.
 
 The gallery stays presentational: an entry describes and shows, and links to a
 guide when the surface is larger than one entry.
@@ -190,7 +208,7 @@ Generated demos follow the rule that the *scene registry is the source of truth*
 `cargo run --example demo -- check` is the integrity gate: every scene has a
 non-empty recording in the format declared by the registry, no orphan or
 stale-format asset lingers, every demo asset referenced by a gallery page
-(`components.md`, `features.md`, `markdown.md`) or a rustdoc embed maps to a real
+(`components.md`, `components/*.md`, `features.md`, `markdown.md`) or a rustdoc embed maps to a real
 scene, and no scene is clipped by the frame it records into. It runs in CI, so
 gallery drift fails the build instead of shipping a broken image to docs.rs.
 

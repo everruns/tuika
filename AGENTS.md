@@ -132,19 +132,20 @@ tuika's own suite covers more:
   embedded in the README and ships so crates.io can resolve the relative path.
   Their 1024 px PNG exports (`logo*.png`) are GitHub-only; regenerate them with
   `scripts/gen-logo-assets.sh`.
-- `docs/components.md` — the public component gallery (name, description, demo
-  per component), covering **every** component, including those published in a
-  companion crate. Keep it **presentational only**: no build or regeneration
-  instructions belong here (they live in this file). The README links to entries
-  here rather than explaining a component itself; see
+- `docs/components.md` — the public component-gallery index, covering **every**
+  component and linking into focused family pages under `docs/components/`.
+  Each family page owns the descriptions and demos, including those published
+  in a companion crate. Keep the gallery **presentational only**: no build or
+  regeneration instructions belong there (they live in this file). The README
+  links to entries there rather than explaining a component itself; see
   `knowledge/specs/documentation.md`.
 - `docs/layout.md` — the public layout guide: wrapping, flex-item sizing,
   Flow/Grid selection, measurement requests, and migration notes.
 - `docs/markdown.md` — the markdown guide: streaming, GFM tables, the
   highlighter seam, link policy, and images in one page. It reuses the gallery's
   `DEMOS` recordings, so it is inside the `demo -- check` reference invariant.
-- `docs/demos/*.{gif,png}` — the committed demo recordings referenced by
-  `components.md` and, via `raw.githubusercontent.com` URLs, inline on the
+- `docs/demos/*.{gif,png}` — the committed demo recordings referenced by the
+  component family pages and, via `raw.githubusercontent.com` URLs, inline on the
   relevant type's rustdoc so they render on docs.rs — each component's `struct`
   doc, plus module-level types like `OverlaySpec`.
 - `docs/hero.gif` — the README hero: a recording of a composite gallery screen.
@@ -262,7 +263,7 @@ bundled theme, from `tuika::themes::PRESETS`) and
    including anything `rows` is too small to fit.
 3. Record it: `scripts/gen-demos.sh <name>`.
 4. Reference `demos/<name>.gif` for an animated scene or `demos/<name>.png` for
-   a settled scene in `docs/components.md` and inline on the
+   a settled scene in the relevant `docs/components/*.md` family page and inline on the
    component's `struct` doc (via the `raw.githubusercontent.com/.../main/...`
    URL, so docs.rs resolves it).
 
@@ -298,8 +299,8 @@ cargo run --example screenshot -- run     # animate it (what VHS records)
 
 `demo -- check` asserts every scene has a non-empty recording in its declared
 format, no orphan or stale-format asset lingers, every referenced demo asset
-in the gallery markdown
-(`components.md`, `features.md`, `markdown.md`) or a rustdoc embed (component docs plus
+in the gallery markdown (`components.md`, `components/*.md`, `features.md`,
+`markdown.md`) or a rustdoc embed (component docs plus
 module-level docs like `overlay.rs`) maps to a real scene, and no scene is
 clipped by its own frame — it re-renders each one with room to spare and fails on
 any line the recorded height would cut off (`filling_demo` scenes are exempt). It

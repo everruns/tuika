@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "base": "/",
+  "knownRoutes": [
+    "/",
+    "/404",
+    "/charts",
+    "/components",
+    "/components/banners-codes-pixels",
+    "/components/interactive",
+    "/components/layout",
+    "/components/markdown-code",
+    "/components/motion",
+    "/components/notifications-console",
+    "/components/text",
+    "/features",
+    "/getting-started",
+    "/keymap",
+    "/layout",
+    "/markdown",
+    "/showcases",
+    "/styling",
+    "/themes"
+  ],
+  "opaqueNamespaces": []
+}

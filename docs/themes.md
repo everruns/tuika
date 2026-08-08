@@ -1,4 +1,11 @@
-# tuika themes
+---
+title: Themes
+description: Use tuika's bundled terminal palettes, inherit terminal colors, or define a complete custom theme.
+sidebar:
+  order: 7
+---
+
+# Themes
 
 Every tuika component styles itself from a [`Theme`](https://docs.rs/tuika/latest/tuika/style/struct.Theme.html)
 passed through the render context — no component hard-codes a color. Swapping
