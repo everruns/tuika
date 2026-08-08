@@ -1,5 +1,8 @@
 name: CI
 
+# Pin action code separately from compiler policy. Rust-version action refs make
+# Dependabot mistake an intentional toolchain pin for an action update.
+
 on:
   push:
     branches: [main]
@@ -72,7 +75,9 @@ jobs:
       # it. Every published workspace crate declares the same floor, so check
       # them together.
       - name: Install Rust 1.88
-        uses: dtolnay/rust-toolchain@1.88.0
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: 1.88.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -120,8 +125,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
         with:
+          toolchain: 1.94.0
           components: rustfmt, clippy
 
       - name: Cache Rust
@@ -145,10 +151,14 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: 1.94.0
 
       - name: Install nightly for the docs.rs rehearsal
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: nightly
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -185,7 +195,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: 1.94.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -270,7 +282,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: 1.94.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -300,7 +314,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: 1.94.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -342,7 +358,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: 1.94.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
