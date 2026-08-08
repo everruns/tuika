@@ -11,7 +11,24 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
-## Unreleased
+## [0.8.0] - 2026-08-07
+
+Released alongside `tuika-codeformatters` 0.4.1, `tuika-mermaid` 0.2.1, and
+`tuika-html` 0.1.1. Their tuika dependency requirements now track 0.8.
+
+### Highlights
+
+**Turn-key application shell.** `AppShell`, a borrowed `Application` runtime,
+completion palettes, dialog presets, and activity lists give hosts a coherent
+foundation for responsive tool-style applications without retained view state.
+
+![app shell demo](https://raw.githubusercontent.com/everruns/tuika/v0.8.0/docs/demos/app_shell.png)
+
+**Key-stable collection views.** `SelectionScreen` and `KeyedTable` render
+borrowed data while preserving application-key selection across reordering,
+filtering, and streaming updates.
+
+![selection screen demo](https://raw.githubusercontent.com/everruns/tuika/v0.8.0/docs/demos/selection_screen.png)
 
 ### Added
 
