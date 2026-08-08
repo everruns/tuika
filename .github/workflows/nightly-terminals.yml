@@ -1,5 +1,8 @@
 name: Nightly Terminals
 
+# Pin action code separately from compiler policy. Rust-version action refs make
+# Dependabot mistake an intentional toolchain pin for an action update.
+
 # Cross-terminal integration for the tuika renderer. The in-repo tests (buffer,
 # vt100 grid, PTY protocol) prove tuika emits the right bytes; this runs the
 # `gallery` example inside *real* terminal emulators nightly to check how they
@@ -40,7 +43,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: 1.94.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -89,7 +94,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: 1.94.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -131,7 +138,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: 1.94.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -191,7 +200,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: 1.94.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
