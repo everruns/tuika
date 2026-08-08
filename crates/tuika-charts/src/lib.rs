@@ -35,6 +35,12 @@ pub enum SeriesKind {
     Line,
     /// Draw vertical bars from the zero baseline (or the visible domain edge).
     Bar,
+    /// Connect points and fill the region down to the zero baseline.
+    Area,
+    /// Draw independent point markers without connecting them.
+    Scatter,
+    /// Connect points with horizontal-then-vertical segments.
+    Step,
 }
 
 /// One named data series.
@@ -59,6 +65,21 @@ impl Series {
     /// Construct a bar series.
     pub fn bar(name: impl Into<String>, points: impl IntoIterator<Item = Point>) -> Self {
         Self::new(name, SeriesKind::Bar, points)
+    }
+
+    /// Construct a filled area series.
+    pub fn area(name: impl Into<String>, points: impl IntoIterator<Item = Point>) -> Self {
+        Self::new(name, SeriesKind::Area, points)
+    }
+
+    /// Construct a scatter series.
+    pub fn scatter(name: impl Into<String>, points: impl IntoIterator<Item = Point>) -> Self {
+        Self::new(name, SeriesKind::Scatter, points)
+    }
+
+    /// Construct a stepped line series.
+    pub fn step(name: impl Into<String>, points: impl IntoIterator<Item = Point>) -> Self {
+        Self::new(name, SeriesKind::Step, points)
     }
 
     fn new(
@@ -106,7 +127,7 @@ pub enum RenderMode {
     Cells,
 }
 
-/// An adaptive line/bar chart view.
+/// An adaptive line, bar, area, scatter, or step chart view.
 ///
 /// <img src="https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-charts/examples/charts.png" alt="Adaptive chart portable renderer" width="880">
 pub struct Chart {
@@ -353,22 +374,25 @@ fn render_cells(
             .filter(|p| p.x.is_finite() && p.y.is_finite())
             .map(|p| model.map(p, data_width, data_height))
             .collect();
+        let baseline = model
+            .map(Point::new(model.x.min, 0.0), data_width, data_height)
+            .1
+            .clamp(0, data_height as i32);
         match series.kind {
-            SeriesKind::Line => {
-                for pair in mapped.windows(2) {
-                    draw_cell_line(surface, plot, pair[0], pair[1], style);
-                }
+            SeriesKind::Line => draw_cell_polyline(surface, plot, &mapped, style, false),
+            SeriesKind::Step => draw_cell_polyline(surface, plot, &mapped, style, true),
+            SeriesKind::Area => {
+                draw_cell_area(surface, plot, &mapped, baseline, style);
+                draw_cell_polyline(surface, plot, &mapped, style, false);
+            }
+            SeriesKind::Scatter => {
                 for (x, y) in mapped {
-                    set_plot(surface, plot, x, y, '•', style);
+                    set_plot(surface, plot, x, y, '●', style);
                 }
             }
             SeriesKind::Bar => {
-                let zero = model
-                    .map(Point::new(model.x.min, 0.0), data_width, data_height)
-                    .1;
                 for (x, y) in mapped {
-                    let end = zero.clamp(0, data_height as i32);
-                    for row in y.min(end)..=y.max(end) {
+                    for row in y.min(baseline)..=y.max(baseline) {
                         set_plot(surface, plot, x, row, '█', style);
                     }
                 }
@@ -396,6 +420,48 @@ fn draw_cell_line(
     style: Style,
 ) {
     draw_line(from, to, |x, y| set_plot(surface, plot, x, y, '•', style));
+}
+
+fn draw_cell_area(
+    surface: &mut Surface,
+    plot: Rect,
+    points: &[(i32, i32)],
+    baseline: i32,
+    style: Style,
+) {
+    for pair in points.windows(2) {
+        draw_line(pair[0], pair[1], |x, y| {
+            for row in y.min(baseline)..=y.max(baseline) {
+                set_plot(surface, plot, x, row, '▒', style);
+            }
+        });
+    }
+    if let Some(&(x, y)) = points.first() {
+        for row in y.min(baseline)..=y.max(baseline) {
+            set_plot(surface, plot, x, row, '▒', style);
+        }
+    }
+}
+
+fn draw_cell_polyline(
+    surface: &mut Surface,
+    plot: Rect,
+    points: &[(i32, i32)],
+    style: Style,
+    stepped: bool,
+) {
+    for pair in points.windows(2) {
+        if stepped {
+            let corner = (pair[1].0, pair[0].1);
+            draw_cell_line(surface, plot, pair[0], corner, style);
+            draw_cell_line(surface, plot, corner, pair[1], style);
+        } else {
+            draw_cell_line(surface, plot, pair[0], pair[1], style);
+        }
+    }
+    for &(x, y) in points {
+        set_plot(surface, plot, x, y, '•', style);
+    }
 }
 
 fn render_legend(area: Rect, surface: &mut Surface, chart: &Chart, ctx: &RenderCtx) {
@@ -472,26 +538,24 @@ fn render_pixels(
                 (x + left as i32, y + top as i32)
             })
             .collect();
+        let baseline = model
+            .map(Point::new(model.x.min, 0.0), plot_width, plot_height)
+            .1
+            .clamp(0, plot_height as i32)
+            + top as i32;
         match series.kind {
-            SeriesKind::Line => {
-                for pair in mapped.windows(2) {
-                    pixel_line(&mut rgba, width, height, pair[0], pair[1], color);
-                    pixel_line(
-                        &mut rgba,
-                        width,
-                        height,
-                        (pair[0].0, pair[0].1 + 1),
-                        (pair[1].0, pair[1].1 + 1),
-                        color,
-                    );
+            SeriesKind::Line => pixel_polyline(&mut rgba, width, height, &mapped, color, false),
+            SeriesKind::Step => pixel_polyline(&mut rgba, width, height, &mapped, color, true),
+            SeriesKind::Area => {
+                pixel_area(&mut rgba, width, height, &mapped, baseline, dim(color));
+                pixel_polyline(&mut rgba, width, height, &mapped, color, false);
+            }
+            SeriesKind::Scatter => {
+                for point in mapped {
+                    pixel_marker(&mut rgba, width, height, point, color);
                 }
             }
             SeriesKind::Bar => {
-                let baseline = model
-                    .map(Point::new(model.x.min, 0.0), plot_width, plot_height)
-                    .1
-                    .clamp(0, plot_height as i32)
-                    + top as i32;
                 let half = (plot_width / mapped.len().max(1) as u32 / 3).clamp(1, 6) as i32;
                 for (x, y) in mapped {
                     for px in x - half..=x + half {
@@ -502,6 +566,65 @@ fn render_pixels(
         }
     }
     ImageData::from_rgba(width, height, rgba)
+}
+
+fn pixel_area(
+    rgba: &mut [u8],
+    width: u32,
+    height: u32,
+    points: &[(i32, i32)],
+    baseline: i32,
+    color: (u8, u8, u8),
+) {
+    for pair in points.windows(2) {
+        draw_line(pair[0], pair[1], |x, y| {
+            pixel_line(rgba, width, height, (x, y), (x, baseline), color);
+        });
+    }
+    if let Some(&(x, y)) = points.first() {
+        pixel_line(rgba, width, height, (x, y), (x, baseline), color);
+    }
+}
+
+fn pixel_polyline(
+    rgba: &mut [u8],
+    width: u32,
+    height: u32,
+    points: &[(i32, i32)],
+    color: (u8, u8, u8),
+    stepped: bool,
+) {
+    for pair in points.windows(2) {
+        if stepped {
+            let corner = (pair[1].0, pair[0].1);
+            pixel_line(rgba, width, height, pair[0], corner, color);
+            pixel_line(rgba, width, height, corner, pair[1], color);
+        } else {
+            pixel_line(rgba, width, height, pair[0], pair[1], color);
+            pixel_line(
+                rgba,
+                width,
+                height,
+                (pair[0].0, pair[0].1 + 1),
+                (pair[1].0, pair[1].1 + 1),
+                color,
+            );
+        }
+    }
+}
+
+fn pixel_marker(rgba: &mut [u8], width: u32, height: u32, point: (i32, i32), color: (u8, u8, u8)) {
+    for y in point.1 - 2..=point.1 + 2 {
+        for x in point.0 - 2..=point.0 + 2 {
+            if (x - point.0).pow(2) + (y - point.1).pow(2) <= 4 {
+                set_pixel(rgba, width, height, x, y, color);
+            }
+        }
+    }
+}
+
+fn dim((r, g, b): (u8, u8, u8)) -> (u8, u8, u8) {
+    (r / 2, g / 2, b / 2)
 }
 
 fn rgb(color: Color) -> (u8, u8, u8) {
@@ -529,12 +652,16 @@ fn pixel_line(
     color: (u8, u8, u8),
 ) {
     draw_line(from, to, |x, y| {
-        if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
-            return;
-        }
-        let offset = ((y as u32 * width + x as u32) * 4) as usize;
-        rgba[offset..offset + 4].copy_from_slice(&[color.0, color.1, color.2, 255]);
+        set_pixel(rgba, width, height, x, y, color);
     });
+}
+
+fn set_pixel(rgba: &mut [u8], width: u32, height: u32, x: i32, y: i32, color: (u8, u8, u8)) {
+    if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
+        return;
+    }
+    let offset = ((y as u32 * width + x as u32) * 4) as usize;
+    rgba[offset..offset + 4].copy_from_slice(&[color.0, color.1, color.2, 255]);
 }
 
 fn draw_line(mut from: (i32, i32), to: (i32, i32), mut draw: impl FnMut(i32, i32)) {
@@ -658,6 +785,114 @@ mod tests {
             theme.muted,
             "legend label uses muted text"
         );
+    }
+
+    #[test]
+    fn additional_cell_series_have_distinct_marks() {
+        let cases = [
+            (
+                Series::area("area", [Point::new(0.0, 1.0), Point::new(1.0, 3.0)]),
+                '▒',
+            ),
+            (
+                Series::scatter("scatter", [Point::new(0.0, 1.0), Point::new(1.0, 3.0)]),
+                '●',
+            ),
+        ];
+        for (series, expected) in cases {
+            let area = Rect::new(0, 0, 24, 8);
+            let mut buffer = Buffer::empty(area);
+            Chart::new().series(series).render(
+                area,
+                &mut Surface::new(&mut buffer, area),
+                &RenderCtx::new(&Theme::default()),
+            );
+            assert!(
+                buffer
+                    .content
+                    .iter()
+                    .any(|cell| cell.symbol() == expected.to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn area_fills_columns_between_sparse_points() {
+        let area = Rect::new(0, 0, 16, 8);
+        let mut buffer = Buffer::empty(area);
+        Chart::new()
+            .legend(false)
+            .series(Series::area(
+                "area",
+                [Point::new(0.0, 1.0), Point::new(10.0, 3.0)],
+            ))
+            .render(
+                area,
+                &mut Surface::new(&mut buffer, area),
+                &RenderCtx::new(&Theme::default()),
+            );
+        assert!(
+            (5..10).any(|x| (0..area.height).any(|y| buffer[(x, y)].symbol() == "▒")),
+            "area must fill between data points rather than draw isolated columns"
+        );
+    }
+
+    #[test]
+    fn step_series_uses_horizontal_then_vertical_segments() {
+        let area = Rect::new(0, 0, 12, 7);
+        let mut buffer = Buffer::empty(area);
+        Chart::new()
+            .legend(false)
+            .x_domain(Domain::new(0.0, 1.0).unwrap())
+            .y_domain(Domain::new(0.0, 1.0).unwrap())
+            .series(Series::step(
+                "step",
+                [Point::new(0.0, 0.0), Point::new(1.0, 1.0)],
+            ))
+            .render(
+                area,
+                &mut Surface::new(&mut buffer, area),
+                &RenderCtx::new(&Theme::default()),
+            );
+        let grid = (0..area.height)
+            .map(|y| {
+                (0..area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join(
+                "
+",
+            );
+        assert!(grid.lines().any(|line| line.matches('•').count() >= 5));
+    }
+
+    #[test]
+    fn every_series_kind_records_graphics() {
+        let points = [Point::new(0.0, 1.0), Point::new(1.0, 3.0)];
+        let series = [
+            Series::line("line", points),
+            Series::bar("bar", points),
+            Series::area("area", points),
+            Series::scatter("scatter", points),
+            Series::step("step", points),
+        ];
+        for series in series {
+            let area = Rect::new(0, 0, 20, 8);
+            let mut buffer = Buffer::empty(area);
+            let layer = ImageLayer::new();
+            Chart::new()
+                .series(series)
+                .support(ImageSupport::Kitty)
+                .in_layer(&layer)
+                .render(
+                    area,
+                    &mut Surface::new(&mut buffer, area),
+                    &RenderCtx::new(&Theme::default()),
+                );
+            assert_eq!(layer.len(), 1);
+        }
     }
 
     #[test]

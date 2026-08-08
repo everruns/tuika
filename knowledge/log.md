@@ -2,6 +2,11 @@
 
 ## 2026-08-08
 
+- **Expanded adaptive chart grammar**
+  - Added filled-area, scatter, and stepped-line series to both renderers.
+  - Expanded the real adaptive example and committed screenshot into a four-chart
+    gallery covering every supported series kind.
+
 - **Adaptive charts companion**
 
 - Added `tuika-charts` as a separately published companion so raster charting
