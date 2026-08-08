@@ -1,9 +1,15 @@
 # tuika is the root package of its own workspace; companion implementations for
-# tree-sitter highlighting and Mermaid rendering live under `crates/` so tuika
-# core stays grammar- and diagram-engine-free. Cargo skips nested packages when
+# charts, tree-sitter highlighting, HTML, and Mermaid rendering live under
+# `crates/` so tuika core stays graphics-engine-, grammar-, parser-, and
+# diagram-engine-free. Cargo skips nested packages when
 # packaging, so the members' sources never land in tuika's `.crate`.
 [workspace]
-members = ["crates/tuika-codeformatters", "crates/tuika-html", "crates/tuika-mermaid"]
+members = [
+    "crates/tuika-charts",
+    "crates/tuika-codeformatters",
+    "crates/tuika-html",
+    "crates/tuika-mermaid",
+]
 
 # Identity and toolchain floor are properties of the repository, not of any one
 # package, so they live here and every manifest inherits them — a bumped MSRV or

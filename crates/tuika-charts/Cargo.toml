@@ -1,0 +1,22 @@
+[package]
+name = "tuika-charts"
+version = "0.1.0"
+# Identity, MSRV, and license come from `[workspace.package]` in the root
+# manifest, matching the other independently versioned companions.
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Adaptive terminal charts for tuika"
+homepage.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["terminal", "tui", "charts", "kitty", "ratatui"]
+categories = ["command-line-interface", "visualization"]
+
+[dependencies]
+tuika = { version = "0.8.0", path = "../.." }
+ratatui-core = "0.1.0"
+
+[dev-dependencies]
+ratatui = { version = "0.30.0", default-features = false, features = ["crossterm"] }
