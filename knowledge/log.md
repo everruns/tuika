@@ -2,6 +2,22 @@
 
 ## 2026-08-07
 
+- **A block renderer owes the frame totality and a width budget**
+
+- An unrenderable fence is a `None` and the code-block fallback, never an
+  unwind: `tuika-mermaid` contains mmdflux's panics rather than assuming a
+  third-party layout engine is total. Containment stops at the panic hook,
+  which a per-frame renderer must not swap.
+- `catch_unwind` is not by itself a workaround for an upstream defect. The
+  multi-line decision-node bug ([mmdflux#387](https://github.com/kevinswiber/mmdflux/issues/387))
+  also fails silently — a dropped label, a label painted over its own borders —
+  so the adapter recognises the shape up front rather than only containing the
+  loud case.
+- `MarkdownBlockContext::width` is a budget to spend, not decoration. A diagram
+  engine sized for vector output overflows a pane, and `Markdown` clips rather
+  than scrolls, so the adapter re-lays out at tighter separations until it fits
+  — best-effort, since a graph can be irreducibly wider than the terminal.
+
 - **Inline custom regions remain ordinary borrowed views**
 
 - Separate `Fn` measurement and rendering closures adapt into the existing

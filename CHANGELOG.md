@@ -11,6 +11,26 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
+## Unreleased
+
+### Fixed
+
+- `tuika-mermaid` no longer lets a Mermaid decision node with a `<br/>` label
+  unwind out of `View::render` and take the host application down. The same
+  upstream defect ([mmdflux#387](https://github.com/kevinswiber/mmdflux/issues/387))
+  also fails silently — dropping the label in release builds, or painting a
+  short label over the shape's own borders — so all three now fall back to the
+  ordinary themed code block.
+
+### Changed
+
+- `tuika-mermaid` re-lays out a diagram wider than the available columns at
+  progressively tighter node separation until it fits, instead of letting it be
+  clipped at the pane's right edge. Fitting is best-effort: a graph with many
+  parallel branches can be irreducibly wider than the terminal, and the
+  narrowest layout is used there. Diagrams that already fit keep mmdflux's own
+  spacing, so existing renders are unchanged.
+
 ## [0.8.0] - 2026-08-07
 
 Released alongside `tuika-codeformatters` 0.4.1, `tuika-mermaid` 0.2.1, and

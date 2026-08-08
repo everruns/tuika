@@ -19,9 +19,11 @@ let document = Markdown::new(
 # let _ = document;
 ```
 
-`MermaidRenderer` handles `mermaid` fences. Unsupported syntax and fences over
-64 KiB fall back to tuika's ordinary themed code-block presentation, so
-malformed or oversized content remains visible.
+`MermaidRenderer` handles `mermaid` fences. A diagram wider than the available
+columns is re-laid out at tighter node separation until it fits, best-effort —
+a graph with many parallel branches can be irreducibly wider than the terminal.
+Unsupported syntax and fences over 64 KiB fall back to tuika's ordinary themed
+code-block presentation, so malformed or oversized content remains visible.
 
 <img src="examples/mermaid_markdown/mermaid.gif" width="880" alt="Mermaid diagram rendered as Unicode cells inside tuika Markdown">
 
