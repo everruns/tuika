@@ -1,4 +1,11 @@
-# Built with tuika
+---
+title: Showcases
+description: See applications and full terminal interfaces built with tuika, including yolop, LLMSim, and the Codex UI replica.
+sidebar:
+  order: 10
+---
+
+# Showcases
 
 Applications whose terminal UI is built on tuika — what they are, and what the
 toolkit looks like once it is carrying a real product. At the end,

@@ -719,6 +719,12 @@ fn check() -> io::Result<()> {
         dir.join("docs/features.md"),
         dir.join("docs/markdown.md"),
     ];
+    for entry in fs::read_dir(dir.join("docs/components"))?.filter_map(Result::ok) {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("md") {
+            sources.push(path);
+        }
+    }
     // A component is a file *or* a directory of submodules (markdown is split
     // into one), and the embed usually rides the view's own file — so descend,
     // or a component that outgrows a single file silently leaves the check.

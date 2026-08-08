@@ -1,4 +1,11 @@
-# tuika styling
+---
+title: Styling
+description: Style tuika by semantic role with themes, stylesheets, reusable bundles, and host-level policy.
+sidebar:
+  order: 6
+---
+
+# Styling
 
 tuika splits how a UI looks into two layers:
 

@@ -1,0 +1,184 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Header from "../components/Header.astro";
+import "../styles/home.css";
+
+const guides = [
+  ["Getting started", "Build and run a complete first application.", "/getting-started/"],
+  ["Components", "Every component, with a recorded demo.", "/components/"],
+  ["Layout", "Flex, Flow, Grid, and measurement.", "/layout/"],
+  ["Markdown", "Streaming CommonMark, code, tables, and images.", "/markdown/"],
+  ["Keymap", "Chords, sequences, layers, and help surfaces.", "/keymap/"],
+  ["Styling", "Themes, semantic roles, and stylesheets.", "/styling/"],
+  ["Terminal features", "Graphics, clipboard, links, mouse, and screen modes.", "/features/"],
+];
+
+const markFill = new Set([2, 3, 4, 8, 9, 10, 15, 21, 27, 33]);
+const markCells = Array.from({ length: 36 }, (_, index) => index);
+
+const codeSample = `use tuika::prelude::*;
+
+let screen = view! {
+    col(gap = 1) {
+        fixed(1) { node(Spinner::new(frame)) }
+        grow(1) { node(Markdown::new(body)) }
+        fixed(1) { node(StatusBar::new(left, right)) }
+    }
+};
+
+paint(buffer, area, &theme, screen.as_ref(), &[]);`;
+
+const head = [{
+  tag: "script" as const,
+  attrs: { type: "application/ld+json" },
+  content: JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    name: "tuika",
+    description: "A Rust framework for building complete terminal applications on ratatui.",
+    codeRepository: "https://github.com/everruns/tuika",
+    programmingLanguage: "Rust",
+    license: "https://opensource.org/license/mit",
+    url: "https://tuika.dev",
+    author: { "@type": "Organization", name: "Everruns", url: "https://everruns.com" },
+  }),
+}];
+---
+
+<BaseLayout
+  title="tuika — Rust terminal application framework"
+  description="Build complete Rust terminal applications with flexbox layout, overlays, focus, keymaps, streaming Markdown, and ratatui interoperability."
+  markdownUrl="/index.md"
+  socialImage="/social-card.png"
+  head={head}
+>
+  <div class="home-shell">
+    <Header showSidebar={false} />
+
+    <main id="main-content">
+      <section class="home-hero">
+        <div class="home-wrap home-hero-grid">
+          <div class="home-hero-copy">
+            <h1>tuika</h1>
+            <p class="home-subtitle">Rust terminal application framework</p>
+            <p class="home-lede">
+              Layout, overlays, focus, keymaps, components, and terminal
+              lifecycle over ratatui.
+            </p>
+
+            <div class="home-actions">
+              <a class="home-button home-button-primary" href="/getting-started/">Get started</a>
+              <a class="home-button" href="https://github.com/everruns/tuika">GitHub</a>
+            </div>
+
+            <div class="home-install" aria-label="Install tuika">
+              <span>Install</span>
+              <code>cargo add tuika</code>
+            </div>
+          </div>
+
+          <div class="home-mark" aria-hidden="true">
+            <div class="home-mark-grid">
+              {markCells.map((index) => (
+                <span class:list={{ "is-filled": markFill.has(index), "is-prompt": index === 0, "is-caret": index === 35 }}>
+                  {index === 0 && <b>&gt;_</b>}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="home-demo" aria-labelledby="demo-title">
+        <div class="home-wrap">
+          <div class="home-section-head">
+            <div>
+              <span class="home-eyebrow">Complete example</span>
+              <h2 id="demo-title">One rendered screen.</h2>
+            </div>
+            <p>
+              Tabs, activity, progress, overlays, text input, and a status bar
+              composed with the public component and layout APIs.
+            </p>
+          </div>
+          <figure class="home-terminal">
+            <img
+              src="/docs-assets/hero.gif"
+              width="1760"
+              height="1000"
+              alt="Animated tuika application with tabs, activity panels, progress bars, a command palette, text input, and a status bar"
+              loading="eager"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <section class="home-model">
+        <div class="home-wrap home-model-grid">
+          <div>
+            <span class="home-eyebrow">Rendering model</span>
+            <h2>Views become cells.</h2>
+            <p>
+              Your application keeps its state. Each frame, tuika solves
+              layout, composites overlays, and paints a deterministic buffer.
+              ratatui handles the terminal diff.
+            </p>
+            <ul class="home-list">
+              <li>No hidden reconciler or retained UI tree.</li>
+              <li>Selection, scroll, focus, and input state stay in your structs.</li>
+              <li>Third-party ratatui widgets compose through <code>RatatuiView</code>.</li>
+              <li>Render tests use an in-memory buffer, not a terminal.</li>
+            </ul>
+          </div>
+          <pre class="home-code"><code>{codeSample}</code></pre>
+        </div>
+      </section>
+
+      <section class="home-guides" aria-labelledby="guides-title">
+        <div class="home-wrap">
+          <div class="home-section-head">
+            <div>
+              <span class="home-eyebrow">Documentation</span>
+              <h2 id="guides-title">Guides.</h2>
+            </div>
+            <p>The pages below are rendered directly from this repository’s <code>docs/</code> directory.</p>
+          </div>
+          <div class="home-guide-grid">
+            {guides.map(([title, detail, href]) => (
+              <a href={href}>
+                <strong>{title}</strong>
+                <span>{detail}</span>
+                <b aria-hidden="true">→</b>
+              </a>
+            ))}
+          </div>
+          <div class="home-more-guides">
+            <a href="/themes/">Themes</a>
+            <a href="/charts/">Charts</a>
+            <a href="/showcases/">Showcases</a>
+            <a href="https://docs.rs/tuika">Rust API</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="home-footer">
+      <div class="home-wrap home-footer-inner">
+        <div>
+          <strong>tuika</strong>
+          <span>Part of the <a href="https://everruns.com">Everruns</a> ecosystem.</span>
+        </div>
+        <nav aria-label="Footer">
+          <a href="https://crates.io/crates/tuika">crates.io</a>
+          <a href="https://docs.rs/tuika">docs.rs</a>
+          <a href="https://github.com/everruns/tuika">GitHub</a>
+          <a href="/llms.txt">llms.txt</a>
+        </nav>
+      </div>
+      <div class="home-wrap home-footer-meta">
+        <span>MIT License</span>
+        <span>With love from Ukraine 💙💛</span>
+      </div>
+    </footer>
+  </div>
+</BaseLayout>

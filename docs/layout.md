@@ -1,3 +1,10 @@
+---
+title: Layout
+description: Build terminal layouts with tuika's integer-native Flex, Flow, Grid, intrinsic measurement, and responsive sizing.
+sidebar:
+  order: 3
+---
+
 # Layout
 
 Tuika uses integer-native flex layout for application structure. `Flex` is the

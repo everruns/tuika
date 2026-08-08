@@ -78,8 +78,8 @@ registry, `knowledge/`, and the test suite. Maintenance should catch:
 
 - `pub` items with no rustdoc, or rustdoc that no longer matches behavior
   (`#![warn(missing_docs)]` catches absence, not staleness)
-- components present in the API but absent from `docs/components.md` or without a
-  demo scene
+- components present in the API but absent from the `docs/components.md` index,
+  absent from its family pages, or without a demo scene
 - guides or specs describing behavior the crate no longer has
 - demo recordings that no longer look like what the code renders
 - shipped behavior with no test exercising it

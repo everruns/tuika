@@ -1,3 +1,10 @@
+---
+title: Charts
+description: Build adaptive terminal charts that render as graphics when supported and portable Unicode cells everywhere else.
+sidebar:
+  order: 9
+---
+
 # Charts
 
 [`tuika-charts`](https://crates.io/crates/tuika-charts) is tuika's lightweight

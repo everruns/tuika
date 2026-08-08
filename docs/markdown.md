@@ -1,4 +1,11 @@
-# Markdown in tuika
+---
+title: Markdown
+description: Render streaming CommonMark, GFM tables, highlighted code, links, HTML, and images in terminal applications.
+sidebar:
+  order: 4
+---
+
+# Markdown
 
 tuika renders CommonMark (plus GFM tables and strikethrough) straight to styled
 terminal lines — no HTML step, no intermediate document model to hold. It is the
@@ -142,7 +149,7 @@ blank lines reaches the renderer as several independent blocks. Keep an
 element's markup contiguous and it lays out as one.
 
 For HTML that is not inside markdown at all, the same crate ships the
-[`Html`](components.md#html) component.
+[`Html`](components/markdown-code.md#html) component.
 
 ## Streaming
 
@@ -204,7 +211,7 @@ terminal size — the host never pre-formats a table for the pane it lands in.
 
 A fenced block is emitted **verbatim** — indentation is meaningful, so it is
 never word-wrapped — and framed by the same renderer as the standalone
-[`CodeBlock`](components.md#codeblock) component: language label, left rail, code
+[`CodeBlock`](components/markdown-code.md#codeblock) component: language label, left rail, code
 background.
 
 Syntax coloring comes from a `Highlighter` you supply, because grammars are far

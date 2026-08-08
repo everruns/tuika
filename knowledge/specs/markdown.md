@@ -225,7 +225,7 @@ host that restyles headings restyles them in markdown too. See
 - [`docs/markdown.md`](../../docs/markdown.md) — the guide. Markdown carries more
   user-facing surface than one gallery entry holds (streaming, table fitting,
   the highlighter seam, link policy, images), so it gets a page of its own and
-  [`docs/components.md`](../../docs/components.md) keeps only the gallery entry
-  and points here.
-- [`docs/components.md`](../../docs/components.md)
+  [`docs/components/markdown-code.md`](../../docs/components/markdown-code.md)
+  keeps only the gallery entry and points here.
+- [`docs/components/markdown-code.md`](../../docs/components/markdown-code.md)
 - [`README.md`](../../README.md) § Markdown and syntax highlighting

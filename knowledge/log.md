@@ -7,6 +7,16 @@
   - Expanded the real adaptive example and committed screenshot into a four-chart
     gallery covering every supported series kind.
 
+- **tuika.dev uses the public guides as its only documentation source**
+
+- Added a minimal Nimbus website deployed as Cloudflare Worker static assets.
+- Site guide routes are generated from public Markdown below `docs/`; generated Markdown is
+  ignored so edits cannot fork into a second source of truth.
+- Split the component gallery into a complete index and family subpages so a
+  reader does not have to load or navigate one thousand-line page.
+- Published HTML and Markdown representations, sitemap and structured metadata,
+  plus `llms.txt` discovery surfaces for search engines and coding agents.
+
 - **Adaptive charts companion**
 
 - Added `tuika-charts` as a separately published companion so raster charting
