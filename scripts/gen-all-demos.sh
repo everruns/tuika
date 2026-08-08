@@ -38,6 +38,7 @@ scripts/gen-codex-demo.sh
 scripts/gen-mermaid-demo.sh
 scripts/gen-html-demo.sh
 scripts/gen-language-demo.sh
+scripts/gen-chart-demo.sh
 
 if [[ "${skip_showcases}" == false ]]; then
   scripts/gen-showcase-demos.sh

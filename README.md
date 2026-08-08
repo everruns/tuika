@@ -12,7 +12,8 @@
 [![license](https://img.shields.io/crates/l/tuika.svg)](https://github.com/everruns/tuika/blob/main/LICENSE)
 ![msrv](https://img.shields.io/badge/rust-1.88%2B-blue.svg) \
 [Docs](https://docs.rs/tuika) · [Components](docs/components.md) · [Layout](docs/layout.md) ·
-[Markdown](docs/markdown.md) · [Terminal features](docs/features.md) ·
+[Markdown](docs/markdown.md) · [Charts](docs/charts.md) ·
+[Terminal features](docs/features.md) ·
 [Keymap](docs/keymap.md) · [Styling](docs/styling.md) ·
 [Themes](docs/themes.md) \
 [Showcases](docs/showcases.md) · [Examples](#runnable-examples) ·
@@ -75,7 +76,8 @@ You write views; tuika owns the rest:
   scrollback), and event translation.
 - **Batteries the terminal era expects** — [30+ components](#components)
   including streaming [Markdown](docs/markdown.md) with pluggable syntax
-  highlighting, [images](#images) over Kitty/iTerm2/Sixel, mermaid diagrams,
+  highlighting, [images](#images) over Kitty/iTerm2/Sixel, adaptive
+  [charts](docs/charts.md), mermaid diagrams,
   [mouse selection and clipboard](#mouse-selection-and-clipboard), and
   [native OSC 9;4 progress](#native-terminal-progress).
 - **No lock-in** — it is additive to ratatui, not a replacement: wrap any
@@ -948,6 +950,8 @@ Issues and pull requests are welcome at
 
 The separately published companion crates live in this repository:
 
+- [`tuika-charts`](crates/tuika-charts/) renders one line/bar chart grammar as
+  smooth terminal graphics or a portable Unicode cell plot.
 - [`tuika-codeformatters`](crates/tuika-codeformatters/) supplies the
   tree-sitter `Highlighter`.
 - [`tuika-mermaid`](crates/tuika-mermaid/) renders Mermaid fences as Unicode
@@ -956,7 +960,8 @@ The separately published companion crates live in this repository:
   inside Markdown through the `MarkdownBlockRenderer` seam, or standalone
   through its own [`Html`](docs/components.md#html) component.
 
-All three keep their heavier parsers and grammars out of tuika core.
+All four keep specialized rendering and heavier parsers or grammars out of
+tuika core.
 
 ## License
 

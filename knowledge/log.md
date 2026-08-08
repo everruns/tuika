@@ -1,5 +1,18 @@
 # Knowledge Log
 
+## 2026-08-08
+
+- **Adaptive charts companion**
+
+- Added `tuika-charts` as a separately published companion so raster charting
+  stays out of core.
+- Defined one portable numeric grammar (line/bar series, domains, title, legend,
+  colors) shared by the graphics and Unicode-cell renderers.
+- Reused core `ImageSupport`/`ImageLayer` for capability selection and protocol
+  lifecycle; incomplete graphics configuration deliberately falls back to cells.
+- Added a generated portable-renderer screenshot beside the runnable example and
+  embedded it in the crate README, public chart guide, and `Chart` rustdoc.
+
 ## 2026-08-07
 
 - **A block renderer owes the frame totality and a width budget**

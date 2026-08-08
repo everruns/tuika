@@ -166,6 +166,12 @@ tuika's own suite covers more:
   The `tuika-mermaid` integration recording follows the same pattern at
   `crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif`; regenerate it
   with `scripts/gen-mermaid-demo.sh`.
+  `tuika-charts` has one portable-renderer screenshot at
+  `crates/tuika-charts/examples/charts.png`, embedded by its README, the public
+  chart guide, and `Chart` rustdoc. Regenerate it with
+  `scripts/gen-chart-demo.sh`; the graphics path is terminal-dependent and is
+  exercised by running the same example in a supported terminal.
+
   `tuika-html` has two, one per example — the markdown seam
   (`examples/html_markdown/html.png`) and the standalone `Html` component
   (`examples/html_view/html_view.png`) — both regenerated with

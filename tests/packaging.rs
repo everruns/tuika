@@ -17,14 +17,15 @@
 //! asset — or a regression that drops an image the crates.io README needs —
 //! fails loudly instead of silently re-inflating the crate.
 //!
-//! It guards all four published crates. The companions have no test target of
-//! their own — that would make every run pay their tree-sitter and mmdflux
-//! builds — and the rule they need is this one, so the root package checks them
-//! too. Which way it falls for a given recording is decided by how that crate's
+//! It guards all five published crates. The packaging rule is repository-wide,
+//! so the root package checks every companion in one place rather than
+//! scattering equivalent subprocess tests. Which way it falls for a given
+//! recording is decided by how that crate's
 //! README embeds it: an absolute `raw.githubusercontent.com` URL means the
 //! packaged copy is unreachable and must not ship (`tuika-codeformatters`), a
 //! relative path means crates.io renders from the packaged copy and it must
-//! (`tuika-mermaid`, `tuika-html`, and tuika's four README assets).
+//! (`tuika-charts`, `tuika-mermaid`, `tuika-html`, and tuika's four README
+//! assets).
 
 use std::process::Command;
 
@@ -212,6 +213,18 @@ fn mermaid_keeps_the_recording_its_readme_embeds() {
         "the recording the crates.io README embeds by relative path must ship"
     );
     assert!(has("src/lib.rs"), "library source must ship");
+    assert!(has("Cargo.toml"), "manifest must ship");
+    assert!(has("README.md"), "README must ship");
+}
+
+#[test]
+fn charts_ships_source_readme_and_embedded_demo() {
+    let files = packaged_files("tuika-charts");
+    let has = |p: &str| files.iter().any(|f| f == p);
+
+    assert!(has("src/lib.rs"), "library source must ship");
+    assert!(has("examples/charts.rs"), "runnable example must ship");
+    assert!(has("examples/charts.png"), "README demo must ship");
     assert!(has("Cargo.toml"), "manifest must ship");
     assert!(has("README.md"), "README must ship");
 }
