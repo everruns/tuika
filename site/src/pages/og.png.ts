@@ -1,15 +1,10 @@
-import { generateOpenGraphImage } from "astro-og-canvas";
-import { config } from "virtual:nimbus/config";
-import { ogCardConfig } from "./og/_og-card-config";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 export const prerender = true;
 
 export async function GET() {
-  const body = await generateOpenGraphImage({
-    title: config.title,
-    description: config.description,
-    ...ogCardConfig,
-  });
+  const body = await readFile(resolve(process.cwd(), "public/social-card.png"));
 
   return new Response(body, {
     headers: { "Content-Type": "image/png" },

@@ -34,23 +34,57 @@ async function read(path) {
   }
 }
 
+async function verifyPng(path) {
+  try {
+    const image = await readFile(resolve(root, "dist", path));
+    const pngSignature = "89504e470d0a1a0a";
+    if (
+      image.length < 24 ||
+      image.subarray(0, 8).toString("hex") !== pngSignature ||
+      image.readUInt32BE(16) !== 1200 ||
+      image.readUInt32BE(20) !== 630
+    ) {
+      failures.push(`dist/${path} must be a 1200x630 PNG`);
+    }
+  } catch {
+    failures.push(`missing dist/${path}`);
+  }
+}
+
 for (const slug of pages) {
   const directory = slug ? `${slug}/` : "";
   const html = await read(`${directory}index.html`);
   const markdown = await read(`${directory}index.md`);
   const canonical = `https://tuika.dev/${directory}`;
+  const socialImage = slug
+    ? `https://tuika.dev/og/${slug}.png`
+    : "https://tuika.dev/social-card.png";
 
   for (const marker of [
     "<title>",
     'name="description"',
     `rel="canonical" href="${canonical}"`,
-    'property="og:image"',
+    `property="og:image" content="${socialImage}"`,
+    'property="og:image:width" content="1200"',
+    'property="og:image:height" content="630"',
+    'name="twitter:card" content="summary_large_image"',
+    `name="twitter:image" content="${socialImage}"`,
+    'name="twitter:image:alt" content="tuika link preview with terminal-grid artwork"',
     'type="text/markdown"',
     'type="application/ld+json"',
   ]) {
     if (!html.includes(marker)) failures.push(`${directory || "/"} lacks ${marker}`);
   }
+  await verifyPng(slug ? `og/${slug}.png` : "social-card.png");
   if (!markdown.startsWith("---\n")) failures.push(`${directory || "/"} lacks Markdown frontmatter`);
+}
+
+await verifyPng("og.png");
+
+const homepageCard = await readFile(resolve(root, "dist", "social-card.png"));
+const fallbackCard = await readFile(resolve(root, "dist", "og.png"));
+if (!homepageCard.equals(fallbackCard)) {
+  failures.push("dist/og.png must match the pre-rendered homepage social card");
 }
 
 const robots = await read("robots.txt");

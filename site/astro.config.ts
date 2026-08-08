@@ -13,7 +13,7 @@ const nimbusConfig = defineNimbusConfig({
   github: "https://github.com/everruns/tuika",
   editPattern: null,
   socialImage: "/social-card.png",
-  socialImageAlt: "tuika — a Rust framework for complete terminal applications",
+  socialImageAlt: "tuika link preview with terminal-grid artwork",
   head: [
     { tag: "meta", attrs: { name: "theme-color", content: "#0a1636" } },
   ],

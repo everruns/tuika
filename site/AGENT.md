@@ -27,7 +27,7 @@ pnpm exec wrangler deploy --dry-run
 ```
 
 The build verifies all public pages, Markdown twins, canonical metadata,
-structured data, sitemap, social card, and agent discovery files.
+structured data, sitemap, 1200×630 social cards, and agent discovery files.
 
 ## Deployment
 

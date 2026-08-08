@@ -46,9 +46,10 @@ terminal UI with tuika without requiring knowledge of repository internals.
   request worker for content negotiation. Every guide has canonical HTML and a
   Markdown twin, and the site publishes a single `/sitemap.xml` with
   source-derived `lastmod` dates, structured metadata, `robots.txt`, `llms.txt`,
-  and `llms-full.txt`. These discovery surfaces are
-  part of the documentation contract: browsers, search engines, and coding
-  agents should reach the same current content.
+  and `llms-full.txt`. Canonical pages also publish 1200×630 Open Graph and
+  X/Twitter large-image cards in tuika's terminal-grid identity. These
+  discovery surfaces are part of the documentation contract: browsers, search
+  engines, and coding agents should reach the same current content.
 - rustdoc is public documentation too. The crate-level `//!` header in `lib.rs`
   is what docs.rs renders as the front page; component demos are embedded inline
   on the relevant type via `raw.githubusercontent.com` URLs so they resolve
