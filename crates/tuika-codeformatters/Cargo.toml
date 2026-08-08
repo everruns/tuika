@@ -1,6 +1,6 @@
 [package]
 name = "tuika-codeformatters"
-version = "0.4.0"
+version = "0.4.1"
 # Identity, MSRV, and license come from `[workspace.package]` in the root
 # manifest — see the comment there for what is and isn't shared.
 edition.workspace = true
@@ -26,7 +26,7 @@ exclude = ["docs/*.gif"]
 bench = false
 
 [dependencies]
-tuika = { version = "0.7.0", path = "../.." }
+tuika = { version = "0.8.0", path = "../.." }
 ratatui = "0.30.2"
 tree-sitter = "0.26"
 tree-sitter-highlight = "0.26"
