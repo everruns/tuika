@@ -22,10 +22,10 @@
 //! scattering equivalent subprocess tests. Which way it falls for a given
 //! recording is decided by how that crate's
 //! README embeds it: an absolute `raw.githubusercontent.com` URL means the
-//! packaged copy is unreachable and must not ship (`tuika-codeformatters`), a
-//! relative path means crates.io renders from the packaged copy and it must
-//! (`tuika-charts`, `tuika-mermaid`, `tuika-html`, and tuika's four README
-//! assets).
+//! packaged copy is unreachable and must not ship (`tuika-codeformatters` and
+//! `tuika-charts`), while a relative path means crates.io renders from the
+//! packaged copy and it must (`tuika-mermaid`, `tuika-html`, and tuika's four
+//! README assets).
 
 use std::process::Command;
 
@@ -175,6 +175,10 @@ fn codeformatters_ships_source_but_not_its_demo_recording() {
 
     let has = |p: &str| files.iter().any(|f| f == p);
     assert!(has("src/lib.rs"), "library source must ship");
+    assert!(
+        has("examples/highlight_file.rs"),
+        "the file-viewer example documented in the README must ship"
+    );
     assert!(has("Cargo.toml"), "manifest must ship");
     assert!(has("README.md"), "README must ship");
 }
@@ -218,13 +222,16 @@ fn mermaid_keeps_the_recording_its_readme_embeds() {
 }
 
 #[test]
-fn charts_ships_source_readme_and_embedded_demo() {
+fn charts_ships_source_and_readme_without_repository_demo() {
     let files = packaged_files("tuika-charts");
     let has = |p: &str| files.iter().any(|f| f == p);
 
     assert!(has("src/lib.rs"), "library source must ship");
     assert!(has("examples/charts.rs"), "runnable example must ship");
-    assert!(has("examples/charts.png"), "README demo must ship");
+    assert!(
+        !has("examples/charts.png"),
+        "repository-hosted README demo must not ship"
+    );
     assert!(has("Cargo.toml"), "manifest must ship");
     assert!(has("README.md"), "README must ship");
 }

@@ -87,5 +87,3 @@ traversal cannot help; the input has to be refused first.
 cargo run -p tuika-html --example html_view       # the `Html` component (q quits)
 cargo run -p tuika-html --example html_markdown   # HTML blocks inside markdown
 ```
-
-Both take `-- --dump` to print one frame as text instead of running.

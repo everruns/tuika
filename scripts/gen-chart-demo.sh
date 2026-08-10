@@ -13,7 +13,7 @@ for tool in vhs ttyd ffmpeg; do
   }
 done
 
-output="${repo_root}/crates/tuika-charts/examples/charts.png"
+output="${repo_root}/docs/charts.png"
 tapes_dir="$(mktemp -d)"
 trap 'rm -rf "${tapes_dir}"' EXIT
 
@@ -35,10 +35,10 @@ Set WindowBar Colorful
 Set Theme { "background": "#141214", "foreground": "#ebe6e6" }
 
 Hide
-Type "clear; TERM=xterm-256color ${bin}"
+Type "clear; TERM=xterm-256color TERM_PROGRAM= KITTY_WINDOW_ID= GHOSTTY_RESOURCES_DIR= ${bin}"
+Show
 Enter
 Sleep 1.5s
-Show
 Sleep 300ms
 Screenshot "${output}"
 Type "q"

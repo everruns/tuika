@@ -6,7 +6,6 @@
 //!
 //! ```text
 //! cargo run --example demo -- spinner          # interactive, records a GIF
-//! cargo run --example demo -- spinner --dump    # print one frame as text
 //! cargo run --example demo -- list              # list scene names
 //! cargo run --example demo -- check             # verify the docs assets
 //! cargo run --example demo -- tapes <dir>       # emit VHS tapes (used by the generator)

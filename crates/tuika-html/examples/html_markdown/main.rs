@@ -1,8 +1,7 @@
 //! Markdown with raw HTML blocks in it, rendered through the seam.
 //!
 //! ```bash
-//! cargo run -p tuika-html --example html_markdown          # a real terminal (q quits)
-//! cargo run -p tuika-html --example html_markdown -- --dump  # one frame as text
+//! cargo run -p tuika-html --example html_markdown # a real terminal (q quits)
 //! ```
 //!
 //! It runs as an actual app rather than printing a grid, because half of what

@@ -63,3 +63,7 @@ harness = false
 [[bench]]
 name = "highlight_iai"
 harness = false
+
+[[example]]
+name = "highlight_file"
+test = true

@@ -27,9 +27,10 @@ concern, reserving cells is a layout concern.
 
 A host can place a decoded image into the layout, sized in whole terminal
 cells, and have it painted by the terminal's graphics protocol over the cells
-tuika reserved for it. When the terminal does not support the protocol, the
-same component degrades to a text placeholder (its alt text) with no garbage on
-screen.
+tuika reserved for it. `Runner` detects support and owns the image layer
+lifecycle. Custom hosts can supply the same graphics context explicitly. When
+the terminal does not support the protocol, the same component degrades to a
+text placeholder (its alt text) with no garbage on screen.
 
 Scope is deliberately phased:
 
@@ -87,8 +88,9 @@ established for reading a view's painted rect back out:
    cheap to clone, cleared each frame — the same ownership shape as
    `RectProbe`). It paints the reserved cells blank (or, when unsupported, the
    alt-text placeholder) so ratatui's diff has stable content there.
-3. **After** `terminal.draw()` returns, the host calls `ImageLayer::emit`,
-   which writes each image's graphics escape positioned at its cell origin.
+3. **After** `terminal.draw()` returns, `Runner` calls `ImageLayer::emit`, which
+   writes each image's graphics escape positioned at its cell origin, then
+   clears the layer. A custom host performs those same two calls itself.
 
 Emission happens after the frame because the graphics escape paints pixels the
 cell buffer knows nothing about; doing it inside the paint pass would fight
@@ -101,8 +103,10 @@ run without moving the cursor, which is why `HyperlinkBackend` can inline them.
 Graphics escapes are **not**: Kitty places the image at the cursor. So
 `ImageLayer::emit` wraps its writes in a cursor save/restore (`ESC 7` … `ESC
 8`) and moves the cursor to each image's cell origin with a CUP (`ESC [ row ;
-col H`) before emitting. Net effect on ratatui's cursor model is nil, so the
-diff stays consistent.
+col H`) before emitting. Kitty placements also set `C=1`; restoring a saved
+cursor cannot undo scrolling caused by the protocol's default post-placement
+cursor movement when an image reaches the viewport bottom. Net effect on
+ratatui's cursor model and viewport is nil, so the diff stays consistent.
 
 ### Terminal-response suppression
 
@@ -121,12 +125,15 @@ the Ghostty marker), plus an explicit host override, and defaults to *no*
 graphics (text fallback) when unsure. A future phase may add a runtime query
 (the Kitty graphics query escape) for certainty.
 
-### Re-transmission (known Phase-1 limitation)
+### Re-transmission
 
-Phase 1 transmits pixel data on every emit (`a=T`, transmit-and-display). This
-is simple and correct but re-uploads the image each frame. A later phase should
-transmit once with an image id (`a=t`, `i=…`) and thereafter only place it
-(`a=p`), tracking which ids the terminal already holds.
+The layer transmits pixel data on every emit (`a=T`, transmit-and-display). This
+is simple and correct but re-uploads the image each frame. Kitty placements use
+client image numbers; after replacements are visible, the layer deletes the
+previous frame's numbered images. This prevents stale pixels when an image
+moves, shrinks, or disappears without deleting graphics owned by another
+layer. A later phase may transmit once and thereafter only place cached data,
+tracking which identifiers the terminal already holds.
 
 ## Non-goals
 

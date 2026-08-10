@@ -377,26 +377,27 @@ syntax highlighting is): a host hands in raw RGBA via `ImageData::from_rgba`,
 and tuika encodes it for whichever protocol the terminal wants — raw RGBA for
 Kitty, an in-tuika PNG for iTerm2 — with no image-codec dependency. Because a
 graphics escape paints at the cursor — unlike the cursor-neutral OSC sequences
-above — emission is a two-step draw:
+above — `Runner` owns a two-step draw:
 
 - `Image` reserves a `cols × rows` cell footprint and, on render, records its
   placement into a shared `ImageLayer` (the ownership shape of `RectProbe`).
-- **After** `terminal.draw()` flushes the frame, `ImageLayer::emit(out)` writes
+- **After** `terminal.draw()` flushes the frame, the runner writes
   each image's escape at its cell origin, bracketed by a cursor save/restore so
-  ratatui's cursor model is undisturbed. Then `ImageLayer::clear()` resets it
-  for the next frame.
+  ratatui's cursor model is undisturbed, then resets the layer for the next
+  frame.
 
 ```rust
 use tuika::prelude::*;
-use tuika::term::image::{ImageData, ImageLayer, ImageSupport};
+use tuika::term::image::ImageData;
 
 let data = ImageData::from_rgba(2, 2, vec![0u8; 2 * 2 * 4]).unwrap();
-let layer = ImageLayer::new();
 let _image = Image::new(data, 20, 10)      // 20×10 cells on screen
-    .support(ImageSupport::detect())
-    .in_layer(&layer)
     .alt("a 2×2 swatch");                  // shown where graphics aren't supported
 ```
+
+Custom hosts keep the explicit seam: install `ImageSupport` and an `ImageLayer`
+with `RenderCtx::with_image_graphics`, call `paint_with_context`, then emit and
+clear the layer after flushing the cell frame.
 
 The emitted bytes per protocol (base64 payload; `ST` is `ESC \`, `BEL` is
 `0x07`). Kitty carries raw RGBA (`f=32`), chunked, with `q=2` suppressing the

@@ -15,10 +15,10 @@
 //!    each frame — the ownership shape of [`RectProbe`](crate::probe::RectProbe)),
 //!    and paints the reserved cells blank (or the alt-text placeholder when the
 //!    terminal can't show the image) so ratatui's diff has stable content there.
-//! 3. **After** the frame is painted, the host calls [`ImageLayer::emit`], which
-//!    moves the cursor to each image's cell origin and writes its protocol's
-//!    escape, wrapped in a cursor save/restore so ratatui's cursor model is
-//!    undisturbed.
+//! 3. **After** the frame is painted, [`Runner`](crate::Runner) emits the layer,
+//!    moving the cursor to each image's cell origin and writing its protocol's
+//!    escape inside a cursor save/restore. Custom hosts perform the same step
+//!    with [`ImageLayer::emit`].
 //!
 //! Decoding (PNG/JPEG → RGBA) is intentionally the host's job — it is a heavy
 //! dependency, kept out of tuika exactly like syntax highlighting is (see
@@ -38,6 +38,7 @@ use std::cell::RefCell;
 use std::io::{self, Write};
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use ratatui_core::layout::Rect;
 
@@ -173,6 +174,23 @@ struct Placement {
     rect: Rect,
     data: ImageData,
     support: ImageSupport,
+    kitty_image_number: Option<u32>,
+}
+
+#[derive(Debug, Default)]
+struct ImageLayerState {
+    placements: Vec<Placement>,
+    previous_kitty_images: Vec<u32>,
+}
+
+static NEXT_KITTY_IMAGE_NUMBER: AtomicU32 = AtomicU32::new(1);
+
+fn next_kitty_image_number() -> u32 {
+    NEXT_KITTY_IMAGE_NUMBER
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |number| {
+            Some(if number == u32::MAX { 1 } else { number + 1 })
+        })
+        .expect("the update closure always returns a value")
 }
 
 /// A shared collector of the images placed during a frame, and the emitter that
@@ -183,7 +201,7 @@ struct Placement {
 /// [`Image::in_layer`](crate::components::Image::in_layer), then after `terminal.draw()` calls [`emit`](Self::emit)
 /// and [`clear`](Self::clear) for the next frame.
 #[derive(Clone, Debug, Default)]
-pub struct ImageLayer(Rc<RefCell<Vec<Placement>>>);
+pub struct ImageLayer(Rc<RefCell<ImageLayerState>>);
 
 impl ImageLayer {
     /// Create an empty layer.
@@ -200,27 +218,28 @@ impl ImageLayer {
         if rect.width == 0 || rect.height == 0 {
             return;
         }
-        self.0.borrow_mut().push(Placement {
+        self.0.borrow_mut().placements.push(Placement {
             rect,
             data,
             support,
+            kitty_image_number: (support == ImageSupport::Kitty).then(next_kitty_image_number),
         });
     }
 
     /// Drop all recorded placements. Call once per frame, after [`emit`](Self::emit),
     /// so the next frame starts clean.
     pub fn clear(&self) {
-        self.0.borrow_mut().clear();
+        self.0.borrow_mut().placements.clear();
     }
 
     /// Whether any image was placed this frame.
     pub fn is_empty(&self) -> bool {
-        self.0.borrow().is_empty()
+        self.0.borrow().placements.is_empty()
     }
 
     /// Number of images placed this frame.
     pub fn len(&self) -> usize {
-        self.0.borrow().len()
+        self.0.borrow().placements.len()
     }
 
     /// Write every recorded image to `out` as its protocol's graphics escape at
@@ -230,28 +249,50 @@ impl ImageLayer {
     /// sink as the terminal backend. The whole batch is wrapped in a cursor
     /// save/restore (`ESC 7` / `ESC 8`) and each image is positioned with a CUP
     /// (`ESC [ row ; col H`, 1-based) before its escape, so ratatui's cursor
-    /// model is left exactly as it was.
+    /// model is left exactly as it was. Kitty placements additionally suppress
+    /// protocol cursor movement, which could otherwise scroll at the last row.
     pub fn emit(&self, out: &mut impl Write) -> io::Result<()> {
-        let placements = self.0.borrow();
-        if placements.is_empty() {
+        let mut state = self.0.borrow_mut();
+        if state.placements.is_empty() && state.previous_kitty_images.is_empty() {
             return Ok(());
         }
         // Save the cursor once, restore once, so nothing between shifts it.
         out.write_all(b"\x1b7")?;
-        for p in placements.iter() {
+        for p in &state.placements {
             // CUP is 1-based; the reserved rect is 0-based screen coordinates.
             let (row, col) = (p.rect.y + 1, p.rect.x + 1);
             write!(out, "\x1b[{row};{col}H")?;
-            let escape = match p.support {
-                ImageSupport::ITerm2 => encode_iterm2(&p.data, p.rect.width, p.rect.height),
-                ImageSupport::Sixel => encode_sixel(&p.data, p.rect.width, p.rect.height),
+            match p.support {
+                ImageSupport::ITerm2 => {
+                    write_iterm2(out, &p.data, p.rect.width, p.rect.height)?;
+                }
+                ImageSupport::Sixel => {
+                    out.write_all(encode_sixel(&p.data, p.rect.width, p.rect.height).as_bytes())?;
+                }
                 // None shouldn't record, but Kitty is the safe default encoding.
-                _ => encode_kitty(&p.data, p.rect.width, p.rect.height),
-            };
-            out.write_all(escape.as_bytes())?;
+                _ => write_kitty(
+                    out,
+                    &p.data,
+                    p.rect.width,
+                    p.rect.height,
+                    p.kitty_image_number,
+                )?,
+            }
+        }
+        // Cell redraws do not erase Kitty placements. Retire the previous
+        // frame only after its replacements are visible, avoiding both stale
+        // pixels after shrink and a blank interval during ordinary redraws.
+        for number in &state.previous_kitty_images {
+            write!(out, "\x1b_Ga=d,d=N,I={number},q=2\x1b\\")?;
         }
         out.write_all(b"\x1b8")?;
-        out.flush()
+        out.flush()?;
+        state.previous_kitty_images = state
+            .placements
+            .iter()
+            .filter_map(|placement| placement.kitty_image_number)
+            .collect();
+        Ok(())
     }
 }
 
@@ -262,74 +303,86 @@ impl ImageLayer {
 /// same as [`crate::term::hyperlink::encode`] and [`crate::term::progress::encode`]. The payload
 /// is raw RGBA (`f=32`) with its source pixel dimensions (`s`/`v`), displayed at
 /// the cursor (`a=T`) across `c`/`r` cells, base64-encoded and split into
-/// [`CHUNK`]-sized pieces with the `m` continuation key. `q=2` suppresses the
+/// [`CHUNK`]-sized pieces with the `m` continuation key. `C=1` prevents the
+/// placement from moving or scrolling the cursor; `q=2` suppresses the
 /// terminal's acknowledgement replies so they can't be read as input.
+#[cfg(test)]
 fn encode_kitty(data: &ImageData, cols: u16, rows: u16) -> String {
-    let payload = base64_encode(&data.rgba);
-    let chunks: Vec<&str> = split_chunks(&payload, CHUNK);
-    let mut out = String::new();
-    let last = chunks.len().saturating_sub(1);
-    for (i, chunk) in chunks.iter().enumerate() {
+    let mut out = Vec::new();
+    write_kitty(&mut out, data, cols, rows, None).expect("writing to Vec cannot fail");
+    String::from_utf8(out).expect("graphics escapes and base64 are ASCII")
+}
+
+fn write_kitty(
+    out: &mut impl Write,
+    data: &ImageData,
+    cols: u16,
+    rows: u16,
+    image_number: Option<u32>,
+) -> io::Result<()> {
+    // 3072 input bytes become exactly one 4096-byte base64 protocol chunk.
+    // Encoding one chunk at a time avoids two full-frame temporary strings.
+    const RAW_CHUNK: usize = CHUNK / 4 * 3;
+    let chunks = data.rgba.len().div_ceil(RAW_CHUNK);
+    for (i, raw) in data.rgba.chunks(RAW_CHUNK).enumerate() {
         // `m=1` on every chunk but the last signals "more data follows".
-        let more = u8::from(i != last);
-        out.push_str("\x1b_G");
+        let more = u8::from(i + 1 != chunks);
+        out.write_all(b"\x1b_G")?;
         if i == 0 {
             // Control keys ride only on the first chunk; continuations carry `m`.
-            out.push_str(&format!(
-                "f=32,s={},v={},a=T,c={},r={},q=2,m={}",
+            write!(
+                out,
+                "f=32,s={},v={},a=T,c={},r={},C=1,q=2,m={}",
                 data.pixel_width, data.pixel_height, cols, rows, more
-            ));
+            )?;
+            if let Some(number) = image_number {
+                write!(out, ",I={number}")?;
+            }
         } else {
-            out.push_str(&format!("m={more}"));
+            write!(out, "m={more}")?;
         }
-        out.push(';');
-        out.push_str(chunk);
-        out.push_str(ST);
+        out.write_all(b";")?;
+        write_base64(out, raw)?;
+        out.write_all(ST.as_bytes())?;
     }
-    out
+    Ok(())
 }
 
-/// Split `s` into `size`-byte pieces (the last may be shorter). `s` is base64,
-/// which is ASCII, so byte slicing never lands inside a character.
-fn split_chunks(s: &str, size: usize) -> Vec<&str> {
-    if s.is_empty() {
-        return vec![""];
-    }
-    let mut chunks = Vec::with_capacity(s.len().div_ceil(size));
-    let mut i = 0;
-    while i < s.len() {
-        let end = (i + size).min(s.len());
-        chunks.push(&s[i..end]);
-        i = end;
-    }
-    chunks
-}
-
-/// Standard base64 (RFC 4648, with `=` padding) — the encoding Kitty expects for
-/// the graphics payload. Small and self-contained so tuika keeps its minimal
-/// dependency set.
+#[cfg(test)]
 fn base64_encode(bytes: &[u8]) -> String {
+    let mut out = Vec::with_capacity(bytes.len().div_ceil(3) * 4);
+    write_base64(&mut out, bytes).expect("writing to Vec cannot fail");
+    String::from_utf8(out).expect("base64 is ASCII")
+}
+
+fn write_base64(out: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for group in bytes.chunks(3) {
-        let b0 = group[0] as u32;
-        let b1 = *group.get(1).unwrap_or(&0) as u32;
-        let b2 = *group.get(2).unwrap_or(&0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        out.push(ALPHABET[(n >> 18) as usize & 0x3f] as char);
-        out.push(ALPHABET[(n >> 12) as usize & 0x3f] as char);
-        out.push(if group.len() > 1 {
-            ALPHABET[(n >> 6) as usize & 0x3f] as char
-        } else {
-            '='
-        });
-        out.push(if group.len() > 2 {
-            ALPHABET[n as usize & 0x3f] as char
-        } else {
-            '='
-        });
+    const RAW_CHUNK: usize = 3 * 1024;
+    let mut encoded = [0; RAW_CHUNK / 3 * 4];
+    for chunk in bytes.chunks(RAW_CHUNK) {
+        let mut len = 0;
+        for group in chunk.chunks(3) {
+            let b0 = u32::from(group[0]);
+            let b1 = u32::from(*group.get(1).unwrap_or(&0));
+            let b2 = u32::from(*group.get(2).unwrap_or(&0));
+            let bits = (b0 << 16) | (b1 << 8) | b2;
+            encoded[len] = ALPHABET[(bits >> 18) as usize & 0x3f];
+            encoded[len + 1] = ALPHABET[(bits >> 12) as usize & 0x3f];
+            encoded[len + 2] = if group.len() > 1 {
+                ALPHABET[(bits >> 6) as usize & 0x3f]
+            } else {
+                b'='
+            };
+            encoded[len + 3] = if group.len() > 2 {
+                ALPHABET[bits as usize & 0x3f]
+            } else {
+                b'='
+            };
+            len += 4;
+        }
+        out.write_all(&encoded[..len])?;
     }
-    out
+    Ok(())
 }
 
 /// Encode `data` as an iTerm2 inline-image escape displayed across `cols × rows`
@@ -340,13 +393,22 @@ fn base64_encode(bytes: &[u8]) -> String {
 /// [`png_rgba`]); `width`/`height` are given in cells, `preserveAspectRatio=0`
 /// makes the image fill the reserved box, and `inline=1` displays it at the
 /// cursor. The sequence is `ESC ] 1337 ; File = <args> : <base64> BEL`.
+#[cfg(test)]
 fn encode_iterm2(data: &ImageData, cols: u16, rows: u16) -> String {
+    let mut out = Vec::new();
+    write_iterm2(&mut out, data, cols, rows).expect("writing to Vec cannot fail");
+    String::from_utf8(out).expect("graphics escapes and base64 are ASCII")
+}
+
+fn write_iterm2(out: &mut impl Write, data: &ImageData, cols: u16, rows: u16) -> io::Result<()> {
     let png = png_rgba(data.pixel_width, data.pixel_height, &data.rgba);
-    let payload = base64_encode(&png);
-    format!(
-        "\x1b]1337;File=inline=1;width={cols};height={rows};preserveAspectRatio=0;size={}:{payload}\x07",
+    write!(
+        out,
+        "\x1b]1337;File=inline=1;width={cols};height={rows};preserveAspectRatio=0;size={}:",
         png.len()
-    )
+    )?;
+    write_base64(out, &png)?;
+    out.write_all(b"\x07")
 }
 
 /// Assumed terminal cell pixel size, used only to scale a Sixel image into its
@@ -485,10 +547,7 @@ fn png_chunk(out: &mut Vec<u8>, tag: &[u8; 4], data: &[u8]) {
     out.extend_from_slice(&(data.len() as u32).to_be_bytes());
     out.extend_from_slice(tag);
     out.extend_from_slice(data);
-    let mut crc_in = Vec::with_capacity(4 + data.len());
-    crc_in.extend_from_slice(tag);
-    crc_in.extend_from_slice(data);
-    out.extend_from_slice(&crc32(&crc_in).to_be_bytes());
+    out.extend_from_slice(&crc32([tag.as_slice(), data]).to_be_bytes());
 }
 
 /// Wrap `data` in a zlib stream of DEFLATE stored blocks (BTYPE 00).
@@ -514,16 +573,31 @@ fn zlib_stored(data: &[u8]) -> Vec<u8> {
 }
 
 /// CRC-32 (IEEE polynomial), computed table-free for the PNG chunk checksum.
-fn crc32(data: &[u8]) -> u32 {
-    let mut crc = 0xffff_ffffu32;
-    for &b in data {
-        crc ^= b as u32;
-        for _ in 0..8 {
+const CRC32_TABLE: [u32; 256] = {
+    let mut table = [0; 256];
+    let mut i = 0;
+    while i < table.len() {
+        let mut crc = i as u32;
+        let mut bit = 0;
+        while bit < 8 {
             crc = if crc & 1 != 0 {
                 (crc >> 1) ^ 0xedb8_8320
             } else {
                 crc >> 1
             };
+            bit += 1;
+        }
+        table[i] = crc;
+        i += 1;
+    }
+    table
+};
+
+fn crc32<'a>(parts: impl IntoIterator<Item = &'a [u8]>) -> u32 {
+    let mut crc = 0xffff_ffffu32;
+    for part in parts {
+        for &byte in part {
+            crc = CRC32_TABLE[((crc ^ u32::from(byte)) & 0xff) as usize] ^ (crc >> 8);
         }
     }
     !crc
@@ -532,9 +606,14 @@ fn crc32(data: &[u8]) -> u32 {
 /// Adler-32 checksum for the zlib stream trailer.
 fn adler32(data: &[u8]) -> u32 {
     let (mut a, mut b) = (1u32, 0u32);
-    for &x in data {
-        a = (a + x as u32) % 65521;
-        b = (b + a) % 65521;
+    // 5552 bytes is the largest block that cannot overflow either accumulator.
+    for block in data.chunks(5552) {
+        for &x in block {
+            a += u32::from(x);
+            b += a;
+        }
+        a %= 65521;
+        b %= 65521;
     }
     (b << 16) | a
 }
@@ -570,12 +649,18 @@ mod tests {
     }
 
     #[test]
+    fn png_checksums_match_known_vectors() {
+        assert_eq!(crc32([b"123456789".as_slice()]), 0xcbf4_3926);
+        assert_eq!(adler32(b"Wikipedia"), 0x11e6_0398);
+    }
+
+    #[test]
     fn encode_kitty_single_chunk_shape() {
         let img = solid(1, 1, [1, 2, 3, 4]);
         let out = encode_kitty(&img, 4, 2);
         // APC open + control keys with pixel + cell dims, response suppression,
-        // single-chunk (m=0), then payload and ST.
-        assert!(out.starts_with("\x1b_Gf=32,s=1,v=1,a=T,c=4,r=2,q=2,m=0;"));
+        // no cursor movement, single-chunk (m=0), then payload and ST.
+        assert!(out.starts_with("\x1b_Gf=32,s=1,v=1,a=T,c=4,r=2,C=1,q=2,m=0;"));
         assert!(out.ends_with("\x1b\\"));
         // One RGBA pixel [1,2,3,4] base64-encodes to "AQIDBA==".
         assert!(out.contains(";AQIDBA==\x1b\\"));
@@ -591,7 +676,7 @@ mod tests {
         let commands = out.matches("\x1b_G").count();
         assert!(commands > 1, "large image should span multiple chunks");
         // First chunk carries the control keys and m=1 (more follows).
-        assert!(out.starts_with("\x1b_Gf=32,s=64,v=64,a=T,c=10,r=5,q=2,m=1;"));
+        assert!(out.starts_with("\x1b_Gf=32,s=64,v=64,a=T,c=10,r=5,C=1,q=2,m=1;"));
         // Continuation chunks carry only the m key.
         assert!(out.contains("\x1b_Gm=1;"));
         // The final chunk closes with m=0.
@@ -701,6 +786,56 @@ mod tests {
         assert_eq!(layer.len(), 1);
         layer.clear();
         assert!(layer.is_empty());
+    }
+
+    #[test]
+    fn kitty_emit_removes_the_previous_frame_placement() {
+        let layer = ImageLayer::new();
+        layer.record(
+            Rect::new(0, 0, 8, 4),
+            solid(1, 1, [1, 2, 3, 255]),
+            ImageSupport::Kitty,
+        );
+        let mut first = Vec::new();
+        layer.emit(&mut first).expect("first emit");
+        let first = String::from_utf8(first).expect("graphics commands are ASCII");
+        let previous_number = first
+            .split(",I=")
+            .nth(1)
+            .and_then(|tail| tail.split(';').next())
+            .expect("transmission has an image number");
+        layer.clear();
+
+        layer.record(
+            Rect::new(0, 0, 4, 2),
+            solid(1, 1, [4, 5, 6, 255]),
+            ImageSupport::Kitty,
+        );
+        let mut out = Vec::new();
+        layer.emit(&mut out).expect("resized emit");
+        let out = String::from_utf8(out).expect("graphics commands are ASCII");
+
+        assert!(
+            out.contains(&format!("a=d,d=N,I={previous_number},q=2")),
+            "the old, larger placement must be removed after resize: {out:?}"
+        );
+    }
+
+    #[test]
+    fn kitty_emit_removes_an_image_that_disappeared() {
+        let layer = ImageLayer::new();
+        layer.record(
+            Rect::new(0, 0, 8, 4),
+            solid(1, 1, [1, 2, 3, 255]),
+            ImageSupport::Kitty,
+        );
+        layer.emit(&mut Vec::new()).expect("image frame");
+        layer.clear();
+
+        let mut out = Vec::new();
+        layer.emit(&mut out).expect("empty frame");
+        let out = String::from_utf8(out).expect("graphics commands are ASCII");
+        assert!(out.contains("a=d,d=N,I="), "stale image remains: {out:?}");
     }
 
     #[test]

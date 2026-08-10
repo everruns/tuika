@@ -548,9 +548,7 @@ Each takes over the terminal — the alternate screen, or a pinned footer for
 | [`codex --split-footer`](examples/codex) | `cargo run --example codex -- --split-footer` | the same agent UI with its transcript published into the terminal's own scrollback |
 
 Each of the single-topic examples above quits on `q`/`esc`. [`codex`](examples/codex)
-is the composite one — those keys are text there, so it quits with `⌃C` — and it
-prints canned frames without a terminal at all with
-`cargo run --example codex -- --dump`.
+is the composite one — those keys are text there, so it quits with `⌃C`.
 
 ## Declarative DSL (`view!`)
 
@@ -802,22 +800,21 @@ none show the alt text, so the same view tree renders everywhere.
 Decoding stays in the host — a heavy dependency, kept out like the highlighter
 seam — so you hand in raw RGBA via `ImageData::from_rgba` and `tuika` owns the
 protocol encoding (base64, PNG, and Sixel encoders are inline, so no image-codec
-dependency). A graphics escape paints at the cursor, unlike the cursor-neutral
-OSC sequences, so emission is split from layout: `Image` reserves cells and
-records its placement into an `ImageLayer`, then the host calls
-`ImageLayer::emit` after `terminal.draw()` to paint the pixels over them.
+dependency). `Runner` detects the terminal protocol, collects placements, and
+emits pixels after each cell frame.
 
 ```rust
 use tuika::prelude::*;
-use tuika::term::image::{ImageData, ImageLayer, ImageSupport};
+use tuika::term::image::ImageData;
 
 let data = ImageData::from_rgba(2, 2, vec![0u8; 2 * 2 * 4]).unwrap();
-let layer = ImageLayer::new();
 let _image = Image::new(data, 20, 10)      // 20×10 cells on screen
-    .support(ImageSupport::detect())
-    .in_layer(&layer)
     .alt("a 2×2 swatch");                  // shown where graphics aren't supported
 ```
+
+Custom hosts that call `paint_with_context` directly can install
+`ImageSupport` and an `ImageLayer` with `RenderCtx::with_image_graphics`, then
+emit and clear the layer after flushing the cell frame.
 
 Markdown `![alt](url)` renders too, in both the one-shot `Markdown` view and the
 streaming `MarkdownState`: attach a host `ImageResolver` (URL → `ImageData`, the

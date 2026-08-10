@@ -1,8 +1,7 @@
 //! The [`Html`] view on its own: a whole HTML fragment as the screen.
 //!
 //! ```bash
-//! cargo run -p tuika-html --example html_view            # a real terminal (q quits)
-//! cargo run -p tuika-html --example html_view -- --dump  # one frame as text
+//! cargo run -p tuika-html --example html_view # a real terminal (q quits)
 //! ```
 //!
 //! The companion example, `html_markdown`, shows the *seam* — HTML blocks

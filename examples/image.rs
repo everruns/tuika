@@ -6,23 +6,17 @@
 //! WezTerm, or Konsole the real pixels are painted; anywhere else the same
 //! [`Image`](tuika::Image) view degrades to its alt-text placeholder.
 //!
-//! The load-bearing detail is the two-step draw: [`paint`] reserves the image's
-//! cells and records its placement into an [`ImageLayer`](tuika::ImageLayer),
-//! then — *after* `terminal.draw()` flushes the frame — [`ImageLayer::emit`]
-//! writes the graphics escapes over those cells and the layer is cleared for the
-//! next frame.
+//! [`Runner`](tuika::Runner) detects graphics support, collects image placements,
+//! and emits them after each cell frame. The application only describes the
+//! image and its fallback.
 
-use std::io::{self, Write};
-use std::time::Duration;
+use std::io;
 
-use crossterm::event;
-use ratatui::backend::CrosstermBackend;
 use ratatui::style::Style;
 use ratatui::text::Span;
-use ratatui::{Terminal, TerminalOptions, Viewport};
 
 use tuika::prelude::*;
-use tuika::term::image::{ImageData, ImageLayer, ImageSupport};
+use tuika::term::image::{ImageData, ImageSupport};
 
 /// A `w × h` RGBA gradient: red rises left-to-right, green top-to-bottom.
 fn gradient(w: u32, h: u32) -> ImageData {
@@ -43,24 +37,14 @@ fn main() -> io::Result<()> {
     const ROWS: u16 = 20;
     let data = gradient(320, 320);
     let support = ImageSupport::detect();
-    let layer = ImageLayer::new();
-
-    let _session = TerminalSession::enter()?;
-    let mut terminal = Terminal::with_options(
-        CrosstermBackend::new(io::stdout()),
-        TerminalOptions {
-            viewport: Viewport::Fullscreen,
-        },
-    )?;
     let theme = Theme::default();
+    let mut state = ();
 
-    loop {
-        terminal.draw(|f| {
-            let area = f.area();
-            let image = Image::new(data.clone(), COLS, ROWS)
-                .support(support)
-                .in_layer(&layer)
-                .alt("a red/green gradient");
+    Runner::new(RunnerConfig::default()).run(
+        &theme,
+        &mut state,
+        move |_state, _frame| {
+            let image = Image::new(data.clone(), COLS, ROWS).alt("a red/green gradient");
             let status = match support {
                 ImageSupport::Kitty => " graphics: Kitty protocol detected ",
                 ImageSupport::ITerm2 => " graphics: iTerm2 protocol detected ",
@@ -71,7 +55,7 @@ fn main() -> io::Result<()> {
                 .left(vec![Span::styled(status, theme.selection_style())])
                 .right(vec![Span::styled(" q quit ", theme.muted_style())])
                 .background(Style::default().bg(theme.surface));
-            let root = view! {
+            view! {
                 col(padding = Padding::all(1), gap = 1) {
                     grow(1) { node(Spacer) }
                     fixed(ROWS) {
@@ -84,27 +68,15 @@ fn main() -> io::Result<()> {
                     grow(1) { node(Spacer) }
                     fixed(1) { node(bar) }
                 }
-            };
-            paint(f.buffer_mut(), area, &theme, root.as_ref(), &[]);
-        })?;
-
-        // After the cell frame is on screen, paint the pixels over the reserved
-        // cells, then clear the layer so the next frame records fresh.
-        layer.emit(&mut io::stdout())?;
-        io::stdout().flush()?;
-        layer.clear();
-
-        if !event::poll(Duration::from_millis(100))? {
-            continue;
-        }
-        if let Some(Event::Key(k)) = translate_event(event::read()?)
-            && matches!(k.code, KeyCode::Char('q') | KeyCode::Esc)
-        {
-            break;
-        }
-    }
-
-    let _ = terminal.clear();
-    drop(terminal);
-    Ok(())
+            }
+        },
+        |_state, signal| match signal {
+            Signal::Event(Event::Key(key))
+                if key.plain() && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
+            {
+                UpdateResult::Exit
+            }
+            _ => UpdateResult::Clean,
+        },
+    )
 }
