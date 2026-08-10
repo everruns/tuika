@@ -65,10 +65,6 @@ impl MarkdownBlockRenderer for MermaidRenderer {
             return None;
         }
 
-        if trips_diamond_label_bug(source) {
-            return None;
-        }
-
         let rendered = fitted_diagram(source, context.width)?;
         Some(
             rendered
@@ -77,49 +73,6 @@ impl MarkdownBlockRenderer for MermaidRenderer {
                 .collect(),
         )
     }
-}
-
-/// Whether `source` would hit mmdflux's broken multi-line diamond label.
-///
-/// Upstream: <https://github.com/kevinswiber/mmdflux/issues/387>. Fixed in no
-/// release as of 2.6.0 — drop this guard, and the `catch_unwind` in
-/// [`render_layout`], once it lands.
-///
-/// `render_diamond` renders a fixed three-row shape sized from the label's
-/// *widest line*, then centres the *whole* label — line breaks included —
-/// against that width. Mermaid accepts `<br/>` in a decision node and it is the
-/// natural way to keep a wide one readable, so this is reachable from ordinary
-/// documents rather than only from malformed ones, and it fails three different
-/// ways: a subtraction underflow that panics under debug overflow checks, the
-/// same underflow wrapping in release so the label is dropped and an empty
-/// diamond renders, and — for labels short enough not to underflow — the label
-/// written across the shape's own borders. Only the first is contained by
-/// `catch_unwind`; the other two look like success. So the shape is recognised
-/// up front and the fence keeps tuika's code-block fallback, where the diagram
-/// is at least readable as source.
-///
-/// Only `flowchart`/`graph` sources are scanned: `{}` delimits a node label
-/// there, while in a class or state diagram it opens a member block that
-/// legitimately spans lines.
-fn trips_diamond_label_bug(source: &str) -> bool {
-    let is_flowchart = source
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty() && !line.starts_with("%%"))
-        .is_some_and(|line| line.starts_with("flowchart") || line.starts_with("graph"));
-    if !is_flowchart {
-        return false;
-    }
-
-    source.lines().any(|line| {
-        let Some(open) = line.find('{') else {
-            return false;
-        };
-        let Some(close) = line.rfind('}') else {
-            return false;
-        };
-        close > open && line[open..close].contains("<br")
-    })
 }
 
 /// The narrowest layout of `source` that fits `width`, or the narrowest one
@@ -161,13 +114,12 @@ fn render_layout(source: &str, separations: Option<(f64, f64, f64)>) -> Option<S
         config.layout.edge_sep = edge_sep;
     }
 
-    // Backstop only: `trips_diamond_label_bug` keeps the one panic we know
-    // about (https://github.com/kevinswiber/mmdflux/issues/387) out of this
-    // call, but a `View::render` must not be able to take the host application
-    // down mid-frame over a malformed diagram, so contain the rest too. The
-    // panic hook is deliberately left alone — `Markdown` re-renders every
-    // frame, and swapping a global hook that often would swallow unrelated
-    // panics from other threads for as long as the window is open.
+    // Backstop: no panic in mmdflux is known to be reachable from here, but a
+    // `View::render` must not be able to take the host application down
+    // mid-frame over a diagram, so contain one if it appears. The panic hook is
+    // deliberately left alone — `Markdown` re-renders every frame, and swapping
+    // a global hook that often would swallow unrelated panics from other
+    // threads for as long as the window is open.
     let rendered = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         render_diagram(source, OutputFormat::Text, &config)
     }));
@@ -289,52 +241,43 @@ mod tests {
         );
     }
 
-    /// A multi-line diamond label degrades to the code-block fallback rather
-    /// than unwinding into the host — both the label wide enough to underflow
-    /// mmdflux's centering and the short one that silently paints over the
-    /// shape's borders. See <https://github.com/kevinswiber/mmdflux/issues/387>.
+    /// A decision node with a `<br/>` label renders as a diagram, with every
+    /// label line inside the shape rather than dropped or painted over the
+    /// borders. mmdflux sized the diamond from the label's widest line and then
+    /// centred the whole label against it, which underflowed for a wide label
+    /// and overran the borders for a short one; 2.6.1 grows the shape to the
+    /// full label instead. See
+    /// <https://github.com/kevinswiber/mmdflux/issues/387>.
     #[test]
-    fn multiline_diamond_label_uses_markdown_fallback() {
-        for source in [
-            "flowchart TD\n A[x] --> B{aaaa<br/>aaaa}\n",
-            "flowchart TD\n A[x] --> B{abc<br/>abc}\n",
+    fn multiline_diamond_label_renders_inside_the_shape() {
+        for (source, labels) in [
+            (
+                "flowchart TD\n A[x] --> B{aaaa<br/>aaaa}\n",
+                ["aaaa", "aaaa"],
+            ),
+            ("flowchart TD\n A[x] --> B{abc<br/>abc}\n", ["abc", "abc"]),
         ] {
-            assert!(
-                render_block(MarkdownBlock::Fenced {
-                    language: "mermaid",
-                    source,
-                })
-                .is_none(),
-                "{source}"
-            );
+            let lines = render_block(MarkdownBlock::Fenced {
+                language: "mermaid",
+                source,
+            })
+            .expect("a rendered diagram");
+            let rendered: Vec<String> = lines.iter().map(text).collect();
+
+            for label in labels {
+                // Each label line sits on its own row, fenced by the diamond's
+                // own side glyphs — not overlapping a border row.
+                assert!(
+                    rendered.iter().any(|line| {
+                        let trimmed = line.trim_end();
+                        trimmed.contains(label)
+                            && trimmed.starts_with('<')
+                            && trimmed.ends_with('>')
+                    }),
+                    "{source}: {label} missing from {rendered:#?}"
+                );
+            }
         }
-    }
-
-    /// The `catch_unwind` backstop, exercised against the same input with the
-    /// pre-check bypassed: even reaching mmdflux, the seam must return rather
-    /// than unwind.
-    #[test]
-    fn panicking_layout_is_contained_rather_than_unwound() {
-        assert!(render_layout("flowchart TD\n A[x] --> B{aaaa<br/>aaaa}\n", None).is_none());
-    }
-
-    /// Only flowcharts use `{}` for a node label; a class diagram's member
-    /// block must not be mistaken for one.
-    #[test]
-    fn diamond_precheck_is_scoped_to_flowcharts() {
-        assert!(trips_diamond_label_bug(
-            "flowchart TD\n A --> B{one<br/>two}\n"
-        ));
-        assert!(trips_diamond_label_bug(
-            "%% a comment\ngraph LR\n A --> B{one<br>two}\n"
-        ));
-        assert!(!trips_diamond_label_bug(
-            "flowchart TD\n A[one<br/>two] --> B\n"
-        ));
-        assert!(!trips_diamond_label_bug("flowchart TD\n A --> B{plain}\n"));
-        assert!(!trips_diamond_label_bug(
-            "classDiagram\n class Foo {\n +bar()<br/>\n }\n"
-        ));
     }
 
     /// A branching flowchart whose default layout runs far past a terminal.

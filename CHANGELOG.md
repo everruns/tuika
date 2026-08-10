@@ -15,12 +15,15 @@ described in the release process begins with the entry below.
 
 ### Fixed
 
-- `tuika-mermaid` no longer lets a Mermaid decision node with a `<br/>` label
-  unwind out of `View::render` and take the host application down. The same
-  upstream defect ([mmdflux#387](https://github.com/kevinswiber/mmdflux/issues/387))
-  also fails silently — dropping the label in release builds, or painting a
-  short label over the shape's own borders — so all three now fall back to the
-  ordinary themed code block.
+- `tuika-mermaid` renders a Mermaid decision node with a `<br/>` label as a
+  diagram, with every label line inside the shape. The upstream defect
+  ([mmdflux#387](https://github.com/kevinswiber/mmdflux/issues/387)) — which
+  unwound out of `View::render` and took the host application down, and failed
+  silently in release builds by dropping the label or painting a short one over
+  the shape's own borders — is fixed in mmdflux 2.6.1, which `tuika-mermaid`
+  now requires. The adapter-side guard that degraded these fences to the
+  code-block fallback is gone with it; the unconditional panic containment
+  around the layout engine stays.
 
 ### Changed
 

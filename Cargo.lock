@@ -940,9 +940,9 @@ dependencies = [
 
 [[package]]
 name = "mmdflux"
-version = "2.6.0"
+version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc3d57274846e2bab54eeb7e77e5418c76b8ea3e3ef4c5808daf73e1e68b89a6"
+checksum = "c78ba54627b01d793871184731714c11b41796326207c1fb8fd378e118800721"
 dependencies = [
  "pest",
  "pest_derive",

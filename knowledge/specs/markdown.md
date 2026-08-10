@@ -111,12 +111,11 @@ A block renderer sits inside `View::render`, so it must not be able to fail the
 frame: an unrenderable fence is a `None` and the code-block fallback, never an
 unwind. That is a constraint on the *adapter*, not on the engine behind it —
 `tuika-mermaid` contains mmdflux's panics rather than trusting a third-party
-layout engine to be total. Containment alone is not enough, though: the same
-upstream defect ([mmdflux#387](https://github.com/kevinswiber/mmdflux/issues/387),
-a multi-line decision-node label) also renders a diagram that merely *looks*
-successful, so the adapter additionally recognises the shape up front. A
-workaround that only catches the loud failure mode leaves the quiet ones.
-Containment does not extend to the panic hook: a
+layout engine to be total — the containment is unconditional and stays whether
+or not a reachable panic is currently known. Working *around* a specific
+upstream defect is the opposite: it is carried only while the defect is
+unfixed, and is removed on the release that fixes it rather than left as
+permanent scar tissue. Containment does not extend to the panic hook: a
 renderer runs every frame, and swapping a global hook that often would swallow
 unrelated panics for as long as the window is open.
 
