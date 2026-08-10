@@ -62,13 +62,16 @@ use crossterm::event::EventStream;
 use ratatui_core::backend::Backend;
 use ratatui_core::terminal::{Terminal, TerminalOptions};
 use ratatui_crossterm::CrosstermBackend;
-use tokio::time::{MissedTickBehavior, interval};
+use tokio::time::{Instant as TokioInstant, MissedTickBehavior, interval, sleep_until};
 use tokio_stream::{Stream, StreamExt};
 
-use super::{RunnerAction, RunnerCore, Signal};
+use super::{
+    FrameGraphics, FrameGraphicsCleanup, RESIZE_FRAME_INTERVAL, RunnerAction, RunnerCore, Signal,
+};
 use crate::screen::{Scrollback, close_footer, pin_footer};
 use crate::{
-    Element, Event, RunnerConfig, TerminalSession, Theme, UpdateResult, paint, translate_event,
+    Element, Event, RenderCtx, RunnerConfig, TerminalSession, Theme, UpdateResult,
+    paint_with_context, translate_event,
 };
 
 /// An asynchronous Crossterm event and rendering loop.
@@ -131,12 +134,14 @@ impl AsyncRunner {
         V: FnMut(&S, u64) -> Element,
         U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
     {
-        self.run_with_backend(
+        let graphics = FrameGraphics::detected();
+        self.run_with_backend_inner(
             theme,
             CrosstermBackend::new(io::stdout()),
             state,
             view,
             update,
+            Some(&graphics),
         )
         .await
     }
@@ -158,6 +163,24 @@ impl AsyncRunner {
         V: FnMut(&S, u64) -> Element,
         U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
     {
+        self.run_with_backend_inner(theme, backend, state, view, update, None)
+            .await
+    }
+
+    async fn run_with_backend_inner<S, B, V, U>(
+        &self,
+        theme: &Theme,
+        backend: B,
+        state: &mut S,
+        view: V,
+        update: U,
+        graphics: Option<&FrameGraphics>,
+    ) -> io::Result<()>
+    where
+        B: Backend<Error = io::Error>,
+        V: FnMut(&S, u64) -> Element,
+        U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
+    {
         let mode = self.config.screen_mode;
         let _session = if let Some(config) = self.session_config {
             TerminalSession::enter_config(config)?
@@ -170,6 +193,7 @@ impl AsyncRunner {
                 viewport: mode.viewport(),
             },
         )?;
+        let _graphics_cleanup = graphics.map(FrameGraphicsCleanup);
         // Translate crossterm events to tuika events at the stream boundary,
         // dropping the ones tuika does not model and surfacing read errors.
         let events = EventStream::new().filter_map(|result| match result {
@@ -177,7 +201,16 @@ impl AsyncRunner {
             Err(error) => Some(Err(error)),
         });
         let result = self
-            .run_with_events(&mut terminal, theme, state, events, view, update)
+            .run_with_events_inner(
+                &mut terminal,
+                theme,
+                state,
+                events,
+                view,
+                update,
+                graphics,
+                || graphics.map_or(Ok(()), FrameGraphics::finish_frame),
+            )
             .await;
 
         // Some terminal emulators do not answer the cursor-position query used
@@ -215,15 +248,47 @@ impl AsyncRunner {
         terminal: &mut Terminal<B>,
         theme: &Theme,
         state: &mut S,
-        mut events: E,
-        mut view: V,
-        mut update: U,
+        events: E,
+        view: V,
+        update: U,
     ) -> Result<(), Er>
     where
         B: Backend<Error = Er>,
         E: Stream<Item = Result<Event, Er>> + Unpin,
         V: FnMut(&S, u64) -> Element,
         U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
+    {
+        self.run_with_events_inner(
+            terminal,
+            theme,
+            state,
+            events,
+            view,
+            update,
+            None,
+            || Ok(()),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn run_with_events_inner<S, B, V, U, E, Er, F>(
+        &self,
+        terminal: &mut Terminal<B>,
+        theme: &Theme,
+        state: &mut S,
+        mut events: E,
+        mut view: V,
+        mut update: U,
+        graphics: Option<&FrameGraphics>,
+        mut finish_frame: F,
+    ) -> Result<(), Er>
+    where
+        B: Backend<Error = Er>,
+        E: Stream<Item = Result<Event, Er>> + Unpin,
+        V: FnMut(&S, u64) -> Element,
+        U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
+        F: FnMut() -> Result<(), Er>,
     {
         let mut events_done = false;
         let mut core = RunnerCore::new();
@@ -240,17 +305,28 @@ impl AsyncRunner {
             pin_footer(terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
-            draw(terminal, theme, &mut view, state, frame)?;
+            draw(terminal, theme, &mut view, state, frame, graphics)?;
+            finish_frame()?;
         }
+        let mut last_frame = TokioInstant::now();
+        let mut redraw_at = None;
 
         loop {
-            let signal = tokio::select! {
-                _ = ticker.tick() => Signal::Tick,
+            enum Wake {
+                Signal(Signal),
+                Redraw,
+            }
+
+            let deadline = redraw_at.unwrap_or_else(TokioInstant::now);
+            let wake = tokio::select! {
+                biased;
+                _ = sleep_until(deadline), if redraw_at.is_some() => Wake::Redraw,
+                _ = ticker.tick() => Wake::Signal(Signal::Tick),
                 // Once the stream is exhausted the guard disables this branch so
                 // `select!` waits on the tick alone instead of spinning on a
                 // stream that keeps returning `None`.
                 item = events.next(), if !events_done => match item {
-                    Some(Ok(event)) => Signal::Event(event),
+                    Some(Ok(event)) => Wake::Signal(Signal::Event(event)),
                     Some(Err(error)) => return Err(error),
                     None => {
                         events_done = true;
@@ -259,35 +335,64 @@ impl AsyncRunner {
                 },
             };
 
+            if matches!(&wake, Wake::Redraw) {
+                if let RunnerAction::Render(frame) = core.next_action() {
+                    if split {
+                        terminal.autoresize()?;
+                        pin_footer(terminal)?;
+                    }
+                    draw(terminal, theme, &mut view, state, frame, graphics)?;
+                    finish_frame()?;
+                    last_frame = TokioInstant::now();
+                }
+                redraw_at = None;
+                continue;
+            }
+
+            let Wake::Signal(signal) = wake else {
+                unreachable!()
+            };
             let requires_redraw = signal.requires_redraw();
-            core.apply(update(state, signal).await);
+            let result = update(state, signal).await;
+            core.apply(result);
             if core.is_exited() {
                 break;
             }
-            if requires_redraw {
+            if requires_redraw || result == UpdateResult::Dirty {
                 core.request_redraw();
+                let now = TokioInstant::now();
+                let deadline = if requires_redraw {
+                    (last_frame + RESIZE_FRAME_INTERVAL).max(now)
+                } else {
+                    now
+                };
+                redraw_at =
+                    Some(redraw_at.map_or(deadline, |current: TokioInstant| current.min(deadline)));
             }
             if split {
                 // Publishing scrolls the terminal and may clear the viewport,
                 // so a committed block always makes the footer dirty.
                 if self.scrollback.flush(terminal, theme)? {
                     core.request_redraw();
+                    let now = TokioInstant::now();
+                    redraw_at = Some(redraw_at.map_or(now, |current| current.min(now)));
                 }
             } else {
                 // Nothing above the frame to publish into; drop queued blocks
                 // rather than let a producer grow the queue without bound.
                 self.scrollback.clear();
             }
-            match core.next_action() {
-                RunnerAction::Render(frame) => {
+            if redraw_at.is_some_and(|deadline| deadline <= TokioInstant::now()) {
+                if let RunnerAction::Render(frame) = core.next_action() {
                     if split {
                         terminal.autoresize()?;
                         pin_footer(terminal)?;
                     }
-                    draw(terminal, theme, &mut view, state, frame)?;
+                    draw(terminal, theme, &mut view, state, frame, graphics)?;
+                    finish_frame()?;
+                    last_frame = TokioInstant::now();
                 }
-                RunnerAction::Exit => break,
-                RunnerAction::Wait => {}
+                redraw_at = None;
             }
         }
 
@@ -302,6 +407,7 @@ fn draw<S, B, V, Er>(
     view: &mut V,
     state: &S,
     frame: u64,
+    graphics: Option<&FrameGraphics>,
 ) -> Result<(), Er>
 where
     B: Backend<Error = Er>,
@@ -310,7 +416,8 @@ where
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
         let root = view(state, frame);
-        paint(terminal_frame.buffer_mut(), area, theme, root.as_ref(), &[]);
+        let ctx = graphics.map_or_else(|| RenderCtx::new(theme), |g| g.render_context(theme));
+        paint_with_context(terminal_frame.buffer_mut(), area, &ctx, root.as_ref(), &[]);
     })?;
     Ok(())
 }
@@ -440,22 +547,21 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn clean_resize_updates_still_repaint() {
+    #[tokio::test(start_paused = true)]
+    async fn resize_bursts_share_one_repaint() {
         let runner = AsyncRunner::new(RunnerConfig {
-            tick_rate: Duration::from_secs(3600),
+            tick_rate: Duration::from_millis(20),
             ..RunnerConfig::default()
         });
         let mut terminal = terminal(16, 1);
         let mut state = ();
         let views = std::cell::Cell::new(0usize);
-        let events = tokio_stream::iter([
+        let events = tokio_stream::iter((0..3).map(|_| {
             Ok(Event::Resize {
                 width: 16,
                 height: 1,
-            }),
-            key(KeyCode::Esc),
-        ]);
+            })
+        }));
 
         runner
             .run_with_events(
@@ -468,14 +574,18 @@ mod tests {
                     element(Text::raw("frame"))
                 },
                 async |_state, signal| match signal {
-                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
+                    Signal::Tick if views.get() >= 2 => UpdateResult::Exit,
                     _ => UpdateResult::Clean,
                 },
             )
             .await
             .unwrap();
 
-        assert_eq!(views.get(), 2, "resize repaints after the initial frame");
+        assert_eq!(
+            views.get(),
+            2,
+            "three queued resizes share one frame after the initial paint"
+        );
     }
 
     // The initial frame is painted before any signal is handled, so a run that

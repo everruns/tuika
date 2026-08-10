@@ -1,11 +1,40 @@
 # Knowledge Log
 
+## 2026-08-09
+
+- **Runners own adaptive graphics and resize scheduling**
+  - Synchronous and asynchronous real-terminal runners detect graphics support,
+    inject the per-frame image layer through `RenderCtx`, and emit and clear it
+    after Ratatui flushes the cell frame.
+  - Images and charts inherit that context automatically; explicit support and
+    layers remain available for custom hosts and deterministic tests.
+  - Resize bursts update application state immediately but share a 16 ms frame
+    deadline, preventing one full image upload per queued resize event.
+  - The image and chart examples now describe application content through
+    `Runner` instead of reimplementing terminal and graphics lifecycles; the
+    chart gallery uses a declarative `view!` flex tree instead of manual `Rect`
+    partitioning.
+
+- **Automatic bar domains preserve full edge bars**
+  - Automatic x bounds reserve half a bar interval beyond the outermost values;
+    explicit domains remain exact clipping bounds.
+
 ## 2026-08-08
+
+- **Kitty images remain viewport-neutral**
+  - Kitty placements explicitly disable post-display cursor movement. Saving
+    and restoring the cursor alone cannot reverse a scroll when a bottom-edge
+    image advances past the viewport.
 
 - **Expanded adaptive chart grammar**
   - Added filled-area, scatter, and stepped-line series to both renderers.
   - Expanded the real adaptive example and committed screenshot into a four-chart
     gallery covering every supported series kind.
+  - Raised portable geometry above one mark per cell: connected line, step, and
+    area edges use dense quadrant subcells, scatter uses Braille point placement,
+    and bars and fills remain cell-shaped.
+  - Composed portable area fill and edge into one quadrant mask, avoiding both
+    whole-cell fill above diagonal edges and gaps immediately below them.
 
 - **tuika.dev uses the public guides as its only documentation source**
 

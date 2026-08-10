@@ -22,14 +22,12 @@
 //!
 //! Nothing here is committed: the doc asset is the VHS recording, and this
 //! writes to `target/` unless pointed somewhere else. Reach for it when the
-//! recording toolchain is unavailable, when a vector asset is wanted, or —
-//! via `--dump` — to read what the mode actually puts on the screen as text.
+//! recording toolchain is unavailable or when a vector asset is wanted.
 //!
 //! ```text
 //! cargo build --example split_footer          # the subject, either way
 //! cargo run --example split_footer_demo       # writes target/split-footer.svg
 //! cargo run --example split_footer_demo -- out.svg
-//! cargo run --example split_footer_demo -- --dump  # print the frames as text
 //! ```
 
 use std::io::{self, Read, Write};
@@ -63,8 +61,7 @@ fn main() -> io::Result<()> {
 
     let frames = record()?;
     if dump {
-        // What the recorder saw, as text: the same check `--dump` gives every
-        // other generated asset in this repo before it is committed.
+        // What the recorder saw as text, for checking the generated asset.
         for (i, frame) in frames.iter().enumerate() {
             println!("── frame {i} {}", "─".repeat(COLS as usize - 10));
             for row in frame.chunks(COLS as usize) {

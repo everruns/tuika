@@ -19,48 +19,48 @@ use crate::view::{RenderCtx, View};
 ///
 /// It always reserves `cols × rows` cells (bounded by the area it's given) and
 /// always paints those cells — blank when the image will cover them, or the alt
-/// text when the terminal can't. When [`ImageSupport::Kitty`] and a layer are
-/// both set, it additionally records itself into the layer so the host's
-/// [`ImageLayer::emit`] paints the picture over the reserved cells.
+/// text when the terminal can't. [`Runner`](crate::Runner) supplies detected
+/// graphics support and a layer automatically. Custom hosts can attach them
+/// explicitly so [`ImageLayer::emit`] paints the picture over the reserved
+/// cells.
 pub struct Image {
     data: ImageData,
     cols: u16,
     rows: u16,
     alt: String,
-    support: ImageSupport,
+    support: Option<ImageSupport>,
     layer: Option<ImageLayer>,
 }
 
 impl Image {
-    /// An image occupying `cols × rows` cells. It renders as a text placeholder
-    /// until a graphics [`ImageSupport`] and an [`ImageLayer`] are attached with
-    /// [`support`](Self::support) and [`in_layer`](Self::in_layer).
+    /// An image occupying `cols × rows` cells. A [`Runner`](crate::Runner) host
+    /// renders it adaptively; a custom host can attach [`ImageSupport`] and an
+    /// [`ImageLayer`] with [`support`](Self::support) and
+    /// [`in_layer`](Self::in_layer).
     pub fn new(data: ImageData, cols: u16, rows: u16) -> Self {
         Self {
             data,
             cols,
             rows,
             alt: String::new(),
-            support: ImageSupport::None,
+            support: None,
             layer: None,
         }
     }
 
-    /// Set the graphics protocol to use (usually [`ImageSupport::detect`]).
+    /// Override the graphics protocol supplied by the render context.
     pub fn support(mut self, support: ImageSupport) -> Self {
-        self.support = support;
+        self.support = Some(support);
         self
     }
 
-    /// Register this image with a layer so it is emitted after the frame. Without
-    /// a layer the view only ever paints its fallback.
+    /// Override the image layer supplied by the render context.
     pub fn in_layer(mut self, layer: &ImageLayer) -> Self {
         self.layer = Some(layer.clone());
         self
     }
 
-    /// Text shown (dimmed) when the image can't be painted — a supportless
-    /// terminal, or before a layer is attached.
+    /// Text shown (dimmed) when the resolved graphics context cannot paint.
     pub fn alt(mut self, alt: impl Into<String>) -> Self {
         self.alt = alt.into();
         self
@@ -68,11 +68,17 @@ impl Image {
 
     /// Whether this image will be emitted through a graphics protocol (as
     /// opposed to falling back to text).
-    fn will_paint(&self) -> bool {
-        matches!(
-            self.support,
-            ImageSupport::Kitty | ImageSupport::ITerm2 | ImageSupport::Sixel
-        ) && self.layer.is_some()
+    fn graphics<'a>(&'a self, ctx: &'a RenderCtx<'_>) -> (ImageSupport, Option<&'a ImageLayer>) {
+        let inherited = ctx.image_graphics();
+        let support = self
+            .support
+            .or_else(|| inherited.map(|(support, _)| support))
+            .unwrap_or(ImageSupport::None);
+        let layer = self
+            .layer
+            .as_ref()
+            .or_else(|| inherited.map(|(_, layer)| layer));
+        (support, layer)
     }
 }
 
@@ -85,13 +91,14 @@ impl View for Image {
         if area.width == 0 || area.height == 0 {
             return;
         }
-        if self.will_paint() {
+        let (support, layer) = self.graphics(ctx);
+        if support != ImageSupport::None && layer.is_some() {
             // The graphics escape will cover these cells after the frame; keep
             // them blank so nothing shows through at the image's edges and the
             // ratatui diff over the region is stable.
             surface.fill(Style::default().bg(ctx.theme.background));
-            if let Some(layer) = &self.layer {
-                layer.record(area, self.data.clone(), self.support);
+            if let Some(layer) = layer {
+                layer.record(area, self.data.clone(), support);
             }
         } else {
             self.render_fallback(area, surface, ctx);
@@ -125,7 +132,7 @@ impl Image {
 mod tests {
     use super::*;
     use crate::style::Theme;
-    use crate::testing::render;
+    use crate::testing::{render, render_with_context};
     use crate::view::element;
 
     /// A tiny solid RGBA image: `w × h` pixels, all the same color.
@@ -190,5 +197,41 @@ mod tests {
             "fallback should show alt text"
         );
         assert!(layer.is_empty(), "fallback records no placement");
+    }
+
+    #[test]
+    fn image_uses_graphics_from_the_render_context() {
+        let theme = Theme::default();
+        let layer = ImageLayer::new();
+        let ctx = RenderCtx::new(&theme).with_image_graphics(ImageSupport::Kitty, &layer);
+        let image = Image::new(solid(2, 2, [0, 0, 0, 255]), 4, 2).alt("cat");
+
+        let buffer = render_with_context(&image, 4, 2, &ctx);
+
+        assert_eq!(layer.len(), 1);
+        assert!(
+            buffer.content().iter().all(|cell| cell.symbol() == " "),
+            "host graphics suppress the fallback"
+        );
+    }
+
+    #[test]
+    fn explicit_none_disables_host_graphics() {
+        let theme = Theme::default();
+        let layer = ImageLayer::new();
+        let ctx = RenderCtx::new(&theme).with_image_graphics(ImageSupport::Kitty, &layer);
+        let image = Image::new(solid(2, 2, [0, 0, 0, 255]), 20, 3)
+            .support(ImageSupport::None)
+            .alt("cat");
+
+        let buffer = render_with_context(&image, 20, 3, &ctx);
+        let text = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(text.contains("[image: cat]"));
+        assert!(layer.is_empty());
     }
 }

@@ -3,12 +3,15 @@
 //! [`Chart`] accepts one renderer-independent chart model. On a terminal with
 //! a graphics protocol it rasterizes smooth lines and filled bars into an image;
 //! everywhere else it renders the same axes, series, domains, and legend with
-//! terminal cells. Hosts select capabilities exactly as they do for
-//! [`tuika::components::Image`]: with [`tuika::term::image::ImageSupport`] and an optional
-//! [`tuika::term::image::ImageLayer`].
+//! terminal cells, using dense 2×2 quadrant glyphs for connected geometry and
+//! Braille subcells for scatter points. [`tuika::Runner`] supplies terminal
+//! graphics automatically; custom hosts can provide
+//! [`tuika::term::image::ImageSupport`] and an
+//! [`tuika::term::image::ImageLayer`] through [`tuika::RenderCtx`].
 
 use ratatui_core::layout::Rect;
 use ratatui_core::style::{Color, Style};
+use ratatui_core::symbols::pixel::QUADRANTS;
 use tuika::term::image::{ImageData, ImageLayer, ImageSupport};
 use tuika::{RenderCtx, Size, Surface, View};
 
@@ -129,13 +132,13 @@ pub enum RenderMode {
 
 /// An adaptive line, bar, area, scatter, or step chart view.
 ///
-/// <img src="https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-charts/examples/charts.png" alt="Adaptive chart portable renderer" width="880">
+/// <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/charts.png" alt="Adaptive chart portable renderer" width="880">
 pub struct Chart {
     title: String,
     series: Vec<Series>,
     x_domain: Option<Domain>,
     y_domain: Option<Domain>,
-    support: ImageSupport,
+    support: Option<ImageSupport>,
     layer: Option<ImageLayer>,
     legend: bool,
 }
@@ -148,7 +151,7 @@ impl Chart {
             series: Vec::new(),
             x_domain: None,
             y_domain: None,
-            support: ImageSupport::None,
+            support: None,
             layer: None,
             legend: true,
         }
@@ -184,25 +187,49 @@ impl Chart {
         self
     }
 
-    /// Select terminal graphics support, usually [`ImageSupport::detect`].
+    /// Override terminal graphics support supplied by the render context.
     pub fn support(mut self, support: ImageSupport) -> Self {
-        self.support = support;
+        self.support = Some(support);
         self
     }
 
-    /// Attach the image layer emitted by the host after each frame.
+    /// Override the image layer supplied by the render context.
     pub fn in_layer(mut self, layer: &ImageLayer) -> Self {
         self.layer = Some(layer.clone());
         self
     }
 
-    /// Resolve the adaptive rendering path.
+    /// Resolve the rendering path from explicit chart configuration only.
     pub fn render_mode(&self) -> RenderMode {
-        if self.layer.is_some() && self.support != ImageSupport::None {
+        if self.layer.is_some() && self.support.unwrap_or(ImageSupport::None) != ImageSupport::None
+        {
             RenderMode::Graphics
         } else {
             RenderMode::Cells
         }
+    }
+
+    /// Resolve the rendering path including graphics supplied by the host.
+    pub fn render_mode_in(&self, ctx: &RenderCtx<'_>) -> RenderMode {
+        let (support, layer) = self.graphics(ctx);
+        if layer.is_some() && support != ImageSupport::None {
+            RenderMode::Graphics
+        } else {
+            RenderMode::Cells
+        }
+    }
+
+    fn graphics<'a>(&'a self, ctx: &'a RenderCtx<'_>) -> (ImageSupport, Option<&'a ImageLayer>) {
+        let inherited = ctx.image_graphics();
+        let support = self
+            .support
+            .or_else(|| inherited.map(|(support, _)| support))
+            .unwrap_or(ImageSupport::None);
+        let layer = self
+            .layer
+            .as_ref()
+            .or_else(|| inherited.map(|(_, layer)| layer));
+        (support, layer)
     }
 }
 
@@ -225,7 +252,8 @@ impl View for Chart {
             render_empty(area, surface, ctx, &self.title);
             return;
         };
-        if self.render_mode() == RenderMode::Graphics {
+        let (support, layer) = self.graphics(ctx);
+        if self.render_mode_in(ctx) == RenderMode::Graphics {
             surface.fill(Style::default().bg(ctx.theme.background));
             if !self.title.is_empty() {
                 surface.set_string(area.x, area.y, &self.title, ctx.theme.accent_style());
@@ -233,11 +261,11 @@ impl View for Chart {
             render_legend(area, surface, self, ctx);
             let plot = plot_rect(area, self);
             let data = render_pixels(plot.width, plot.height, self, &model, ctx);
-            if let (Some(data), Some(layer)) = (data, &self.layer) {
+            if let (Some(data), Some(layer)) = (data, layer) {
                 // Image owns capability-gated placement; using it here keeps the
                 // same protocol lifecycle and fallback semantics as core images.
                 tuika::components::Image::new(data, plot.width, plot.height)
-                    .support(self.support)
+                    .support(support)
                     .in_layer(layer)
                     .render(plot, &mut surface.child(plot), ctx);
                 return;
@@ -275,7 +303,10 @@ impl PlotModel {
         if !xmin.is_finite() {
             return None;
         }
-        let x = chart.x_domain.unwrap_or_else(|| padded_domain(xmin, xmax));
+        let x = chart.x_domain.unwrap_or_else(|| {
+            let domain = padded_domain(xmin, xmax);
+            pad_automatic_bar_domain(chart, domain)
+        });
         let y = chart.y_domain.unwrap_or_else(|| padded_domain(ymin, ymax));
         Some(Self { x, y })
     }
@@ -290,6 +321,33 @@ impl PlotModel {
         let y = (height.saturating_sub(1) as f64 - normalized_y * height.saturating_sub(1) as f64)
             .round() as i32;
         (x, y)
+    }
+}
+
+fn pad_automatic_bar_domain(chart: &Chart, domain: Domain) -> Domain {
+    let mut positions = chart
+        .series
+        .iter()
+        .filter(|series| matches!(series.kind, SeriesKind::Bar))
+        .flat_map(|series| series.points.iter())
+        .filter(|point| point.x.is_finite() && point.y.is_finite())
+        .map(|point| point.x)
+        .collect::<Vec<_>>();
+    positions.sort_by(f64::total_cmp);
+    positions.dedup();
+    let spacing = positions
+        .windows(2)
+        .map(|pair| pair[1] - pair[0])
+        .filter(|spacing| spacing.is_finite() && *spacing > 0.0)
+        .min_by(f64::total_cmp);
+    let Some(pad) = spacing.map(|spacing| spacing / 2.0) else {
+        return domain;
+    };
+    let (min, max) = (domain.min - pad, domain.max + pad);
+    if min.is_finite() && max.is_finite() {
+        Domain { min, max }
+    } else {
+        domain
     }
 }
 
@@ -366,31 +424,56 @@ fn render_cells(
         return;
     }
     for (index, series) in chart.series.iter().enumerate() {
-        let style = Style::default().fg(chart_color(series, index, ctx));
-        let mapped: Vec<_> = series
-            .points
-            .iter()
-            .copied()
-            .filter(|p| p.x.is_finite() && p.y.is_finite())
-            .map(|p| model.map(p, data_width, data_height))
-            .collect();
-        let baseline = model
-            .map(Point::new(model.x.min, 0.0), data_width, data_height)
-            .1
-            .clamp(0, data_height as i32);
+        let color = chart_color(series, index, ctx);
+        let style = Style::default().fg(color);
         match series.kind {
-            SeriesKind::Line => draw_cell_polyline(surface, plot, &mapped, style, false),
-            SeriesKind::Step => draw_cell_polyline(surface, plot, &mapped, style, true),
-            SeriesKind::Area => {
-                draw_cell_area(surface, plot, &mapped, baseline, style);
-                draw_cell_polyline(surface, plot, &mapped, style, false);
+            SeriesKind::Line | SeriesKind::Step => {
+                let mapped = map_finite_points(
+                    series,
+                    model,
+                    data_width.saturating_mul(2),
+                    data_height.saturating_mul(2),
+                );
+                let mut quadrants = QuadrantGrid::new(data_width, data_height);
+                draw_quadrant_polyline(
+                    &mut quadrants,
+                    &mapped,
+                    matches!(series.kind, SeriesKind::Step),
+                );
+                quadrants.render(surface, plot, style);
             }
             SeriesKind::Scatter => {
+                let mapped = map_finite_points(
+                    series,
+                    model,
+                    data_width.saturating_mul(2),
+                    data_height.saturating_mul(4),
+                );
+                let mut braille = BrailleGrid::new(data_width, data_height);
                 for (x, y) in mapped {
-                    set_plot(surface, plot, x, y, '●', style);
+                    braille.set(x, y);
                 }
+                braille.render(surface, plot, style);
+            }
+            SeriesKind::Area => {
+                let edge = map_finite_points(
+                    series,
+                    model,
+                    data_width.saturating_mul(2),
+                    data_height.saturating_mul(2),
+                );
+                let baseline = cell_baseline(
+                    model,
+                    data_width.saturating_mul(2),
+                    data_height.saturating_mul(2),
+                );
+                let mut quadrants = QuadrantGrid::new(data_width, data_height);
+                draw_quadrant_area(&mut quadrants, &edge, baseline);
+                quadrants.render(surface, plot, style);
             }
             SeriesKind::Bar => {
+                let mapped = map_finite_points(series, model, data_width, data_height);
+                let baseline = cell_baseline(model, data_width, data_height);
                 for (x, y) in mapped {
                     for row in y.min(baseline)..=y.max(baseline) {
                         set_plot(surface, plot, x, row, '█', style);
@@ -400,6 +483,28 @@ fn render_cells(
         }
     }
     render_legend(area, surface, chart, ctx);
+}
+
+fn map_finite_points(
+    series: &Series,
+    model: &PlotModel,
+    width: u32,
+    height: u32,
+) -> Vec<(i32, i32)> {
+    series
+        .points
+        .iter()
+        .copied()
+        .filter(|point| point.x.is_finite() && point.y.is_finite())
+        .map(|point| model.map(point, width, height))
+        .collect()
+}
+
+fn cell_baseline(model: &PlotModel, width: u32, height: u32) -> i32 {
+    model
+        .map(Point::new(model.x.min, 0.0), width, height)
+        .1
+        .clamp(0, height as i32)
 }
 
 fn set_plot(surface: &mut Surface, plot: Rect, x: i32, y: i32, ch: char, style: Style) {
@@ -412,55 +517,121 @@ fn set_plot(surface: &mut Surface, plot: Rect, x: i32, y: i32, ch: char, style: 
     }
 }
 
-fn draw_cell_line(
-    surface: &mut Surface,
-    plot: Rect,
-    from: (i32, i32),
-    to: (i32, i32),
-    style: Style,
-) {
-    draw_line(from, to, |x, y| set_plot(surface, plot, x, y, '•', style));
-}
-
-fn draw_cell_area(
-    surface: &mut Surface,
-    plot: Rect,
-    points: &[(i32, i32)],
-    baseline: i32,
-    style: Style,
-) {
+fn draw_quadrant_area(grid: &mut QuadrantGrid, points: &[(i32, i32)], baseline: i32) {
     for pair in points.windows(2) {
         draw_line(pair[0], pair[1], |x, y| {
             for row in y.min(baseline)..=y.max(baseline) {
-                set_plot(surface, plot, x, row, '▒', style);
+                grid.set(x, row);
             }
         });
     }
     if let Some(&(x, y)) = points.first() {
         for row in y.min(baseline)..=y.max(baseline) {
-            set_plot(surface, plot, x, row, '▒', style);
+            grid.set(x, row);
         }
     }
 }
 
-fn draw_cell_polyline(
-    surface: &mut Surface,
-    plot: Rect,
-    points: &[(i32, i32)],
-    style: Style,
-    stepped: bool,
-) {
+struct BrailleGrid {
+    cols: u32,
+    rows: u32,
+    masks: Vec<u8>,
+}
+
+impl BrailleGrid {
+    fn new(cols: u32, rows: u32) -> Self {
+        Self {
+            cols,
+            rows,
+            masks: vec![0; (cols as usize).saturating_mul(rows as usize)],
+        }
+    }
+
+    fn set(&mut self, x: i32, y: i32) {
+        if x < 0 || y < 0 || x >= (self.cols * 2) as i32 || y >= (self.rows * 4) as i32 {
+            return;
+        }
+        const DOTS: [[u8; 2]; 4] = [
+            [0b0000_0001, 0b0000_1000],
+            [0b0000_0010, 0b0001_0000],
+            [0b0000_0100, 0b0010_0000],
+            [0b0100_0000, 0b1000_0000],
+        ];
+        let cell_x = x as u32 / 2;
+        let cell_y = y as u32 / 4;
+        let index = (cell_y * self.cols + cell_x) as usize;
+        self.masks[index] |= DOTS[y as usize % 4][x as usize % 2];
+    }
+
+    fn render(self, surface: &mut Surface, plot: Rect, style: Style) {
+        for (index, mask) in self.masks.into_iter().enumerate() {
+            if mask == 0 {
+                continue;
+            }
+            let x = index as u32 % self.cols;
+            let y = index as u32 / self.cols;
+            let glyph = char::from_u32(0x2800 + u32::from(mask)).expect("valid Braille mask");
+            set_plot(surface, plot, x as i32, y as i32, glyph, style);
+        }
+    }
+}
+
+struct QuadrantGrid {
+    cols: u32,
+    rows: u32,
+    masks: Vec<u8>,
+}
+
+impl QuadrantGrid {
+    fn new(cols: u32, rows: u32) -> Self {
+        Self {
+            cols,
+            rows,
+            masks: vec![0; (cols as usize).saturating_mul(rows as usize)],
+        }
+    }
+
+    fn set(&mut self, x: i32, y: i32) {
+        if x < 0 || y < 0 || x >= (self.cols * 2) as i32 || y >= (self.rows * 2) as i32 {
+            return;
+        }
+        let cell_x = x as u32 / 2;
+        let cell_y = y as u32 / 2;
+        let index = (cell_y * self.cols + cell_x) as usize;
+        self.masks[index] |= 1 << ((x as usize % 2) + 2 * (y as usize % 2));
+    }
+
+    fn render(self, surface: &mut Surface, plot: Rect, style: Style) {
+        for (index, mask) in self.masks.into_iter().enumerate() {
+            if mask == 0 {
+                continue;
+            }
+            let x = index as u32 % self.cols;
+            let y = index as u32 / self.cols;
+            set_plot(
+                surface,
+                plot,
+                x as i32,
+                y as i32,
+                QUADRANTS[mask as usize],
+                style,
+            );
+        }
+    }
+}
+
+fn draw_quadrant_polyline(grid: &mut QuadrantGrid, points: &[(i32, i32)], stepped: bool) {
     for pair in points.windows(2) {
         if stepped {
             let corner = (pair[1].0, pair[0].1);
-            draw_cell_line(surface, plot, pair[0], corner, style);
-            draw_cell_line(surface, plot, corner, pair[1], style);
+            draw_line(pair[0], corner, |x, y| grid.set(x, y));
+            draw_line(corner, pair[1], |x, y| grid.set(x, y));
         } else {
-            draw_cell_line(surface, plot, pair[0], pair[1], style);
+            draw_line(pair[0], pair[1], |x, y| grid.set(x, y));
         }
     }
     for &(x, y) in points {
-        set_plot(surface, plot, x, y, '•', style);
+        grid.set(x, y);
     }
 }
 
@@ -498,10 +669,8 @@ fn render_pixels(
         return None;
     }
     let background = rgb(ctx.theme.background);
-    let mut rgba = vec![0; usize::try_from(width.checked_mul(height)?.checked_mul(4)?).ok()?];
-    for pixel in rgba.chunks_exact_mut(4) {
-        pixel.copy_from_slice(&[background.0, background.1, background.2, 255]);
-    }
+    let pixels = usize::try_from(width.checked_mul(height)?).ok()?;
+    let mut rgba = [background.0, background.1, background.2, 255].repeat(pixels);
     let top = 4;
     let left = PIXELS_PER_COL;
     let plot_width = width.saturating_sub(left + 4);
@@ -693,6 +862,14 @@ mod tests {
     use ratatui_core::buffer::Buffer;
     use tuika::Theme;
 
+    fn is_braille(ch: char) -> bool {
+        ('\u{2801}'..='\u{28ff}').contains(&ch)
+    }
+
+    fn is_quadrant(ch: char) -> bool {
+        ratatui_core::symbols::pixel::QUADRANTS[1..].contains(&ch)
+    }
+
     fn sample() -> Chart {
         Chart::new()
             .title("Traffic")
@@ -739,6 +916,19 @@ mod tests {
     }
 
     #[test]
+    fn chart_uses_graphics_from_the_render_context() {
+        let theme = Theme::default();
+        let layer = ImageLayer::new();
+        let ctx = RenderCtx::new(&theme).with_image_graphics(ImageSupport::Kitty, &layer);
+        let chart = sample();
+
+        assert_eq!(chart.render_mode(), RenderMode::Cells);
+        assert_eq!(chart.render_mode_in(&ctx), RenderMode::Graphics);
+        tuika::testing::render_with_context(&chart, 40, 12, &ctx);
+        assert_eq!(layer.len(), 1);
+    }
+
+    #[test]
     fn cell_renderer_draws_title_axes_series_and_legend() {
         let area = Rect::new(0, 0, 32, 10);
         let mut buffer = Buffer::empty(area);
@@ -757,9 +947,43 @@ mod tests {
             .join("\n");
         assert!(grid.contains("Traffic"));
         assert!(grid.contains('└'));
-        assert!(grid.contains('•'));
+        assert!(grid.chars().any(is_quadrant));
         assert!(grid.contains('█'));
         assert!(grid.contains("requests"));
+    }
+
+    #[test]
+    fn cell_lines_use_dense_quadrant_subcells() {
+        let area = Rect::new(0, 0, 10, 6);
+        let mut buffer = Buffer::empty(area);
+        Chart::new()
+            .legend(false)
+            .x_domain(Domain::new(0.0, 1.0).unwrap())
+            .y_domain(Domain::new(0.0, 1.0).unwrap())
+            .series(Series::line(
+                "line",
+                [Point::new(0.0, 0.0), Point::new(1.0, 1.0)],
+            ))
+            .render(
+                area,
+                &mut Surface::new(&mut buffer, area),
+                &RenderCtx::new(&Theme::default()),
+            );
+
+        assert!(
+            buffer
+                .content
+                .iter()
+                .any(|cell| cell.symbol().chars().next().is_some_and(is_quadrant)),
+            "portable lines should use dense quadrant subcells"
+        );
+        assert!(
+            !buffer
+                .content
+                .iter()
+                .any(|cell| cell.symbol().chars().next().is_some_and(is_braille)),
+            "connected lines should not expose separated Braille dots"
+        );
     }
 
     #[test]
@@ -792,14 +1016,14 @@ mod tests {
         let cases = [
             (
                 Series::area("area", [Point::new(0.0, 1.0), Point::new(1.0, 3.0)]),
-                '▒',
+                false,
             ),
             (
                 Series::scatter("scatter", [Point::new(0.0, 1.0), Point::new(1.0, 3.0)]),
-                '●',
+                true,
             ),
         ];
-        for (series, expected) in cases {
+        for (series, expected_braille) in cases {
             let area = Rect::new(0, 0, 24, 8);
             let mut buffer = Buffer::empty(area);
             Chart::new().series(series).render(
@@ -807,13 +1031,59 @@ mod tests {
                 &mut Surface::new(&mut buffer, area),
                 &RenderCtx::new(&Theme::default()),
             );
+            let has_braille = buffer
+                .content
+                .iter()
+                .any(|cell| cell.symbol().chars().next().is_some_and(is_braille));
+            assert_eq!(has_braille, expected_braille);
             assert!(
                 buffer
                     .content
                     .iter()
-                    .any(|cell| cell.symbol() == expected.to_string())
+                    .any(|cell| cell
+                        .symbol()
+                        .chars()
+                        .next()
+                        .is_some_and(if expected_braille {
+                            is_braille
+                        } else {
+                            is_quadrant
+                        }))
             );
         }
+    }
+
+    #[test]
+    fn quadrant_area_stops_at_the_edge_subcell() {
+        let mut grid = QuadrantGrid::new(1, 2);
+        draw_quadrant_area(&mut grid, &[(0, 1), (1, 1)], 3);
+        assert_eq!(
+            grid.masks,
+            [0b1100, 0b1111],
+            "fill should include every subcell below the edge and none above it"
+        );
+    }
+
+    #[test]
+    fn braille_grid_packs_all_eight_subcells() {
+        let mut grid = BrailleGrid::new(1, 1);
+        for y in 0..4 {
+            for x in 0..2 {
+                grid.set(x, y);
+            }
+        }
+        assert_eq!(grid.masks, [u8::MAX]);
+    }
+
+    #[test]
+    fn quadrant_grid_packs_all_four_subcells() {
+        let mut grid = QuadrantGrid::new(1, 1);
+        for y in 0..2 {
+            for x in 0..2 {
+                grid.set(x, y);
+            }
+        }
+        assert_eq!(grid.masks, [0b1111]);
     }
 
     #[test]
@@ -832,7 +1102,15 @@ mod tests {
                 &RenderCtx::new(&Theme::default()),
             );
         assert!(
-            (5..10).any(|x| (0..area.height).any(|y| buffer[(x, y)].symbol() == "▒")),
+            (5..10).any(|x| {
+                (0..area.height).any(|y| {
+                    buffer[(x, y)]
+                        .symbol()
+                        .chars()
+                        .next()
+                        .is_some_and(is_quadrant)
+                })
+            }),
             "area must fill between data points rather than draw isolated columns"
         );
     }
@@ -865,7 +1143,10 @@ mod tests {
                 "
 ",
             );
-        assert!(grid.lines().any(|line| line.matches('•').count() >= 5));
+        assert!(
+            grid.lines()
+                .any(|line| line.chars().filter(|&ch| is_quadrant(ch)).count() >= 5)
+        );
     }
 
     #[test]
@@ -986,5 +1267,32 @@ mod tests {
         let model = PlotModel::new(&chart).unwrap();
         assert!(model.x.min < model.x.max);
         assert!(model.y.min < model.y.max);
+    }
+
+    #[test]
+    fn automatic_bar_domain_reserves_half_an_interval_at_each_edge() {
+        let chart = Chart::new().series(Series::bar(
+            "bars",
+            [
+                Point::new(0.0, 1.0),
+                Point::new(1.0, 2.0),
+                Point::new(2.0, 3.0),
+            ],
+        ));
+        let model = PlotModel::new(&chart).unwrap();
+        assert_eq!(
+            model.x,
+            Domain {
+                min: -0.5,
+                max: 2.5
+            }
+        );
+
+        let explicit = chart.x_domain(Domain::new(0.0, 2.0).unwrap());
+        assert_eq!(
+            PlotModel::new(&explicit).unwrap().x,
+            Domain { min: 0.0, max: 2.0 },
+            "explicit bounds remain exact clipping bounds"
+        );
     }
 }

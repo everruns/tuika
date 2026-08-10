@@ -9,7 +9,6 @@
 //! ```text
 //! cargo run --example screenshot            # writes docs/hero.svg
 //! cargo run --example screenshot -- out.svg # custom path
-//! cargo run --example screenshot -- --dump  # print one frame as text
 //! cargo run --example screenshot -- run     # animate it in a real terminal
 //! cargo run --example screenshot -- run gruvbox-dark  # …in a bundled theme
 //! cargo run --example screenshot -- bg gruvbox-dark   # print its background hex

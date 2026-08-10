@@ -2299,6 +2299,7 @@ dependencies = [
 name = "tuika-charts"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "ratatui",
  "ratatui-core",
  "tuika",

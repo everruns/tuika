@@ -64,6 +64,3 @@ limit and server-error injection turned on.
 [`examples/codex/`](../examples/codex) · `cargo run --example codex`
 
 <img src="../examples/codex/codex.gif" width="880" alt="The codex example, a replica of the Codex CLI built on tuika: a slash-command popup filtering as it is typed, an @-file picker completing a path in the composer, then a scripted turn — streamed reasoning, an approval prompt for a destructive command answered from the keyboard, command output, and a streamed markdown answer.">
-
-`cargo run --example codex -- --dump` prints the same screens as text, for a
-look without a terminal.

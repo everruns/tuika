@@ -1,11 +1,14 @@
 //! Small full-screen run loops.
 //!
 //! Both runners tie the same host primitives together — [`TerminalSession`] for
-//! the screen, [`translate_event`] for input, [`paint`] for the frame — so a
+//! the screen, [`translate_event`] for input, [`crate::paint`] for the frame — so a
 //! host that wants lifecycle, redraw scheduling, and event translation in one
 //! place does not have to assemble them itself. Either [`ScreenMode`] works:
 //! pick one in [`RunnerConfig::screen_mode`] and the loop reserves, keeps, and
 //! releases a split footer for you.
+//! On real terminals they also detect image support, supply a per-frame image
+//! layer through [`RenderCtx`], emit it after the cell frame, and bound resize
+//! redraws to one frame every 16 ms.
 //!
 //! [`Runner`] is the synchronous loop and is always available. [`AsyncRunner`]
 //! (`feature = "async"`) is the same loop for hosts already on Tokio; it lives
@@ -18,7 +21,7 @@
 //! [`Application`] and run through [`Runner::run_app`]. The original
 //! state/view/update closure API remains available for owned [`Element`] trees.
 //!
-//! A host with its own event loop needs neither: call [`paint`] directly.
+//! A host with its own event loop needs neither: call [`crate::paint`] directly.
 
 #[cfg(feature = "async")]
 mod asynchronous;
@@ -26,9 +29,9 @@ mod asynchronous;
 #[cfg(feature = "async")]
 pub use asynchronous::AsyncRunner;
 
-use std::io;
+use std::io::{self, Write};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event;
 use ratatui_core::backend::Backend;
@@ -37,10 +40,61 @@ use ratatui_crossterm::CrosstermBackend;
 
 use crate::live::RedrawHandle;
 use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
+use crate::term::image::{ImageLayer, ImageSupport};
 use crate::{
-    Clock, Element, Event, ScopedElement, SystemClock, TerminalSession, Theme, View, paint,
-    translate_event,
+    Clock, Element, Event, RenderCtx, ScopedElement, SystemClock, TerminalSession, Theme, View,
+    paint_with_context, translate_event,
 };
+
+const RESIZE_FRAME_INTERVAL: Duration = Duration::from_millis(16);
+
+fn resize_redraw_at(last_frame: Instant, now: Instant) -> Instant {
+    last_frame
+        .checked_add(RESIZE_FRAME_INTERVAL)
+        .map_or(now, |deadline| deadline.max(now))
+}
+
+fn schedule_redraw(deadline: &mut Option<Instant>, at: Instant) {
+    *deadline = Some(deadline.map_or(at, |current| current.min(at)));
+}
+
+struct FrameGraphics {
+    support: ImageSupport,
+    layer: ImageLayer,
+}
+
+impl FrameGraphics {
+    fn detected() -> Self {
+        Self {
+            support: ImageSupport::detect(),
+            layer: ImageLayer::new(),
+        }
+    }
+
+    fn render_context<'a>(&'a self, theme: &'a Theme) -> RenderCtx<'a> {
+        RenderCtx::new(theme).with_image_graphics(self.support, &self.layer)
+    }
+
+    fn finish_frame(&self) -> io::Result<()> {
+        let mut output = io::stdout();
+        self.finish_frame_to(&mut output)
+    }
+
+    fn finish_frame_to(&self, output: &mut impl Write) -> io::Result<()> {
+        self.layer.emit(output)?;
+        output.flush()?;
+        self.layer.clear();
+        Ok(())
+    }
+}
+
+struct FrameGraphicsCleanup<'a>(&'a FrameGraphics);
+
+impl Drop for FrameGraphicsCleanup<'_> {
+    fn drop(&mut self) {
+        let _ = self.0.finish_frame();
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 /// Options for [`Runner`] and [`AsyncRunner`].
@@ -242,17 +296,28 @@ impl Runner {
     /// The runner paints once initially. It then delivers input and periodic
     /// [`Signal::Tick`] values to `update`, repainting only when `update`
     /// returns [`UpdateResult::Dirty`] or a [`RedrawHandle`] requests it.
-    pub fn run<S, V, U>(&self, theme: &Theme, state: &mut S, view: V, update: U) -> io::Result<()>
+    pub fn run<S, V, U>(
+        &self,
+        theme: &Theme,
+        state: &mut S,
+        mut view: V,
+        update: U,
+    ) -> io::Result<()>
     where
         V: FnMut(&S, u64) -> Element,
         U: FnMut(&mut S, Signal) -> UpdateResult,
     {
-        self.run_with_backend(
+        let graphics = FrameGraphics::detected();
+        self.run_with_backend_inner(
             theme,
             CrosstermBackend::new(io::stdout()),
             state,
-            view,
+            |state, frame, paint_root| {
+                let root = view(state, frame);
+                paint_root(root.as_ref());
+            },
             update,
+            Some(&graphics),
         )
     }
 
@@ -261,7 +326,18 @@ impl Runner {
     /// This is the borrowed-view counterpart to [`run`](Self::run). It uses the
     /// same terminal lifecycle, scheduling, redraw, and split-footer behavior.
     pub fn run_app<A: Application>(&self, theme: &Theme, app: &mut A) -> io::Result<()> {
-        self.run_app_with_backend(theme, CrosstermBackend::new(io::stdout()), app)
+        let graphics = FrameGraphics::detected();
+        self.run_with_backend_inner(
+            theme,
+            CrosstermBackend::new(io::stdout()),
+            app,
+            |app, frame, paint_root| {
+                let root = app.view(frame);
+                paint_root(root.as_ref());
+            },
+            Application::update,
+            Some(&graphics),
+        )
     }
 
     /// Run with a caller-provided backend, such as
@@ -288,6 +364,7 @@ impl Runner {
                 paint_root(root.as_ref());
             },
             update,
+            None,
         )
     }
 
@@ -311,6 +388,7 @@ impl Runner {
                 paint_root(root.as_ref());
             },
             Application::update,
+            None,
         )
     }
 
@@ -321,6 +399,7 @@ impl Runner {
         state: &mut S,
         mut view: V,
         mut update: U,
+        graphics: Option<&FrameGraphics>,
     ) -> io::Result<()>
     where
         B: Backend<Error = io::Error>,
@@ -340,6 +419,9 @@ impl Runner {
                 viewport: mode.viewport(),
             },
         )?;
+        // Declared after the session so cleanup runs first on every exit path,
+        // while placements still belong to the screen on which they were made.
+        let _graphics_cleanup = graphics.map(FrameGraphicsCleanup);
         let mut core = RunnerCore::new();
         let mut last_tick = self.clock.now();
 
@@ -347,53 +429,77 @@ impl Runner {
             pin_footer(&mut terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
-            draw(&mut terminal, theme, &mut view, state, frame)?;
+            draw(&mut terminal, theme, &mut view, state, frame, graphics)?;
         }
+        let mut last_frame = self.clock.now();
+        let mut redraw_at = None;
 
         'running: loop {
+            let now = self.clock.now();
             if self.redraw.take() {
                 core.request_redraw();
+                schedule_redraw(&mut redraw_at, now);
             }
             if split {
                 // Publishing scrolls the terminal and may clear the viewport,
                 // so a committed block always makes the footer dirty.
                 if self.scrollback.flush(&mut terminal, theme)? {
                     core.request_redraw();
+                    schedule_redraw(&mut redraw_at, now);
                 }
             } else {
                 self.scrollback.clear();
             }
 
-            let now = self.clock.now();
             if now.saturating_duration_since(last_tick) >= self.config.tick_rate {
                 last_tick = now;
-                core.apply(update(state, Signal::Tick));
+                let result = update(state, Signal::Tick);
+                core.apply(result);
                 if core.is_exited() {
                     break;
                 }
+                if result == UpdateResult::Dirty {
+                    schedule_redraw(&mut redraw_at, now);
+                }
             }
 
-            if let RunnerAction::Render(frame) = core.next_action() {
-                if split {
-                    terminal.autoresize()?;
-                    pin_footer(&mut terminal)?;
+            if redraw_at.is_some_and(|deadline| deadline <= now) {
+                if let RunnerAction::Render(frame) = core.next_action() {
+                    if split {
+                        terminal.autoresize()?;
+                        pin_footer(&mut terminal)?;
+                    }
+                    draw(&mut terminal, theme, &mut view, state, frame, graphics)?;
+                    last_frame = self.clock.now();
                 }
-                draw(&mut terminal, theme, &mut view, state, frame)?;
+                redraw_at = None;
             }
 
             let elapsed = self.clock.now().saturating_duration_since(last_tick);
-            let timeout = self.config.tick_rate.saturating_sub(elapsed);
+            let tick_timeout = self.config.tick_rate.saturating_sub(elapsed);
+            let redraw_timeout = redraw_at.map_or(tick_timeout, |deadline| {
+                deadline.saturating_duration_since(self.clock.now())
+            });
+            let timeout = tick_timeout.min(redraw_timeout);
             if event::poll(timeout)?
                 && let Some(event) = translate_event(event::read()?)
             {
                 let signal = Signal::Event(event);
                 let requires_redraw = signal.requires_redraw();
-                core.apply(update(state, signal));
+                let result = update(state, signal);
+                core.apply(result);
                 if core.is_exited() {
                     break 'running;
                 }
-                if requires_redraw {
+                if requires_redraw || result == UpdateResult::Dirty {
                     core.request_redraw();
+                    let now = self.clock.now();
+                    let deadline = if requires_redraw {
+                        resize_redraw_at(last_frame, now)
+                    } else {
+                        now
+                    };
+                    schedule_redraw(&mut redraw_at, deadline);
                 }
             }
         }
@@ -412,23 +518,28 @@ impl Runner {
 }
 
 /// Paint one numbered frame from immutable state.
-fn draw<S, B, V, Er>(
+fn draw<S, B, V>(
     terminal: &mut Terminal<B>,
     theme: &Theme,
     view: &mut V,
     state: &S,
     frame: u64,
-) -> Result<(), Er>
+    graphics: Option<&FrameGraphics>,
+) -> io::Result<()>
 where
-    B: Backend<Error = Er>,
+    B: Backend<Error = io::Error>,
     V: FnMut(&S, u64, &mut dyn FnMut(&dyn View)),
 {
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
+        let ctx = graphics.map_or_else(|| RenderCtx::new(theme), |g| g.render_context(theme));
         view(state, frame, &mut |root| {
-            paint(terminal_frame.buffer_mut(), area, theme, root, &[]);
+            paint_with_context(terminal_frame.buffer_mut(), area, &ctx, root, &[]);
         });
     })?;
+    if let Some(graphics) = graphics {
+        graphics.finish_frame()?;
+    }
     Ok(())
 }
 
@@ -461,6 +572,39 @@ mod tests {
         let now = Instant::now();
         let runner = Runner::with_clock(RunnerConfig::default(), FixedClock(now));
         assert_eq!(runner.clock.now(), now);
+    }
+
+    #[test]
+    fn resize_redraws_are_limited_to_one_frame_interval() {
+        let last_frame = Instant::now();
+        let during_frame = last_frame + Duration::from_millis(4);
+        let after_frame = last_frame + Duration::from_millis(20);
+
+        assert_eq!(
+            resize_redraw_at(last_frame, during_frame),
+            last_frame + RESIZE_FRAME_INTERVAL
+        );
+        assert_eq!(resize_redraw_at(last_frame, after_frame), after_frame);
+    }
+
+    #[test]
+    fn finishing_a_graphics_frame_emits_and_clears_placements() {
+        let graphics = FrameGraphics {
+            support: ImageSupport::Kitty,
+            layer: ImageLayer::new(),
+        };
+        let data = crate::term::image::ImageData::from_rgba(1, 1, vec![1, 2, 3, 255]).unwrap();
+        graphics.layer.record(
+            ratatui_core::layout::Rect::new(2, 3, 4, 5),
+            data,
+            graphics.support,
+        );
+        let mut output = Vec::new();
+
+        graphics.finish_frame_to(&mut output).unwrap();
+
+        assert!(!output.is_empty());
+        assert!(graphics.layer.is_empty());
     }
 
     #[test]

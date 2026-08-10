@@ -10,7 +10,6 @@
 //! ```text
 //! cargo run --example styling -- run          # cycle sheets, full-screen
 //! cargo run --example styling -- run vivid    # hold one sheet
-//! cargo run --example styling -- --dump vivid # print one frame as text
 //! cargo run --example styling -- bg           # print the background hex
 //! ```
 //!
@@ -121,9 +120,7 @@ fn main() -> io::Result<()> {
         return run_interactive(&theme, held.as_deref());
     }
 
-    eprintln!(
-        "usage: styling (run [variant] | --dump [variant] | bg)\nvariants: default, vivid, mono"
-    );
+    eprintln!("usage: styling (run [variant] | bg)\nvariants: default, vivid, mono");
     Ok(())
 }
 

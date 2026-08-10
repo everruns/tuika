@@ -125,6 +125,7 @@ fn resolve_axis(known: Option<u16>, available: AvailableSpace, measured: u16) ->
     })
 }
 use super::surface::Surface;
+use crate::term::image::{ImageLayer, ImageSupport};
 
 /// Context threaded to every [`View::measure`] and [`View::render`] call.
 pub struct RenderCtx<'a> {
@@ -139,6 +140,8 @@ pub struct RenderCtx<'a> {
     /// Optional host policy for built-in and application-defined semantic
     /// styles. Resolver results overlay the active stylesheet.
     style_resolver: Option<&'a dyn StyleResolver>,
+    /// Graphics protocol and per-frame placement collector supplied by a host.
+    image_graphics: Option<(ImageSupport, &'a ImageLayer)>,
     /// Whether the focused component of the frame is this one. Containers pass
     /// this down unchanged; focus-aware leaves use it to highlight borders.
     pub focused: bool,
@@ -151,6 +154,7 @@ impl<'a> RenderCtx<'a> {
             theme,
             sheet: StyleSheet::from_theme(theme),
             style_resolver: None,
+            image_graphics: None,
             focused: false,
         }
     }
@@ -165,6 +169,22 @@ impl<'a> RenderCtx<'a> {
     pub fn with_style_resolver(mut self, resolver: &'a dyn StyleResolver) -> Self {
         self.style_resolver = Some(resolver);
         self
+    }
+
+    /// Install the graphics protocol and placement layer for this frame.
+    ///
+    /// [`Runner`](crate::Runner) supplies this automatically on a real
+    /// terminal. Custom hosts can use it with
+    /// [`paint_with_context`](crate::paint_with_context), then emit and clear
+    /// the layer after flushing the cell frame.
+    pub fn with_image_graphics(mut self, support: ImageSupport, layer: &'a ImageLayer) -> Self {
+        self.image_graphics = Some((support, layer));
+        self
+    }
+
+    /// Graphics protocol and placement layer supplied by the current host.
+    pub fn image_graphics(&self) -> Option<(ImageSupport, &'a ImageLayer)> {
+        self.image_graphics
     }
 
     /// Resolve a semantic style from the stylesheet and optional host policy.
@@ -191,6 +211,7 @@ impl<'a> RenderCtx<'a> {
             theme: self.theme,
             sheet: self.sheet,
             style_resolver: self.style_resolver,
+            image_graphics: self.image_graphics,
             focused,
         }
     }

@@ -27,8 +27,6 @@
 //!
 //! ```text
 //! cargo run --example codex                 # interactive
-//! cargo run --example codex -- --dump       # print canned frames as text
-//! cargo run --example codex -- --dump slash # just one of them
 //! ```
 //!
 //! Try: `why does the snapshot test fail?`, `clean up the build artifacts`
@@ -74,8 +72,7 @@ fn main() -> io::Result<()> {
             println!("Not the Codex CLI; not affiliated with OpenAI. The agent is scripted:");
             println!("no model, no network, no shell.");
             println!();
-            println!("usage: cargo run --example codex [-- --split-footer | --dump [scene]]");
-            println!("scenes: welcome, turn, approval, slash, mention, status");
+            println!("usage: cargo run --example codex [-- --split-footer]");
             Ok(())
         }
         Some("--dump") => ui::dump(args.get(1).map(String::as_str)),

@@ -168,7 +168,7 @@ tuika's own suite covers more:
   `crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif`; regenerate it
   with `scripts/gen-mermaid-demo.sh`.
   `tuika-charts` has one portable-renderer screenshot at
-  `crates/tuika-charts/examples/charts.png`, embedded by its README, the public
+  `docs/charts.png`, embedded by its README, the public
   chart guide, and `Chart` rustdoc. Regenerate it with
   `scripts/gen-chart-demo.sh`; the graphics path is terminal-dependent and is
   exercised by running the same example in a supported terminal.
