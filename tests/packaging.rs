@@ -229,9 +229,24 @@ fn charts_ships_source_and_readme_without_repository_demo() {
     assert!(has("src/lib.rs"), "library source must ship");
     assert!(has("examples/charts.rs"), "runnable example must ship");
     assert!(
-        !has("examples/charts.png"),
-        "repository-hosted README demo must not ship"
+        !files.iter().any(|path| path.starts_with("docs/charts/")),
+        "repository-hosted chart demos must not ship"
     );
     assert!(has("Cargo.toml"), "manifest must ship");
     assert!(has("README.md"), "README must ship");
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    for kind in ["line", "area", "bar", "scatter", "step"] {
+        for renderer in ["cells", "graphics"] {
+            let path = root.join(format!("docs/charts/{kind}-{renderer}.png"));
+            let metadata = path
+                .metadata()
+                .unwrap_or_else(|_| panic!("missing generated chart demo: {}", path.display()));
+            assert!(
+                metadata.len() > 0,
+                "generated chart demo is empty: {}",
+                path.display()
+            );
+        }
+    }
 }

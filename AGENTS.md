@@ -167,11 +167,12 @@ tuika's own suite covers more:
   The `tuika-mermaid` integration recording follows the same pattern at
   `crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif`; regenerate it
   with `scripts/gen-mermaid-demo.sh`.
-  `tuika-charts` has one portable-renderer screenshot at
-  `docs/charts.png`, embedded by its README, the public
-  chart guide, and `Chart` rustdoc. Regenerate it with
-  `scripts/gen-chart-demo.sh`; the graphics path is terminal-dependent and is
-  exercised by running the same example in a supported terminal.
+  `tuika-charts` has paired portable-cell and terminal-graphics screenshots for
+  every series kind under `docs/charts/`, embedded by its README, the public
+  chart guide, and `Chart` rustdoc. Regenerate them with
+  `scripts/gen-chart-demo.sh`. The graphics pass builds the pinned Everruns VHS
+  fork under `target/` with its Ghostty renderer and requires Go 1.26,
+  pkg-config, and Zig 0.15.2 in addition to VHS's normal dependencies.
 
   `tuika-html` has two, one per example — the markdown seam
   (`examples/html_markdown/html.png`) and the standalone `Html` component

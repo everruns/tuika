@@ -132,7 +132,9 @@ pub enum RenderMode {
 
 /// An adaptive line, bar, area, scatter, or step chart view.
 ///
-/// <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/charts.png" alt="Adaptive chart portable renderer" width="880">
+/// | Portable cells | Terminal graphics |
+/// | --- | --- |
+/// | <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/charts/line-cells.png" alt="Line chart rendered with terminal cells" width="420"> | <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/charts/line-graphics.png" alt="Line chart rendered with terminal graphics" width="420"> |
 pub struct Chart {
     title: String,
     series: Vec<Series>,
