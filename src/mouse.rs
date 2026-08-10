@@ -379,6 +379,104 @@ impl ClickTracker {
     }
 }
 
+/// Tracks which [`HitMap`] region the pointer is resting on, for hover styling.
+///
+/// Terminals report pointer motion as [`MouseKind::Moved`] events once mouse
+/// capture is on; this pairs that stream with the hit-testing the app already
+/// does for clicks. Feed every mouse event to [`handle`](Self::handle) (all of
+/// them carry a cell, so drags and scrolls keep the position fresh too), then
+/// after pushing the frame's regions call [`resolve`](Self::resolve) — it
+/// returns `true` when the hovered value changed, which is the host's cue to
+/// request a redraw. During rendering, style the hot region via
+/// [`hovered`](Self::hovered) or [`is`](Self::is); to *animate* the change,
+/// drive an [`anim::Transition`](crate::anim::Transition) from the resolved
+/// state instead of switching styles directly.
+///
+/// ```
+/// use tuika::mouse::{HitMap, HoverTracker};
+/// use tuika::{Mouse, MouseKind};
+/// use tuika::ui::Rect;
+///
+/// let mut hits: HitMap<u8> = HitMap::new();
+/// hits.push(Rect::new(0, 0, 4, 1), 1);
+/// hits.push(Rect::new(4, 0, 4, 1), 2);
+///
+/// let mut hover = HoverTracker::new();
+/// hover.handle(&Mouse::at(MouseKind::Moved, 5, 0));
+/// assert!(hover.resolve(&hits));      // entered region 2 → redraw
+/// assert!(hover.is(&2));
+/// assert!(!hover.resolve(&hits));     // still there → nothing to do
+/// ```
+#[derive(Clone, Debug)]
+pub struct HoverTracker<T> {
+    position: Option<(u16, u16)>,
+    hovered: Option<T>,
+}
+
+impl<T> Default for HoverTracker<T> {
+    fn default() -> Self {
+        Self {
+            position: None,
+            hovered: None,
+        }
+    }
+}
+
+impl<T: Clone + PartialEq> HoverTracker<T> {
+    /// A tracker that has not seen the pointer yet.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record the pointer cell from a mouse event. Returns `true` when the
+    /// pointer moved to a different cell — a hint that the hover may need
+    /// re-resolving, not yet a style change.
+    pub fn handle(&mut self, m: &Mouse) -> bool {
+        let position = Some((m.column, m.row));
+        let moved = position != self.position;
+        self.position = position;
+        moved
+    }
+
+    /// Re-resolve the pointer against `map` (typically right after the frame's
+    /// regions were pushed — regions can move under a still pointer, so this
+    /// matters even without a `Moved` event). Returns `true` when the hovered
+    /// value changed and a redraw is warranted.
+    pub fn resolve(&mut self, map: &HitMap<T>) -> bool {
+        let hovered = self
+            .position
+            .and_then(|(col, row)| map.hit(col, row))
+            .cloned();
+        let changed = hovered != self.hovered;
+        self.hovered = hovered;
+        changed
+    }
+
+    /// The value of the region under the pointer, per the last
+    /// [`resolve`](Self::resolve).
+    pub fn hovered(&self) -> Option<&T> {
+        self.hovered.as_ref()
+    }
+
+    /// Whether `value`'s region is the hovered one — the per-region question a
+    /// renderer asks while styling.
+    pub fn is(&self, value: &T) -> bool {
+        self.hovered.as_ref() == Some(value)
+    }
+
+    /// The last pointer cell, if any event has been seen.
+    pub fn position(&self) -> Option<(u16, u16)> {
+        self.position
+    }
+
+    /// Forget the pointer (capture disabled, focus lost, pointer left the
+    /// pane). Returns `true` when that cleared an active hover.
+    pub fn clear(&mut self) -> bool {
+        self.position = None;
+        self.hovered.take().is_some()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -556,6 +654,77 @@ mod tests {
         assert_eq!(hits.hit(50, 50), None);
         // hit_event resolves an event's coordinates.
         assert_eq!(hits.hit_event(&down(3, 3)), Some(&"panel"));
+    }
+
+    fn moved(col: u16, row: u16) -> Mouse {
+        Mouse::at(MouseKind::Moved, col, row)
+    }
+
+    #[test]
+    fn hover_tracks_enter_move_and_leave() {
+        let mut hits: HitMap<&str> = HitMap::new();
+        hits.push(Rect::new(0, 0, 4, 1), "left");
+        hits.push(Rect::new(4, 0, 4, 1), "right");
+        let mut hover: HoverTracker<&str> = HoverTracker::new();
+
+        // Nothing seen yet: no hover, resolving changes nothing.
+        assert_eq!(hover.hovered(), None);
+        assert!(!hover.resolve(&hits));
+
+        assert!(hover.handle(&moved(1, 0)));
+        assert!(hover.resolve(&hits), "entering a region is a change");
+        assert!(hover.is(&"left"));
+
+        // Moving within the same region is not a style change.
+        assert!(hover.handle(&moved(2, 0)));
+        assert!(!hover.resolve(&hits));
+
+        // Crossing into the neighbor is.
+        hover.handle(&moved(5, 0));
+        assert!(hover.resolve(&hits));
+        assert!(hover.is(&"right"));
+        assert!(!hover.is(&"left"));
+
+        // Off every region: hover ends.
+        hover.handle(&moved(20, 5));
+        assert!(hover.resolve(&hits));
+        assert_eq!(hover.hovered(), None);
+    }
+
+    #[test]
+    fn hover_position_updates_from_any_event_kind() {
+        let mut hover: HoverTracker<u8> = HoverTracker::new();
+        assert!(hover.handle(&down(3, 1)), "a press carries the pointer too");
+        assert_eq!(hover.position(), Some((3, 1)));
+        assert!(!hover.handle(&up(3, 1)), "same cell: nothing moved");
+        assert!(hover.handle(&drag(4, 1)));
+        assert_eq!(hover.position(), Some((4, 1)));
+    }
+
+    #[test]
+    fn hover_follows_regions_that_move_under_a_still_pointer() {
+        let mut hover: HoverTracker<&str> = HoverTracker::new();
+        hover.handle(&moved(2, 2));
+        let mut hits: HitMap<&str> = HitMap::new();
+        hits.push(Rect::new(0, 0, 8, 8), "panel");
+        assert!(hover.resolve(&hits));
+        // Next frame the layout shifted and the panel is elsewhere.
+        hits.clear();
+        hits.push(Rect::new(10, 10, 4, 4), "panel");
+        assert!(hover.resolve(&hits), "region left the pointer");
+        assert_eq!(hover.hovered(), None);
+    }
+
+    #[test]
+    fn hover_clear_forgets_pointer_and_reports_the_drop() {
+        let mut hits: HitMap<u8> = HitMap::new();
+        hits.push(Rect::new(0, 0, 4, 1), 7);
+        let mut hover: HoverTracker<u8> = HoverTracker::new();
+        hover.handle(&moved(1, 0));
+        hover.resolve(&hits);
+        assert!(hover.clear(), "an active hover was dropped");
+        assert_eq!(hover.position(), None);
+        assert!(!hover.clear(), "already cleared");
     }
 
     #[test]

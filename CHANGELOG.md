@@ -21,6 +21,19 @@ described in the release process begins with the entry below.
   wheel events continue to reach application scrolling. Applications can claim
   gestures with `UpdateResult::Consumed` / `Dirty` or opt out with
   `with_text_selection(false)`.
+- Hover styling: `mouse::HoverTracker` pairs the pointer-motion stream with the
+  existing `HitMap` hit-testing, reporting when the hovered region changes so a
+  host can restyle it (and knows a redraw is warranted).
+- Timed style transitions: `anim::Transition` is a retargetable eased ramp for
+  state-driven motion (hover on/off, focus, expansion) — retargeting mid-flight
+  continues from the current value instead of jumping. `anim::lerp` and
+  `style::lerp_color` interpolate scalars and 24-bit colors; non-RGB colors
+  snap to the nearer endpoint, since an indexed color has no blendable value.
+- Gradient color spans: `style::Gradient` is a multi-stop color ramp with
+  even (`across`) or explicit (`with_stops`) stops; `Gradient::line` sweeps a
+  string's foreground across the ramp per display column (wide glyphs get one
+  coherent color) for use with `Text`. `Transition` and `Gradient` (with
+  `lerp_color`) are also in the prelude.
 
 ### Fixed
 
