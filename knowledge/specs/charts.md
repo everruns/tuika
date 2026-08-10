@@ -40,11 +40,14 @@ interval on each side, keeping centered edge bars inside either renderer.
 Explicit domains remain exact clipping bounds.
 
 
-The repository owns a committed portable-renderer screenshot at
-`docs/charts.png`. The companion README and `Chart` rustdoc embed the
-repository-hosted asset, while the public chart guide uses it directly.
-`scripts/gen-chart-demo.sh` records the real example, and the repository-wide
-demo generator includes that script.
+The repository owns a paired gallery under `docs/charts/`: one portable-cell
+and one terminal-graphics screenshot for each supported series kind. The
+companion README and `Chart` rustdoc embed the repository-hosted assets, while
+the public chart guide uses them directly. `scripts/gen-chart-demo.sh` records
+the real example twice at identical dimensions. Its graphics pass builds the
+pinned Everruns VHS fork with Ghostty support and applies the small repository
+patch that composites Ghostty's Kitty placements into VHS frames. The
+repository-wide demo generator includes that script.
 
 ## Why
 

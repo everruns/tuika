@@ -1,0 +1,92 @@
+diff --git a/ghostty_enabled.go b/ghostty_enabled.go
+index 9c88df0..da1521e 100644
+--- a/ghostty_enabled.go
++++ b/ghostty_enabled.go
+@@ -29,6 +29,7 @@ import (
+ 	"github.com/go-text/typesetting/fontscan"
+ 	"github.com/go-text/typesetting/shaping"
+ 	libghostty "go.mitchellh.com/libghostty"
++	xdraw "golang.org/x/image/draw"
+ 	"golang.org/x/image/math/fixed"
+ )
+ 
+@@ -545,6 +546,9 @@ func (b *ghosttyBackend) Capture() ([]byte, []byte, error) {
+ 			}
+ 			b.drawRow(text, cells[y], y)
+ 		}
++		if err := b.drawKittyGraphics(text); err != nil {
++			return nil, nil, err
++		}
+ 		b.cachedText, err = encodePNG(text)
+ 		if err != nil {
+ 			return nil, nil, err
+@@ -564,6 +568,69 @@ func (b *ghosttyBackend) Capture() ([]byte, []byte, error) {
+ 	return b.cachedText, cursorPNG, nil
+ }
+ 
++func (b *ghosttyBackend) drawKittyGraphics(target draw.Image) error {
++	graphics, err := b.term.KittyGraphics()
++	if err != nil {
++		return fmt.Errorf("read Ghostty Kitty graphics: %w", err)
++	}
++	iterator, err := libghostty.NewKittyGraphicsPlacementIterator()
++	if err != nil {
++		return fmt.Errorf("create Ghostty Kitty placement iterator: %w", err)
++	}
++	defer iterator.Close()
++	if err := graphics.PlacementIterator(iterator); err != nil {
++		return fmt.Errorf("read Ghostty Kitty placements: %w", err)
++	}
++
++	for iterator.Next() {
++		placement, err := iterator.Info()
++		if err != nil {
++			return fmt.Errorf("read Ghostty Kitty placement: %w", err)
++		}
++		imageHandle := graphics.Image(placement.ImageID)
++		if imageHandle == nil {
++			continue
++		}
++		info, err := imageHandle.Info()
++		if err != nil {
++			return fmt.Errorf("read Ghostty Kitty image: %w", err)
++		}
++		geometry, err := iterator.RenderInfo(imageHandle, b.term)
++		if err != nil {
++			return fmt.Errorf("resolve Ghostty Kitty placement: %w", err)
++		}
++		if !geometry.ViewportVisible || info.Format != libghostty.KittyImageFormatRGBA ||
++			info.Compression != libghostty.KittyImageCompressionNone {
++			continue
++		}
++		expected := int(info.Width) * int(info.Height) * 4
++		if len(info.Data) < expected {
++			continue
++		}
++		source := &image.RGBA{
++			Pix:    info.Data[:expected],
++			Stride: int(info.Width) * 4,
++			Rect:   image.Rect(0, 0, int(info.Width), int(info.Height)),
++		}
++		sourceRect := image.Rect(
++			int(geometry.SourceX),
++			int(geometry.SourceY),
++			int(geometry.SourceX+geometry.SourceWidth),
++			int(geometry.SourceY+geometry.SourceHeight),
++		)
++		left := int(geometry.ViewportCol)*b.cellWidth + int(placement.XOffset)
++		top := int(geometry.ViewportRow)*b.cellHeight + int(placement.YOffset)
++		destination := image.Rect(
++			left,
++			top,
++			left+int(geometry.PixelWidth),
++			top+int(geometry.PixelHeight),
++		)
++		xdraw.ApproxBiLinear.Scale(target, destination, source, sourceRect, draw.Over, nil)
++	}
++	return nil
++}
++
+ func (b *ghosttyBackend) snapshotLocked() ([][]renderedCell, int, int, error) {
+ 	colsValue, err := b.state.Cols()
+ 	if err != nil {

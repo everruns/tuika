@@ -2,6 +2,12 @@
 
 ## 2026-08-09
 
+- **Paired adaptive chart gallery**
+  - Replaced the single portable chart screenshot with matched cell and
+    graphics captures for every supported series kind.
+  - Documented the pinned Ghostty VHS path that makes adaptive rendering
+    visible and reproducible rather than terminal-dependent prose.
+
 - **Runners own adaptive graphics and resize scheduling**
   - Synchronous and asynchronous real-terminal runners detect graphics support,
     inject the per-frame image layer through `RenderCtx`, and emit and clear it

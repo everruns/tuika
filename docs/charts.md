@@ -1,54 +1,120 @@
 ---
 title: Charts
-description: Build adaptive terminal charts that render as graphics when supported and portable Unicode cells everywhere else.
+description: Define one terminal chart that adapts from portable Unicode cells to smooth terminal graphics.
 sidebar:
   order: 9
 ---
 
 # Charts
 
-[`tuika-charts`](https://crates.io/crates/tuika-charts) is tuika's lightweight
-chart companion. It adapts rendering to the terminal without changing the chart
-or its data:
+[`tuika-charts`](https://crates.io/crates/tuika-charts) defines one chart model
+for two terminal rendering paths. A graphics-capable terminal gets a smooth RGBA
+plot; every other terminal gets a dense Unicode plot. Applications do not keep
+two chart implementations or ask users to choose a mode.
 
-<img src="charts.png" alt="API traffic chart rendered with Unicode cells" width="880">
+| Portable cells | Terminal graphics |
+| --- | --- |
+| <img src="charts/line-cells.png" alt="Line chart rendered with terminal cells" width="560"> | <img src="charts/line-graphics.png" alt="The same line chart rendered with terminal graphics" width="560"> |
 
-The committed screenshot shows the portable renderer; run the same example in
-a graphics-capable terminal to see its plot switch to smooth pixels.
+## Adaptive by default
 
-- **Kitty, iTerm2, or Sixel:** smooth rasterized lines and filled bars are sent
-  through tuika's graphics layer.
-- **Every other terminal:** a Ratatui-inspired Unicode plot draws connected
-  geometry with dense 2×2 quadrant glyphs, scatter points with Braille subcells,
-  area fills to the same subcell boundary, and axes, bars, and the legend
-  directly into cells.
+`Chart` is a normal `View`. When an application runs through tuika's `Runner`,
+the framework detects the terminal and owns the image lifecycle:
 
-The renderer is the adaptive implementation detail. Titles, series, domains,
-colors, clipping, and legends have the same meaning in both paths.
+- Kitty, Ghostty, and WezTerm receive raw RGBA through the Kitty graphics
+  protocol.
+- iTerm2 receives a PNG through its inline-image protocol.
+- a Sixel-capable custom host can select Sixel explicitly.
+- all other environments render directly into terminal cells.
 
-## Grammar
+The selection changes fidelity, not meaning. Both paths share the same title,
+legend, series, colors, numeric domains, clipping, empty state, and handling of
+non-finite points. The graphics plot is an image, while its title and legend
+remain cells for crisp, consistent text.
 
-The first release intentionally supports only the common portable subset:
+```rust,ignore
+let chart = Chart::new()
+    .title("Requests")
+    .series(Series::line("api", points));
 
-- numeric `(x, y)` points;
-- line and vertical bar series;
-- filled area series;
-- independent scatter points;
-- horizontal-then-vertical step series;
-- multiple named series;
-- automatic or explicit x/y domains;
-- per-series colors;
+// Return `chart` from Application::view. Runner supplies graphics when the
+// terminal supports them and otherwise leaves Chart on its cell path.
+Runner::new(RunnerConfig::default())
+    .run_app(&Theme::default(), &mut app)?;
+```
+
+Direct calls to `paint` use cells by default, making in-memory tests stable.
+Custom terminal hosts can supply `ImageSupport` and `ImageLayer` through
+`RenderCtx::with_image_graphics`, then emit and clear that layer after each cell
+frame.
+
+## Series gallery
+
+Every pair below is generated from the same runnable example at the same size.
+The left capture disables graphics signals; the right capture runs through
+Ghostty and exercises the actual Kitty image output.
+
+### Line
+
+Use a line for connected samples and trends.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="charts/line-cells.png" alt="Cell line chart" width="560"> | <img src="charts/line-graphics.png" alt="Graphics line chart" width="560"> |
+
+### Area
+
+An area connects samples and fills the space down to the plot baseline. The
+cell renderer shares one quadrant boundary between edge and fill, preventing
+gaps or fill above the line; graphics mode can keep a bright edge over a dimmer
+fill.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="charts/area-cells.png" alt="Cell area chart" width="560"> | <img src="charts/area-graphics.png" alt="Graphics area chart" width="560"> |
+
+### Bar
+
+Bars are vertical marks centered on numeric x coordinates. Automatic x domains
+reserve half a bar interval beyond the first and last values so edge bars remain
+inside the plot.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="charts/bar-cells.png" alt="Cell bar chart" width="560"> | <img src="charts/bar-graphics.png" alt="Graphics bar chart" width="560"> |
+
+### Scatter
+
+Scatter series keep samples independent. The portable path uses Braille's 2×4
+subcell grid; graphics mode uses pixel marks.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="charts/scatter-cells.png" alt="Cell scatter chart" width="560"> | <img src="charts/scatter-graphics.png" alt="Graphics scatter chart" width="560"> |
+
+### Step
+
+Step series draw horizontal-then-vertical transitions, useful for replicas,
+states, thresholds, and other values held until the next sample.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="charts/step-cells.png" alt="Cell step chart" width="560"> | <img src="charts/step-graphics.png" alt="Graphics step chart" width="560"> |
+
+## Portable grammar
+
+The shared grammar deliberately includes only features both paths can preserve:
+
+- finite numeric `(x, y)` points;
+- line, area, bar, scatter, and horizontal-then-vertical step series;
+- multiple named and colored series;
+- automatic or explicit numeric x/y domains;
 - an optional title and legend.
 
-Automatic x domains reserve half a bar interval beyond the outermost bar, so a
-centered first or last bar remains inside the plot. Explicit domains are used
-verbatim and therefore control clipping directly.
-
-Interactions, tooltips, HTML/SVG marks, smoothed curves, stacked data,
-categorical axes, and renderer-specific configuration are outside the shared
-grammar. Keeping the
-model smaller than either renderer prevents charts from silently losing meaning
-when graphics support changes.
+Interactions, tooltips, categorical axes, smooth curves, stacked data,
+HTML/SVG marks, and renderer-specific styling are outside this portable model.
+That boundary prevents a chart from silently losing meaning when it moves to a
+terminal with different capabilities.
 
 ```rust
 use tuika_charts::{Chart, Domain, Point, Series};
@@ -61,7 +127,7 @@ let chart = Chart::new()
         Point::new(1.0, 18.0),
         Point::new(2.0, 16.0),
     ]))
-    .series(Series::area("baseline", [
+    .series(Series::area("volume", [
         Point::new(0.0, 9.0),
         Point::new(1.0, 12.0),
         Point::new(2.0, 11.0),
@@ -73,29 +139,11 @@ let chart = Chart::new()
     ]));
 ```
 
-`Chart` is a normal `View`. `Runner` detects graphics support and supplies the
-per-frame image layer automatically. Direct calls to `paint` remain portable
-cell rendering by default, which keeps tests deterministic.
+Non-finite points are ignored. A chart with no finite data renders `No chart
+data`. Explicit domains are used verbatim and therefore control clipping
+directly.
 
-## Run adaptively
-
-Run the chart like any other application view; no graphics setup is required:
-
-```rust,ignore
-let chart = Chart::new()
-    .series(Series::line("requests", points));
-
-// Return `chart` from your Application::view implementation.
-Runner::new(RunnerConfig::default())
-    .run_app(&Theme::default(), &mut app)?;
-```
-
-Custom hosts can install an `ImageSupport` and `ImageLayer` with
-`RenderCtx::with_image_graphics`, then emit and clear the layer after their cell
-frame. Non-finite points are ignored; a chart with no finite points renders `No
-chart data` rather than panicking.
-
-Run the example with `q`/`Esc` to quit:
+Run the adaptive gallery with `q` or `Esc` to quit:
 
 ```bash
 cargo run -p tuika-charts --example charts

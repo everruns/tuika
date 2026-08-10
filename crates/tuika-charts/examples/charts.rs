@@ -7,7 +7,18 @@ use tuika::prelude::*;
 use tuika::testing::{grid, render};
 use tuika_charts::{Chart, Point, Series};
 
-struct ChartGallery;
+#[derive(Clone, Copy)]
+enum ChartKind {
+    Line,
+    Area,
+    Bar,
+    Scatter,
+    Step,
+}
+
+struct ChartGallery {
+    isolated: Option<ChartKind>,
+}
 
 impl Application for ChartGallery {
     fn update(&mut self, signal: Signal) -> UpdateResult {
@@ -22,11 +33,19 @@ impl Application for ChartGallery {
     }
 
     fn view(&self, _frame: u64) -> ScopedElement<'_> {
-        gallery_view()
+        gallery_view(self.isolated)
     }
 }
 
-fn gallery_view() -> Element {
+fn gallery_view(isolated: Option<ChartKind>) -> Element {
+    if let Some(kind) = isolated {
+        return view! {
+            col(padding = Padding::all(1)) {
+                grow(1) { node(chart(kind)) }
+            }
+        };
+    }
+
     view! {
         col(padding = Padding::all(1)) {
             grow(1) {
@@ -43,6 +62,30 @@ fn gallery_view() -> Element {
             }
         }
     }
+}
+
+fn chart(kind: ChartKind) -> Chart {
+    match kind {
+        ChartKind::Line => line_chart(),
+        ChartKind::Area => area_chart(),
+        ChartKind::Bar => errors_chart(),
+        ChartKind::Scatter => latency_chart(),
+        ChartKind::Step => deploy_chart(),
+    }
+}
+
+fn line_chart() -> Chart {
+    Chart::new().title("Requests · line").series(Series::line(
+        "requests",
+        points(&[12., 18., 16., 25., 33., 31., 42.]),
+    ))
+}
+
+fn area_chart() -> Chart {
+    Chart::new().title("Volume · area").series(Series::area(
+        "volume",
+        points(&[8., 14., 12., 20., 28., 25., 36.]),
+    ))
 }
 
 fn requests_chart() -> Chart {
@@ -92,11 +135,26 @@ fn points(values: &[f64]) -> impl Iterator<Item = Point> + '_ {
         .map(|(x, &y)| Point::new(x as f64, y))
 }
 
+fn selected_chart() -> Option<ChartKind> {
+    match std::env::var("TUIKA_CHART_DEMO").ok()?.as_str() {
+        "line" => Some(ChartKind::Line),
+        "area" => Some(ChartKind::Area),
+        "bar" => Some(ChartKind::Bar),
+        "scatter" => Some(ChartKind::Scatter),
+        "step" => Some(ChartKind::Step),
+        _ => None,
+    }
+}
+
 fn main() -> io::Result<()> {
     let theme = Theme::default();
-    let mut gallery = ChartGallery;
+    let isolated = selected_chart();
+    let mut gallery = ChartGallery { isolated };
     if std::env::args().any(|arg| arg == "--dump") {
-        println!("{}", grid(&render(gallery_view().as_ref(), 96, 28, &theme)));
+        println!(
+            "{}",
+            grid(&render(gallery_view(isolated).as_ref(), 96, 28, &theme))
+        );
         return Ok(());
     }
 
