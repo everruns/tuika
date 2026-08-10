@@ -290,12 +290,9 @@ themed code blocks instead of disappearing.
 A large graph is re-laid out at tighter node separation until it fits the pane,
 so a wide flowchart is not simply clipped at the right edge. Fitting is
 best-effort: a graph with many parallel branches can be irreducibly wider than
-the terminal, and the narrowest layout is used in that case. Two limits are
-worth knowing when authoring for a terminal — keep branch labels short, since
-label width compounds across a rank, and avoid `<br/>` inside a decision node
-(`{...}`), which the diagram engine
-[cannot lay out](https://github.com/kevinswiber/mmdflux/issues/387) and which
-falls back to the code block.
+the terminal, and the narrowest layout is used in that case. One limit is worth
+knowing when authoring for a terminal: keep branch labels short, since label
+width compounds across a rank.
 
 Here are the flowchart and sequence diagram rendered by the runnable integration
 example:

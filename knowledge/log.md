@@ -1,5 +1,20 @@
 # Knowledge Log
 
+## 2026-08-10
+
+- **A workaround is carried, then dropped; containment is kept**
+  - mmdflux 2.6.1 fixes the multi-line decision-node defect
+    ([mmdflux#387](https://github.com/kevinswiber/mmdflux/issues/387)), so
+    `tuika-mermaid` requires it and renders those fences as diagrams instead of
+    recognising the shape up front and degrading them to the code block.
+  - The shape-recognition guard was scar tissue tied to one upstream release
+    window and left with it. The `catch_unwind` around the layout engine did
+    not: it is an unconditional property of the adapter seam, owed to the frame
+    whether or not a reachable panic is known.
+  - The regression test inverts with the fix — the same inputs now assert every
+    label line lands inside the diamond, so a re-broken upstream is caught by
+    the test that used to pin the workaround.
+
 ## 2026-08-09
 
 - **Paired adaptive chart gallery**
