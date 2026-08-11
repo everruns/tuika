@@ -105,7 +105,7 @@ impl Application for FileViewer {
         };
         let header = format!("{language} · {}", self.path.display());
         let status = format!(
-            "lines {}-{} of {} · ↑/↓ or j/k, PgUp/PgDn, Home/End scroll · q quit",
+            "lines {}-{} of {} · drag select/copy · ↑/↓, j/k, PgUp/PgDn scroll · q quit",
             start.saturating_add(1).min(self.lines.len()),
             end,
             self.lines.len()

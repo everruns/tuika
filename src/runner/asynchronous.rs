@@ -66,11 +66,12 @@ use tokio::time::{Instant as TokioInstant, MissedTickBehavior, interval, sleep_u
 use tokio_stream::{Stream, StreamExt};
 
 use super::{
-    FrameGraphics, FrameGraphicsCleanup, RESIZE_FRAME_INTERVAL, RunnerAction, RunnerCore, Signal,
+    FrameGraphics, FrameGraphicsCleanup, RESIZE_FRAME_INTERVAL, RunnerAction, RunnerCore,
+    RunnerSelection, Signal,
 };
 use crate::screen::{Scrollback, close_footer, pin_footer};
 use crate::{
-    Element, Event, RenderCtx, RunnerConfig, TerminalSession, Theme, UpdateResult,
+    Element, Event, RenderCtx, RunnerConfig, SystemClock, TerminalSession, Theme, UpdateResult,
     paint_with_context, translate_event,
 };
 
@@ -86,6 +87,7 @@ pub struct AsyncRunner {
     config: RunnerConfig,
     scrollback: Scrollback,
     session_config: Option<crate::TerminalSessionConfig>,
+    text_selection: bool,
 }
 
 impl AsyncRunner {
@@ -99,6 +101,7 @@ impl AsyncRunner {
             config,
             scrollback: Scrollback::new(),
             session_config: None,
+            text_selection: true,
         }
     }
 
@@ -107,6 +110,23 @@ impl AsyncRunner {
         self.config.screen_mode = config.screen_mode;
         self.session_config = Some(config);
         self
+    }
+
+    /// Enable or disable runner-provided drag selection over the final cell
+    /// frame. It is enabled by default whenever the terminal session captures
+    /// the mouse. Applications claim a gesture by returning
+    /// [`UpdateResult::Consumed`] or [`UpdateResult::Dirty`] for its events.
+    pub fn with_text_selection(mut self, enabled: bool) -> Self {
+        self.text_selection = enabled;
+        self
+    }
+
+    fn selects_text(&self) -> bool {
+        self.text_selection
+            && self.session_config.map_or_else(
+                || self.config.screen_mode.captures_mouse(),
+                crate::TerminalSessionConfig::captures_mouse,
+            )
     }
 
     /// Return a handle for publishing content above a
@@ -209,7 +229,15 @@ impl AsyncRunner {
                 view,
                 update,
                 graphics,
-                || graphics.map_or(Ok(()), FrameGraphics::finish_frame),
+                |copied| {
+                    if let Some(graphics) = graphics {
+                        graphics.finish_frame()?;
+                    }
+                    if let Some(text) = copied {
+                        let _ = crate::term::clipboard::write(&mut io::stdout(), text)?;
+                    }
+                    Ok(())
+                },
             )
             .await;
 
@@ -258,16 +286,9 @@ impl AsyncRunner {
         V: FnMut(&S, u64) -> Element,
         U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
     {
-        self.run_with_events_inner(
-            terminal,
-            theme,
-            state,
-            events,
-            view,
-            update,
-            None,
-            || Ok(()),
-        )
+        self.run_with_events_inner(terminal, theme, state, events, view, update, None, |_| {
+            Ok(())
+        })
         .await
     }
 
@@ -288,10 +309,11 @@ impl AsyncRunner {
         E: Stream<Item = Result<Event, Er>> + Unpin,
         V: FnMut(&S, u64) -> Element,
         U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
-        F: FnMut() -> Result<(), Er>,
+        F: FnMut(Option<&str>) -> Result<(), Er>,
     {
         let mut events_done = false;
         let mut core = RunnerCore::new();
+        let mut selection = RunnerSelection::new(self.selects_text());
         let split = !self.config.screen_mode.is_alternate();
 
         let mut ticker = interval(self.config.tick_rate);
@@ -305,8 +327,16 @@ impl AsyncRunner {
             pin_footer(terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
-            draw(terminal, theme, &mut view, state, frame, graphics)?;
-            finish_frame()?;
+            let copied = draw(
+                terminal,
+                theme,
+                &mut view,
+                state,
+                frame,
+                graphics,
+                &mut selection,
+            )?;
+            finish_frame(copied.as_deref())?;
         }
         let mut last_frame = TokioInstant::now();
         let mut redraw_at = None;
@@ -341,8 +371,16 @@ impl AsyncRunner {
                         terminal.autoresize()?;
                         pin_footer(terminal)?;
                     }
-                    draw(terminal, theme, &mut view, state, frame, graphics)?;
-                    finish_frame()?;
+                    let copied = draw(
+                        terminal,
+                        theme,
+                        &mut view,
+                        state,
+                        frame,
+                        graphics,
+                        &mut selection,
+                    )?;
+                    finish_frame(copied.as_deref())?;
                     last_frame = TokioInstant::now();
                 }
                 redraw_at = None;
@@ -353,12 +391,18 @@ impl AsyncRunner {
                 unreachable!()
             };
             let requires_redraw = signal.requires_redraw();
+            let selection_event = match &signal {
+                Signal::Event(event) => Some(event.clone()),
+                Signal::Tick => None,
+            };
             let result = update(state, signal).await;
             core.apply(result);
             if core.is_exited() {
                 break;
             }
-            if requires_redraw || result == UpdateResult::Dirty {
+            let selection_changed = selection_event
+                .is_some_and(|event| selection.handle_event(&event, result, &SystemClock));
+            if requires_redraw || result == UpdateResult::Dirty || selection_changed {
                 core.request_redraw();
                 let now = TokioInstant::now();
                 let deadline = if requires_redraw {
@@ -388,8 +432,16 @@ impl AsyncRunner {
                         terminal.autoresize()?;
                         pin_footer(terminal)?;
                     }
-                    draw(terminal, theme, &mut view, state, frame, graphics)?;
-                    finish_frame()?;
+                    let copied = draw(
+                        terminal,
+                        theme,
+                        &mut view,
+                        state,
+                        frame,
+                        graphics,
+                        &mut selection,
+                    )?;
+                    finish_frame(copied.as_deref())?;
                     last_frame = TokioInstant::now();
                 }
                 redraw_at = None;
@@ -408,18 +460,21 @@ fn draw<S, B, V, Er>(
     state: &S,
     frame: u64,
     graphics: Option<&FrameGraphics>,
-) -> Result<(), Er>
+    selection: &mut RunnerSelection,
+) -> Result<Option<String>, Er>
 where
     B: Backend<Error = Er>,
     V: FnMut(&S, u64) -> Element,
 {
+    let mut copied = None;
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
         let root = view(state, frame);
         let ctx = graphics.map_or_else(|| RenderCtx::new(theme), |g| g.render_context(theme));
         paint_with_context(terminal_frame.buffer_mut(), area, &ctx, root.as_ref(), &[]);
+        copied = selection.finish_frame(terminal_frame.buffer_mut(), area, theme);
     })?;
-    Ok(())
+    Ok(copied)
 }
 
 #[cfg(test)]
@@ -428,7 +483,7 @@ mod tests {
 
     use super::*;
     use crate::components::Text;
-    use crate::event::{Key, KeyCode};
+    use crate::event::{Key, KeyCode, Mouse, MouseButton, MouseKind};
     use crate::view::element;
     use ratatui_core::backend::TestBackend;
 
@@ -440,6 +495,10 @@ mod tests {
             alt: false,
             shift: false,
         }))
+    }
+
+    fn mouse(kind: MouseKind, column: u16, row: u16) -> Result<Event, Infallible> {
+        Ok(Event::Mouse(Mouse::at(kind, column, row)))
     }
 
     fn terminal(width: u16, height: u16) -> Terminal<TestBackend> {
@@ -545,6 +604,127 @@ mod tests {
             1,
             "clean input leaves the initial frame intact"
         );
+    }
+
+    #[tokio::test]
+    async fn clean_mouse_drag_uses_default_text_selection() {
+        let runner = AsyncRunner::new(RunnerConfig {
+            tick_rate: Duration::from_secs(3600),
+            ..RunnerConfig::default()
+        });
+        let mut terminal = terminal(11, 1);
+        let mut mouse_events = 0usize;
+        let events = tokio_stream::iter([
+            mouse(MouseKind::Down(MouseButton::Left), 0, 0),
+            mouse(MouseKind::Drag(MouseButton::Left), 4, 0),
+            key(KeyCode::Esc),
+        ]);
+
+        runner
+            .run_with_events(
+                &mut terminal,
+                &Theme::default(),
+                &mut mouse_events,
+                events,
+                |_state, _frame| element(Text::raw("hello world")),
+                async |mouse_events, signal| match signal {
+                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
+                    Signal::Event(Event::Mouse(_)) => {
+                        *mouse_events += 1;
+                        UpdateResult::Clean
+                    }
+                    _ => UpdateResult::Clean,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            mouse_events, 2,
+            "selection does not hide events from the app"
+        );
+        let buffer = terminal.backend().buffer();
+        for column in 0..=4 {
+            assert_eq!(
+                buffer[(column, 0)].bg,
+                Theme::default().selection_bg,
+                "dragged cell {column} is highlighted"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn consumed_mouse_drag_claims_the_gesture() {
+        let runner = AsyncRunner::new(RunnerConfig {
+            tick_rate: Duration::from_secs(3600),
+            ..RunnerConfig::default()
+        });
+        let mut terminal = terminal(11, 1);
+        let mut state = ();
+        let events = tokio_stream::iter([
+            mouse(MouseKind::Down(MouseButton::Left), 0, 0),
+            mouse(MouseKind::Drag(MouseButton::Left), 4, 0),
+            key(KeyCode::Esc),
+        ]);
+
+        runner
+            .run_with_events(
+                &mut terminal,
+                &Theme::default(),
+                &mut state,
+                events,
+                |_state, _frame| element(Text::raw("hello world")),
+                async |_state, signal| match signal {
+                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
+                    Signal::Event(Event::Mouse(_)) => UpdateResult::Consumed,
+                    _ => UpdateResult::Clean,
+                },
+            )
+            .await
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        assert!(
+            (0..=4).all(|column| buffer[(column, 0)].bg != Theme::default().selection_bg),
+            "claimed drag is left entirely to the application"
+        );
+    }
+
+    #[tokio::test]
+    async fn mouse_wheel_still_drives_application_scrolling() {
+        let runner = AsyncRunner::new(RunnerConfig {
+            tick_rate: Duration::from_secs(3600),
+            ..RunnerConfig::default()
+        });
+        let mut terminal = terminal(12, 1);
+        let mut scrolled = false;
+        let events = tokio_stream::iter([mouse(MouseKind::ScrollDown, 0, 0), key(KeyCode::Esc)]);
+
+        runner
+            .run_with_events(
+                &mut terminal,
+                &Theme::default(),
+                &mut scrolled,
+                events,
+                |scrolled, _frame| {
+                    element(Text::raw(if *scrolled { "line two" } else { "line one" }))
+                },
+                async |scrolled, signal| match signal {
+                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
+                    Signal::Event(Event::Mouse(Mouse {
+                        kind: MouseKind::ScrollDown,
+                        ..
+                    })) => {
+                        *scrolled = true;
+                        UpdateResult::Dirty
+                    }
+                    _ => UpdateResult::Clean,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert!(buffer_text(&terminal).contains("line two"));
     }
 
     #[tokio::test(start_paused = true)]

@@ -101,6 +101,12 @@ rather than beside it.
 - **The host owns the terminal**: the screen mode (alternate screen or a split
   footer over live scrollback — see [screen-modes.md](./screen-modes.md)), raw
   mode, mouse capture, input translation, and frame compositing.
+- **A runner restores the terminal affordance its mouse capture removes.** Plain
+  left drags that application update code leaves clean select from the final
+  rendered cell buffer, receive the theme selection style, and copy through OSC
+  52 on release. Wheel input still routes to the application. A handled gesture
+  returns `UpdateResult::Consumed` or `Dirty`; custom-loop hosts keep using the
+  public selection primitives directly.
 - **Runners own application state directly**: `Application` receives signals
   through `&mut self` and builds a `ScopedElement<'_>` through `&self`, so a
   frame can borrow application data without shared interior mutability. The

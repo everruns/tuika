@@ -13,6 +13,15 @@ described in the release process begins with the entry below.
 
 ## Unreleased
 
+### Added
+
+- `Runner` and `AsyncRunner` restore drag-to-select behavior by default when
+  their terminal session captures the mouse. Selection is painted over the
+  final cell frame, releasing copies through OSC 52 on real-terminal runs, and
+  wheel events continue to reach application scrolling. Applications can claim
+  gestures with `UpdateResult::Consumed` / `Dirty` or opt out with
+  `with_text_selection(false)`.
+
 ### Fixed
 
 - `tuika-mermaid` renders a Mermaid decision node with a `<br/>` label as a
@@ -26,6 +35,11 @@ described in the release process begins with the entry below.
   around the layout engine stays.
 
 ### Changed
+
+- **Breaking**: `UpdateResult::Clean` now means an input was unhandled and may
+  receive runner default behavior; return the new `UpdateResult::Consumed` for
+  a handled input that does not need a repaint. Exhaustive matches over
+  `UpdateResult` must add the new variant.
 
 - `tuika-mermaid` re-lays out a diagram wider than the available columns at
   progressively tighter node separation until it fits, instead of letting it be

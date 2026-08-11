@@ -32,7 +32,7 @@ terminal encoder, not the component, and belongs in the PTY layer.
 | Property | `src/tests/proptests.rs` | solver and overlay invariants for *any* input — children stay in bounds, flex fills exactly |
 | Golden snapshot | `src/tests/snapshots.rs` | whole screens diffed against checked-in glyph grids |
 | Size sweep | unit | no panic and no out-of-clip writes from `0×0` upward |
-| PTY smoke | `tests/pty_smoke.rs` | the terminal-facing protocol in both screen modes: alt-screen and cursor/mouse lifecycle pairs, OSC 9;4, OSC 8, truecolor and Braille cells through a reference terminal parser, resize survival, clean exit; and for a split footer, that it stays off the alternate screen, pins to the bottom, publishes above itself, and releases its rows |
+| PTY smoke | `tests/pty_smoke.rs` | the terminal-facing protocol in both screen modes: alt-screen and cursor/mouse lifecycle pairs, runner selection through OSC 52, OSC 9;4, OSC 8, truecolor and Braille cells through a reference terminal parser, resize survival, clean exit; and for a split footer, that it stays off the alternate screen, pins to the bottom, publishes above itself, and releases its rows |
 | Packaging | `tests/packaging.rs` | what the published `.crate` contains |
 
 Snapshots refresh with `UPDATE_SNAPSHOTS=1`. A snapshot diff is a prompt to
