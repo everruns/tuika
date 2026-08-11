@@ -9,6 +9,8 @@
 //! On real terminals they also detect image support, supply a per-frame image
 //! layer through [`RenderCtx`], emit it after the cell frame, and bound resize
 //! redraws to one frame every 16 ms.
+//! When their session captures the mouse, they also restore plain drag text
+//! selection over the final rendered cells and copy it through OSC 52.
 //!
 //! [`Runner`] is the synchronous loop and is always available. [`AsyncRunner`]
 //! (`feature = "async"`) is the same loop for hosts already on Tokio; it lives
@@ -35,11 +37,15 @@ use std::time::{Duration, Instant};
 
 use crossterm::event;
 use ratatui_core::backend::Backend;
+use ratatui_core::buffer::Buffer;
+use ratatui_core::layout::Rect;
 use ratatui_core::terminal::{Terminal, TerminalOptions};
 use ratatui_crossterm::CrosstermBackend;
 
 use crate::live::RedrawHandle;
+use crate::mouse::{SelectionState, paint_selection, selected_text};
 use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
+use crate::term::clipboard;
 use crate::term::image::{ImageLayer, ImageSupport};
 use crate::{
     Clock, Element, Event, RenderCtx, ScopedElement, SystemClock, TerminalSession, Theme, View,
@@ -134,10 +140,15 @@ impl Signal {
 /// What a runner should do after an update.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum UpdateResult {
-    /// Keep waiting without rebuilding or repainting the view.
+    /// The signal was not handled. Keep waiting without rebuilding or
+    /// repainting; the runner may apply a default interaction such as text
+    /// selection.
     #[default]
     Clean,
-    /// Rebuild and repaint the view from the updated state.
+    /// The signal was handled without changing persistent state or repainting.
+    /// This prevents runner-provided default interactions.
+    Consumed,
+    /// The signal was handled and the view must be rebuilt and repainted.
     Dirty,
     /// Stop the runner without painting another frame.
     Exit,
@@ -154,7 +165,9 @@ pub enum UpdateResult {
 /// Rendering should be pure: persistent UI and domain state belongs on the
 /// application and changes only in [`update`](Self::update).
 pub trait Application {
-    /// Update application state in response to a tick or terminal event.
+    /// Update application state in response to a tick or terminal event. Return
+    /// [`UpdateResult::Clean`] only when the signal was unhandled, or
+    /// [`UpdateResult::Consumed`] when it was handled without a repaint.
     fn update(&mut self, signal: Signal) -> UpdateResult;
 
     /// Build the ephemeral view tree for one numbered frame.
@@ -204,7 +217,7 @@ impl RunnerCore {
     /// Apply an application's update result.
     pub fn apply(&mut self, result: UpdateResult) {
         match result {
-            UpdateResult::Clean => {}
+            UpdateResult::Clean | UpdateResult::Consumed => {}
             UpdateResult::Dirty => self.dirty = true,
             UpdateResult::Exit => self.exited = true,
         }
@@ -244,6 +257,7 @@ pub struct Runner {
     redraw: RedrawHandle,
     scrollback: Scrollback,
     session_config: Option<crate::host::TerminalSessionConfig>,
+    text_selection: bool,
 }
 
 impl Runner {
@@ -268,6 +282,7 @@ impl Runner {
             redraw: RedrawHandle::default(),
             scrollback: Scrollback::new(),
             session_config: None,
+            text_selection: true,
         }
     }
 
@@ -289,6 +304,23 @@ impl Runner {
         self.config.screen_mode = config.screen_mode;
         self.session_config = Some(config);
         self
+    }
+
+    /// Enable or disable runner-provided drag selection over the final cell
+    /// frame. It is enabled by default whenever the terminal session captures
+    /// the mouse. Applications claim a gesture by returning
+    /// [`UpdateResult::Consumed`] or [`UpdateResult::Dirty`] for its events.
+    pub fn with_text_selection(mut self, enabled: bool) -> Self {
+        self.text_selection = enabled;
+        self
+    }
+
+    fn selects_text(&self) -> bool {
+        self.text_selection
+            && self.session_config.map_or_else(
+                || self.config.screen_mode.captures_mouse(),
+                crate::host::TerminalSessionConfig::captures_mouse,
+            )
     }
 
     /// Run until `update` returns [`UpdateResult::Exit`].
@@ -423,13 +455,22 @@ impl Runner {
         // while placements still belong to the screen on which they were made.
         let _graphics_cleanup = graphics.map(FrameGraphicsCleanup);
         let mut core = RunnerCore::new();
+        let mut selection = RunnerSelection::new(self.selects_text());
         let mut last_tick = self.clock.now();
 
         if split {
             pin_footer(&mut terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
-            draw(&mut terminal, theme, &mut view, state, frame, graphics)?;
+            draw(
+                &mut terminal,
+                theme,
+                &mut view,
+                state,
+                frame,
+                graphics,
+                &mut selection,
+            )?;
         }
         let mut last_frame = self.clock.now();
         let mut redraw_at = None;
@@ -469,7 +510,15 @@ impl Runner {
                         terminal.autoresize()?;
                         pin_footer(&mut terminal)?;
                     }
-                    draw(&mut terminal, theme, &mut view, state, frame, graphics)?;
+                    draw(
+                        &mut terminal,
+                        theme,
+                        &mut view,
+                        state,
+                        frame,
+                        graphics,
+                        &mut selection,
+                    )?;
                     last_frame = self.clock.now();
                 }
                 redraw_at = None;
@@ -486,12 +535,19 @@ impl Runner {
             {
                 let signal = Signal::Event(event);
                 let requires_redraw = signal.requires_redraw();
+                let selection_event = match &signal {
+                    Signal::Event(event) => Some(event.clone()),
+                    Signal::Tick => None,
+                };
                 let result = update(state, signal);
                 core.apply(result);
                 if core.is_exited() {
                     break 'running;
                 }
-                if requires_redraw || result == UpdateResult::Dirty {
+                let selection_changed = selection_event.is_some_and(|event| {
+                    selection.handle_event(&event, result, self.clock.as_ref())
+                });
+                if requires_redraw || result == UpdateResult::Dirty || selection_changed {
                     core.request_redraw();
                     let now = self.clock.now();
                     let deadline = if requires_redraw {
@@ -525,22 +581,118 @@ fn draw<S, B, V>(
     state: &S,
     frame: u64,
     graphics: Option<&FrameGraphics>,
+    selection: &mut RunnerSelection,
 ) -> io::Result<()>
 where
     B: Backend<Error = io::Error>,
     V: FnMut(&S, u64, &mut dyn FnMut(&dyn View)),
 {
+    let mut copied = None;
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
         let ctx = graphics.map_or_else(|| RenderCtx::new(theme), |g| g.render_context(theme));
         view(state, frame, &mut |root| {
             paint_with_context(terminal_frame.buffer_mut(), area, &ctx, root, &[]);
         });
+        copied = selection.finish_frame(terminal_frame.buffer_mut(), area, theme);
     })?;
     if let Some(graphics) = graphics {
         graphics.finish_frame()?;
     }
+    if let Some(text) = copied {
+        let _ = clipboard::write(&mut io::stdout(), &text)?;
+    }
     Ok(())
+}
+
+struct RunnerSelection {
+    enabled: bool,
+    state: SelectionState,
+    pending_copy: bool,
+}
+
+impl RunnerSelection {
+    fn new(enabled: bool) -> Self {
+        Self {
+            enabled,
+            state: SelectionState::new(),
+            pending_copy: false,
+        }
+    }
+
+    fn handle_event(&mut self, event: &Event, result: UpdateResult, clock: &dyn Clock) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        let Event::Mouse(mouse) = event else {
+            if matches!(event, Event::Resize { .. }) {
+                return self.clear();
+            }
+            return false;
+        };
+        if !mouse.plain() {
+            return false;
+        }
+
+        if matches!(
+            mouse.kind,
+            crate::MouseKind::ScrollUp
+                | crate::MouseKind::ScrollDown
+                | crate::MouseKind::ScrollLeft
+                | crate::MouseKind::ScrollRight
+        ) && result == UpdateResult::Dirty
+        {
+            return self.clear();
+        }
+
+        let left_gesture = matches!(
+            mouse.kind,
+            crate::MouseKind::Down(crate::MouseButton::Left)
+                | crate::MouseKind::Drag(crate::MouseButton::Left)
+                | crate::MouseKind::Up(crate::MouseButton::Left)
+        );
+        if !left_gesture {
+            return false;
+        }
+        if result != UpdateResult::Clean {
+            return self.clear();
+        }
+
+        let changed = self.state.handle_with_clock(mouse, clock);
+        if changed
+            && matches!(mouse.kind, crate::MouseKind::Up(crate::MouseButton::Left))
+            && self.state.range().is_some()
+        {
+            self.pending_copy = true;
+        }
+        changed
+    }
+
+    fn finish_frame(&mut self, buffer: &mut Buffer, area: Rect, theme: &Theme) -> Option<String> {
+        if !self.enabled {
+            return None;
+        }
+        if self.state.resolve(buffer, area) {
+            self.pending_copy = true;
+        }
+        let Some(range) = self.state.range() else {
+            self.pending_copy = false;
+            return None;
+        };
+        let copied = self
+            .pending_copy
+            .then(|| selected_text(buffer, area, range));
+        self.pending_copy = false;
+        paint_selection(buffer, area, range, theme.selection_style());
+        copied
+    }
+
+    fn clear(&mut self) -> bool {
+        let changed = self.state.is_active();
+        self.state.clear();
+        self.pending_copy = false;
+        changed
+    }
 }
 
 #[cfg(test)]
@@ -614,13 +766,78 @@ mod tests {
         assert_eq!(core.next_action(), RunnerAction::Wait);
         core.apply(UpdateResult::Dirty);
         assert_eq!(core.next_action(), RunnerAction::Render(1));
+        core.apply(UpdateResult::Consumed);
+        assert_eq!(core.next_action(), RunnerAction::Wait);
         core.apply(UpdateResult::Exit);
         assert_eq!(core.next_action(), RunnerAction::Exit);
     }
 
     #[test]
+    fn default_selection_highlights_and_returns_dragged_text() {
+        let clock = FixedClock(Instant::now());
+        let mut selection = RunnerSelection::new(true);
+        let mut buffer = crate::testing::render(
+            &crate::components::Text::raw("hello world"),
+            11,
+            1,
+            &Theme::default(),
+        );
+        let area = buffer.area;
+        let down = crate::Mouse::at(crate::MouseKind::Down(crate::MouseButton::Left), 0, 0);
+        let drag = crate::Mouse::at(crate::MouseKind::Drag(crate::MouseButton::Left), 4, 0);
+        let up = crate::Mouse::at(crate::MouseKind::Up(crate::MouseButton::Left), 4, 0);
+
+        assert!(!selection.handle_event(&Event::Mouse(down), UpdateResult::Clean, &clock));
+        assert!(selection.handle_event(&Event::Mouse(drag), UpdateResult::Clean, &clock));
+        assert!(selection.handle_event(&Event::Mouse(up), UpdateResult::Clean, &clock));
+
+        let copied = selection.finish_frame(&mut buffer, area, &Theme::default());
+        assert_eq!(copied.as_deref(), Some("hello"));
+        for column in 0..=4 {
+            assert_eq!(buffer[(column, 0)].bg, Theme::default().selection_bg);
+        }
+    }
+
+    #[test]
+    fn consumed_mouse_gesture_is_not_selected() {
+        let clock = FixedClock(Instant::now());
+        let mut selection = RunnerSelection::new(true);
+        let down = crate::Mouse::at(crate::MouseKind::Down(crate::MouseButton::Left), 0, 0);
+        let drag = crate::Mouse::at(crate::MouseKind::Drag(crate::MouseButton::Left), 4, 0);
+
+        assert!(!selection.handle_event(&Event::Mouse(down), UpdateResult::Consumed, &clock,));
+        assert!(!selection.handle_event(&Event::Mouse(drag), UpdateResult::Consumed, &clock,));
+        assert!(selection.state.range().is_none());
+    }
+
+    #[test]
     fn the_default_config_owns_the_alternate_screen() {
         assert_eq!(RunnerConfig::default().screen_mode, ScreenMode::Alternate);
+    }
+
+    #[test]
+    fn text_selection_follows_capture_and_can_be_disabled() {
+        assert!(Runner::new(RunnerConfig::default()).selects_text());
+        assert!(
+            !Runner::new(RunnerConfig {
+                screen_mode: ScreenMode::split_footer(3),
+                ..RunnerConfig::default()
+            })
+            .selects_text()
+        );
+        assert!(
+            !Runner::new(RunnerConfig::default())
+                .with_text_selection(false)
+                .selects_text()
+        );
+        assert!(
+            !Runner::new(RunnerConfig::default())
+                .with_session_config(crate::TerminalSessionConfig {
+                    mouse_capture: crate::MouseCapture::Disabled,
+                    ..crate::TerminalSessionConfig::default()
+                })
+                .selects_text()
+        );
     }
 
     #[test]

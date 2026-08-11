@@ -80,8 +80,8 @@ impl<S> TestHarness<S> {
     /// Deliver a signal, rendering only when the update marks the app dirty.
     ///
     /// Resize updates also render because layout depends on viewport geometry.
-    /// Otherwise, `None` represents both a clean update and exit; inspect the
-    /// returned [`UpdateResult`] to distinguish them.
+    /// Otherwise, `None` represents a clean/consumed update or exit; inspect
+    /// the returned [`UpdateResult`] to distinguish them.
     pub fn step(
         &mut self,
         signal: Signal,

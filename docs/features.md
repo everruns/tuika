@@ -241,9 +241,18 @@ must be enabled: `set -g allow-passthrough on`.
 ## Mouse: selection, highlight & clicks
 
 Once an app captures the mouse, the terminal stops doing its own click-drag text
-selection. The `mouse` module rebuilds those affordances over the grid you
-already rendered — selection, copy, and hit-testing — from tuika's enriched
-event model (`MouseKind` carries `Down`/`Up`/`Drag`, `Moved`, and scroll, with
+selection. `Runner` and `AsyncRunner` restore it by default over the final cell
+frame: a plain left drag highlights text, a same-cell double click selects a
+word, and releasing copies through OSC 52. Wheel events continue to reach the
+application. Return
+`UpdateResult::Consumed` for a handled gesture that needs no repaint, or
+`UpdateResult::Dirty` for one that does; either result keeps draggable controls
+from also becoming a text selection. `with_text_selection(false)` disables the
+runner default.
+
+The `mouse` module exposes the same primitives for hosts with their own loop —
+selection, copy, and hit-testing — from tuika's enriched event model
+(`MouseKind` carries `Down`/`Up`/`Drag`, `Moved`, and scroll, with
 `shift`/`ctrl`/`alt`).
 [API](https://docs.rs/tuika/latest/tuika/mouse/index.html)
 

@@ -25,7 +25,7 @@ Six out-of-band capabilities, in three families:
 | Capability | Sequence | Module | Emission point |
 | --- | --- | --- | --- |
 | Hyperlinks | OSC 8 | `term::hyperlink` | spliced into the drawn cell run by `HyperlinkBackend` |
-| Clipboard | OSC 52 | `term::clipboard` | host-initiated, any time |
+| Clipboard | OSC 52 | `term::clipboard` | host- or runner-initiated, any time |
 | Native progress | OSC 9;4 | `term::progress` | host-initiated, any time |
 | Pointer shape | OSC 22 | `term::pointer` | host-initiated, any time |
 | Images | Kitty / iTerm2 / Sixel | `term::image` | after `terminal.draw()` returns |
@@ -113,6 +113,12 @@ the host passed explicitly. Host text is never interpolated into an escape
 unescaped. This is the property that keeps the "arbitrary caller text reaching
 the terminal as a control sequence" class of bug out of scope by construction —
 see [`SECURITY.md`](../../SECURITY.md).
+
+Runner-provided mouse selection is the one framework-initiated clipboard path.
+It reads only the cells the runner just rendered and passes that text through
+the same base64 OSC 52 encoder on release. A caller-owned async event loop gets
+the selection overlay only; it can disable that default and compose the public
+selection primitives when it needs a custom clipboard sink.
 
 ## Constraints
 

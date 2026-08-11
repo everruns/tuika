@@ -4,11 +4,11 @@
 //! and never touch a real terminal. This drives real examples under a
 //! pseudo-terminal (`portable-pty`) and asserts the terminal-facing behavior a
 //! buffer test cannot see: entering and restoring the alternate screen, enhanced
-//! keyboard reporting, cursor and mouse-capture lifecycle, the native OSC 9;4
-//! progress indicator, OSC 8 hyperlinks, truecolor and Braille cells surviving a
-//! reference terminal parser, resize survival, and a clean exit — the `gallery`
-//! example for the alternate screen, and `split_footer` for a footer over live
-//! scrollback.
+//! keyboard reporting, cursor and mouse-capture lifecycle, runner-provided OSC
+//! 52 text selection, the native OSC 9;4 progress indicator, OSC 8 hyperlinks,
+//! truecolor and Braille cells surviving a reference terminal parser, resize
+//! survival, and a clean exit — `hello` and `gallery` for the alternate screen,
+//! and `split_footer` for a footer over live scrollback.
 //!
 //! This covers the *protocol* a terminal receives. Whether a specific emulator
 //! paints those bytes correctly is the cross-terminal nightly plus the manual
@@ -451,6 +451,24 @@ fn gallery_drives_altscreen_and_native_progress() {
     assert!(
         text.contains("spinners") && text.contains("progress"),
         "gallery chrome should render: {text:?}"
+    );
+}
+
+#[test]
+fn runner_drag_selection_copies_the_rendered_cells() {
+    // `Hello` begins at zero-based cell (3, 2). SGR mouse coordinates are
+    // one-based: press on H, drag through o, then release there.
+    let drag_hello = b"\x1b[<0;4;3M\x1b[<32;8;3M\x1b[<0;8;3m";
+    let run = Script::new("hello")
+        .size(8, 40)
+        .settle(Duration::from_millis(500))
+        .key(drag_hello, Duration::from_millis(500))
+        .run();
+
+    assert!(run.exited_ok, "hello should exit cleanly after selection");
+    assert!(
+        contains(&run.output, b"\x1b]52;c;SGVsbG8=\x1b\\"),
+        "drag release should copy `Hello` through OSC 52"
     );
 }
 

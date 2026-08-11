@@ -2,6 +2,16 @@
 
 ## 2026-08-10
 
+- **Mouse capture does not remove basic text selection from runner apps**
+  - Synchronous and asynchronous runners apply unclaimed plain left drags to
+    the final rendered cell buffer, paint the theme selection style, and copy
+    through OSC 52 on release while continuing to route wheel input normally.
+  - `UpdateResult` now distinguishes unhandled clean input from handled input
+    that needs no repaint, giving draggable controls explicit ownership without
+    requiring every read-only view to rebuild terminal selection itself.
+  - Custom-loop hosts retain the lower-level `SelectionState` path; selection
+    remains runner policy rather than hidden component state.
+
 - **A workaround is carried, then dropped; containment is kept**
   - mmdflux 2.6.1 fixes the multi-line decision-node defect
     ([mmdflux#387](https://github.com/kevinswiber/mmdflux/issues/387)), so

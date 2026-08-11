@@ -144,7 +144,7 @@ impl TerminalSessionConfig {
         }
     }
 
-    fn captures_mouse(self) -> bool {
+    pub(crate) fn captures_mouse(self) -> bool {
         match self.mouse_capture {
             MouseCapture::ModeDefault => self.screen_mode.captures_mouse(),
             MouseCapture::Enabled => true,

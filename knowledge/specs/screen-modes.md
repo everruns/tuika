@@ -29,6 +29,10 @@ until it happens.
 | `Alternate` (default) | the whole window, alternate buffer | n/a — restored on exit | on |
 | `SplitFooter { height }` | `height` rows at the bottom of the main screen | the terminal's, live | off by default |
 
+When a runner captures the mouse, it restores plain drag selection over its
+final cell frame while continuing to route wheel events to the application.
+Custom-loop hosts opt into capture and selection independently.
+
 A split footer renders into a ratatui `Viewport::Inline`. The pieces around it:
 
 - `TerminalSession::enter_with(mode)` takes only what the mode needs and

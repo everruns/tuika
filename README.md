@@ -747,6 +747,10 @@ let mut app = Stats::default();
 runner.run_app(&Theme::default(), &mut app)?;
 ```
 
+`UpdateResult::Clean` leaves an input available to runner defaults such as text
+selection. Return `Consumed` when the application handled it without changing
+the frame, `Dirty` when handling changed the frame, or `Exit` to stop.
+
 `Runner::run` and `run_with_backend` retain the separate state/view/update
 closure API for owned `Element` trees. The
 [`borrowed_app`](examples/borrowed_app.rs) example implements a custom `View`
@@ -769,8 +773,8 @@ network or disk I/O — and lets its update closure `.await`. It ties
 `TerminalSession`, `paint`, and `translate_event` to crossterm's async
 `EventStream` and a tick timer in one `tokio::select!`, so the host keeps a
 single event loop. Its update closure returns the same
-`UpdateResult::{Clean, Dirty, Exit}` as `Runner`, so awaited work only rebuilds
-and repaints when it actually changes visible state.
+`UpdateResult::{Clean, Consumed, Dirty, Exit}` as `Runner`, so awaited work only
+rebuilds and repaints when it actually changes visible state.
 
 Enabling `async` adds Tokio (timer + `select!`) and crossterm's `event-stream`
 feature; it stays off by default so sync-only hosts pull in no runtime. The
@@ -831,8 +835,15 @@ To check support across every terminal feature in one place — `graphics`,
 
 Enabling mouse capture (which `AltScreen` / `TerminalSession` do) means the
 terminal stops doing its own click-drag text selection and hands every drag to
-the app instead. The `mouse` module rebuilds those affordances over the grid
-you already rendered:
+the app instead. `Runner` and `AsyncRunner` restore selection by default over
+the final rendered grid: a plain left drag highlights text, a same-cell double
+click selects a word, and releasing copies through OSC 52. Wheel events still
+reach application scrolling. An
+application claims a mouse gesture by returning `UpdateResult::Consumed` (no
+repaint) or `UpdateResult::Dirty` (repaint), and can disable the default
+entirely with `with_text_selection(false)`.
+
+Hosts with their own loop use the `mouse` module to build the same affordances:
 
 - **Text selection.** `SelectionState` turns a left-button `Down → Drag → Up`
   gesture into a `SelectionRange` (a plain click selects nothing; a new press

@@ -42,7 +42,8 @@ cargo run -p tuika-codeformatters --example highlight_file -- path/to/file.rs
 
 The viewer detects the language from the file extension and falls back to plain
 code for unknown extensions. Use ↑/↓, j/k, Page Up/Page Down, Home/End, or
-the mouse wheel to scroll; `q` or Esc quits.
+the mouse wheel to scroll. Drag selects and copies rendered code; `q` or Esc
+quits.
 
 ## Supported languages
 
