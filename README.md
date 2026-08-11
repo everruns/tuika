@@ -11,7 +11,7 @@
 [![downloads](https://img.shields.io/crates/d/tuika.svg)](https://crates.io/crates/tuika)
 [![license](https://img.shields.io/crates/l/tuika.svg)](https://github.com/everruns/tuika/blob/main/LICENSE)
 ![msrv](https://img.shields.io/badge/rust-1.88%2B-blue.svg) \
-[Docs](https://docs.rs/tuika) · [Getting started](docs/getting-started.md) · [Components](docs/components.md) · [Layout](docs/layout.md) ·
+[Website](https://tuika.dev) · [Rust API](https://docs.rs/tuika) · [Getting started](docs/getting-started.md) · [Components](docs/components.md) · [Layout](docs/layout.md) ·
 [Markdown](docs/markdown.md) · [Charts](docs/charts.md) ·
 [Terminal features](docs/features.md) ·
 [Keymap](docs/keymap.md) · [Styling](docs/styling.md) ·

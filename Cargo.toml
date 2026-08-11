@@ -24,7 +24,7 @@ edition = "2024"
 rust-version = "1.88"
 authors = ["Mykhailo Chalyi <mike@chaliy.name>", "Everruns <support@everruns.com>"]
 license = "MIT"
-homepage = "https://github.com/everruns/tuika"
+homepage = "https://tuika.dev"
 repository = "https://github.com/everruns/tuika"
 
 [package]
@@ -36,6 +36,7 @@ authors.workspace = true
 license.workspace = true
 description = "The application framework for Rust terminal UIs — flexbox layout, overlays, focus, keymap, components, and safe ratatui interoperability."
 homepage.workspace = true
+documentation = "https://docs.rs/tuika"
 repository.workspace = true
 readme = "README.md"
 keywords = ["tui", "terminal", "ratatui", "framework", "widgets"]
