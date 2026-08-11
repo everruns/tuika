@@ -7,6 +7,7 @@
 //! own palette without touching component code.
 
 use ratatui_core::style::{Color, Modifier, Style};
+use ratatui_core::text::{Line, Span};
 
 use crate::geometry::Padding;
 
@@ -677,6 +678,158 @@ impl Default for StyleSheet {
     }
 }
 
+/// Blend `from` toward `to` by `t` in `0.0..=1.0` (clamped), channel-wise.
+///
+/// Only two [`Color::Rgb`] endpoints carry values tuika can do arithmetic on;
+/// an indexed or named endpoint has no known RGB without the terminal's
+/// palette, so any other pairing snaps to the nearer endpoint at `t = 0.5`.
+/// Pairs naturally with a phase from
+/// [`anim::Transition`](crate::anim::Transition) to animate a style between
+/// two states (hover, focus, selection).
+pub fn lerp_color(from: Color, to: Color, t: f32) -> Color {
+    let t = t.clamp(0.0, 1.0);
+    match (from, to) {
+        (Color::Rgb(r0, g0, b0), Color::Rgb(r1, g1, b1)) => {
+            let mix = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * t).round() as u8;
+            Color::Rgb(mix(r0, r1), mix(g0, g1), mix(b0, b1))
+        }
+        _ => {
+            if t < 0.5 {
+                from
+            } else {
+                to
+            }
+        }
+    }
+}
+
+/// A multi-stop color ramp sampled at `0.0..=1.0`, for gradient text and fills.
+///
+/// Stops are positions along the ramp; sampling between two stops blends them
+/// with [`lerp_color`], so the same RGB-only arithmetic rule applies —
+/// non-RGB stops produce hard steps rather than blends. Sampling outside the
+/// outermost stops clamps to them.
+///
+/// [`line`](Self::line) is the headline use: paint a string's foreground
+/// across the ramp, one blended color per display column, ready for
+/// [`Text`](crate::components::Text).
+///
+/// ```
+/// use tuika::style::Gradient;
+/// use tuika::ui::Color;
+///
+/// let g = Gradient::new(Color::Rgb(255, 0, 255), Color::Rgb(0, 255, 255));
+/// assert_eq!(g.sample(0.5), Color::Rgb(128, 128, 255));
+/// let banner = g.line("Heeyoo!"); // magenta → cyan across seven columns
+/// # let _ = banner;
+/// ```
+#[derive(Clone, Debug, PartialEq)]
+pub struct Gradient {
+    /// `(position, color)` stops, sorted ascending by position in `0.0..=1.0`.
+    stops: Vec<(f32, Color)>,
+}
+
+impl Gradient {
+    /// A two-stop ramp from `from` (at `0.0`) to `to` (at `1.0`).
+    pub fn new(from: Color, to: Color) -> Self {
+        Self {
+            stops: vec![(0.0, from), (1.0, to)],
+        }
+    }
+
+    /// A ramp through `colors` at evenly spaced positions. One color is a
+    /// constant ramp; empty samples to [`Color::Reset`].
+    pub fn across(colors: impl IntoIterator<Item = Color>) -> Self {
+        let colors: Vec<Color> = colors.into_iter().collect();
+        let last = colors.len().saturating_sub(1).max(1) as f32;
+        Self {
+            stops: colors
+                .into_iter()
+                .enumerate()
+                .map(|(i, c)| (i as f32 / last, c))
+                .collect(),
+        }
+    }
+
+    /// A ramp with explicit `(position, color)` stops. Positions are clamped
+    /// to `0.0..=1.0` and sorted (stably, so equal positions keep their order
+    /// and make a hard step).
+    pub fn with_stops(stops: impl IntoIterator<Item = (f32, Color)>) -> Self {
+        let mut stops: Vec<(f32, Color)> = stops
+            .into_iter()
+            .map(|(p, c)| (p.clamp(0.0, 1.0), c))
+            .collect();
+        stops.sort_by(|a, b| a.0.total_cmp(&b.0));
+        Self { stops }
+    }
+
+    /// The blended color at `t` in `0.0..=1.0` (clamped to the outermost stops).
+    pub fn sample(&self, t: f32) -> Color {
+        let (first, rest) = match self.stops.as_slice() {
+            [] => return Color::Reset,
+            [(_, only)] => return *only,
+            [first, rest @ ..] => (first, rest),
+        };
+        let t = t.clamp(0.0, 1.0);
+        if t <= first.0 {
+            return first.1;
+        }
+        let mut lo = *first;
+        for &(p, c) in rest {
+            // Strict, so a sample exactly on a shared position takes the later
+            // stop — the hard-step side a stepped ramp intends to show there.
+            if t < p {
+                // `lo.0 <= t < p`, so the span is strictly positive.
+                return lerp_color(lo.1, c, (t - lo.0) / (p - lo.0));
+            }
+            lo = (p, c);
+        }
+        lo.1
+    }
+
+    /// `text` as a [`Line`] with its foreground swept across the ramp.
+    ///
+    /// Each grapheme is colored by sampling at the midpoint of the display
+    /// columns it occupies, so wide glyphs get one coherent color and the ramp
+    /// tracks *cells*, not bytes or chars. Adjacent graphemes that resolve to
+    /// the same color share a span.
+    pub fn line(&self, text: &str) -> Line<'static> {
+        use unicode_segmentation::UnicodeSegmentation;
+
+        let total = crate::width::str_cols(text);
+        if total == 0 {
+            return Line::raw(text.to_owned());
+        }
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        let mut run = String::new();
+        let mut run_color = Color::Reset;
+        let mut col = 0u16;
+        for grapheme in text.graphemes(true) {
+            let cols = crate::width::grapheme_cols(grapheme);
+            let mid = (col as f32 + cols as f32 / 2.0) / total as f32;
+            let color = self.sample(mid);
+            // A zero-width cluster stays with the run it modifies.
+            if cols > 0 && color != run_color && !run.is_empty() {
+                spans.push(Span::styled(
+                    std::mem::take(&mut run),
+                    Style::default().fg(run_color),
+                ));
+            }
+            if run.is_empty() {
+                run_color = color;
+            }
+            run.push_str(grapheme);
+            // Saturating like `str_cols`, so absurd input degrades to the last
+            // color instead of overflowing.
+            col = col.saturating_add(cols);
+        }
+        if !run.is_empty() {
+            spans.push(Span::styled(run, Style::default().fg(run_color)));
+        }
+        Line::from(spans)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -782,6 +935,111 @@ mod tests {
             Some(s.key_hint_label)
         );
         assert_eq!(s.resolve_style(StyleRole::new("app.unknown")), None);
+    }
+
+    #[test]
+    fn lerp_color_blends_rgb_and_snaps_everything_else() {
+        use ratatui_core::style::Color;
+        let a = Color::Rgb(0, 0, 0);
+        let b = Color::Rgb(200, 100, 50);
+        assert_eq!(lerp_color(a, b, 0.0), a);
+        assert_eq!(lerp_color(a, b, 1.0), b);
+        assert_eq!(lerp_color(a, b, 0.5), Color::Rgb(100, 50, 25));
+        // Out-of-range t clamps.
+        assert_eq!(lerp_color(a, b, -1.0), a);
+        assert_eq!(lerp_color(a, b, 2.0), b);
+        // A named endpoint has no RGB to blend: nearest endpoint wins.
+        assert_eq!(lerp_color(Color::Red, b, 0.4), Color::Red);
+        assert_eq!(lerp_color(Color::Red, b, 0.6), b);
+    }
+
+    #[test]
+    fn gradient_samples_stops_and_clamps_the_ends() {
+        use ratatui_core::style::Color;
+        let g = Gradient::new(Color::Rgb(0, 0, 0), Color::Rgb(100, 100, 100));
+        assert_eq!(g.sample(-1.0), Color::Rgb(0, 0, 0));
+        assert_eq!(g.sample(0.5), Color::Rgb(50, 50, 50));
+        assert_eq!(g.sample(2.0), Color::Rgb(100, 100, 100));
+
+        // Three evenly spaced colors: the middle one sits at 0.5.
+        let tri = Gradient::across([
+            Color::Rgb(0, 0, 0),
+            Color::Rgb(100, 0, 0),
+            Color::Rgb(0, 0, 100),
+        ]);
+        assert_eq!(tri.sample(0.5), Color::Rgb(100, 0, 0));
+        assert_eq!(tri.sample(0.25), Color::Rgb(50, 0, 0));
+        assert_eq!(tri.sample(0.75), Color::Rgb(50, 0, 50));
+
+        // Degenerate ramps stay total.
+        assert_eq!(Gradient::across([]).sample(0.5), Color::Reset);
+        assert_eq!(
+            Gradient::across([Color::Rgb(1, 2, 3)]).sample(0.9),
+            Color::Rgb(1, 2, 3)
+        );
+
+        // Explicit stops normalize order, and equal positions make a hard step.
+        let stepped = Gradient::with_stops([
+            (1.0, Color::Rgb(9, 9, 9)),
+            (0.0, Color::Rgb(0, 0, 0)),
+            (0.5, Color::Rgb(2, 2, 2)),
+            (0.5, Color::Rgb(4, 4, 4)),
+        ]);
+        assert_eq!(stepped.sample(0.5), Color::Rgb(4, 4, 4));
+        assert_eq!(stepped.sample(0.499), Color::Rgb(2, 2, 2));
+    }
+
+    #[test]
+    fn gradient_line_sweeps_columns_and_merges_equal_runs() {
+        use ratatui_core::style::Color;
+        let g = Gradient::new(Color::Rgb(0, 0, 0), Color::Rgb(240, 0, 0));
+        let line = g.line("abcd");
+        // Four columns sampled at their midpoints: 30, 90, 150, 210 red.
+        let spans: Vec<_> = line
+            .spans
+            .iter()
+            .map(|s| (s.content.to_string(), s.style.fg))
+            .collect();
+        assert_eq!(
+            spans,
+            vec![
+                ("a".into(), Some(Color::Rgb(30, 0, 0))),
+                ("b".into(), Some(Color::Rgb(90, 0, 0))),
+                ("c".into(), Some(Color::Rgb(150, 0, 0))),
+                ("d".into(), Some(Color::Rgb(210, 0, 0))),
+            ]
+        );
+        // A constant ramp collapses to a single span.
+        let flat = Gradient::across([Color::Rgb(7, 7, 7)]).line("abcd");
+        assert_eq!(flat.spans.len(), 1);
+        assert_eq!(flat.spans[0].content, "abcd");
+
+        // A wide glyph is one span colored once, by its two-column midpoint.
+        let wide = g.line("你a");
+        assert_eq!(wide.spans.len(), 2);
+        assert_eq!(wide.spans[0].content, "你");
+        // 你 spans columns 0..2 of 3 → midpoint 1/3; a sits at 2.5/3.
+        assert_eq!(wide.spans[0].style.fg, Some(Color::Rgb(80, 0, 0)));
+        assert_eq!(wide.spans[1].style.fg, Some(Color::Rgb(200, 0, 0)));
+
+        // Empty text renders as an empty line, not a panic.
+        assert!(g.line("").spans.is_empty());
+    }
+
+    #[test]
+    fn gradient_line_paints_cells_through_text() {
+        use crate::components::Text;
+        use ratatui_core::style::Color;
+        let g = Gradient::new(Color::Rgb(0, 0, 0), Color::Rgb(240, 0, 0));
+        let text = Text::new(vec![g.line("abcd")]);
+        let buf = crate::testing::render(&text, 4, 1, &Theme::default());
+        for (col, red) in [(0u16, 30u8), (1, 90), (2, 150), (3, 210)] {
+            assert_eq!(
+                buf[(col, 0)].fg,
+                Color::Rgb(red, 0, 0),
+                "column {col} carries its ramp color"
+            );
+        }
     }
 
     #[test]

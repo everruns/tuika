@@ -66,6 +66,115 @@ pub fn sawtooth(frame: u64, period: u64) -> Phase {
 /// the segment leading into it.
 pub type Easing = fn(Phase) -> Phase;
 
+/// Linear interpolation from `a` to `b` by `t` in `0.0..=1.0` (clamped).
+pub fn lerp(a: f32, b: f32, t: Phase) -> f32 {
+    a + (b - a) * t.clamp(0.0, 1.0)
+}
+
+/// A retargetable eased ramp between two values, for state-driven motion.
+///
+/// Where a [`Timeline`] plays a fixed choreography from frame 0, a `Transition`
+/// follows a *target that changes at runtime* — hover on/off, focus gained,
+/// a panel expanding. Give it a new target with [`set_target`](Self::set_target)
+/// and it eases there from wherever it currently is, including mid-flight:
+/// retargeting starts a fresh segment from the current sampled value, so motion
+/// never jumps.
+///
+/// Like everything animated in tuika it owns no clock: it is a pure function of
+/// the host's frame counter, so sampling is deterministic and testable. The
+/// usual shape for an animated *style* is a `Transition` driving a `0.0..=1.0`
+/// phase that [`style::lerp_color`](crate::style::lerp_color) or a
+/// [`style::Gradient`](crate::style::Gradient) maps onto colors:
+///
+/// ```
+/// use tuika::anim::Transition;
+/// use tuika::style::lerp_color;
+/// use tuika::ui::Color;
+///
+/// let (normal, hot) = (Color::Rgb(0, 0, 0), Color::Rgb(200, 200, 200));
+/// let mut hover = Transition::new(0.0, 12); // 12-frame ease
+/// hover.set_target(1.0, 100);               // pointer entered on frame 100
+/// let t = hover.sample(106);                // mid-flight...
+/// let fg = lerp_color(normal, hot, t);      // ...blends the style
+/// # let _ = fg;
+/// assert!(t > 0.0 && t < 1.0);
+/// assert_eq!(hover.sample(112), 1.0);
+/// ```
+#[derive(Clone, Copy, Debug)]
+pub struct Transition {
+    from: f32,
+    to: f32,
+    /// Host frame at which the current segment began.
+    start: u64,
+    duration: u64,
+    easing: Easing,
+}
+
+impl Transition {
+    /// A transition at rest on `value`, taking `duration` frames per segment,
+    /// eased with [`ease_in_out`]. A zero duration makes every retarget
+    /// instantaneous.
+    pub fn new(value: f32, duration: u64) -> Self {
+        Self {
+            from: value,
+            to: value,
+            start: 0,
+            duration,
+            easing: ease_in_out,
+        }
+    }
+
+    /// Replace the easing curve (e.g. [`ease_out`] for snappier arrivals).
+    pub fn easing(mut self, easing: Easing) -> Self {
+        self.easing = easing;
+        self
+    }
+
+    /// The value the transition is heading toward (or resting on).
+    pub fn target(&self) -> f32 {
+        self.to
+    }
+
+    /// Head toward `target`, starting a fresh eased segment at host `frame`
+    /// from the current sampled value. Setting the target it already has is a
+    /// no-op, so calling this every frame with the state-derived target is
+    /// fine — motion in flight is not restarted.
+    pub fn set_target(&mut self, target: f32, frame: u64) {
+        if target == self.to {
+            return;
+        }
+        self.from = self.sample(frame);
+        self.to = target;
+        self.start = frame;
+    }
+
+    /// Jump to `value` immediately, with no animation.
+    pub fn snap(&mut self, value: f32) {
+        self.from = value;
+        self.to = value;
+    }
+
+    /// The eased value at host `frame`. Frames before the segment started
+    /// return the segment's starting value.
+    pub fn sample(&self, frame: u64) -> f32 {
+        if self.duration == 0 || self.from == self.to {
+            return self.to;
+        }
+        let elapsed = frame.saturating_sub(self.start);
+        if elapsed >= self.duration {
+            return self.to;
+        }
+        let p = elapsed as f32 / self.duration as f32;
+        lerp(self.from, self.to, (self.easing)(p))
+    }
+
+    /// Whether motion has finished at host `frame` — the host can stop
+    /// scheduling animation frames once every transition is settled.
+    pub fn is_settled(&self, frame: u64) -> bool {
+        self.sample(frame) == self.to
+    }
+}
+
 /// What a [`Timeline`] does once the playhead passes its last keyframe.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Repeat {
@@ -293,6 +402,62 @@ mod tests {
         assert!(eased.sample(5) < 0.5);
         approx(eased.sample(0), 0.0);
         approx(eased.sample(10), 1.0);
+    }
+
+    #[test]
+    fn transition_eases_toward_a_new_target() {
+        let mut t = Transition::new(0.0, 10).easing(linear);
+        approx(t.sample(0), 0.0);
+        assert!(t.is_settled(0));
+
+        t.set_target(1.0, 100);
+        approx(t.sample(100), 0.0);
+        approx(t.sample(105), 0.5);
+        approx(t.sample(110), 1.0);
+        approx(t.sample(999), 1.0); // holds after arrival
+        assert!(!t.is_settled(105));
+        assert!(t.is_settled(110));
+    }
+
+    #[test]
+    fn transition_retargets_from_mid_flight_value() {
+        let mut t = Transition::new(0.0, 10).easing(linear);
+        t.set_target(1.0, 0);
+        // Reverse halfway there: the new segment starts at 0.5, not at 1.0.
+        t.set_target(0.0, 5);
+        approx(t.sample(5), 0.5);
+        approx(t.sample(10), 0.25);
+        approx(t.sample(15), 0.0);
+    }
+
+    #[test]
+    fn transition_same_target_does_not_restart_motion() {
+        let mut t = Transition::new(0.0, 10).easing(linear);
+        t.set_target(1.0, 0);
+        // Re-asserting the target every frame must not reset the segment.
+        t.set_target(1.0, 4);
+        approx(t.sample(5), 0.5);
+    }
+
+    #[test]
+    fn transition_zero_duration_and_snap_are_instant() {
+        let mut t = Transition::new(0.0, 0);
+        t.set_target(1.0, 42);
+        approx(t.sample(42), 1.0);
+
+        let mut s = Transition::new(0.0, 30);
+        s.set_target(1.0, 0);
+        s.snap(0.25);
+        approx(s.sample(1), 0.25);
+        assert!(s.is_settled(1));
+    }
+
+    #[test]
+    fn lerp_clamps_and_interpolates() {
+        approx(lerp(0.0, 10.0, 0.5), 5.0);
+        approx(lerp(0.0, 10.0, -1.0), 0.0);
+        approx(lerp(0.0, 10.0, 2.0), 10.0);
+        approx(lerp(10.0, 0.0, 0.25), 7.5);
     }
 
     #[test]
