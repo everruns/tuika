@@ -176,13 +176,18 @@ Turn a bare `http(s)` URL — or a markdown `[label](url)` whose visible text is
 not the URL — into a real clickable link, without changing the visible text. A
 cell buffer can't carry a link target — a `ratatui::Cell` is one grapheme plus a
 style — so tuika emits the link by writing the OSC 8 sequence around the run
-(either via [`HyperlinkBackend`] scanning bare URLs, or via
-[`apply_buffer_links`] for explicit destinations from the markdown renderer).
+(via [`HyperlinkBackend`] scanning arbitrary rendered output, or
+[`apply_buffer_links`] for destinations retained by `Paragraph` and the
+markdown renderer).
 [API](https://docs.rs/tuika/latest/tuika/term/hyperlink/index.html)
 
 <img src="demos/hyperlink.png" width="880" alt="Hyperlink demo: a transcript line with 'https://docs.rs/tuika' and a markdown link label both shown in an underlined link color; unsupported terminals would render the same text without the link.">
 
-There are two entry points:
+The entry points cover both components and lower-level output:
+
+- `Paragraph` — wrapped plain prose links bare web URLs by default, including
+  URLs split across rows. Configure it with `Paragraph::link_policy`; `Text`,
+  `Wrap`, `CodeBlock`, and `Console` stay literal.
 
 - `hyperlink::encode(url, text)` — the pure encoder. Returns `text` wrapped in the OSC 8
   sequence, or `text` unchanged when `url` isn't a safe web URL. No I/O.
@@ -196,12 +201,13 @@ There are two entry points:
   preserves `[label](url)` destinations as [`BufferLink`]s through wrapping;
   after painting the lines, `apply_buffer_links` embeds OSC 8 into the boundary
   cells (ForcedWidth) so a label that is not itself a URL stays clickable with
-  the terminal's native modifier. Configure schemes with `LinkPolicy` (and
-  `Markdown::link_policy`).
+  the terminal's native modifier. `Paragraph` uses the same buffer-link path
+  for bare URLs. Configure schemes with `LinkPolicy`, `Markdown::link_policy`,
+  or `Paragraph::link_policy`.
 
-Each of the first three has a policy-aware sibling — `encode_with`, `write_line_with`, and
-`HyperlinkBackend::with_policy` — taking a `LinkPolicy` so the host chooses which
-schemes are linked. The default (`LinkPolicy::WEB`) is `http(s)`-only;
+The three lower-level emitters have policy-aware forms — `encode_with`,
+`write_line_with`, and `HyperlinkBackend::with_policy` — taking a `LinkPolicy`
+so the host chooses which schemes are linked. The default (`LinkPolicy::WEB`) is `http(s)`-only;
 `LinkPolicy::WEB.with_mailto()` also links `mailto:` addresses.
 `LinkPolicy::NONE` skips emission entirely.
 

@@ -187,7 +187,7 @@ component. Linked names below jump straight to their demo.
 
 | Component | Purpose |
 | --- | --- |
-| [`Text`](docs/components/text.md#text) / `Paragraph` | Styled lines / word-wrapped plain text |
+| [`Text`](docs/components/text.md#text) / `Paragraph` | Literal styled lines / word-wrapped prose with bare web links |
 | `Wrap` | Word-wraps pre-styled lines, preserving per-span styles |
 | [`Markdown`](docs/markdown.md) (+ `MarkdownState`) | CommonMark → styled lines; `MarkdownState` streams incrementally — see the [markdown guide](docs/markdown.md) |
 | [`CodeBlock`](docs/components/markdown-code.md#codeblock) | Themed, framed code block with a pluggable `Highlighter` and optional line-number gutter |
