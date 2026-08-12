@@ -57,6 +57,7 @@ mod tabs;
 pub mod text;
 mod textinput;
 pub mod toast;
+mod tree_list;
 mod viewport;
 mod virtualization;
 
@@ -96,7 +97,9 @@ pub use qr::{QrCode, QrEcc};
 pub use responsive::Responsive;
 pub use rule::Rule;
 pub use scroll::{Scroll, ScrollState};
-pub use select::{MultiSelectState, SelectList, SelectNavigation, SelectState};
+pub use select::{
+    MultiSelectState, SelectList, SelectNavigation, SelectState, SelectViewportState,
+};
 pub use selection_screen::SelectionScreen;
 pub use slider::{Slider, SliderState};
 pub use spacer::Spacer;
@@ -111,5 +114,6 @@ pub use textinput::{
     TriggerAnchor,
 };
 pub use toast::{ToastLevel, ToastList, Toasts};
+pub use tree_list::{TreeList, TreeRow, TreeState};
 pub use viewport::Viewport;
 pub use virtualization::{Scrollbar, VirtualWindow};

@@ -406,6 +406,14 @@ const DEMOS: &[Demo] = &[
         true,
         scene_select,
     ),
+    filling_demo(
+        "tree_list",
+        "TreeList",
+        "stable selection, expansion, and persistent scrolling",
+        12,
+        true,
+        scene_tree_list,
+    ),
     demo(
         "keyed_table",
         "KeyedTable",

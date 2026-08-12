@@ -52,6 +52,156 @@ pub struct SelectState {
     selected: Option<usize>,
 }
 
+/// Host-owned selection plus a persistent visible-window start.
+///
+/// Unlike [`SelectList::viewport`], which derives a selection-centered window
+/// independently on every frame, this state moves the window only when the
+/// selected row crosses an edge. Resolve a [`VirtualWindow`] once with
+/// [`resolve`](Self::resolve), pass that exact value to
+/// [`SelectList::visible_window`] (or [`Table::visible_window`](super::Table::visible_window)),
+/// and reuse it for [`handle_mouse`](Self::handle_mouse). This makes click hit
+/// testing refer to the same rows that were painted.
+#[derive(Clone, Copy, Debug)]
+pub struct SelectViewportState {
+    selection: SelectState,
+    offset: usize,
+    follow_selection: bool,
+}
+
+impl Default for SelectViewportState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SelectViewportState {
+    /// Create state with the first row selected and the window at the top.
+    pub const fn new() -> Self {
+        Self {
+            selection: SelectState { selected: Some(0) },
+            offset: 0,
+            follow_selection: true,
+        }
+    }
+
+    /// Create state with no selected row and the window at the top.
+    pub const fn unselected() -> Self {
+        Self {
+            selection: SelectState { selected: None },
+            offset: 0,
+            follow_selection: true,
+        }
+    }
+
+    /// Selection state used by [`SelectList`] and [`Table`](super::Table).
+    pub const fn selection(&self) -> &SelectState {
+        &self.selection
+    }
+
+    /// Currently selected absolute row.
+    pub fn selected(&self) -> Option<usize> {
+        self.selection.selected()
+    }
+
+    /// Select or clear an absolute row. The next [`resolve`](Self::resolve)
+    /// minimally scrolls it into view.
+    pub fn select(&mut self, index: Option<usize>) {
+        self.selection.select(index);
+        self.follow_selection = true;
+    }
+
+    /// First visible row retained across frames.
+    pub const fn offset(&self) -> usize {
+        self.offset
+    }
+
+    /// Set the first visible row directly. Resolution clamps it to the current
+    /// collection and viewport.
+    pub fn set_offset(&mut self, offset: usize) {
+        self.offset = offset;
+        self.follow_selection = false;
+    }
+
+    /// Reconcile collection size, viewport size, selection, and top row.
+    ///
+    /// The returned value is the exact token to use for both rendering and
+    /// subsequent mouse hit testing. A selected row already inside the window
+    /// never changes its start.
+    pub fn resolve(&mut self, len: usize, visible: usize) -> VirtualWindow {
+        self.selection.clamp(len);
+        let visible = visible.min(len);
+        self.offset = self.offset.min(VirtualWindow::max_start_for(len, visible));
+        if self.follow_selection
+            && visible > 0
+            && let Some(selected) = self.selection.selected()
+        {
+            if selected < self.offset {
+                self.offset = selected;
+            } else if selected >= self.offset.saturating_add(visible) {
+                self.offset = selected.saturating_add(1).saturating_sub(visible);
+            }
+        }
+        VirtualWindow::new(len, visible, self.offset)
+    }
+
+    /// Handle keyboard navigation and wheel scrolling, then reconcile the
+    /// persistent window for the supplied dimensions.
+    pub fn handle(&mut self, event: &Event, len: usize, viewport_rows: usize) -> InputOutcome {
+        self.handle_with(event, len, viewport_rows, SelectNavigation::default())
+    }
+
+    /// Handle input with configurable selection aliases.
+    pub fn handle_with(
+        &mut self,
+        event: &Event,
+        len: usize,
+        viewport_rows: usize,
+        navigation: SelectNavigation,
+    ) -> InputOutcome {
+        let before = self.resolve(len, viewport_rows);
+        if let Event::Mouse(mouse) = event {
+            match mouse.kind {
+                MouseKind::ScrollUp => self.offset = self.offset.saturating_sub(3),
+                MouseKind::ScrollDown => {
+                    self.offset = self.offset.saturating_add(3).min(before.max_start())
+                }
+                _ => return InputOutcome::Ignored,
+            }
+            self.follow_selection = false;
+            return if self.offset == before.start() {
+                InputOutcome::Consumed
+            } else {
+                InputOutcome::Changed
+            };
+        }
+        let outcome = self.selection.handle_with(event, len, navigation);
+        if matches!(outcome, InputOutcome::Changed | InputOutcome::Submitted) {
+            self.follow_selection = true;
+            let _ = self.resolve(len, viewport_rows);
+        }
+        outcome
+    }
+
+    /// Select a clicked row from the exact window used to render `bounds`.
+    pub fn handle_mouse(
+        &mut self,
+        event: &Event,
+        len: usize,
+        bounds: Rect,
+        window: VirtualWindow,
+    ) -> InputOutcome {
+        let outcome = self
+            .selection
+            .handle_mouse(event, len, bounds, window.start());
+        if outcome == InputOutcome::Submitted {
+            self.offset = window.start();
+            self.follow_selection = true;
+            let _ = self.resolve(len, window.len());
+        }
+        outcome
+    }
+}
+
 impl Default for SelectState {
     fn default() -> Self {
         Self::new()
@@ -352,6 +502,7 @@ pub struct SelectList {
     selected: Option<usize>,
     /// Max visible rows; `None` shows the whole list.
     viewport: Option<u16>,
+    visible_window: Option<VirtualWindow>,
     scrollbar: bool,
     selection_style: Option<Style>,
 }
@@ -361,6 +512,7 @@ pub(crate) struct SelectRows<'items> {
     source_window: Option<VirtualWindow>,
     selected: Option<usize>,
     viewport: Option<u16>,
+    visible_window: Option<VirtualWindow>,
     scrollbar: bool,
     selection_style: Option<Style>,
 }
@@ -372,6 +524,7 @@ impl<'items> SelectRows<'items> {
             source_window: None,
             selected: state.selected(),
             viewport: None,
+            visible_window: None,
             scrollbar: true,
             selection_style: None,
         }
@@ -404,6 +557,9 @@ impl<'items> SelectRows<'items> {
             .map(usize::from)
             .unwrap_or(usize::MAX)
             .min(available_rows.map(usize::from).unwrap_or(usize::MAX));
+        if let Some(window) = self.visible_window {
+            return VirtualWindow::new(window.total(), window.len().min(visible), window.start());
+        }
         match self.source_window {
             Some(source) => {
                 let len = source.len().min(visible);
@@ -516,6 +672,7 @@ impl SelectList {
             source_window: None,
             selected: state.selected(),
             viewport: None,
+            visible_window: None,
             scrollbar: true,
             selection_style: None,
         }
@@ -532,6 +689,7 @@ impl SelectList {
             source_window: Some(window),
             selected: state.selected(),
             viewport: None,
+            visible_window: None,
             scrollbar: true,
             selection_style: None,
         }
@@ -541,6 +699,17 @@ impl SelectList {
     /// selection so the highlighted row stays on screen.
     pub fn viewport(mut self, rows: u16) -> Self {
         self.viewport = Some(rows.max(1));
+        self
+    }
+
+    /// Paint the exact persistent `window` resolved by
+    /// [`SelectViewportState::resolve`].
+    ///
+    /// Unlike [`windowed`](Self::windowed), `items` remains the complete
+    /// collection. The window is clamped again only if layout assigns fewer
+    /// rows than it contains.
+    pub fn visible_window(mut self, window: VirtualWindow) -> Self {
+        self.visible_window = Some(window);
         self
     }
 
@@ -563,6 +732,7 @@ impl SelectList {
             source_window: self.source_window,
             selected: self.selected,
             viewport: self.viewport,
+            visible_window: self.visible_window,
             scrollbar: self.scrollbar,
             selection_style: self.selection_style,
         }
@@ -837,6 +1007,74 @@ mod tests {
         );
         let text = crate::testing::grid(&crate::testing::render(&list, 20, 3, &theme));
         assert!(text.contains("item0") && text.contains("item2"));
+    }
+
+    #[test]
+    fn persistent_viewport_bottom_click_uses_rendered_window_without_recentering() {
+        use crate::event::{Mouse, MouseButton, MouseKind};
+
+        let mut state = SelectViewportState::new();
+        state.select(Some(10));
+        let window = state.resolve(20, 4);
+        assert_eq!(window.range(), 7..11);
+
+        let click = Event::Mouse(Mouse::at(MouseKind::Down(MouseButton::Left), 2, 3));
+        assert_eq!(
+            state.handle_mouse(&click, 20, Rect::new(0, 0, 12, 4), window),
+            InputOutcome::Submitted
+        );
+        assert_eq!(state.selected(), Some(10));
+        assert_eq!(state.resolve(20, 4).range(), 7..11);
+    }
+
+    #[test]
+    fn persistent_viewport_moves_only_across_each_keyboard_edge() {
+        let mut state = SelectViewportState::new();
+        let down = Event::Key(Key::new(KeyCode::Down));
+        for _ in 0..3 {
+            assert_eq!(state.handle(&down, 10, 4), InputOutcome::Changed);
+        }
+        assert_eq!(state.resolve(10, 4).range(), 0..4);
+        assert_eq!(state.handle(&down, 10, 4), InputOutcome::Changed);
+        assert_eq!(state.resolve(10, 4).range(), 1..5);
+
+        let up = Event::Key(Key::new(KeyCode::Up));
+        assert_eq!(state.handle(&up, 10, 4), InputOutcome::Changed);
+        assert_eq!(state.resolve(10, 4).range(), 1..5);
+        for _ in 0..3 {
+            let _ = state.handle(&up, 10, 4);
+        }
+        assert_eq!(state.resolve(10, 4).range(), 0..4);
+    }
+
+    #[test]
+    fn persistent_viewport_reconciles_resize_and_collection_shrink() {
+        let mut state = SelectViewportState::new();
+        state.select(Some(13));
+        assert_eq!(state.resolve(20, 4).range(), 10..14);
+        assert_eq!(state.resolve(20, 6).range(), 10..16);
+
+        let shrunk = state.resolve(8, 6);
+        assert_eq!(state.selected(), Some(7));
+        assert_eq!(shrunk.range(), 2..8);
+    }
+
+    #[test]
+    fn persistent_window_drives_rows_and_scrollbar_geometry() {
+        let items = (0..10)
+            .map(|index| Line::from(format!("row{index}")))
+            .collect();
+        let mut state = SelectViewportState::new();
+        state.set_offset(3);
+        state.select(Some(4));
+        let window = state.resolve(10, 4);
+        let list = SelectList::new(items, state.selection()).visible_window(window);
+        let rendered = crate::testing::render(&list, 8, 4, &Theme::default());
+        let text = crate::testing::grid(&rendered);
+        assert!(text.contains("row3") && text.contains("row6"), "{text}");
+        assert!(!text.contains("row2") && !text.contains("row7"), "{text}");
+        assert_eq!(rendered[(7, 0)].symbol(), "│");
+        assert_eq!(rendered[(7, 1)].symbol(), "█");
     }
 
     #[test]

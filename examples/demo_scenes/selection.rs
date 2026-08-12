@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use crate::*;
 
 pub(crate) fn scene_select(frame: u64, theme: &Theme) -> Element {
@@ -16,6 +18,36 @@ pub(crate) fn scene_select(frame: u64, theme: &Theme) -> Element {
             grow(1) { node(SelectList::new(items, &state)) }
         }
     }
+}
+
+static TREE_DEMO_ROWS: LazyLock<Vec<TreeRow<'static, u8>>> = LazyLock::new(|| {
+    vec![
+        TreeRow::root(1, "workspace", true),
+        TreeRow::new(2, Some(1), 1, "src", true),
+        TreeRow::new(3, Some(2), 2, "components", true),
+        TreeRow::new(4, Some(3), 3, "tree_list.rs", false),
+        TreeRow::new(5, Some(2), 2, "lib.rs", false),
+        TreeRow::new(6, Some(1), 1, "tests", true),
+        TreeRow::new(7, Some(6), 2, "integration.rs", false),
+        TreeRow::root(8, "target", true),
+    ]
+});
+
+static TREE_DEMO_STATES: LazyLock<Vec<TreeState<u8>>> = LazyLock::new(|| {
+    let collapsed = TreeState::with_selected(1);
+    let mut expanded = TreeState::with_selected(2);
+    expanded.expand(1);
+    let mut deep = TreeState::with_selected(4);
+    deep.expand(1);
+    deep.expand(2);
+    deep.expand(3);
+    deep.set_offset(1);
+    vec![collapsed, expanded, deep]
+});
+
+pub(crate) fn scene_tree_list(frame: u64, _theme: &Theme) -> Element {
+    let state = &TREE_DEMO_STATES[((frame / 24) as usize) % TREE_DEMO_STATES.len()];
+    element(TreeList::new(&TREE_DEMO_ROWS, state).viewport(7))
 }
 
 struct KeyedDemoRow {
