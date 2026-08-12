@@ -472,7 +472,6 @@ impl AsyncRunner {
 
             let deadline = redraw_at.unwrap_or_else(TokioInstant::now);
             let wake = tokio::select! {
-                biased;
                 _ = sleep_until(deadline), if redraw_at.is_some() => Wake::Redraw,
                 _ = ticker.tick() => Wake::Tick,
                 item = events.next(), if !events_done => match item {
