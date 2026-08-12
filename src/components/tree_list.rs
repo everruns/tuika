@@ -1,6 +1,6 @@
 //! Generic, host-data tree navigation with stable node identity.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
@@ -21,7 +21,8 @@ use super::{Scrollbar, VirtualWindow};
 /// generic visibility, navigation, and branch presentation.
 #[derive(Clone, Debug)]
 pub struct TreeRow<'a, K> {
-    /// Stable application identity for this node.
+    /// Stable application identity for this node. Ids must be unique within
+    /// the supplied row collection.
     pub id: K,
     /// Stable id of the parent, or `None` for a root.
     pub parent: Option<K>,
@@ -380,6 +381,11 @@ fn changed_outcome(changed: bool) -> InputOutcome {
 }
 
 fn path_from<K: Clone + Ord>(rows: &[TreeRow<'_, K>], mut index: usize) -> Vec<K> {
+    let indices: BTreeMap<&K, usize> = rows
+        .iter()
+        .enumerate()
+        .map(|(index, row)| (&row.id, index))
+        .collect();
     let mut path = Vec::new();
     for _ in 0..=rows.len() {
         let row = &rows[index];
@@ -387,7 +393,7 @@ fn path_from<K: Clone + Ord>(rows: &[TreeRow<'_, K>], mut index: usize) -> Vec<K
         let Some(parent) = row.parent.as_ref() else {
             break;
         };
-        let Some(parent_index) = rows.iter().position(|candidate| candidate.id == *parent) else {
+        let Some(parent_index) = indices.get(parent).copied() else {
             break;
         };
         index = parent_index;
@@ -396,26 +402,18 @@ fn path_from<K: Clone + Ord>(rows: &[TreeRow<'_, K>], mut index: usize) -> Vec<K
 }
 
 fn visible_indices<K: Ord>(rows: &[TreeRow<'_, K>], expanded: &BTreeSet<K>) -> Vec<usize> {
-    rows.iter()
-        .enumerate()
-        .filter_map(|(index, _)| is_visible(rows, expanded, index).then_some(index))
-        .collect()
-}
-
-fn is_visible<K: Ord>(rows: &[TreeRow<'_, K>], expanded: &BTreeSet<K>, mut index: usize) -> bool {
-    for _ in 0..=rows.len() {
-        let Some(parent) = rows[index].parent.as_ref() else {
-            return true;
-        };
-        if !expanded.contains(parent) {
-            return false;
+    let mut visibility = BTreeMap::new();
+    let mut visible = Vec::new();
+    for (index, row) in rows.iter().enumerate() {
+        let row_visible = row.parent.as_ref().is_none_or(|parent| {
+            expanded.contains(parent) && visibility.get(parent).copied().unwrap_or(false)
+        });
+        visibility.insert(&row.id, row_visible);
+        if row_visible {
+            visible.push(index);
         }
-        let Some(parent_index) = rows.iter().position(|candidate| candidate.id == *parent) else {
-            return false;
-        };
-        index = parent_index;
     }
-    false
+    visible
 }
 
 /// A selectable, expandable tree over host-provided [`TreeRow`]s.
@@ -524,6 +522,11 @@ impl<K: Clone + Ord> View for TreeList<'_, K> {
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
         let visible = visible_indices(self.rows, &self.state.expanded);
+        let last_sibling: BTreeMap<Option<&K>, usize> = visible
+            .iter()
+            .enumerate()
+            .map(|(position, &index)| (self.rows[index].parent.as_ref(), position))
+            .collect();
         let window = self.window(area.height, &visible);
         let overflow = window.overflows();
         let row_width = area
@@ -564,9 +567,9 @@ impl<K: Clone + Ord> View for TreeList<'_, K> {
                 for _ in 1..row.depth {
                     x = surface.set_string(x, y, "│ ", muted);
                 }
-                let has_later_sibling = visible.iter().skip(position + 1).any(|&index| {
-                    self.rows[index].parent == row.parent && self.rows[index].depth == row.depth
-                });
+                let has_later_sibling = last_sibling
+                    .get(&row.parent.as_ref())
+                    .is_some_and(|&last| last > position);
                 x = surface.set_string(
                     x,
                     y,
