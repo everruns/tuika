@@ -1,5 +1,16 @@
 # Knowledge Log
 
+## 2026-08-11
+
+- **Collection interaction state owns the window hosts need to preserve**
+  - Selectable lists and tables can resolve an explicit persistent window and
+    reuse it for rendering and mouse mapping instead of deriving a centered
+    slice independently each frame.
+  - Trees keep domain traversal in the host while Tuika owns stable-id
+    selection, expansion, ancestry fallback, navigation, and viewport behavior.
+  - Async hosts can deliver typed producer messages through the runner's event
+    wait, so data arrival itself wakes the UI without shared mutation or polling.
+
 ## 2026-08-10
 
 - **Mouse capture does not remove basic text selection from runner apps**
