@@ -82,6 +82,22 @@ impl FocusRegistry {
         self.ring_focus() == Some(id)
     }
 
+    /// Focus a registered base-ring region, returning whether the request was
+    /// accepted.
+    ///
+    /// Requests for unknown ids and requests made while an overlay owns input
+    /// are ignored without disturbing the existing ring or its Tab order. A
+    /// host commonly calls this after resolving a pane id through
+    /// [`HitMap`](crate::mouse::HitMap), then renders each pane through
+    /// [`FocusScope`](crate::components::FocusScope).
+    pub fn focus(&mut self, id: &str) -> bool {
+        if self.owner.is_some() || !self.order.iter().any(|registered| registered == id) {
+            return false;
+        }
+        self.focused = Some(id.to_owned());
+        true
+    }
+
     fn advance(&mut self, delta: isize) {
         if self.order.is_empty() {
             return;
@@ -175,5 +191,37 @@ mod tests {
         f.register("old");
         f.register("new");
         assert_eq!(f.active(), Some("new"));
+    }
+
+    #[test]
+    fn programmatic_focus_accepts_only_registered_base_targets() {
+        let mut f = FocusRegistry::new();
+        f.begin_frame();
+        f.register("left");
+        f.register("right");
+        assert!(f.focus("right"));
+        assert!(f.is_active("right"));
+        assert!(!f.focus("missing"));
+        assert!(f.is_active("right"));
+
+        let tab = Event::Key(Key::new(KeyCode::Tab));
+        assert_eq!(f.handle(&tab), EventFlow::Consumed);
+        assert!(
+            f.is_active("left"),
+            "registration order remains the tab ring"
+        );
+    }
+
+    #[test]
+    fn overlay_ownership_rejects_click_to_focus_requests() {
+        let mut f = FocusRegistry::new();
+        f.begin_frame();
+        f.register("left");
+        f.register("right");
+        f.set_owner("dialog");
+        assert!(!f.focus("right"));
+        assert_eq!(f.active(), Some("dialog"));
+        f.clear_owner();
+        assert_eq!(f.active(), Some("left"));
     }
 }
