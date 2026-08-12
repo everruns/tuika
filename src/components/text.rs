@@ -1,10 +1,11 @@
 //! Text and paragraph components.
 //!
 //! [`Text`] draws pre-styled ratatui [`Line`]s faithfully (`Line::style` under
-//! each `Span::style`), clipping to its area. [`Paragraph`] takes a plain string
-//! plus one style and word-wraps it to the available width. [`Wrap`] is the
-//! styled counterpart to `Paragraph`: it word-wraps pre-styled `Line`s while
-//! preserving each span's style across the reflow (see [`wrap_lines`]).
+//! each `Span::style`), clipping to its area. [`Paragraph`] takes plain prose
+//! plus a base style, word-wraps it to the available width, and links bare web
+//! URLs. [`Wrap`] is the styled counterpart to `Paragraph`: it word-wraps
+//! pre-styled `Line`s while preserving each span's style across the reflow (see
+//! [`wrap_lines`]).
 //!
 //! Horizontal alignment is honored throughout. [`Text`] and [`Wrap`] read each
 //! [`Line::alignment`] (unset = flush-left), so centered titles, right-aligned
@@ -19,7 +20,9 @@ use ratatui_core::text::{Line, Span};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::geometry::Size;
+use crate::style::Role;
 use crate::surface::Surface;
+use crate::term::hyperlink::{BufferLink, LinkPolicy, apply_buffer_links, find_links};
 use crate::view::{RenderCtx, View};
 use crate::width::{grapheme_cols, str_cols};
 
@@ -117,20 +120,40 @@ impl View for Text {
     }
 }
 
-/// Plain text word-wrapped to the render width in one style.
+/// Plain prose word-wrapped to the render width from one base style.
+///
+/// Bare `http(s)` URLs are styled with the active [`Role::Link`] and emitted as
+/// OSC 8 hyperlinks by default. Because this component owns the complete source
+/// text, links remain intact across wrapping without requiring a
+/// [`HyperlinkBackend`](crate::term::hyperlink::HyperlinkBackend). Use
+/// [`link_policy`](Self::link_policy) to opt out or enable another supported
+/// scheme.
 pub struct Paragraph {
     text: String,
     style: Style,
     align: Alignment,
+    link_policy: LinkPolicy,
+}
+
+struct ParagraphLine {
+    text: String,
+    links: Vec<ParagraphLink>,
+}
+
+struct ParagraphLink {
+    start: usize,
+    end: usize,
+    url: String,
 }
 
 impl Paragraph {
-    /// A paragraph that wraps `text` in a single `style`, flush-left.
+    /// A paragraph that wraps `text` from one base `style`, flush-left.
     pub fn new(text: impl Into<String>, style: Style) -> Self {
         Self {
             text: text.into(),
             style,
             align: Alignment::Left,
+            link_policy: LinkPolicy::default(),
         }
     }
 
@@ -142,19 +165,62 @@ impl Paragraph {
         self
     }
 
-    fn wrap(&self, width: u16) -> Vec<String> {
+    /// Configure which bare-URL schemes become styled OSC 8 hyperlinks.
+    ///
+    /// The default ([`LinkPolicy::WEB`]) links `http(s)` only. Pass
+    /// [`LinkPolicy::NONE`] to keep URLs literal and in the paragraph's base
+    /// style.
+    pub fn link_policy(mut self, policy: LinkPolicy) -> Self {
+        self.link_policy = policy;
+        self
+    }
+
+    fn wrap(&self, width: u16, link_policy: LinkPolicy) -> Vec<ParagraphLine> {
         if width == 0 {
             return Vec::new();
         }
         self.text
             .split('\n')
             .flat_map(|para| {
+                let links = find_links(para, link_policy);
                 let wrapped = textwrap::wrap(para, width as usize);
-                if wrapped.is_empty() {
-                    vec![String::new()]
-                } else {
-                    wrapped.into_iter().map(|c| c.into_owned()).collect()
-                }
+                let mut cursor = 0usize;
+                wrapped.into_iter().map(move |line| {
+                    let text = line.into_owned();
+                    if links.is_empty() {
+                        return ParagraphLine {
+                            text,
+                            links: Vec::new(),
+                        };
+                    }
+                    // textwrap removes boundary whitespace. Searching forward
+                    // maps even repeated words to their source occurrence.
+                    let Some(relative) = para[cursor..].find(text.as_str()) else {
+                        // If the wrapping implementation ever synthesizes text,
+                        // keep rendering but stop inferring source metadata.
+                        cursor = para.len();
+                        return ParagraphLine {
+                            text,
+                            links: Vec::new(),
+                        };
+                    };
+                    let start = cursor + relative;
+                    let end = start.saturating_add(text.len()).min(para.len());
+                    cursor = end;
+                    let links = links
+                        .iter()
+                        .filter_map(|&(link_start, link_end)| {
+                            let visible_start = link_start.max(start);
+                            let visible_end = link_end.min(end);
+                            (visible_start < visible_end).then(|| ParagraphLink {
+                                start: visible_start - start,
+                                end: visible_end - start,
+                                url: para[link_start..link_end].to_string(),
+                            })
+                        })
+                        .collect();
+                    ParagraphLine { text, links }
+                })
             })
             .collect()
     }
@@ -162,24 +228,57 @@ impl Paragraph {
 
 impl View for Paragraph {
     fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
-        let lines = self.wrap(available.width);
+        // Hyperlink metadata and styling never affect paragraph geometry.
+        let lines = self.wrap(available.width, LinkPolicy::NONE);
         let width = lines
             .iter()
-            .map(|l| str_cols(l.as_str()))
+            .map(|line| str_cols(line.text.as_str()))
             .max()
             .unwrap_or(0);
         Size::new(width, lines.len() as u16)
     }
 
-    fn render(&self, area: Rect, surface: &mut Surface, _ctx: &RenderCtx) {
-        for (row, line) in self.wrap(area.width).into_iter().enumerate() {
+    fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
+        let mut buffer_links = Vec::new();
+        let link_style = ctx.sheet.resolve(Role::Link).apply(self.style);
+        for (row, line) in self
+            .wrap(area.width, self.link_policy)
+            .into_iter()
+            .enumerate()
+        {
             let y = area.y.saturating_add(row as u16);
             if y >= area.bottom() {
                 break;
             }
-            let x = aligned_x(self.align, str_cols(line.as_str()), area);
-            surface.set_string(x, y, &line, self.style);
+            let x = aligned_x(self.align, str_cols(line.text.as_str()), area);
+            let mut byte = 0usize;
+            let mut col = x;
+            for link in line.links {
+                col = surface.set_string(col, y, &line.text[byte..link.start], self.style);
+                let start_col = col.saturating_sub(area.x);
+                col = surface.set_string(col, y, &line.text[link.start..link.end], link_style);
+                let end_col = col.saturating_sub(area.x);
+                if end_col > start_col {
+                    buffer_links.push(BufferLink {
+                        line: row.min(u16::MAX as usize) as u16,
+                        start_col,
+                        end_col,
+                        url: link.url,
+                    });
+                }
+                byte = link.end;
+            }
+            surface.set_string(col, y, &line.text[byte..], self.style);
         }
+        apply_buffer_links(
+            surface.buffer_mut(),
+            ratatui_core::layout::Position {
+                x: area.x,
+                y: area.y,
+            },
+            &buffer_links,
+            self.link_policy,
+        );
     }
 }
 
@@ -355,15 +454,28 @@ impl View for Wrap {
 mod tests {
     use super::*;
     use crate::style::Theme;
+    use crate::term::hyperlink::ctrl_click_url;
     use crate::tests::support::{buffer, row};
     use crate::view::{RenderCtx, View};
-    use crate::{Size, Surface};
+    use crate::{Mouse, MouseButton, MouseKind, Size, Surface};
+    use ratatui_core::layout::Rect;
     use ratatui_core::style::{Color, Modifier, Style};
     use ratatui_core::text::{Line, Span};
 
     /// Concatenated text of a line's spans.
     fn line_text(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    fn link_at(
+        buffer: &ratatui_core::buffer::Buffer,
+        area: Rect,
+        col: u16,
+        row: u16,
+    ) -> Option<String> {
+        let mut event = Mouse::at(MouseKind::Up(MouseButton::Left), col, row);
+        event.ctrl = true;
+        ctrl_click_url(&event, buffer, area)
     }
 
     #[test]
@@ -401,6 +513,88 @@ mod tests {
         let size = p.measure(Size::new(10, 10), &RenderCtx::new(&theme));
         assert!(size.height >= 2, "expected wrap, got {size:?}");
         assert!(size.width <= 10);
+    }
+
+    #[test]
+    fn paragraph_links_web_urls_by_default() {
+        let theme = Theme::default();
+        let buf = crate::testing::render(
+            &Paragraph::new("see https://a.dev now", Style::default()),
+            24,
+            1,
+            &theme,
+        );
+        assert_eq!(
+            link_at(&buf, Rect::new(0, 0, 24, 1), 6, 0).as_deref(),
+            Some("https://a.dev")
+        );
+        let linked_cell = &buf[(4, 0)];
+        assert_eq!(linked_cell.fg, theme.code.link);
+        assert!(linked_cell.modifier.contains(Modifier::UNDERLINED));
+    }
+
+    #[test]
+    fn paragraph_link_policy_none_keeps_urls_literal() {
+        let buf = crate::testing::render(
+            &Paragraph::new("https://a.dev", Style::default())
+                .link_policy(crate::term::hyperlink::LinkPolicy::NONE),
+            20,
+            1,
+            &Theme::default(),
+        );
+        assert!(
+            buf.content
+                .iter()
+                .all(|cell| !cell.symbol().contains("\x1b]8;;"))
+        );
+        assert!(!buf[(0, 0)].modifier.contains(Modifier::UNDERLINED));
+    }
+
+    #[test]
+    fn paragraph_keeps_full_link_target_across_hard_wraps() {
+        let url = "https://example.com/very-long-path";
+        let buf = crate::testing::render(
+            &Paragraph::new(url, Style::default()),
+            10,
+            4,
+            &Theme::default(),
+        );
+        for row in 0..4 {
+            assert_eq!(
+                link_at(&buf, Rect::new(0, 0, 10, 4), 1, row).as_deref(),
+                Some(url),
+                "wrapped row {row} should resolve the complete URL"
+            );
+        }
+    }
+
+    #[test]
+    fn paragraph_aligns_link_metadata_with_visible_text() {
+        let url = "https://a.dev";
+        let buf = crate::testing::render(
+            &Paragraph::new(url, Style::default()).alignment(Alignment::Center),
+            20,
+            1,
+            &Theme::default(),
+        );
+        assert_eq!(
+            link_at(&buf, Rect::new(0, 0, 20, 1), 3, 0).as_deref(),
+            Some(url)
+        );
+        assert_eq!(link_at(&buf, Rect::new(0, 0, 20, 1), 0, 0), None);
+    }
+
+    #[test]
+    fn paragraph_links_survive_degenerate_sizes() {
+        let paragraph = Paragraph::new(
+            "read https://example.com/a-very-long-path",
+            Style::default(),
+        );
+        let sizes = (0..=20).flat_map(|width| (0..=4).map(move |height| (width, height)));
+        assert_eq!(
+            crate::testing::render_sizes(&paragraph, sizes, &Theme::default()).len(),
+            105
+        );
     }
 
     #[test]

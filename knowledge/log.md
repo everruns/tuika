@@ -11,6 +11,14 @@
   - Async hosts can deliver typed producer messages through the runner's event
     wait, so data arrival itself wakes the UI without shared mutation or polling.
 
+- **Prose owns hyperlinks; literal text does not**
+  - `Paragraph`, like `Markdown`, retains complete bare-URL targets before
+    wrapping and emits them through the buffer-link path under a web-only
+    default policy.
+  - `Text`, `Wrap`, `CodeBlock`, and `Console` remain literal. Backend-wide URL
+    inference remains an explicit host choice because it cannot distinguish
+    prose from logs, source code, or diagnostics.
+
 ## 2026-08-10
 
 - **Mouse capture does not remove basic text selection from runner apps**

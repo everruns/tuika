@@ -63,6 +63,11 @@ described in the release process begins with the entry below.
 
 ### Changed
 
+- `Paragraph` now treats its input as human-facing prose: bare `http(s)` URLs
+  use the stylesheet's link role and carry OSC 8 targets through wrapping by
+  default. `Paragraph::link_policy(LinkPolicy::NONE)` restores literal,
+  single-style rendering; `Text`, `Wrap`, `CodeBlock`, and `Console` remain
+  inert.
 - **Breaking**: `UpdateResult::Clean` now means an input was unhandled and may
   receive runner default behavior; return the new `UpdateResult::Consumed` for
   a handled input that does not need a repaint. Exhaustive matches over

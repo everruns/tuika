@@ -374,7 +374,7 @@ fn osc8_url_at(buffer: &Buffer, area: Rect, col: u16, row: u16) -> Option<String
 /// sentence punctuation trimmed, matching how the host styles links; a
 /// `mailto:` match also stops at its query `?` so the pre-fill params are
 /// neither shown nor linked.
-fn find_links(s: &str, policy: LinkPolicy) -> Vec<(usize, usize)> {
+pub(crate) fn find_links(s: &str, policy: LinkPolicy) -> Vec<(usize, usize)> {
     const TRAILING: &[char] = &['.', ',', ';', ':', '!', '?', ')', ']', '}', '\'', '"'];
     let mut ranges = Vec::new();
     if !policy.links_any() {

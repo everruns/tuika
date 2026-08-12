@@ -24,7 +24,7 @@ Six out-of-band capabilities, in three families:
 
 | Capability | Sequence | Module | Emission point |
 | --- | --- | --- | --- |
-| Hyperlinks | OSC 8 | `term::hyperlink` | spliced into the drawn cell run by `HyperlinkBackend` |
+| Hyperlinks | OSC 8 | `term::hyperlink` | embedded by semantic prose components or spliced into arbitrary drawn runs by `HyperlinkBackend` |
 | Clipboard | OSC 52 | `term::clipboard` | host- or runner-initiated, any time |
 | Native progress | OSC 9;4 | `term::progress` | host-initiated, any time |
 | Pointer shape | OSC 22 | `term::pointer` | host-initiated, any time |
@@ -105,6 +105,14 @@ wrapping. Hosts are expected to keep it behind a switch until they have walked
 the terminal matrix for their own UI, and the repository's own PTY smoke asserts
 both that the escape is emitted and that the footer text around it survives
 intact.
+
+That opt-in applies to backend-wide inference. Components that own prose can
+retain link destinations before painting and emit them without reconstructing
+meaning from ratatui's incremental draw runs. `Markdown` does this for explicit
+and bare links; `Paragraph` does it for bare URLs, under `LinkPolicy::WEB` by
+default. Literal components (`Text`, `Wrap`, `CodeBlock`, `Console`) do not infer
+links. `HyperlinkBackend` remains the host-controlled escape hatch for arbitrary
+rendered content.
 
 ### Encoders live in tuika, payloads come from the host
 
