@@ -58,6 +58,13 @@ rather than beside it.
   selection state, so reorder, filters, and streaming inserts do not reinterpret
   an index as a different record. Rows remain borrowed frame inputs and the view
   is still ephemeral; keys do not create retained components or lifecycle.
+- **Selectable viewports persist independently of selection centering.**
+  `SelectViewportState` resolves one explicit `VirtualWindow` that is reused by
+  rendering and mouse hit testing. Selection crossing an edge moves the window
+  minimally; resize and collection refresh are explicit reconciliation points.
+  `TreeState` extends the same host-owned model with stable node identity,
+  expansion, and remembered ancestry while domain traversal remains outside the
+  toolkit.
 - **Key bindings are the help source of truth**: active labeled bindings expose
   layer priority, and component adapters derive responsive footer hints and
   complete help rows from the same declarations used for dispatch.
@@ -120,6 +127,9 @@ rather than beside it.
   `RunnerCore` is the runtime-neutral dirty/render/exit state machine used by
   both sync and async shells; event polling, clocks, sleeping, and terminal I/O
   remain outside it.
+  The async shell may additionally select over a typed application stream;
+  messages use the same dirty/exit contract as events and ticks, and completion
+  disables only that source.
 
 `measure` and `render` are the two halves of every view, and both receive the
 same `RenderCtx`: `measure` reports a size in whole cells so the solver can

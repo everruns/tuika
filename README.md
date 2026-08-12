@@ -211,6 +211,7 @@ component. Linked names below jump straight to their demo.
 | `Form` / `FormField` (+ `FormState`) | Responsive labeled controls and validation |
 | `DrawView` / `CanvasView` | Closure-based custom cell drawing |
 | [`SelectList`](docs/components/interactive.md#selectlist--selectstate) (+ `SelectState`) | Selectable list, including host-windowed collections |
+| [`TreeList`](docs/components/interactive.md#treelist--treestate) (+ `TreeState`) | Stable-id expandable tree over host-provided rows |
 | [`SelectionScreen`](docs/components/layout.md#selectionscreen) | Responsive full-screen action/agent/permission pickers |
 | [`KeyedTable`](docs/components/interactive.md#keyedtable--keyedselectstate) (+ keyed single/multi-selection) | Borrowed, virtualized slice or projected rows whose selection follows stable application keys |
 | [`CompletionPalette`](docs/components/interactive.md#completionpalette--completionstate) (+ `CompletionState`, `CompletionItem`) | Filter-ranked command and token completion |
@@ -536,10 +537,11 @@ Each takes over the terminal — the alternate screen, or a pinned footer for
 | [`markdown`](examples/markdown.rs) | `cargo run --example markdown`   | streaming `MarkdownState` + highlighted `CodeBlock`, following the stream until you scroll back |
 | [`select`](examples/select.rs)   | `cargo run --example select`     | interactive multi-select with aliases, numbers, and mouse hit-testing |
 | [`keyed_table`](examples/keyed_table.rs) | `cargo run --example keyed_table` | dynamic borrowed rows, stable keyed selection, filtering, and reordering |
+| [`tree_list`](examples/tree_list.rs) | `cargo run --example tree_list` | expandable stable-id tree, refresh, mouse selection, and persistent scrolling |
 | [`overlay`](examples/overlay.rs)  | `cargo run --example overlay`    | Target-following popover + input routing           |
 | [`primitives`](examples/primitives.rs) | `cargo run --example primitives` | owned dialog scene + form + arbitrary-child viewport |
 | [`ratatui_dashboard`](examples/ratatui_dashboard.rs) | `cargo run --example ratatui_dashboard` | mixed Ratatui widgets + responsive live data |
-| [`async_dashboard`](examples/async_dashboard.rs) | `cargo run --example async_dashboard --features async` | `AsyncRunner` polling on a Tokio runtime, no shared state |
+| [`async_dashboard`](examples/async_dashboard.rs) | `cargo run --example async_dashboard --features async` | typed background messages waking `AsyncRunner`, no shared mutable state |
 | [`mouse`](examples/mouse.rs)     | `cargo run --example mouse`      | drag-to-select + highlight + OSC 52 copy, clickable buttons |
 | [`image`](examples/image.rs)     | `cargo run --example image`      | `Image` over reserved cells (Kitty/iTerm2/Sixel), alt-text fallback |
 | [`inherit`](examples/inherit.rs) | `cargo run --example inherit`    | adopting the terminal's own palette — probe, derive, and the no-I/O fallback |
@@ -775,6 +777,13 @@ network or disk I/O — and lets its update closure `.await`. It ties
 single event loop. Its update closure returns the same
 `UpdateResult::{Clean, Consumed, Dirty, Exit}` as `Runner`, so awaited work only
 rebuilds and repaints when it actually changes visible state.
+
+`run_with_messages` adds a typed host stream beside terminal events and ticks.
+Its update callback receives `AsyncSignal::{Event, Tick, Message}`; a background
+producer can therefore wake and update the UI immediately without
+`Arc<Mutex<_>>`, fabricated keys, or a short polling interval. The lower-level
+`run_with_events_and_messages` accepts both streams and a caller-owned backend,
+which also makes completion and error behavior deterministic under `TestBackend`.
 
 Enabling `async` adds Tokio (timer + `select!`) and crossterm's `event-stream`
 feature; it stays off by default so sync-only hosts pull in no runtime. The

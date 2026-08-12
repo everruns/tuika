@@ -145,7 +145,7 @@ fn components_are_reachable_flat() {
         ConfirmDialogState, Console, Dialog, Diff, Form, FormField, FormState, Image, InputDialog,
         InputDialogState, KeyedColumn, KeyedMultiSelectState, KeyedRowSource, KeyedSelectState,
         KeyedTable, Markdown, MultiChoiceDialog, MultiChoiceDialogState, NavigableKeyedRowSource,
-        QrCode, Toasts, Viewport,
+        QrCode, SelectViewportState, Toasts, TreeList, TreeRow, TreeState, Viewport,
     };
 
     let theme = Theme::default();
@@ -202,6 +202,12 @@ fn components_are_reachable_flat() {
         &keyed,
     );
     let _ = KeyedMultiSelectState::<u64>::new();
+    let tree_rows = [TreeRow::root(1u64, "root", false)];
+    let mut tree_state = TreeState::with_selected(1u64);
+    let tree_window = tree_state.resolve(&tree_rows, 1);
+    let _ = TreeList::new(&tree_rows, &tree_state).visible_window(tree_window);
+    let mut selection = SelectViewportState::new();
+    assert_eq!(selection.resolve(3, 2).range(), 0..2);
     struct Source([Row; 1]);
     impl KeyedRowSource<u64> for Source {
         type Row = Row;

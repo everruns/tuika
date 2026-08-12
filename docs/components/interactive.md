@@ -198,6 +198,16 @@ bounds and a viewport offset. `MultiSelectState` adds Enter/Space/click toggling
 for pickers that retain several checked items. The runnable
 [`select` example](https://github.com/everruns/tuika/blob/main/examples/select.rs)
 combines every navigation mode in one picker.
+
+For a long-lived viewport, use `SelectViewportState`. Its `resolve` method
+returns one exact `VirtualWindow`: pass that value to
+`SelectList::visible_window` (or `Table::visible_window`) and back to
+`handle_mouse`. The top row then persists, moving only when keyboard selection
+crosses an edge; clicking a visible lower row does not recenter it. After a
+resize or collection refresh, call `resolve` again to clamp both selection and
+window. Existing `.viewport(rows)` remains selection-centered for compatibility;
+migrate when the host needs stable scroll position or precise post-render mouse
+mapping.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.SelectList.html)
 
 <img src="../demos/select.gif" width="880" alt="SelectList demo">
@@ -209,6 +219,38 @@ let mut state = SelectState::unselected();
 let style = Style::default().fg(Color::Blue);
 state.select(Some(0)); // select a row when the host is ready
 view! { node(SelectList::new(items, &state).selection_style(style)) }
+```
+
+```rust
+let mut state = SelectViewportState::new();
+let window = state.resolve(items.len(), body_rows);
+let list = SelectList::new(items, state.selection()).visible_window(window);
+let outcome = state.handle_mouse(&event, item_count, body_bounds, window);
+```
+
+### `TreeList` + `TreeState`
+
+A domain-neutral tree over host-produced depth-first `TreeRow`s. Rows retain
+stable ids, labels, parent ids, depth, and an `expandable` flag; recursive model
+traversal and label heuristics stay in the application. `TreeState` owns generic
+expansion, stable-id selection, Up/Down navigation, Left collapse-or-parent,
+Right expand, Enter toggle, mouse selection/disclosure toggling, and a persistent
+scroll window with a scrollbar. Refreshes and reorder preserve the selected id;
+when it becomes hidden or disappears, selection falls back to its nearest
+visible remembered ancestor.
+[API](https://docs.rs/tuika/latest/tuika/components/struct.TreeList.html) ·
+[`tree_list` example](https://github.com/everruns/tuika/blob/main/examples/tree_list.rs)
+
+<img src="../demos/tree_list.gif" width="880" alt="TreeList expansion and stable scrolling demo">
+
+```rust
+let rows = vec![
+    TreeRow::root(1, "workspace", true),
+    TreeRow::new(2, Some(1), 1, "src", false),
+];
+let mut state = TreeState::with_selected(1);
+let window = state.resolve(&rows, body_rows);
+let tree = TreeList::new(&rows, &state).visible_window(window);
 ```
 
 ### `CompletionPalette` + `CompletionState`

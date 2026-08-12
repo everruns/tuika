@@ -176,8 +176,8 @@ iai-callgrind = "0.16.1"
 # The `async` runner's tests drive `AsyncRunner` on a Tokio runtime with a fake
 # event stream; `test-util` gives paused-clock control so ticks are deterministic
 # instead of wall-clock-timed. Reachable only when `--features async` is on.
-tokio = { version = "1", features = ["rt", "macros", "time", "test-util"] }
-tokio-stream = "0.1"
+tokio = { version = "1", features = ["rt", "macros", "sync", "time", "test-util"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 [[bench]]
 name = "markdown"

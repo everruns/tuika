@@ -15,6 +15,20 @@ described in the release process begins with the entry below.
 
 ### Added
 
+- `SelectViewportState` couples index selection to a persistent top row for
+  `SelectList` and `Table`. Its resolved `VirtualWindow` is shared with mouse
+  hit testing, so selection scrolls only across viewport edges and clicks do not
+  recenter the list. The existing selection-centered `.viewport(rows)` remains
+  available; persistent hosts migrate to `resolve` plus `.visible_window`.
+- `TreeList`, `TreeRow`, and `TreeState` provide stable-id expansion, selection,
+  keyboard/mouse navigation, ancestor fallback across refreshes, persistent
+  scrolling, branch rendering, and a scrollbar over host-provided tree rows.
+- `FocusRegistry::focus(id)` lets a `HitMap` focus a registered pane while
+  rejecting unknown ids and requests blocked by overlay input ownership.
+- `AsyncRunner::{run_with_messages, run_with_events_and_messages}` delivers a
+  typed application stream through `AsyncSignal<M>`, including deterministic
+  completion/error/redraw/exit behavior without shared mutable state or polling.
+
 - `Runner` and `AsyncRunner` restore drag-to-select behavior by default when
   their terminal session captures the mouse. Selection is painted over the
   final cell frame, releasing copies through OSC 52 on real-terminal runs, and

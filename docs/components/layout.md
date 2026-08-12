@@ -178,6 +178,10 @@ flag. Focus lives on the render context and `paint` uses one root context, so a
 `Flex` can't hand a single child `focused = true`; wrap each pane in a
 `FocusScope` so the active one's `Boxed` border lights up while the others stay
 dim — independently of the frame's root focus.
+For click-to-focus panes, register stable ids in `FocusRegistry`, resolve the
+clicked pane through a `HitMap`, then call `focus(id)`. Unknown ids and requests
+made while an overlay owns input are rejected, and the original registration
+order remains the Tab/BackTab ring.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.FocusScope.html)
 
 ```rust
@@ -187,6 +191,10 @@ view! {
         grow(1) { node(FocusScope::focused(element(Boxed::new(element(Text::raw("active")))))) }
         grow(1) { node(FocusScope::unfocused(element(Boxed::new(element(Text::raw("idle")))))) }
     }
+}
+
+if let Some(pane) = pane_hits.hit(mouse.column, mouse.row) {
+    focus.focus(pane);
 }
 ```
 

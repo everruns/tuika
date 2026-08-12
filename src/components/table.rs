@@ -102,6 +102,7 @@ pub struct Table {
     source_window: Option<VirtualWindow>,
     selected: Option<usize>,
     viewport: Option<u16>,
+    visible_window: Option<VirtualWindow>,
     scrollbar: bool,
     gutter: bool,
     show_header: bool,
@@ -121,6 +122,7 @@ impl Table {
             source_window: None,
             selected: state.selected(),
             viewport: None,
+            visible_window: None,
             scrollbar: true,
             gutter: true,
             show_header: true,
@@ -150,6 +152,7 @@ impl Table {
             source_window: Some(window),
             selected: state.selected(),
             viewport: None,
+            visible_window: None,
             scrollbar: true,
             gutter: true,
             show_header: true,
@@ -165,6 +168,16 @@ impl Table {
     /// assigned body height; this adds a smaller upper bound when desired.
     pub fn viewport(mut self, rows: u16) -> Self {
         self.viewport = Some(rows.max(1));
+        self
+    }
+
+    /// Paint the exact persistent data-row window resolved by
+    /// [`SelectViewportState::resolve`](super::SelectViewportState::resolve).
+    ///
+    /// `rows` remains the complete table. This is the persistent alternative
+    /// to the legacy selection-centered [`viewport`](Self::viewport) behavior.
+    pub fn visible_window(mut self, window: VirtualWindow) -> Self {
+        self.visible_window = Some(window);
         self
     }
 
@@ -269,6 +282,13 @@ impl Table {
         let viewport = self
             .viewport
             .map_or(available_rows, |rows| rows.min(available_rows));
+        if let Some(window) = self.visible_window {
+            return VirtualWindow::new(
+                window.total(),
+                window.len().min(usize::from(viewport)),
+                window.start(),
+            );
+        }
         match self.source_window {
             Some(source) => VirtualWindow::new(
                 source.total(),
@@ -690,5 +710,21 @@ mod tests {
         assert_eq!(buf[(1, 1)].fg, Color::Blue);
         assert!(buf[(0, 1)].modifier.contains(Modifier::BOLD));
         assert!(buf[(1, 1)].modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn table_accepts_a_persistent_visible_window() {
+        let columns = vec![Column::auto("name")];
+        let rows = (0..8)
+            .map(|index| vec![Line::from(format!("row{index}"))])
+            .collect();
+        let mut state = super::super::SelectViewportState::new();
+        state.set_offset(3);
+        state.select(Some(4));
+        let window = state.resolve(8, 3);
+        let table = Table::new(columns, rows, state.selection()).visible_window(window);
+        let text = crate::testing::grid(&crate::testing::render(&table, 12, 4, &Theme::default()));
+        assert!(text.contains("row3") && text.contains("row5"), "{text}");
+        assert!(!text.contains("row2") && !text.contains("row6"), "{text}");
     }
 }
