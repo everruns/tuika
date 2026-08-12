@@ -139,11 +139,11 @@ pub use layout::{
 };
 pub use output::{OneShotOptions, render_once, write_once};
 pub use overlay::{Overlay, OverlaySpec, TargetAlign, TargetPlacement, TargetSide};
-#[cfg(feature = "async")]
-pub use runner::AsyncRunner;
 pub use runner::{
     Application, Runner, RunnerAction, RunnerConfig, RunnerCore, Signal, UpdateResult,
 };
+#[cfg(feature = "async")]
+pub use runner::{AsyncRunner, AsyncSignal};
 pub use scene::{Backdrop, Scene, SceneOverlay, ScopedScene};
 pub use screen::{ScreenMode, Scrollback};
 pub use style::{SemanticRole, StyleResolver, StyleRole, StyleSheet, Theme};

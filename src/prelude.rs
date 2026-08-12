@@ -53,4 +53,4 @@ pub use crate::{
 };
 
 #[cfg(feature = "async")]
-pub use crate::AsyncRunner;
+pub use crate::{AsyncRunner, AsyncSignal};

@@ -29,7 +29,7 @@
 mod asynchronous;
 
 #[cfg(feature = "async")]
-pub use asynchronous::AsyncRunner;
+pub use asynchronous::{AsyncRunner, AsyncSignal};
 
 use std::io::{self, Write};
 use std::sync::Arc;

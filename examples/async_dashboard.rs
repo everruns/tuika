@@ -3,10 +3,9 @@
 //! The synchronous [`ratatui_dashboard`](ratatui_dashboard.rs) example spawns a
 //! background thread and shares its metrics through `Live` so the blocking
 //! `Runner` can read them. This one does the same job on a Tokio runtime with
-//! **no** shared state: `Metrics` is a plain local value the loop owns, polled
-//! on every tick (and on demand with `r`) by an `async` update closure. There is
-//! no `Live`, no `Notify`, no stop flag, no `spawn_blocking` — the runner's
-//! single `tokio::select!` is the whole event loop.
+//! **no** shared state: `Metrics` is a plain local value the loop owns, while a
+//! background producer sends typed samples that wake the runner immediately.
+//! There is no `Arc<Mutex<_>>`, synthetic terminal input, or polling loop.
 //!
 //! Run with: `cargo run --example async_dashboard --features async`.
 //! Press `q`/`esc` to quit, `r` to refresh now.
@@ -15,6 +14,7 @@ use std::time::Duration;
 
 use ratatui::layout::Constraint;
 use ratatui::widgets::{Block, Borders, Row, Sparkline, Table, Widget};
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use tuika::prelude::*;
 
 /// The dashboard's entire state — owned by the run loop, not shared.
@@ -97,19 +97,30 @@ async fn main() -> std::io::Result<()> {
         ..RunnerConfig::default()
     });
     let mut metrics = Metrics::new();
+    let (send, receive) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        let mut requests = 0;
+        loop {
+            requests = fetch_stats(requests).await;
+            if send.send(Ok(requests)).is_err() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(480)).await;
+        }
+    });
 
     runner
-        .run(
+        .run_with_messages(
             &Theme::default(),
             &mut metrics,
+            UnboundedReceiverStream::new(receive),
             |metrics, _frame| dashboard(metrics),
             async |metrics, signal| match signal {
-                // Poll on the tick and on `r`; both simply await the fetch.
-                Signal::Tick => {
-                    metrics.ingest(fetch_stats(metrics.requests).await);
+                AsyncSignal::Message(requests) => {
+                    metrics.ingest(requests);
                     UpdateResult::Dirty
                 }
-                Signal::Event(Event::Key(key)) if key.plain() => match key.code {
+                AsyncSignal::Event(Event::Key(key)) if key.plain() => match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => UpdateResult::Exit,
                     KeyCode::Char('r') => {
                         metrics.ingest(fetch_stats(metrics.requests).await);
@@ -117,7 +128,7 @@ async fn main() -> std::io::Result<()> {
                     }
                     _ => UpdateResult::Clean,
                 },
-                _ => UpdateResult::Clean,
+                AsyncSignal::Tick | AsyncSignal::Event(_) => UpdateResult::Clean,
             },
         )
         .await
