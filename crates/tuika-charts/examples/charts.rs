@@ -158,5 +158,5 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
 
-    Runner::new(RunnerConfig::default()).run_app(&theme, &mut gallery)
+    Runner::new(RunnerConfig::default()).run(&theme, &mut gallery)
 }

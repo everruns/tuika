@@ -137,13 +137,16 @@ rather than beside it.
   synchronous loop has nothing to select with — so a background producer's
   runner-neutral option stays the redraw handle, which both runners expose and
   which wakes a parked async loop rather than waiting for its next tick.
-- **A run method names the axes it departs from, not a variant.** The seam
-  (closure or application), terminal ownership (runner, caller's backend, or
-  caller's terminal and event stream), and extra input (a message stream)
-  compose as `run[_app][_with_backend|_with_events][_and_messages]`; the runtime
-  is the runner type, and everything else is `RunnerConfig` or a builder. Adding
-  a capability to one point of that product means adding it to the whole row,
-  otherwise the surface stops being predictable.
+- **The frame source is an argument, not a method name.** `FrameSource` has two
+  implementors — `&mut app` for an `Application`, and `from_fn` over a state
+  value and closures — so a run method never has to name which one it takes.
+  Messages ride the same `Signal<M>`, whose default message type is
+  uninhabited, so a loop without a stream has no variant to handle and existing
+  two-arm matches stay exhaustive. What remains in the names is only terminal
+  ownership and whether there is a message stream; the runtime is the runner
+  type, and everything else is `RunnerConfig` or a builder. A capability added
+  at one point of that surface belongs across it — a cross product encoded as
+  names grows holes, which is what the pre-0.9 `run*`/`run_app*` matrix did.
 
 `measure` and `render` are the two halves of every view, and both receive the
 same `RenderCtx`: `measure` reports a size in whole cells so the solver can

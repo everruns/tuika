@@ -747,15 +747,16 @@ impl Application for Stats {
 }
 
 let mut app = Stats::default();
-runner.run_app(&Theme::default(), &mut app)?;
+runner.run(&Theme::default(), &mut app)?;
 ```
 
 `UpdateResult::Clean` leaves an input available to runner defaults such as text
 selection. Return `Consumed` when the application handled it without changing
 the frame, `Dirty` when handling changed the frame, or `Exit` to stop.
 
-`Runner::run` and `run_with_backend` retain the separate state/view/update
-closure API for owned `Element` trees. The
+Every run method takes a `FrameSource`, and there are exactly two: `&mut app`
+for an `Application`, as above, or `from_fn(&mut state, view, update)` for the
+closure form over an owned `Element` tree. The
 [`borrowed_app`](examples/borrowed_app.rs) example implements a custom `View`
 that directly borrows a `String` from its application.
 
@@ -779,23 +780,22 @@ single event loop. Its update closure returns the same
 `UpdateResult::{Clean, Consumed, Dirty, Exit}` as `Runner`, so awaited work only
 rebuilds and repaints when it actually changes visible state. `AsyncApplication`
 is its `Application` twin — the same borrowed-view seam, with an awaiting
-`update` — driven by `run_app`.
+`update` — and `&mut app` is a `FrameSource` for it just as it is for `Runner`.
 
 `run_with_messages` adds a typed host stream beside terminal events and ticks.
-Its update callback receives `AsyncSignal::{Event, Tick, Message}`; a background
-producer can therefore wake and update the UI immediately without
-`Arc<Mutex<_>>`, fabricated keys, or a short polling interval. The lower-level
-`run_with_events_and_messages` accepts both streams and a caller-owned backend,
-which also makes completion and error behavior deterministic under `TestBackend`.
-An application consuming that stream implements `AsyncApplication<AsyncSignal<M>>`
-and runs through `run_app_with_messages`: the message axis changes the signal
-type, not the seam.
+Messages arrive as `Signal::Message`, so a background producer can wake and
+update the UI immediately without `Arc<Mutex<_>>`, fabricated keys, or a short
+polling interval — and the frame source is the same one `run` takes, at
+`Signal<M>` instead of the default. The lower-level `run_driven_by` accepts a
+caller-owned terminal and both streams, which also makes completion and error
+behavior deterministic under `TestBackend`.
 
-Both runners' `run` methods are named for the axes they depart from —
-`run[_app][_with_backend|_with_events][_and_messages]` — where `_app` selects
-the borrowed-view seam, the middle segment moves terminal ownership to the
-caller, and the last adds the message stream. The runtime is the runner type;
-everything else is `RunnerConfig` or a builder method.
+`Signal<M>` is that one signal type: `M` defaults to the uninhabited
+`Infallible`, so a loop with no message stream has no `Message` variant to
+handle and a two-arm `match` stays exhaustive. What is left in the method names
+is only where the terminal and the input come from — `run`, `run_with_backend`,
+`run_with_messages`, `run_driven_by`. The runtime is the runner type; everything
+else is `RunnerConfig` or a builder method.
 
 Enabling `async` adds Tokio (timer + `select!`) and crossterm's `event-stream`
 feature; it stays off by default so sync-only hosts pull in no runtime. The

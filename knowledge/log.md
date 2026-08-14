@@ -2,6 +2,15 @@
 
 ## 2026-08-14
 
+- **One seam, named axes only for what the names must carry**
+  - `FrameSource` makes the frame source an argument, and a message type
+    parameter on `Signal` makes the message stream a type rather than a method
+    name. The `run*` surface collapses to terminal ownership plus the presence
+    of a stream, and the combinations that were missing cannot recur.
+  - An uninhabited default message type is what keeps that unification cheap for
+    callers: existing matches stay exhaustive, so the generalization is a
+    compile-time no-op unless a host actually wants messages.
+
 - **The application seam is a runner axis, not a synchronous privilege**
   - `AsyncApplication` gives the async runner the borrowed-view seam the sync
     runner already had, and carries its signal type as a parameter so a
@@ -11,8 +20,6 @@
     general in what a frame returns and states render purity in its receiver,
     while the closure seam's `FnMut` view is the more permissive in what it
     captures. Neither is legacy.
-  - Run methods are named by the axes they depart from, so a capability added
-    at one point of the product belongs across its row.
 
 - **A redraw request must reach a parked loop**
   - `RedrawHandle` registers the waiting task's waker, making it a runner-neutral

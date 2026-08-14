@@ -23,54 +23,63 @@
 //!
 //! # Choosing a `run` method
 //!
-//! There is one loop; the `run*` methods are its **axes**, not variants. Each
-//! name is built from the axes it departs from the default on:
+//! There is one loop and one seam, so the surface is small. Every run method
+//! takes a [`FrameSource`] — `&mut app` for an [`Application`], or [`from_fn`]
+//! for the closure form — and the remaining names say only where the terminal
+//! and the input come from:
 //!
-//! `run` `[_app]` `[_with_backend | _with_events]` `[_and_messages]`
-//!
-//! | Axis | Default | Alternative |
+//! | Method | Terminal | Input |
 //! | --- | --- | --- |
-//! | Frame source | closure pair over `&State` | `_app`: an [`Application`] that borrows itself |
-//! | Terminal | the runner enters a [`TerminalSession`] | `_with_backend`: caller's backend; `_with_events`: caller's terminal *and* event stream |
-//! | Input | terminal events and ticks | `_and_messages` / `_with_messages`: a typed application stream |
+//! | [`Runner::run`] / [`AsyncRunner::run`] | the runner enters a [`TerminalSession`] | terminal events and ticks |
+//! | [`Runner::run_with_backend`] / [`AsyncRunner::run_with_backend`] | the runner enters a session over your backend | terminal events and ticks |
+//! | [`AsyncRunner::run_with_messages`] | the runner enters a session | plus a typed application stream |
+//! | [`AsyncRunner::run_driven_by`] | yours, no lifecycle | your event and message streams |
 //!
 //! The runtime axis is the runner you construct, and everything else — screen
 //! mode, tick rate, session policy, text selection — is [`RunnerConfig`] or a
 //! builder method rather than another name.
 //!
-//! The message axis is [`AsyncRunner`]-only: it needs a [`Stream`] to select
-//! over, and a synchronous loop has nothing to select with. A synchronous host
-//! whose background work produces data keeps that data behind a
-//! [`Live`](crate::live::Live) (or any shared value) and marks the frame stale
-//! through [`Runner::redraw_handle`]; both runners expose that handle.
+//! Messages ride the same [`Signal`] the loop always delivered:
+//! `Signal<M>::Message` carries them, and `M` defaults to the uninhabited
+//! [`Infallible`], so a source that never sees a message stream has no variant
+//! to handle. That is also why the message axis is [`AsyncRunner`]-only — it
+//! needs a Tokio `Stream` to select over, and a synchronous loop has nothing to
+//! select with. A synchronous host whose background work produces data keeps
+//! that data behind a [`Live`](crate::live::Live) (or any shared value) and
+//! marks the frame stale through [`Runner::redraw_handle`]; both runners expose
+//! that handle.
 //!
 //! # The two frame sources
 //!
-//! Both describe the same thing and neither is legacy:
+//! [`FrameSource`] has exactly two implementors, and neither is legacy:
 //!
-//! - **Closures** (`run`): `view: FnMut(&State, u64) -> Element` beside
-//!   `update: FnMut(&mut State, Signal)`. State is the runner's argument
-//!   because a closure cannot hold `&state` and `&mut state` at once. The view
-//!   closure is `FnMut`, so it may carry scratch state of its own, and it
-//!   returns an *owned* tree.
-//! - **An application** (`run_app`): [`Application`] (or [`AsyncApplication`]).
-//!   `view(&self)` returns a [`ScopedElement<'_>`](crate::ScopedElement) — a
-//!   tree that borrows the application for the frame — so a large transcript,
+//! - **An application** — [`Application`] (or [`AsyncApplication`]), passed as
+//!   `&mut app`. `view(&self)` returns a [`ScopedElement<'_>`](crate::ScopedElement):
+//!   a tree that borrows the application for the frame, so a large transcript,
 //!   table, or log is painted in place instead of being cloned into an owned
 //!   tree or shared through `Rc<RefCell<_>>`. The `&self` receiver also states
 //!   the contract the closure form only documents: rendering is pure.
+//! - **Closures** — [`from_fn`]`(&mut state, view, update)`. It renders an
+//!   *owned* [`Element`], but the view closure is `FnMut`, so it may keep
+//!   scratch state of its own.
 //!
-//! Since `Element` is `ScopedElement<'static>`, the application seam is the more
-//! general of the two in what it can *return*; the closure seam is the more
-//! permissive in how the view may *capture*. Start with closures, move to
+//! Since `Element` is `ScopedElement<'static>`, the application form is the more
+//! general of the two in what it can *return*; the closure form is the more
+//! permissive in how the view may *capture*. Start with closures, implement
 //! [`Application`] when a frame wants to borrow host data.
 
 #[cfg(feature = "async")]
 mod asynchronous;
 
 #[cfg(feature = "async")]
-pub use asynchronous::{AsyncApplication, AsyncRunner, AsyncSignal};
+#[allow(deprecated)]
+pub use asynchronous::AsyncSignal;
+#[cfg(feature = "async")]
+pub use asynchronous::{
+    AsyncApplication, AsyncFrameSource, AsyncFromFn, AsyncRunner, async_from_fn, no_messages,
+};
 
+use std::convert::Infallible;
 use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -169,16 +178,24 @@ impl Default for RunnerConfig {
 }
 
 /// A signal delivered to a runner update function.
+///
+/// `M` is the host's application-message type, for a loop that also selects
+/// over a message stream. It defaults to [`Infallible`], the uninhabited type:
+/// a plain `Signal` therefore *has* no `Message` variant to construct or match,
+/// and code that handles only ticks and events stays exhaustive.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Signal {
+pub enum Signal<M = Infallible> {
     /// The configured tick interval elapsed.
     Tick,
     /// A translated terminal input event arrived. Resize events force a redraw
     /// after the update unless it exits, even when the update is clean.
     Event(Event),
+    /// A host or background producer sent an application message. Unreachable
+    /// unless the runner was given a message stream.
+    Message(M),
 }
 
-impl Signal {
+impl<M> Signal<M> {
     fn requires_redraw(&self) -> bool {
         matches!(self, Self::Event(Event::Resize { .. }))
     }
@@ -201,7 +218,7 @@ pub enum UpdateResult {
     Exit,
 }
 
-/// A data-driven terminal application, driven by [`Runner::run_app`].
+/// A data-driven terminal application: what [`Runner::run`] drives.
 ///
 /// [`AsyncApplication`] is the same seam for a host whose `update` awaits;
 /// the split exists because only the runtime differs, not the contract.
@@ -214,14 +231,116 @@ pub enum UpdateResult {
 ///
 /// Rendering should be pure: persistent UI and domain state belongs on the
 /// application and changes only in [`update`](Self::update).
-pub trait Application {
-    /// Update application state in response to a tick or terminal event. Return
-    /// [`UpdateResult::Clean`] only when the signal was unhandled, or
-    /// [`UpdateResult::Consumed`] when it was handled without a repaint.
-    fn update(&mut self, signal: Signal) -> UpdateResult;
+pub trait Application<M = Infallible> {
+    /// Update application state in response to a tick, terminal event, or
+    /// message. Return [`UpdateResult::Clean`] only when the signal was
+    /// unhandled, or [`UpdateResult::Consumed`] when it was handled without a
+    /// repaint.
+    fn update(&mut self, signal: Signal<M>) -> UpdateResult;
 
     /// Build the ephemeral view tree for one numbered frame.
     fn view(&self, frame: u64) -> ScopedElement<'_>;
+}
+
+/// What a run loop pulls frames and update decisions from.
+///
+/// This is the runner's single seam, and the reason there is no separate `run`
+/// method per frame source. Two things implement it:
+///
+/// - `&mut A` where `A: Application` — the borrowed-view seam. Its `view(&self)`
+///   may return a tree that borrows the application for the frame.
+/// - [`from_fn`] — a `state` value beside `view`/`update` closures, for a host
+///   that would rather not name a type.
+///
+/// The painting callback is what unifies them: a source hands its root to the
+/// runner instead of returning it, so a borrowed tree only has to outlive the
+/// call. Implement [`Application`] rather than this trait; this one exists to
+/// be *dispatched* on.
+pub trait FrameSource<M = Infallible> {
+    /// Deliver one signal.
+    fn update(&mut self, signal: Signal<M>) -> UpdateResult;
+
+    /// Build one numbered frame and hand its root to `paint`.
+    fn frame(&mut self, frame: u64, paint: PaintRoot<'_>);
+}
+
+impl<M, A: Application<M>> FrameSource<M> for &mut A {
+    fn update(&mut self, signal: Signal<M>) -> UpdateResult {
+        Application::update(*self, signal)
+    }
+
+    fn frame(&mut self, frame: u64, paint: PaintRoot<'_>) {
+        paint(Application::view(*self, frame).as_ref());
+    }
+}
+
+/// A [`FrameSource`] built from a state value and a pair of closures.
+///
+/// Returned by [`from_fn`]; see it for the trade against implementing
+/// [`Application`].
+pub struct FromFn<'state, S, V, U> {
+    state: &'state mut S,
+    view: V,
+    update: U,
+}
+
+/// Build a [`FrameSource`] from `state` and closures over it.
+///
+/// The closure form of the seam. State is a separate argument rather than a
+/// capture because one closure needs `&state` while the other needs
+/// `&mut state`, and a single closure cannot hold both.
+///
+/// It renders an *owned* [`Element`], so a frame that wants to borrow host data
+/// wants [`Application`] instead. In exchange the view closure is `FnMut`, so
+/// it may keep scratch state of its own.
+///
+/// ```no_run
+/// use tuika::prelude::*;
+/// use tuika::runner::from_fn;
+///
+/// # fn main() -> std::io::Result<()> {
+/// let mut count = 0u32;
+/// Runner::new(RunnerConfig::default()).run(
+///     &Theme::default(),
+///     from_fn(
+///         &mut count,
+///         |count, _frame| element(Text::raw(format!("count: {count}"))),
+///         |count, signal| match signal {
+///             Signal::Event(Event::Key(key)) if key.code == KeyCode::Esc => UpdateResult::Exit,
+///             Signal::Event(Event::Key(_)) => {
+///                 *count += 1;
+///                 UpdateResult::Dirty
+///             }
+///             _ => UpdateResult::Clean,
+///         },
+///     ),
+/// )
+/// # }
+/// ```
+pub fn from_fn<S, V, U, M>(state: &mut S, view: V, update: U) -> FromFn<'_, S, V, U>
+where
+    V: FnMut(&S, u64) -> Element,
+    U: FnMut(&mut S, Signal<M>) -> UpdateResult,
+{
+    FromFn {
+        state,
+        view,
+        update,
+    }
+}
+
+impl<M, S, V, U> FrameSource<M> for FromFn<'_, S, V, U>
+where
+    V: FnMut(&S, u64) -> Element,
+    U: FnMut(&mut S, Signal<M>) -> UpdateResult,
+{
+    fn update(&mut self, signal: Signal<M>) -> UpdateResult {
+        (self.update)(self.state, signal)
+    }
+
+    fn frame(&mut self, frame: u64, paint: PaintRoot<'_>) {
+        paint((self.view)(self.state, frame).as_ref());
+    }
 }
 
 /// Runtime-neutral decision produced by [`RunnerCore`].
@@ -373,84 +492,45 @@ impl Runner {
             )
     }
 
-    /// Run until `update` returns [`UpdateResult::Exit`].
+    /// Run until the frame source returns [`UpdateResult::Exit`].
+    ///
+    /// `frames` is either `&mut app` for an [`Application`] or [`from_fn`] over
+    /// a state value and closures — see [`FrameSource`].
     ///
     /// The runner paints once initially. It then delivers input and periodic
-    /// [`Signal::Tick`] values to `update`, repainting only when `update`
-    /// returns [`UpdateResult::Dirty`] or a [`RedrawHandle`] requests it.
-    pub fn run<S, V, U>(
-        &self,
-        theme: &Theme,
-        state: &mut S,
-        mut view: V,
-        update: U,
-    ) -> io::Result<()>
-    where
-        V: FnMut(&S, u64) -> Element,
-        U: FnMut(&mut S, Signal) -> UpdateResult,
-    {
+    /// [`Signal::Tick`] values, repainting only on [`UpdateResult::Dirty`] or
+    /// when a [`RedrawHandle`] requests it.
+    pub fn run<F: FrameSource>(&self, theme: &Theme, mut frames: F) -> io::Result<()> {
         let graphics = FrameGraphics::detected();
-        self.run_with_backend_inner(
+        self.run_inner(
             theme,
             CrosstermBackend::new(io::stdout()),
-            state,
-            |state, frame, paint_root| {
-                let root = view(state, frame);
-                paint_root(root.as_ref());
-            },
-            update,
-            Some(&graphics),
-        )
-    }
-
-    /// Run a data-driven [`Application`] on the real terminal.
-    ///
-    /// This is the borrowed-view counterpart to [`run`](Self::run). It uses the
-    /// same terminal lifecycle, scheduling, redraw, and split-footer behavior.
-    pub fn run_app<A: Application>(&self, theme: &Theme, app: &mut A) -> io::Result<()> {
-        let graphics = FrameGraphics::detected();
-        self.run_with_backend_inner(
-            theme,
-            CrosstermBackend::new(io::stdout()),
-            app,
-            |app, frame, paint_root| {
-                let root = app.view(frame);
-                paint_root(root.as_ref());
-            },
-            Application::update,
+            &mut frames,
             Some(&graphics),
         )
     }
 
     /// Run with a caller-provided backend, such as
     /// [`HyperlinkBackend`](crate::term::hyperlink::HyperlinkBackend).
-    pub fn run_with_backend<S, B, V, U>(
-        &self,
-        theme: &Theme,
-        backend: B,
-        state: &mut S,
-        mut view: V,
-        update: U,
-    ) -> io::Result<()>
+    pub fn run_with_backend<F, B>(&self, theme: &Theme, backend: B, mut frames: F) -> io::Result<()>
     where
+        F: FrameSource,
         B: Backend<Error = io::Error>,
-        V: FnMut(&S, u64) -> Element,
-        U: FnMut(&mut S, Signal) -> UpdateResult,
     {
-        self.run_with_backend_inner(
-            theme,
-            backend,
-            state,
-            |state, frame, paint_root| {
-                let root = view(state, frame);
-                paint_root(root.as_ref());
-            },
-            update,
-            None,
-        )
+        self.run_inner(theme, backend, &mut frames, None)
+    }
+
+    /// Run a data-driven [`Application`] on the real terminal.
+    #[deprecated(since = "0.9.0", note = "use `run(theme, &mut app)` instead")]
+    pub fn run_app<A: Application>(&self, theme: &Theme, app: &mut A) -> io::Result<()> {
+        self.run(theme, app)
     }
 
     /// Run a data-driven [`Application`] with a caller-provided backend.
+    #[deprecated(
+        since = "0.9.0",
+        note = "use `run_with_backend(theme, backend, &mut app)` instead"
+    )]
     pub fn run_app_with_backend<A, B>(
         &self,
         theme: &Theme,
@@ -461,32 +541,19 @@ impl Runner {
         A: Application,
         B: Backend<Error = io::Error>,
     {
-        self.run_with_backend_inner(
-            theme,
-            backend,
-            app,
-            |app, frame, paint_root| {
-                let root = app.view(frame);
-                paint_root(root.as_ref());
-            },
-            Application::update,
-            None,
-        )
+        self.run_with_backend(theme, backend, app)
     }
 
-    fn run_with_backend_inner<S, B, V, U>(
+    fn run_inner<F, B>(
         &self,
         theme: &Theme,
         backend: B,
-        state: &mut S,
-        mut view: V,
-        mut update: U,
+        frames: &mut F,
         graphics: Option<&FrameGraphics>,
     ) -> io::Result<()>
     where
+        F: FrameSource,
         B: Backend<Error = io::Error>,
-        V: FnMut(&S, u64, PaintRoot<'_>),
-        U: FnMut(&mut S, Signal) -> UpdateResult,
     {
         let mode = self.config.screen_mode;
         let split = !mode.is_alternate();
@@ -515,8 +582,7 @@ impl Runner {
             draw(
                 &mut terminal,
                 theme,
-                &mut view,
-                state,
+                frames,
                 frame,
                 graphics,
                 &mut selection,
@@ -544,7 +610,7 @@ impl Runner {
 
             if now.saturating_duration_since(last_tick) >= self.config.tick_rate {
                 last_tick = now;
-                let result = update(state, Signal::Tick);
+                let result = frames.update(Signal::Tick);
                 core.apply(result);
                 if core.is_exited() {
                     break;
@@ -563,8 +629,7 @@ impl Runner {
                     draw(
                         &mut terminal,
                         theme,
-                        &mut view,
-                        state,
+                        frames,
                         frame,
                         graphics,
                         &mut selection,
@@ -587,9 +652,9 @@ impl Runner {
                 let requires_redraw = signal.requires_redraw();
                 let selection_event = match &signal {
                     Signal::Event(event) => Some(event.clone()),
-                    Signal::Tick => None,
+                    _ => None,
                 };
-                let result = update(state, signal);
+                let result = frames.update(signal);
                 core.apply(result);
                 if core.is_exited() {
                     break 'running;
@@ -624,24 +689,23 @@ impl Runner {
 }
 
 /// Paint one numbered frame from immutable state.
-fn draw<S, B, V>(
+fn draw<F, B>(
     terminal: &mut Terminal<B>,
     theme: &Theme,
-    view: &mut V,
-    state: &S,
+    frames: &mut F,
     frame: u64,
     graphics: Option<&FrameGraphics>,
     selection: &mut RunnerSelection,
 ) -> io::Result<()>
 where
     B: Backend<Error = io::Error>,
-    V: FnMut(&S, u64, PaintRoot<'_>),
+    F: FrameSource,
 {
     let mut copied = None;
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
         let ctx = graphics.map_or_else(|| RenderCtx::new(theme), |g| g.render_context(theme));
-        view(state, frame, &mut |root| {
+        frames.frame(frame, &mut |root| {
             paint_with_context(terminal_frame.buffer_mut(), area, &ctx, root, &[]);
         });
         copied = selection.finish_frame(terminal_frame.buffer_mut(), area, theme);

@@ -25,17 +25,17 @@ described in the release process begins with the entry below.
   scrolling, branch rendering, and a scrollbar over host-provided tree rows.
 - `FocusRegistry::focus(id)` lets a `HitMap` focus a registered pane while
   rejecting unknown ids and requests blocked by overlay input ownership.
-- `AsyncRunner::{run_with_messages, run_with_events_and_messages}` delivers a
-  typed application stream through `AsyncSignal<M>`, including deterministic
-  completion/error/redraw/exit behavior without shared mutable state or polling.
+- `AsyncRunner::run_with_messages` delivers a typed application stream beside
+  terminal events and ticks, with deterministic completion/error/redraw/exit
+  behavior and no shared mutable state or polling.
 - `AsyncApplication` is the borrowed-view application seam for the async runner,
-  the counterpart to `Application`. It is generic over its signal type, so an
-  application that also consumes a message stream implements
-  `AsyncApplication<AsyncSignal<M>>` rather than a second trait. Driven by
-  `AsyncRunner::{run_app, run_app_with_messages, run_app_with_backend,
-  run_app_with_events, run_app_with_events_and_messages}`, which complete the
-  application row of the runner's `run*` axes — previously a frame could borrow
-  application state only on the synchronous runner.
+  the counterpart to `Application`: previously a frame could borrow application
+  state only on the synchronous runner, so a Tokio host had to clone into an
+  owned tree or share through `Rc<RefCell<_>>`.
+- `FrameSource` / `AsyncFrameSource` is the single seam every run method now
+  takes, with exactly two implementors: `&mut app` for an `Application`, and
+  `from_fn(&mut state, view, update)` (`async_from_fn` for the async runner) for
+  the closure form. `no_messages()` is the empty application-message stream.
 - `AsyncRunner::redraw_handle` matches `Runner::redraw_handle`, so a `Live`
   value (or any background producer) can mark the next frame stale on either
   runner. `RedrawHandle` now registers the waiting task's waker, so the async
@@ -75,6 +75,35 @@ described in the release process begins with the entry below.
   around the layout engine stays.
 
 ### Changed
+
+**Breaking: the runner's `run*` surface is one seam plus two axes.** The methods
+were a cross product of frame source, runtime, terminal ownership, and extra
+input, encoded as names — ten of them on `AsyncRunner` — with arbitrary holes in
+the product. The frame source is now a `FrameSource` argument rather than a
+name, and messages ride the existing `Signal`, which leaves only *where the
+terminal and the input come from* in the names.
+
+`Signal` gained a message type parameter, `Signal<M = Infallible>`. Because the
+default is uninhabited, an existing `match signal { Signal::Tick => …,
+Signal::Event(e) => … }` **still compiles and stays exhaustive**. A `match` on a
+*reference* (`match &signal`) does need a `_` arm added. `AsyncSignal<M>` is now
+a deprecated alias for `Signal<M>`.
+
+| Before | After |
+| --- | --- |
+| `Runner::run(theme, state, view, update)` | `Runner::run(theme, from_fn(state, view, update))` |
+| `Runner::run_app(theme, app)` | `Runner::run(theme, app)` *(shim, deprecated)* |
+| `Runner::run_with_backend(theme, backend, state, view, update)` | `Runner::run_with_backend(theme, backend, from_fn(state, view, update))` |
+| `Runner::run_app_with_backend(theme, backend, app)` | `Runner::run_with_backend(theme, backend, app)` *(shim, deprecated)* |
+| `AsyncRunner::run(theme, state, view, update)` | `AsyncRunner::run(theme, async_from_fn(state, view, update))` |
+| `AsyncRunner::run_with_messages(theme, state, messages, view, update)` | `AsyncRunner::run_with_messages(theme, async_from_fn(state, view, update), messages)` |
+| `AsyncRunner::run_with_backend(theme, backend, state, view, update)` | `AsyncRunner::run_with_backend(theme, backend, async_from_fn(state, view, update))` |
+| `AsyncRunner::run_with_events(terminal, theme, state, events, view, update)` | `AsyncRunner::run_driven_by(terminal, theme, async_from_fn(state, view, update), events, no_messages())` *(shim, deprecated)* |
+| `AsyncRunner::run_with_events_and_messages(terminal, theme, state, events, messages, view, update)` | `AsyncRunner::run_driven_by(terminal, theme, async_from_fn(state, view, update), events, messages)` *(shim, deprecated)* |
+
+Methods marked *shim* keep working with a deprecation warning. The rest changed
+shape under the same name, so they fail to compile rather than warn — the
+migration is mechanical and the table above is exhaustive.
 
 - `Paragraph` now treats its input as human-facing prose: bare `http(s)` URLs
   use the stylesheet's link role and carry OSC 8 targets through wrapping by

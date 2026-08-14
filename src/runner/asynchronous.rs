@@ -9,12 +9,12 @@
 //! owns — no `spawn_blocking`, no shared `RwLock`/`Notify`/stop flag bolted onto
 //! the synchronous [`Runner`](crate::Runner) just to feed it.
 //!
-//! The loop threads a single `state` value through two callbacks: `view` builds
-//! the frame from `&state`, and `update` mutates `&mut state` in response to a
-//! [`Signal`] (a tick or an input event) and may `.await` while doing so. Both
-//! borrow the same value at different times, which is why it is a runner
-//! argument rather than a capture — a closure cannot hold `&state` and
-//! `&mut state` at once.
+//! The loop pulls every frame and update decision from one
+//! [`AsyncFrameSource`]: either `&mut app` for an [`AsyncApplication`], or
+//! [`async_from_fn`] over a state value and a pair of closures. In the closure
+//! form `view` builds the frame from `&state` while `update` mutates
+//! `&mut state` and may `.await`; state is an argument rather than a capture
+//! because a closure cannot hold `&state` and `&mut state` at once.
 //!
 //! ```no_run
 //! use std::time::Duration;
@@ -32,29 +32,32 @@
 //!     runner
 //!         .run(
 //!             &Theme::default(),
-//!             &mut requests,
-//!             |requests, _frame| element(Text::raw(format!("requests: {requests}"))),
-//!             async |requests, signal| match signal {
-//!                 // Poll on every tick and on `r`; both may await.
-//!                 Signal::Tick => {
-//!                     *requests = fetch_stats().await.unwrap_or(*requests);
-//!                     UpdateResult::Dirty
-//!                 }
-//!                 Signal::Event(Event::Key(k)) if k.plain() => match k.code {
-//!                     KeyCode::Char('q') | KeyCode::Esc => UpdateResult::Exit,
-//!                     KeyCode::Char('r') => {
+//!             async_from_fn(
+//!                 &mut requests,
+//!                 |requests, _frame| element(Text::raw(format!("requests: {requests}"))),
+//!                 async |requests, signal| match signal {
+//!                     // Poll on every tick and on `r`; both may await.
+//!                     Signal::Tick => {
 //!                         *requests = fetch_stats().await.unwrap_or(*requests);
 //!                         UpdateResult::Dirty
 //!                     }
+//!                     Signal::Event(Event::Key(k)) if k.plain() => match k.code {
+//!                         KeyCode::Char('q') | KeyCode::Esc => UpdateResult::Exit,
+//!                         KeyCode::Char('r') => {
+//!                             *requests = fetch_stats().await.unwrap_or(*requests);
+//!                             UpdateResult::Dirty
+//!                         }
+//!                         _ => UpdateResult::Clean,
+//!                     },
 //!                     _ => UpdateResult::Clean,
 //!                 },
-//!                 _ => UpdateResult::Clean,
-//!             },
+//!             ),
 //!         )
 //!         .await
 //! }
 //! ```
 
+use std::convert::Infallible;
 use std::io;
 use std::time::Duration;
 
@@ -77,23 +80,10 @@ use crate::{
     paint_with_context, translate_event,
 };
 
-/// A signal delivered by an [`AsyncRunner`] that also listens to a typed
+/// The signal type an [`AsyncRunner`] delivers when it also listens to a typed
 /// application message stream.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum AsyncSignal<M> {
-    /// The configured tick interval elapsed.
-    Tick,
-    /// A translated terminal input event arrived.
-    Event(Event),
-    /// A host or background producer sent an application message.
-    Message(M),
-}
-
-impl<M> AsyncSignal<M> {
-    fn requires_redraw(&self) -> bool {
-        matches!(self, Self::Event(Event::Resize { .. }))
-    }
-}
+#[deprecated(since = "0.9.0", note = "use `Signal<M>`, which now carries messages")]
+pub type AsyncSignal<M> = Signal<M>;
 
 /// A data-driven asynchronous terminal application.
 ///
@@ -104,16 +94,12 @@ impl<M> AsyncSignal<M> {
 /// [`Element`] or sharing it through `Rc<RefCell<_>>`. Only `update` may
 /// `.await`; rendering stays pure and synchronous.
 ///
-/// The signal type is a parameter so the same seam serves both input shapes: it
-/// defaults to [`Signal`] for [`run_app`](AsyncRunner::run_app), and an
-/// application that also consumes a message stream implements
-/// `AsyncApplication<AsyncSignal<M>>` for
-/// [`run_app_with_messages`](AsyncRunner::run_app_with_messages). Adding a
-/// stream therefore changes one type parameter rather than the seam.
+/// `M` is the application-message type, and defaults to the uninhabited
+/// [`Infallible`] — so an application that consumes a message stream is this
+/// same trait at `AsyncApplication<MyMessage>`, not a different one.
 ///
 /// ```no_run
 /// use tuika::prelude::*;
-/// use tuika::runner::AsyncApplication;
 ///
 /// struct Counter {
 ///     hits: Vec<String>,
@@ -137,20 +123,75 @@ impl<M> AsyncSignal<M> {
 ///     }
 /// }
 /// ```
-pub trait AsyncApplication<Sig = Signal> {
+pub trait AsyncApplication<M = Infallible> {
     /// Update application state in response to a signal, possibly awaiting.
-    fn update(&mut self, signal: Sig) -> impl Future<Output = UpdateResult>;
+    fn update(&mut self, signal: Signal<M>) -> impl Future<Output = UpdateResult>;
 
     /// Build the ephemeral view tree for one numbered frame.
     fn view(&self, frame: u64) -> ScopedElement<'_>;
 }
 
-/// Adapt an [`AsyncApplication`] to the loop's view callback.
-fn app_view<A, Sig>() -> impl FnMut(&A, u64, PaintRoot<'_>)
+/// What an [`AsyncRunner`] pulls frames and update decisions from.
+///
+/// The asynchronous [`FrameSource`](crate::runner::FrameSource): `&mut app` for
+/// an [`AsyncApplication`], or [`async_from_fn`] for the closure form.
+/// Implement [`AsyncApplication`] rather than this trait.
+pub trait AsyncFrameSource<M = Infallible> {
+    /// Deliver one signal, possibly awaiting.
+    fn update(&mut self, signal: Signal<M>) -> impl Future<Output = UpdateResult>;
+
+    /// Build one numbered frame and hand its root to `paint`.
+    fn frame(&mut self, frame: u64, paint: PaintRoot<'_>);
+}
+
+impl<M, A: AsyncApplication<M>> AsyncFrameSource<M> for &mut A {
+    async fn update(&mut self, signal: Signal<M>) -> UpdateResult {
+        AsyncApplication::update(*self, signal).await
+    }
+
+    fn frame(&mut self, frame: u64, paint: PaintRoot<'_>) {
+        paint(AsyncApplication::view(*self, frame).as_ref());
+    }
+}
+
+/// An [`AsyncFrameSource`] built from a state value and a pair of closures.
+///
+/// Returned by [`async_from_fn`].
+pub struct AsyncFromFn<'state, S, V, U> {
+    state: &'state mut S,
+    view: V,
+    update: U,
+}
+
+/// Build an [`AsyncFrameSource`] from `state` and closures over it.
+///
+/// The asynchronous [`from_fn`](crate::runner::from_fn): `view` stays a
+/// synchronous `FnMut` returning an owned [`Element`], while `update` may
+/// `.await`.
+pub fn async_from_fn<S, V, U, M>(state: &mut S, view: V, update: U) -> AsyncFromFn<'_, S, V, U>
 where
-    A: AsyncApplication<Sig>,
+    V: FnMut(&S, u64) -> Element,
+    U: AsyncFnMut(&mut S, Signal<M>) -> UpdateResult,
 {
-    |app, frame, paint_root| paint_root(app.view(frame).as_ref())
+    AsyncFromFn {
+        state,
+        view,
+        update,
+    }
+}
+
+impl<M, S, V, U> AsyncFrameSource<M> for AsyncFromFn<'_, S, V, U>
+where
+    V: FnMut(&S, u64) -> Element,
+    U: AsyncFnMut(&mut S, Signal<M>) -> UpdateResult,
+{
+    async fn update(&mut self, signal: Signal<M>) -> UpdateResult {
+        (self.update)(&mut *self.state, signal).await
+    }
+
+    fn frame(&mut self, frame: u64, paint: PaintRoot<'_>) {
+        paint((self.view)(self.state, frame).as_ref());
+    }
 }
 
 /// An asynchronous Crossterm event and rendering loop.
@@ -233,32 +274,15 @@ impl AsyncRunner {
         self.scrollback.clone()
     }
 
-    /// Run on the real terminal until `update` returns [`UpdateResult::Exit`].
+    /// Run on the real terminal until the frame source returns
+    /// [`UpdateResult::Exit`].
     ///
-    /// Enters a [`TerminalSession`] (restored on return, including on error or
-    /// panic) and reads input from crossterm's async
-    /// [`EventStream`].
-    pub async fn run<S, V, U>(
-        &self,
-        theme: &Theme,
-        state: &mut S,
-        view: V,
-        update: U,
-    ) -> io::Result<()>
-    where
-        V: FnMut(&S, u64) -> Element,
-        U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
-    {
-        let graphics = FrameGraphics::detected();
-        self.run_with_backend_inner(
-            theme,
-            CrosstermBackend::new(io::stdout()),
-            state,
-            owned_view(view),
-            update,
-            Some(&graphics),
-        )
-        .await
+    /// `frames` is either `&mut app` for an [`AsyncApplication`] or
+    /// [`async_from_fn`] over a state value and closures. Enters a
+    /// [`TerminalSession`] (restored on return, including on error or panic) and
+    /// reads input from crossterm's async [`EventStream`].
+    pub async fn run<F: AsyncFrameSource>(&self, theme: &Theme, frames: F) -> io::Result<()> {
+        self.run_with_messages(theme, frames, no_messages()).await
     }
 
     /// Run on the real terminal while also receiving typed application
@@ -266,38 +290,20 @@ impl AsyncRunner {
     ///
     /// A background producer can send domain values through any Tokio
     /// [`Stream`] without shared mutable state, synthetic terminal events, or
-    /// polling ticks. A completed message stream disables only that input;
+    /// polling ticks. They arrive as [`Signal::Message`], so the frame source is
+    /// the same one [`run`](Self::run) takes, at `M` instead of the default
+    /// [`Infallible`]. A completed message stream disables only that input;
     /// terminal events and ticks continue. Stream errors are propagated after
     /// terminal cleanup.
-    pub async fn run_with_messages<S, M, V, U, MS>(
+    pub async fn run_with_messages<M, F, MS>(
         &self,
         theme: &Theme,
-        state: &mut S,
+        mut frames: F,
         messages: MS,
-        view: V,
-        update: U,
     ) -> io::Result<()>
     where
+        F: AsyncFrameSource<M>,
         MS: Stream<Item = io::Result<M>> + Unpin,
-        V: FnMut(&S, u64) -> Element,
-        U: AsyncFnMut(&mut S, AsyncSignal<M>) -> UpdateResult,
-    {
-        self.run_with_messages_inner(theme, state, messages, owned_view(view), update)
-            .await
-    }
-
-    async fn run_with_messages_inner<S, M, V, U, MS>(
-        &self,
-        theme: &Theme,
-        state: &mut S,
-        messages: MS,
-        view: V,
-        update: U,
-    ) -> io::Result<()>
-    where
-        MS: Stream<Item = io::Result<M>> + Unpin,
-        V: FnMut(&S, u64, PaintRoot<'_>),
-        U: AsyncFnMut(&mut S, AsyncSignal<M>) -> UpdateResult,
     {
         let graphics = FrameGraphics::detected();
         let mode = self.config.screen_mode;
@@ -318,234 +324,15 @@ impl AsyncRunner {
             Err(error) => Some(Err(error)),
         });
         let result = self
-            .run_with_events_and_messages_inner(
+            .run_inner(
                 &mut terminal,
                 theme,
-                state,
+                &mut frames,
                 events,
                 messages,
-                view,
-                update,
                 Some(&graphics),
                 |copied| {
                     graphics.finish_frame()?;
-                    if let Some(text) = copied {
-                        let _ = crate::term::clipboard::write(&mut io::stdout(), text)?;
-                    }
-                    Ok(())
-                },
-            )
-            .await;
-        if mode.is_alternate() {
-            let _ = terminal.clear();
-        } else {
-            let _ = close_footer(&mut terminal);
-        }
-        result
-    }
-
-    /// Run a data-driven [`AsyncApplication`] on the real terminal.
-    ///
-    /// The borrowed-view counterpart to [`run`](Self::run), and the async
-    /// counterpart to [`Runner::run_app`](crate::Runner::run_app). It uses the
-    /// same terminal lifecycle, scheduling, redraw, and split-footer behavior.
-    pub async fn run_app<A: AsyncApplication>(&self, theme: &Theme, app: &mut A) -> io::Result<()> {
-        let graphics = FrameGraphics::detected();
-        self.run_with_backend_inner(
-            theme,
-            CrosstermBackend::new(io::stdout()),
-            app,
-            app_view(),
-            async |app: &mut A, signal| app.update(signal).await,
-            Some(&graphics),
-        )
-        .await
-    }
-
-    /// Run a data-driven [`AsyncApplication`] that also receives typed
-    /// application `messages`.
-    ///
-    /// The borrowed-view counterpart to
-    /// [`run_with_messages`](Self::run_with_messages). The application
-    /// implements `AsyncApplication<AsyncSignal<M>>`, so ticks, terminal
-    /// events, and messages all arrive through the one `update`.
-    pub async fn run_app_with_messages<A, M, MS>(
-        &self,
-        theme: &Theme,
-        app: &mut A,
-        messages: MS,
-    ) -> io::Result<()>
-    where
-        A: AsyncApplication<AsyncSignal<M>>,
-        MS: Stream<Item = io::Result<M>> + Unpin,
-    {
-        self.run_with_messages_inner(
-            theme,
-            app,
-            messages,
-            app_view(),
-            async |app: &mut A, signal| app.update(signal).await,
-        )
-        .await
-    }
-
-    /// Run a data-driven [`AsyncApplication`] against a caller-owned terminal
-    /// and event stream.
-    ///
-    /// The borrowed-view counterpart to
-    /// [`run_with_events`](Self::run_with_events), with the same contract: no
-    /// terminal lifecycle, and the backend and stream share the run's error
-    /// type `Er`.
-    pub async fn run_app_with_events<A, B, E, Er>(
-        &self,
-        terminal: &mut Terminal<B>,
-        theme: &Theme,
-        app: &mut A,
-        events: E,
-    ) -> Result<(), Er>
-    where
-        A: AsyncApplication,
-        B: Backend<Error = Er>,
-        E: Stream<Item = Result<Event, Er>> + Unpin,
-    {
-        self.run_with_events_inner(
-            terminal,
-            theme,
-            app,
-            events,
-            app_view(),
-            async |app: &mut A, signal| app.update(signal).await,
-            None,
-            |_| Ok(()),
-        )
-        .await
-    }
-
-    /// Run a data-driven [`AsyncApplication`] with a caller-provided backend.
-    ///
-    /// The borrowed-view counterpart to
-    /// [`run_with_backend`](Self::run_with_backend).
-    pub async fn run_app_with_backend<A, B>(
-        &self,
-        theme: &Theme,
-        backend: B,
-        app: &mut A,
-    ) -> io::Result<()>
-    where
-        A: AsyncApplication,
-        B: Backend<Error = io::Error>,
-    {
-        self.run_with_backend_inner(
-            theme,
-            backend,
-            app,
-            app_view(),
-            async |app: &mut A, signal| app.update(signal).await,
-            None,
-        )
-        .await
-    }
-
-    /// Run a data-driven [`AsyncApplication`] against a caller-owned terminal,
-    /// event stream, and message stream.
-    ///
-    /// The borrowed-view counterpart to
-    /// [`run_with_events_and_messages`](Self::run_with_events_and_messages).
-    pub async fn run_app_with_events_and_messages<A, M, B, E, MS, Er>(
-        &self,
-        terminal: &mut Terminal<B>,
-        theme: &Theme,
-        app: &mut A,
-        events: E,
-        messages: MS,
-    ) -> Result<(), Er>
-    where
-        A: AsyncApplication<AsyncSignal<M>>,
-        B: Backend<Error = Er>,
-        E: Stream<Item = Result<Event, Er>> + Unpin,
-        MS: Stream<Item = Result<M, Er>> + Unpin,
-    {
-        self.run_with_events_and_messages_inner(
-            terminal,
-            theme,
-            app,
-            events,
-            messages,
-            app_view(),
-            async |app: &mut A, signal| app.update(signal).await,
-            None,
-            |_| Ok(()),
-        )
-        .await
-    }
-
-    /// Run with a caller-provided backend, such as
-    /// [`HyperlinkBackend`](crate::term::hyperlink::HyperlinkBackend). Otherwise identical to
-    /// [`run`](Self::run): it owns the [`TerminalSession`] and the
-    /// [`EventStream`].
-    pub async fn run_with_backend<S, B, V, U>(
-        &self,
-        theme: &Theme,
-        backend: B,
-        state: &mut S,
-        view: V,
-        update: U,
-    ) -> io::Result<()>
-    where
-        B: Backend<Error = io::Error>,
-        V: FnMut(&S, u64) -> Element,
-        U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
-    {
-        self.run_with_backend_inner(theme, backend, state, owned_view(view), update, None)
-            .await
-    }
-
-    async fn run_with_backend_inner<S, B, V, U>(
-        &self,
-        theme: &Theme,
-        backend: B,
-        state: &mut S,
-        view: V,
-        update: U,
-        graphics: Option<&FrameGraphics>,
-    ) -> io::Result<()>
-    where
-        B: Backend<Error = io::Error>,
-        V: FnMut(&S, u64, PaintRoot<'_>),
-        U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
-    {
-        let mode = self.config.screen_mode;
-        let _session = if let Some(config) = self.session_config {
-            TerminalSession::enter_config(config)?
-        } else {
-            TerminalSession::enter_with(mode)?
-        };
-        let mut terminal = Terminal::with_options(
-            backend,
-            TerminalOptions {
-                viewport: mode.viewport(),
-            },
-        )?;
-        let _graphics_cleanup = graphics.map(FrameGraphicsCleanup);
-        // Translate crossterm events to tuika events at the stream boundary,
-        // dropping the ones tuika does not model and surfacing read errors.
-        let events = EventStream::new().filter_map(|result| match result {
-            Ok(raw) => translate_event(raw).map(Ok),
-            Err(error) => Some(Err(error)),
-        });
-        let result = self
-            .run_with_events_inner(
-                &mut terminal,
-                theme,
-                state,
-                events,
-                view,
-                update,
-                graphics,
-                |copied| {
-                    if let Some(graphics) = graphics {
-                        graphics.finish_frame()?;
-                    }
                     if let Some(text) = copied {
                         let _ = crate::term::clipboard::write(&mut io::stdout(), text)?;
                     }
@@ -567,23 +354,100 @@ impl AsyncRunner {
         result
     }
 
-    /// The core loop: caller-owned `terminal` and `events`, no terminal
-    /// lifecycle. This is what [`run`](Self::run) builds on, and the seam tests
-    /// use to drive the runner against a
-    /// [`TestBackend`](ratatui_core::backend::TestBackend) with a scripted event
-    /// stream. Hosts that already own their terminal and event source (or want a
-    /// non-crossterm one) can call it directly.
+    /// Run with a caller-provided backend, such as
+    /// [`HyperlinkBackend`](crate::term::hyperlink::HyperlinkBackend). Otherwise
+    /// identical to [`run`](Self::run): it owns the [`TerminalSession`] and the
+    /// [`EventStream`].
+    pub async fn run_with_backend<F, B>(
+        &self,
+        theme: &Theme,
+        backend: B,
+        mut frames: F,
+    ) -> io::Result<()>
+    where
+        F: AsyncFrameSource,
+        B: Backend<Error = io::Error>,
+    {
+        let mode = self.config.screen_mode;
+        let _session = if let Some(config) = self.session_config {
+            TerminalSession::enter_config(config)?
+        } else {
+            TerminalSession::enter_with(mode)?
+        };
+        let mut terminal = Terminal::with_options(
+            backend,
+            TerminalOptions {
+                viewport: mode.viewport(),
+            },
+        )?;
+        let events = EventStream::new().filter_map(|result| match result {
+            Ok(raw) => translate_event(raw).map(Ok),
+            Err(error) => Some(Err(error)),
+        });
+        let result = self
+            .run_inner(
+                &mut terminal,
+                theme,
+                &mut frames,
+                events,
+                no_messages(),
+                None,
+                |_| Ok(()),
+            )
+            .await;
+        if mode.is_alternate() {
+            let _ = terminal.clear();
+        } else {
+            let _ = close_footer(&mut terminal);
+        }
+        result
+    }
+
+    /// Run against a caller-owned terminal and input streams, with no terminal
+    /// lifecycle of the runner's own.
     ///
-    /// The backend error and the event-stream error share one type `Er`, which
-    /// is the run's error type: for the real terminal that is [`io::Error`], but
+    /// This is the loop itself, and what [`run`](Self::run) builds on. The seam
+    /// tests drive it against a
+    /// [`TestBackend`](ratatui_core::backend::TestBackend) with scripted
+    /// streams; hosts that already own their terminal and event source (or want
+    /// a non-crossterm one) can call it directly. Pass [`no_messages`] when
+    /// there is no application stream.
+    ///
+    /// The backend error and both stream errors share one type `Er`, which is
+    /// the run's error type: for the real terminal that is [`io::Error`], but
     /// leaving it generic lets an infallible backend
     /// ([`TestBackend`](ratatui_core::backend::TestBackend), whose error is
-    /// [`Infallible`](std::convert::Infallible)) pair with an infallible stream.
+    /// [`Infallible`]) pair with infallible streams.
     ///
-    /// `events` yields already-translated tuika [`Event`]s. An `Err` item ends
-    /// the run by propagating out; `None` (a finite stream running dry) stops
-    /// event delivery but leaves the tick timer running, so the loop still exits
-    /// only when `update` returns [`UpdateResult::Exit`].
+    /// `events` yields already-translated tuika [`Event`]s. An `Err` item from
+    /// either stream ends the run by propagating out; `None` (a finite stream
+    /// running dry) stops that source but leaves the tick timer running, so the
+    /// loop still exits only on [`UpdateResult::Exit`].
+    pub async fn run_driven_by<M, F, B, E, MS, Er>(
+        &self,
+        terminal: &mut Terminal<B>,
+        theme: &Theme,
+        mut frames: F,
+        events: E,
+        messages: MS,
+    ) -> Result<(), Er>
+    where
+        F: AsyncFrameSource<M>,
+        B: Backend<Error = Er>,
+        E: Stream<Item = Result<Event, Er>> + Unpin,
+        MS: Stream<Item = Result<M, Er>> + Unpin,
+    {
+        self.run_inner(terminal, theme, &mut frames, events, messages, None, |_| {
+            Ok(())
+        })
+        .await
+    }
+
+    /// Run with caller-owned terminal and event stream.
+    #[deprecated(
+        since = "0.9.0",
+        note = "use `run_driven_by(terminal, theme, async_from_fn(state, view, update), events, no_messages())`"
+    )]
     pub async fn run_with_events<S, B, V, U, E, Er>(
         &self,
         terminal: &mut Terminal<B>,
@@ -599,26 +463,22 @@ impl AsyncRunner {
         V: FnMut(&S, u64) -> Element,
         U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
     {
-        self.run_with_events_inner(
+        self.run_driven_by(
             terminal,
             theme,
-            state,
+            async_from_fn(state, view, update),
             events,
-            owned_view(view),
-            update,
-            None,
-            |_| Ok(()),
+            no_messages(),
         )
         .await
     }
 
     /// Run with caller-owned terminal, terminal-event stream, and typed
     /// application-message stream.
-    ///
-    /// Both streams yield the backend's error type. Completion of either one
-    /// disables that source without busy-spinning; an error from either source
-    /// ends the run. Each delivered [`AsyncSignal`] independently controls
-    /// redraw and exit through [`UpdateResult`].
+    #[deprecated(
+        since = "0.9.0",
+        note = "use `run_driven_by(terminal, theme, async_from_fn(state, view, update), events, messages)`"
+    )]
     #[allow(clippy::too_many_arguments)]
     pub async fn run_with_events_and_messages<S, M, B, V, U, E, MS, Er>(
         &self,
@@ -635,42 +495,35 @@ impl AsyncRunner {
         E: Stream<Item = Result<Event, Er>> + Unpin,
         MS: Stream<Item = Result<M, Er>> + Unpin,
         V: FnMut(&S, u64) -> Element,
-        U: AsyncFnMut(&mut S, AsyncSignal<M>) -> UpdateResult,
+        U: AsyncFnMut(&mut S, Signal<M>) -> UpdateResult,
     {
-        self.run_with_events_and_messages_inner(
+        self.run_driven_by(
             terminal,
             theme,
-            state,
+            async_from_fn(state, view, update),
             events,
             messages,
-            owned_view(view),
-            update,
-            None,
-            |_| Ok(()),
         )
         .await
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn run_with_events_and_messages_inner<S, M, B, V, U, E, MS, Er, F>(
+    async fn run_inner<M, S, B, E, MS, Er, Finish>(
         &self,
         terminal: &mut Terminal<B>,
         theme: &Theme,
-        state: &mut S,
+        frames: &mut S,
         mut events: E,
         mut messages: MS,
-        mut view: V,
-        mut update: U,
         graphics: Option<&FrameGraphics>,
-        mut finish_frame: F,
+        mut finish_frame: Finish,
     ) -> Result<(), Er>
     where
+        S: AsyncFrameSource<M>,
         B: Backend<Error = Er>,
         E: Stream<Item = Result<Event, Er>> + Unpin,
         MS: Stream<Item = Result<M, Er>> + Unpin,
-        V: FnMut(&S, u64, PaintRoot<'_>),
-        U: AsyncFnMut(&mut S, AsyncSignal<M>) -> UpdateResult,
-        F: FnMut(Option<&str>) -> Result<(), Er>,
+        Finish: FnMut(Option<&str>) -> Result<(), Er>,
     {
         let mut events_done = false;
         let mut messages_done = false;
@@ -684,15 +537,7 @@ impl AsyncRunner {
             pin_footer(terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
-            let copied = draw(
-                terminal,
-                theme,
-                &mut view,
-                state,
-                frame,
-                graphics,
-                &mut selection,
-            )?;
+            let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
             finish_frame(copied.as_deref())?;
         }
         let mut last_frame = TokioInstant::now();
@@ -749,15 +594,7 @@ impl AsyncRunner {
                         terminal.autoresize()?;
                         pin_footer(terminal)?;
                     }
-                    let copied = draw(
-                        terminal,
-                        theme,
-                        &mut view,
-                        state,
-                        frame,
-                        graphics,
-                        &mut selection,
-                    )?;
+                    let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
                     finish_frame(copied.as_deref())?;
                     last_frame = TokioInstant::now();
                 }
@@ -766,16 +603,16 @@ impl AsyncRunner {
             }
 
             let (signal, selection_event) = match wake {
-                Wake::Tick => (AsyncSignal::Tick, None),
+                Wake::Tick => (Signal::Tick, None),
                 Wake::Event(event) => {
                     let selection = Some(event.clone());
-                    (AsyncSignal::Event(event), selection)
+                    (Signal::Event(event), selection)
                 }
-                Wake::Message(message) => (AsyncSignal::Message(message), None),
+                Wake::Message(message) => (Signal::Message(message), None),
                 Wake::Redraw | Wake::Requested => unreachable!("handled above"),
             };
             let requires_redraw = signal.requires_redraw();
-            let result = update(state, signal).await;
+            let result = frames.update(signal).await;
             core.apply(result);
             if core.is_exited() {
                 break;
@@ -808,15 +645,7 @@ impl AsyncRunner {
                         terminal.autoresize()?;
                         pin_footer(terminal)?;
                     }
-                    let copied = draw(
-                        terminal,
-                        theme,
-                        &mut view,
-                        state,
-                        frame,
-                        graphics,
-                        &mut selection,
-                    )?;
+                    let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
                     finish_frame(copied.as_deref())?;
                     last_frame = TokioInstant::now();
                 }
@@ -826,68 +655,26 @@ impl AsyncRunner {
 
         Ok(())
     }
-
-    #[allow(clippy::too_many_arguments)]
-    async fn run_with_events_inner<S, B, V, U, E, Er, F>(
-        &self,
-        terminal: &mut Terminal<B>,
-        theme: &Theme,
-        state: &mut S,
-        events: E,
-        view: V,
-        mut update: U,
-        graphics: Option<&FrameGraphics>,
-        finish_frame: F,
-    ) -> Result<(), Er>
-    where
-        B: Backend<Error = Er>,
-        E: Stream<Item = Result<Event, Er>> + Unpin,
-        V: FnMut(&S, u64, PaintRoot<'_>),
-        U: AsyncFnMut(&mut S, Signal) -> UpdateResult,
-        F: FnMut(Option<&str>) -> Result<(), Er>,
-    {
-        self.run_with_events_and_messages_inner(
-            terminal,
-            theme,
-            state,
-            events,
-            tokio_stream::empty::<Result<std::convert::Infallible, Er>>(),
-            view,
-            async move |state, signal| match signal {
-                AsyncSignal::Tick => update(state, Signal::Tick).await,
-                AsyncSignal::Event(event) => update(state, Signal::Event(event)).await,
-                AsyncSignal::Message(never) => match never {},
-            },
-            graphics,
-            finish_frame,
-        )
-        .await
-    }
 }
 
-/// Paint one numbered frame from the current `state`.
-///
-/// `view` hands its root to a painting callback rather than returning it, which
-/// is what lets the same loop serve an owned [`Element`] and a frame-borrowed
-/// [`ScopedElement`]: the borrow only has to outlive the call, not the return.
-fn draw<S, B, V, Er>(
+/// Paint one numbered frame from the current frame source.
+fn draw<M, S, B, Er>(
     terminal: &mut Terminal<B>,
     theme: &Theme,
-    view: &mut V,
-    state: &S,
+    frames: &mut S,
     frame: u64,
     graphics: Option<&FrameGraphics>,
     selection: &mut RunnerSelection,
 ) -> Result<Option<String>, Er>
 where
     B: Backend<Error = Er>,
-    V: FnMut(&S, u64, PaintRoot<'_>),
+    S: AsyncFrameSource<M>,
 {
     let mut copied = None;
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
         let ctx = graphics.map_or_else(|| RenderCtx::new(theme), |g| g.render_context(theme));
-        view(state, frame, &mut |root| {
+        frames.frame(frame, &mut |root| {
             paint_with_context(terminal_frame.buffer_mut(), area, &ctx, root, &[]);
         });
         copied = selection.finish_frame(terminal_frame.buffer_mut(), area, theme);
@@ -895,15 +682,12 @@ where
     Ok(copied)
 }
 
-/// Adapt an owned-`Element` view closure to the painting-callback form.
-fn owned_view<S, V>(mut view: V) -> impl FnMut(&S, u64, PaintRoot<'_>)
-where
-    V: FnMut(&S, u64) -> Element,
-{
-    move |state, frame, paint_root| {
-        let root = view(state, frame);
-        paint_root(root.as_ref());
-    }
+/// An empty application-message stream, for a loop that has none.
+///
+/// The message type is [`Infallible`], so [`Signal::Message`] is uninhabited and
+/// an `update` that handles only ticks and events stays exhaustive.
+pub fn no_messages<Er>() -> impl Stream<Item = Result<Infallible, Er>> + Unpin {
+    tokio_stream::empty()
 }
 
 #[cfg(test)]
@@ -976,22 +760,25 @@ mod tests {
         ]);
 
         let result = runner
-            .run_with_events(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut count,
+                async_from_fn(
+                    &mut count,
+                    |count, _frame| element(Text::raw(format!("count={count}"))),
+                    async |count, signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Char('q') => {
+                            UpdateResult::Exit
+                        }
+                        Signal::Event(Event::Key(_)) => {
+                            *count += 1;
+                            UpdateResult::Dirty
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
                 events,
-                |count, _frame| element(Text::raw(format!("count={count}"))),
-                async |count, signal| match signal {
-                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Char('q') => {
-                        UpdateResult::Exit
-                    }
-                    Signal::Event(Event::Key(_)) => {
-                        *count += 1;
-                        UpdateResult::Dirty
-                    }
-                    _ => UpdateResult::Clean,
-                },
+                no_messages(),
             )
             .await;
 
@@ -1016,19 +803,24 @@ mod tests {
         let events = tokio_stream::iter([key(KeyCode::Char('a')), key(KeyCode::Esc)]);
 
         runner
-            .run_with_events(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut state,
+                async_from_fn(
+                    &mut state,
+                    |state, _frame| {
+                        views.set(views.get() + 1);
+                        element(Text::raw(format!("state={state}")))
+                    },
+                    async |_state, signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
                 events,
-                |state, _frame| {
-                    views.set(views.get() + 1);
-                    element(Text::raw(format!("state={state}")))
-                },
-                async |_state, signal| match signal {
-                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
-                    _ => UpdateResult::Clean,
-                },
+                no_messages(),
             )
             .await
             .unwrap();
@@ -1055,20 +847,25 @@ mod tests {
         ]);
 
         runner
-            .run_with_events(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut mouse_events,
+                async_from_fn(
+                    &mut mouse_events,
+                    |_state, _frame| element(Text::raw("hello world")),
+                    async |mouse_events, signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        Signal::Event(Event::Mouse(_)) => {
+                            *mouse_events += 1;
+                            UpdateResult::Clean
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
                 events,
-                |_state, _frame| element(Text::raw("hello world")),
-                async |mouse_events, signal| match signal {
-                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
-                    Signal::Event(Event::Mouse(_)) => {
-                        *mouse_events += 1;
-                        UpdateResult::Clean
-                    }
-                    _ => UpdateResult::Clean,
-                },
+                no_messages(),
             )
             .await
             .unwrap();
@@ -1102,17 +899,22 @@ mod tests {
         ]);
 
         runner
-            .run_with_events(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut state,
+                async_from_fn(
+                    &mut state,
+                    |_state, _frame| element(Text::raw("hello world")),
+                    async |_state, signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        Signal::Event(Event::Mouse(_)) => UpdateResult::Consumed,
+                        _ => UpdateResult::Clean,
+                    },
+                ),
                 events,
-                |_state, _frame| element(Text::raw("hello world")),
-                async |_state, signal| match signal {
-                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
-                    Signal::Event(Event::Mouse(_)) => UpdateResult::Consumed,
-                    _ => UpdateResult::Clean,
-                },
+                no_messages(),
             )
             .await
             .unwrap();
@@ -1135,25 +937,30 @@ mod tests {
         let events = tokio_stream::iter([mouse(MouseKind::ScrollDown, 0, 0), key(KeyCode::Esc)]);
 
         runner
-            .run_with_events(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut scrolled,
+                async_from_fn(
+                    &mut scrolled,
+                    |scrolled, _frame| {
+                        element(Text::raw(if *scrolled { "line two" } else { "line one" }))
+                    },
+                    async |scrolled, signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        Signal::Event(Event::Mouse(Mouse {
+                            kind: MouseKind::ScrollDown,
+                            ..
+                        })) => {
+                            *scrolled = true;
+                            UpdateResult::Dirty
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
                 events,
-                |scrolled, _frame| {
-                    element(Text::raw(if *scrolled { "line two" } else { "line one" }))
-                },
-                async |scrolled, signal| match signal {
-                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
-                    Signal::Event(Event::Mouse(Mouse {
-                        kind: MouseKind::ScrollDown,
-                        ..
-                    })) => {
-                        *scrolled = true;
-                        UpdateResult::Dirty
-                    }
-                    _ => UpdateResult::Clean,
-                },
+                no_messages(),
             )
             .await
             .unwrap();
@@ -1178,19 +985,22 @@ mod tests {
         }));
 
         runner
-            .run_with_events(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut state,
+                async_from_fn(
+                    &mut state,
+                    |_state, _frame| {
+                        views.set(views.get() + 1);
+                        element(Text::raw("frame"))
+                    },
+                    async |_state, signal| match signal {
+                        Signal::Tick if views.get() >= 2 => UpdateResult::Exit,
+                        _ => UpdateResult::Clean,
+                    },
+                ),
                 events,
-                |_state, _frame| {
-                    views.set(views.get() + 1);
-                    element(Text::raw("frame"))
-                },
-                async |_state, signal| match signal {
-                    Signal::Tick if views.get() >= 2 => UpdateResult::Exit,
-                    _ => UpdateResult::Clean,
-                },
+                no_messages(),
             )
             .await
             .unwrap();
@@ -1212,13 +1022,16 @@ mod tests {
         let events = tokio_stream::iter([key(KeyCode::Esc)]);
 
         runner
-            .run_with_events(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut state,
+                async_from_fn(
+                    &mut state,
+                    |state, _frame| element(Text::raw(*state)),
+                    async |_state, _signal| UpdateResult::Exit,
+                ),
                 events,
-                |state, _frame| element(Text::raw(*state)),
-                async |_state, _signal| UpdateResult::Exit,
+                no_messages(),
             )
             .await
             .unwrap();
@@ -1241,24 +1054,27 @@ mod tests {
         let events = tokio_stream::iter(Vec::<Result<Event, Infallible>>::new());
 
         runner
-            .run_with_events(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut ticks,
+                async_from_fn(
+                    &mut ticks,
+                    |ticks, _frame| element(Text::raw(format!("ticks={ticks}"))),
+                    async |ticks, signal| {
+                        if let Signal::Tick = signal {
+                            // Prove an await inside tick handling is fine.
+                            tokio::task::yield_now().await;
+                            *ticks += 1;
+                        }
+                        if *ticks >= 3 {
+                            UpdateResult::Exit
+                        } else {
+                            UpdateResult::Dirty
+                        }
+                    },
+                ),
                 events,
-                |ticks, _frame| element(Text::raw(format!("ticks={ticks}"))),
-                async |ticks, signal| {
-                    if let Signal::Tick = signal {
-                        // Prove an await inside tick handling is fine.
-                        tokio::task::yield_now().await;
-                        *ticks += 1;
-                    }
-                    if *ticks >= 3 {
-                        UpdateResult::Exit
-                    } else {
-                        UpdateResult::Dirty
-                    }
-                },
+                no_messages(),
             )
             .await
             .unwrap();
@@ -1302,27 +1118,30 @@ mod tests {
         let mut state = ();
 
         runner
-            .run_with_events(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut state,
+                async_from_fn(
+                    &mut state,
+                    |_state, _frame| {
+                        element(Text::new(vec![
+                            ratatui_core::text::Line::from("FOOTER"),
+                            ratatui_core::text::Line::from("FOOTER"),
+                        ]))
+                    },
+                    async |_state, signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Char('q') => {
+                            UpdateResult::Exit
+                        }
+                        Signal::Event(_) => {
+                            scrollback.write(|_width| element(Text::raw("published")));
+                            UpdateResult::Dirty
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
                 events,
-                |_state, _frame| {
-                    element(Text::new(vec![
-                        ratatui_core::text::Line::from("FOOTER"),
-                        ratatui_core::text::Line::from("FOOTER"),
-                    ]))
-                },
-                async |_state, signal| match signal {
-                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Char('q') => {
-                        UpdateResult::Exit
-                    }
-                    Signal::Event(_) => {
-                        scrollback.write(|_width| element(Text::raw("published")));
-                        UpdateResult::Dirty
-                    }
-                    _ => UpdateResult::Clean,
-                },
+                no_messages(),
             )
             .await
             .expect("run");
@@ -1374,22 +1193,25 @@ mod tests {
 
         let mut ticks = 0u32;
         runner
-            .run_with_events(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut ticks,
+                async_from_fn(
+                    &mut ticks,
+                    |_ticks, _frame| element(Text::raw("FOOTER")),
+                    async |ticks, _signal| {
+                        *ticks += 1;
+                        // Enough ticks for the spawned task to be polled and its
+                        // blocks flushed.
+                        if *ticks >= 8 {
+                            UpdateResult::Exit
+                        } else {
+                            UpdateResult::Clean
+                        }
+                    },
+                ),
                 tokio_stream::iter(Vec::<Result<Event, Infallible>>::new()),
-                |_ticks, _frame| element(Text::raw("FOOTER")),
-                async |ticks, _signal| {
-                    *ticks += 1;
-                    // Enough ticks for the spawned task to be polled and its
-                    // blocks flushed.
-                    if *ticks >= 8 {
-                        UpdateResult::Exit
-                    } else {
-                        UpdateResult::Clean
-                    }
-                },
+                no_messages(),
             )
             .await
             .expect("run");
@@ -1423,16 +1245,21 @@ mod tests {
         let mut state = ();
 
         runner
-            .run_with_events(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut state,
+                async_from_fn(
+                    &mut state,
+                    |_state, _frame| element(Text::raw("frame")),
+                    async |_state, signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
                 events,
-                |_state, _frame| element(Text::raw("frame")),
-                async |_state, signal| match signal {
-                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
-                    _ => UpdateResult::Clean,
-                },
+                no_messages(),
             )
             .await
             .expect("run");
@@ -1467,13 +1294,16 @@ mod tests {
         let events = tokio_stream::iter([Err::<Event, io::Error>(io::Error::other("boom"))]);
 
         let result = runner
-            .run_with_events(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut state,
+                async_from_fn(
+                    &mut state,
+                    |_state, _frame| element(Text::raw("x")),
+                    async |_state, _signal| UpdateResult::Dirty,
+                ),
                 events,
-                |_state, _frame| element(Text::raw("x")),
-                async |_state, _signal| UpdateResult::Dirty,
+                no_messages(),
             )
             .await;
 
@@ -1500,25 +1330,27 @@ mod tests {
             tokio_stream::iter([Ok::<_, Infallible>(Message::Add(7)), Ok(Message::Exit)]);
 
         runner
-            .run_with_events_and_messages(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut count,
+                async_from_fn(
+                    &mut count,
+                    |count, _| element(Text::raw(format!("count={count}"))),
+                    async |count, signal| match signal {
+                        Signal::Event(Event::Key(_)) => {
+                            *count += 1;
+                            UpdateResult::Dirty
+                        }
+                        Signal::Message(Message::Add(value)) => {
+                            *count += value;
+                            UpdateResult::Dirty
+                        }
+                        Signal::Message(Message::Exit) => UpdateResult::Exit,
+                        Signal::Tick | Signal::Event(_) => UpdateResult::Clean,
+                    },
+                ),
                 events,
                 messages,
-                |count, _| element(Text::raw(format!("count={count}"))),
-                async |count, signal| match signal {
-                    AsyncSignal::Event(Event::Key(_)) => {
-                        *count += 1;
-                        UpdateResult::Dirty
-                    }
-                    AsyncSignal::Message(Message::Add(value)) => {
-                        *count += value;
-                        UpdateResult::Dirty
-                    }
-                    AsyncSignal::Message(Message::Exit) => UpdateResult::Exit,
-                    AsyncSignal::Tick | AsyncSignal::Event(_) => UpdateResult::Clean,
-                },
             )
             .await
             .unwrap();
@@ -1537,24 +1369,26 @@ mod tests {
         let mut ticks = 0u8;
 
         runner
-            .run_with_events_and_messages(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut ticks,
+                async_from_fn(
+                    &mut ticks,
+                    |ticks, _| element(Text::raw(format!("ticks={ticks}"))),
+                    async |ticks, signal| match signal {
+                        Signal::Tick => {
+                            *ticks += 1;
+                            if *ticks == 2 {
+                                UpdateResult::Exit
+                            } else {
+                                UpdateResult::Dirty
+                            }
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
                 tokio_stream::empty::<Result<Event, Infallible>>(),
                 tokio_stream::empty::<Result<(), Infallible>>(),
-                |ticks, _| element(Text::raw(format!("ticks={ticks}"))),
-                async |ticks, signal| match signal {
-                    AsyncSignal::Tick => {
-                        *ticks += 1;
-                        if *ticks == 2 {
-                            UpdateResult::Exit
-                        } else {
-                            UpdateResult::Dirty
-                        }
-                    }
-                    _ => UpdateResult::Clean,
-                },
             )
             .await
             .unwrap();
@@ -1585,31 +1419,33 @@ mod tests {
         ]);
 
         runner
-            .run_with_events_and_messages(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut state,
+                async_from_fn(
+                    &mut state,
+                    |state, _| {
+                        views.set(views.get() + 1);
+                        element(Text::raw(format!("state={state}")))
+                    },
+                    async |state, signal| match signal {
+                        Signal::Message(Message::Clean) => {
+                            *state = 1;
+                            UpdateResult::Clean
+                        }
+                        Signal::Message(Message::Dirty) => {
+                            *state = 2;
+                            UpdateResult::Dirty
+                        }
+                        Signal::Message(Message::Exit) => {
+                            *state = 3;
+                            UpdateResult::Exit
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
                 tokio_stream::empty::<Result<Event, Infallible>>(),
                 messages,
-                |state, _| {
-                    views.set(views.get() + 1);
-                    element(Text::raw(format!("state={state}")))
-                },
-                async |state, signal| match signal {
-                    AsyncSignal::Message(Message::Clean) => {
-                        *state = 1;
-                        UpdateResult::Clean
-                    }
-                    AsyncSignal::Message(Message::Dirty) => {
-                        *state = 2;
-                        UpdateResult::Dirty
-                    }
-                    AsyncSignal::Message(Message::Exit) => {
-                        *state = 3;
-                        UpdateResult::Exit
-                    }
-                    _ => UpdateResult::Clean,
-                },
             )
             .await
             .unwrap();
@@ -1636,14 +1472,16 @@ mod tests {
         let messages = tokio_stream::iter([Err::<(), io::Error>(io::Error::other("message boom"))]);
 
         let result = runner
-            .run_with_events_and_messages(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut state,
+                async_from_fn(
+                    &mut state,
+                    |_state, _| element(Text::raw("x")),
+                    async |_state, _signal| UpdateResult::Clean,
+                ),
                 tokio_stream::empty::<Result<Event, io::Error>>(),
                 messages,
-                |_state, _| element(Text::raw("x")),
-                async |_state, _signal| UpdateResult::Clean,
             )
             .await;
 
@@ -1703,7 +1541,7 @@ mod tests {
     // does: events mutate through `&mut self`, and the frame borrows `&self`
     // without cloning into an owned tree.
     #[tokio::test]
-    async fn run_app_paints_a_borrowed_view() {
+    async fn an_application_paints_a_borrowed_view() {
         let runner = AsyncRunner::new(RunnerConfig {
             tick_rate: Duration::from_secs(3600),
             ..RunnerConfig::default()
@@ -1720,7 +1558,13 @@ mod tests {
         ]);
 
         runner
-            .run_app_with_events(&mut terminal, &Theme::default(), &mut app, events)
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                &mut app,
+                events,
+                no_messages(),
+            )
             .await
             .expect("run");
 
@@ -1738,11 +1582,11 @@ mod tests {
         items: Vec<u8>,
     }
 
-    impl AsyncApplication<AsyncSignal<u8>> for Feed {
-        async fn update(&mut self, signal: AsyncSignal<u8>) -> UpdateResult {
+    impl AsyncApplication<u8> for Feed {
+        async fn update(&mut self, signal: Signal<u8>) -> UpdateResult {
             match signal {
-                AsyncSignal::Message(0) => UpdateResult::Exit,
-                AsyncSignal::Message(item) => {
+                Signal::Message(0) => UpdateResult::Exit,
+                Signal::Message(item) => {
                     self.items.push(item);
                     UpdateResult::Dirty
                 }
@@ -1756,7 +1600,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_app_receives_messages_through_the_same_seam() {
+    async fn an_application_receives_messages_through_the_same_seam() {
         let runner = AsyncRunner::new(RunnerConfig {
             tick_rate: Duration::from_secs(3600),
             ..RunnerConfig::default()
@@ -1766,7 +1610,7 @@ mod tests {
         let messages = tokio_stream::iter([Ok::<u8, Infallible>(7), Ok(9), Ok(0)]);
 
         runner
-            .run_app_with_events_and_messages(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
                 &mut app,
@@ -1811,20 +1655,25 @@ mod tests {
 
         let mut state = std::sync::Arc::clone(&counter);
         runner
-            .run_with_events(
+            .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
-                &mut state,
+                async_from_fn(
+                    &mut state,
+                    |state, _frame| {
+                        views.set(views.get() + 1);
+                        let value = state.load(std::sync::atomic::Ordering::Acquire);
+                        element(Text::raw(format!("value={value}")))
+                    },
+                    async |_state, signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
                 ReceiverStream::new(receiver),
-                |state, _frame| {
-                    views.set(views.get() + 1);
-                    let value = state.load(std::sync::atomic::Ordering::Acquire);
-                    element(Text::raw(format!("value={value}")))
-                },
-                async |_state, signal| match signal {
-                    Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
-                    _ => UpdateResult::Clean,
-                },
+                no_messages(),
             )
             .await
             .expect("run");

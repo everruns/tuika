@@ -31,28 +31,30 @@ fn main() -> io::Result<()> {
 
     runner.run(
         &theme,
-        &mut (),
-        |_state, _frame| {
-            view! {
-                col(padding = Padding::all(1)) {
-                    fixed(3) {
-                        boxed(title = " tuika ") {
-                            text("Hello from the terminal")
+        from_fn(
+            &mut (),
+            |_state, _frame| {
+                view! {
+                    col(padding = Padding::all(1)) {
+                        fixed(3) {
+                            boxed(title = " tuika ") {
+                                text("Hello from the terminal")
+                            }
                         }
+                        grow(1) { spacer() }
+                        fixed(1) { text("q or esc to quit") }
                     }
-                    grow(1) { spacer() }
-                    fixed(1) { text("q or esc to quit") }
                 }
-            }
-        },
-        |_state, signal| match signal {
-            Signal::Event(Event::Key(key))
-                if key.plain() && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
-            {
-                UpdateResult::Exit
-            }
-            _ => UpdateResult::Clean,
-        },
+            },
+            |_state, signal| match signal {
+                Signal::Event(Event::Key(key))
+                    if key.plain() && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
+                {
+                    UpdateResult::Exit
+                }
+                _ => UpdateResult::Clean,
+            },
+        ),
     )
 }
 ```
