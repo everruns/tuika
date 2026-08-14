@@ -177,12 +177,13 @@ impl Default for RunnerConfig {
     }
 }
 
-/// A signal delivered to a runner update function.
+/// Why a runner is calling `update`: a tick, terminal input, or a value the
+/// host's own program produced.
 ///
-/// `M` is the host's application-message type, for a loop that also selects
-/// over a message stream. It defaults to [`Infallible`], the uninhabited type:
-/// a plain `Signal` therefore *has* no `Message` variant to construct or match,
-/// and code that handles only ticks and events stays exhaustive.
+/// `M` is that last one's type, for a loop that also selects over a message
+/// stream. It defaults to [`Infallible`], the uninhabited type: a plain
+/// `Signal` therefore *has* no [`Message`](Self::Message) variant to construct
+/// or match, and code that handles only ticks and events stays exhaustive.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Signal<M = Infallible> {
     /// The configured tick interval elapsed.
@@ -190,8 +191,15 @@ pub enum Signal<M = Infallible> {
     /// A translated terminal input event arrived. Resize events force a redraw
     /// after the update unless it exits, even when the update is clean.
     Event(Event),
-    /// A host or background producer sent an application message. Unreachable
-    /// unless the runner was given a message stream.
+    /// A value from the host's own program — a background task, a worker, a
+    /// feed — delivered through the runner's message stream. Unreachable unless
+    /// the runner was given one.
+    ///
+    /// **This is not the Elm/Iced `Msg`.** There, one message type carries
+    /// *everything* that reaches `update`, key presses included. Here a key
+    /// press is [`Event`](Self::Event) and the clock is [`Tick`](Self::Tick);
+    /// this variant is only for what the terminal did not produce. See
+    /// [`AsyncRunner::run_with_messages`] for when to reach for it.
     Message(M),
 }
 
@@ -464,6 +472,19 @@ impl Runner {
     }
 
     /// Return a handle that background producers can use to request redraws.
+    ///
+    /// A request says only *the next frame is stale*, and requests coalesce: the
+    /// handle is a flag, so a burst produces one repaint. Pair it with a
+    /// [`Live`](crate::live::Live) (or any shared value) the view re-reads each
+    /// frame.
+    ///
+    /// When each arrival instead needs `update` to decide something, an
+    /// [`AsyncRunner`] can deliver it as a [`Signal::Message`] through
+    /// [`run_with_messages`](AsyncRunner::run_with_messages). The synchronous
+    /// loop has no equivalent: it blocks in `crossterm::event::poll`, which a
+    /// channel send cannot wake, so a message would arrive no sooner than the
+    /// next tick. A synchronous host wanting that shape drives its own loop with
+    /// [`crate::paint`].
     pub fn redraw_handle(&self) -> RedrawHandle {
         self.redraw.clone()
     }

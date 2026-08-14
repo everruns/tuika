@@ -233,10 +233,15 @@ impl AsyncRunner {
     /// Return a handle that background producers can use to request redraws.
     ///
     /// The counterpart to [`Runner::redraw_handle`](crate::Runner::redraw_handle),
-    /// so a [`Live`](crate::live::Live) value works the same on either runner. A
-    /// producer that owns domain data it wants delivered *into* `update` should
-    /// prefer a message stream ([`run_with_messages`](Self::run_with_messages));
-    /// a redraw request only says the next frame is stale.
+    /// so a [`Live`](crate::live::Live) value works the same on either runner —
+    /// here it wakes the parked `select!` rather than waiting for the next tick.
+    ///
+    /// A request says only *the next frame is stale*, and requests coalesce: the
+    /// handle is a flag, so a burst produces one repaint. That is the right
+    /// primitive when the producer owns data the view re-reads each frame. When
+    /// each arrival instead needs `update` to decide something — mutate specific
+    /// state, open a dialog, exit — send it as a message and let the runner
+    /// deliver it: see [`run_with_messages`](Self::run_with_messages).
     pub fn redraw_handle(&self) -> RedrawHandle {
         self.redraw.clone()
     }
@@ -285,16 +290,82 @@ impl AsyncRunner {
         self.run_with_messages(theme, frames, no_messages()).await
     }
 
-    /// Run on the real terminal while also receiving typed application
-    /// `messages`.
+    /// Run on the real terminal, waking on values from the host's own program
+    /// as well as on input.
     ///
-    /// A background producer can send domain values through any Tokio
-    /// [`Stream`] without shared mutable state, synthetic terminal events, or
-    /// polling ticks. They arrive as [`Signal::Message`], so the frame source is
-    /// the same one [`run`](Self::run) takes, at `M` instead of the default
-    /// [`Infallible`]. A completed message stream disables only that input;
-    /// terminal events and ticks continue. Stream errors are propagated after
+    /// # When to use this
+    ///
+    /// Ask one question: **does `update` need to decide something about each
+    /// arrival, or does the frame just need to re-read the newest value?**
+    ///
+    /// - *Re-read* — the producer owns a value the view reads every frame (a
+    ///   gauge, a cached snapshot). Keep it in a [`Live`](crate::live::Live)
+    ///   and mark the frame stale with [`redraw_handle`](Self::redraw_handle).
+    /// - *Decide* — reach for this. Each item becomes one
+    ///   [`Signal::Message`] and one `update` call, so it can mutate specific
+    ///   state, open a dialog, or return [`UpdateResult::Exit`].
+    ///
+    /// The sharp difference: **redraw requests coalesce, messages do not.** A
+    /// [`RedrawHandle`] is a flag, so five requests between frames make one
+    /// repaint. Every message gets its own `update`, which is what lets each
+    /// arrival mean something different.
+    ///
+    /// Typical producers:
+    ///
+    /// - a child process's stdout, where each line appends to a transcript and
+    ///   some lines also change state
+    /// - a model or agent token stream, where tokens feed a
+    ///   [`MarkdownState`](crate::components::markdown::MarkdownState) and a
+    ///   final `Done` re-enables input
+    /// - a websocket or SSE feed — CI results, prices, chat
+    /// - a worker reporting `Progress` / `Failed` / `Finished`, the last of
+    ///   which may end the run
+    /// - another task asking the UI to do something ("open settings", "quit"),
+    ///   which is otherwise faked with a synthetic key event
+    ///
+    /// Do *not* use it to poll on a schedule; that is what [`Signal::Tick`] is
+    /// for.
+    ///
+    /// # Mechanics
+    ///
+    /// The producer sends through any Tokio [`Stream`], so no shared mutable
+    /// state, synthetic terminal events, or short polling interval is needed.
+    /// The frame source is the one [`run`](Self::run) takes, at `M` instead of
+    /// the default [`Infallible`]. A completed message stream disables only
+    /// that input — ticks and terminal events continue, so a finite producer
+    /// does not end the UI. A stream error ends the run and is propagated after
     /// terminal cleanup.
+    ///
+    /// ```no_run
+    /// # use tuika::prelude::*;
+    /// # use tokio_stream::wrappers::ReceiverStream;
+    /// # struct Tail { lines: Vec<String>, failed: bool }
+    /// impl AsyncApplication<String> for Tail {
+    ///     async fn update(&mut self, signal: Signal<String>) -> UpdateResult {
+    ///         match signal {
+    ///             // Every line is seen, and one of them means more than "repaint".
+    ///             Signal::Message(line) => {
+    ///                 self.failed |= line.starts_with("error:");
+    ///                 self.lines.push(line);
+    ///                 UpdateResult::Dirty
+    ///             }
+    ///             Signal::Event(Event::Key(key)) if key.code == KeyCode::Esc => UpdateResult::Exit,
+    ///             _ => UpdateResult::Clean,
+    ///         }
+    ///     }
+    ///
+    ///     fn view(&self, _frame: u64) -> ScopedElement<'_> {
+    ///         element(Text::raw(format!("{} lines", self.lines.len())))
+    ///     }
+    /// }
+    ///
+    /// # async fn run(runner: AsyncRunner, mut app: Tail,
+    /// #     rx: tokio::sync::mpsc::Receiver<std::io::Result<String>>) -> std::io::Result<()> {
+    /// runner
+    ///     .run_with_messages(&Theme::default(), &mut app, ReceiverStream::new(rx))
+    ///     .await
+    /// # }
+    /// ```
     pub async fn run_with_messages<M, F, MS>(
         &self,
         theme: &Theme,
