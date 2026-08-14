@@ -639,9 +639,10 @@ let layout = activity.resolve(Rect::new(0, 0, 120, 30), DockSpec::right(90, 40))
 
 `Live<T>` is shared application data with a narrow read/update API. `LiveView`
 derives a fresh view from its current value each frame. Connect it to
-`Runner::redraw_handle()` when background producers should invalidate the
-screen. Producers retain ownership of their threads, tasks, retries, and
-lifecycle.
+`Runner::redraw_handle()` — or `AsyncRunner::redraw_handle()`, which wakes a
+parked `select!` rather than waiting for its next tick — when background
+producers should invalidate the screen. Producers retain ownership of their
+threads, tasks, retries, and lifecycle.
 
 ## Screen modes, lifecycle, and runner
 
@@ -776,7 +777,9 @@ network or disk I/O — and lets its update closure `.await`. It ties
 `EventStream` and a tick timer in one `tokio::select!`, so the host keeps a
 single event loop. Its update closure returns the same
 `UpdateResult::{Clean, Consumed, Dirty, Exit}` as `Runner`, so awaited work only
-rebuilds and repaints when it actually changes visible state.
+rebuilds and repaints when it actually changes visible state. `AsyncApplication`
+is its `Application` twin — the same borrowed-view seam, with an awaiting
+`update` — driven by `run_app`.
 
 `run_with_messages` adds a typed host stream beside terminal events and ticks.
 Its update callback receives `AsyncSignal::{Event, Tick, Message}`; a background
@@ -784,6 +787,15 @@ producer can therefore wake and update the UI immediately without
 `Arc<Mutex<_>>`, fabricated keys, or a short polling interval. The lower-level
 `run_with_events_and_messages` accepts both streams and a caller-owned backend,
 which also makes completion and error behavior deterministic under `TestBackend`.
+An application consuming that stream implements `AsyncApplication<AsyncSignal<M>>`
+and runs through `run_app_with_messages`: the message axis changes the signal
+type, not the seam.
+
+Both runners' `run` methods are named for the axes they depart from —
+`run[_app][_with_backend|_with_events][_and_messages]` — where `_app` selects
+the borrowed-view seam, the middle segment moves terminal ownership to the
+caller, and the last adds the message stream. The runtime is the runner type;
+everything else is `RunnerConfig` or a builder method.
 
 Enabling `async` adds Tokio (timer + `select!`) and crossterm's `event-stream`
 feature; it stays off by default so sync-only hosts pull in no runtime. The

@@ -2,29 +2,85 @@
 //!
 //! `Live` is not a reconciler and does not spawn work. Producers own their
 //! threads or async tasks; updating a value requests a redraw from a connected
-//! [`Runner`](crate::Runner), and views read the latest value each frame.
+//! runner ([`Runner`](crate::Runner) or
+//! [`AsyncRunner`](crate::runner::AsyncRunner)), and views read the latest value
+//! each frame.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
+use std::task::Waker;
+#[cfg(feature = "async")]
+use std::task::{Context, Poll};
 
 use ratatui_core::layout::Rect;
 
 use crate::{Element, RenderCtx, Size, Surface, View};
 
+#[derive(Default)]
+struct RedrawSignal {
+    requested: AtomicBool,
+    // The synchronous runner discovers a request by checking the flag once per
+    // loop iteration; an async runner has no such iteration to check from and
+    // must be woken. Registering the waiting task's waker here keeps that
+    // wakeup executor-neutral — the async runner is Tokio-shaped, but nothing
+    // in this handle needs to be.
+    waker: Mutex<Option<Waker>>,
+}
+
 /// A thread-safe request for the terminal runner to redraw.
 #[derive(Clone, Default)]
 pub struct RedrawHandle {
-    requested: Arc<AtomicBool>,
+    signal: Arc<RedrawSignal>,
 }
 
 impl RedrawHandle {
     /// Mark the connected runner dirty.
     pub fn request(&self) {
-        self.requested.store(true, Ordering::Release);
+        self.signal.requested.store(true, Ordering::Release);
+        let waker = self
+            .signal
+            .waker
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
+        if let Some(waker) = waker {
+            waker.wake();
+        }
     }
 
     pub(crate) fn take(&self) -> bool {
-        self.requested.swap(false, Ordering::AcqRel)
+        self.signal.requested.swap(false, Ordering::AcqRel)
+    }
+
+    /// Poll for a pending request, registering `cx`'s waker when there is none.
+    ///
+    /// Cancelling a wait leaves at most a stale waker behind, which costs one
+    /// spurious wakeup and never a lost one: the flag is re-checked after
+    /// registration, so a request racing with it is still observed.
+    #[cfg(feature = "async")]
+    pub(crate) fn poll_take(&self, cx: &Context<'_>) -> Poll<()> {
+        if self.take() {
+            return Poll::Ready(());
+        }
+        {
+            let mut waker = self
+                .signal
+                .waker
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            *waker = Some(cx.waker().clone());
+        }
+        if self.take() {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    }
+
+    /// Wait until a redraw is requested, consuming the request.
+    #[cfg(feature = "async")]
+    pub(crate) async fn requested(&self) {
+        std::future::poll_fn(|cx| self.poll_take(cx)).await;
     }
 }
 
@@ -128,6 +184,38 @@ mod tests {
     use crate::style::Theme;
     use crate::tests::support::row;
     use crate::view::element;
+
+    // A waiter that registers before any request must still be woken, and a
+    // request that lands first must not be lost. Polled by hand so the
+    // guarantee is checked without an executor.
+    #[cfg(feature = "async")]
+    #[test]
+    fn a_waiter_observes_requests_made_before_and_after_it_parks() {
+        let handle = RedrawHandle::default();
+        let waker = Waker::noop();
+        let context = Context::from_waker(waker);
+
+        assert_eq!(handle.poll_take(&context), Poll::Pending, "no request yet");
+        handle.request();
+        assert_eq!(
+            handle.poll_take(&context),
+            Poll::Ready(()),
+            "a request made while parked is observed"
+        );
+        assert_eq!(
+            handle.poll_take(&context),
+            Poll::Pending,
+            "the request was consumed"
+        );
+
+        let requested = RedrawHandle::default();
+        requested.request();
+        assert_eq!(
+            requested.poll_take(&context),
+            Poll::Ready(()),
+            "a request made before the first poll is not lost"
+        );
+    }
 
     #[test]
     fn live_view_reads_updated_data_without_reconstruction() {

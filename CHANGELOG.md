@@ -28,6 +28,19 @@ described in the release process begins with the entry below.
 - `AsyncRunner::{run_with_messages, run_with_events_and_messages}` delivers a
   typed application stream through `AsyncSignal<M>`, including deterministic
   completion/error/redraw/exit behavior without shared mutable state or polling.
+- `AsyncApplication` is the borrowed-view application seam for the async runner,
+  the counterpart to `Application`. It is generic over its signal type, so an
+  application that also consumes a message stream implements
+  `AsyncApplication<AsyncSignal<M>>` rather than a second trait. Driven by
+  `AsyncRunner::{run_app, run_app_with_messages, run_app_with_backend,
+  run_app_with_events, run_app_with_events_and_messages}`, which complete the
+  application row of the runner's `run*` axes — previously a frame could borrow
+  application state only on the synchronous runner.
+- `AsyncRunner::redraw_handle` matches `Runner::redraw_handle`, so a `Live`
+  value (or any background producer) can mark the next frame stale on either
+  runner. `RedrawHandle` now registers the waiting task's waker, so the async
+  loop is woken by a request instead of only noticing one on its next tick;
+  bursts still coalesce into a single repaint.
 
 - `Runner` and `AsyncRunner` restore drag-to-select behavior by default when
   their terminal session captures the mouse. Selection is painted over the

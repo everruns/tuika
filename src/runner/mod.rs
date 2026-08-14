@@ -19,17 +19,57 @@
 //! question about the host's existing runtime, not about which part of tuika to
 //! reach for.
 //!
-//! Synchronous applications whose views borrow their own state implement
-//! [`Application`] and run through [`Runner::run_app`]. The original
-//! state/view/update closure API remains available for owned [`Element`] trees.
-//!
 //! A host with its own event loop needs neither: call [`crate::paint`] directly.
+//!
+//! # Choosing a `run` method
+//!
+//! There is one loop; the `run*` methods are its **axes**, not variants. Each
+//! name is built from the axes it departs from the default on:
+//!
+//! `run` `[_app]` `[_with_backend | _with_events]` `[_and_messages]`
+//!
+//! | Axis | Default | Alternative |
+//! | --- | --- | --- |
+//! | Frame source | closure pair over `&State` | `_app`: an [`Application`] that borrows itself |
+//! | Terminal | the runner enters a [`TerminalSession`] | `_with_backend`: caller's backend; `_with_events`: caller's terminal *and* event stream |
+//! | Input | terminal events and ticks | `_and_messages` / `_with_messages`: a typed application stream |
+//!
+//! The runtime axis is the runner you construct, and everything else — screen
+//! mode, tick rate, session policy, text selection — is [`RunnerConfig`] or a
+//! builder method rather than another name.
+//!
+//! The message axis is [`AsyncRunner`]-only: it needs a [`Stream`] to select
+//! over, and a synchronous loop has nothing to select with. A synchronous host
+//! whose background work produces data keeps that data behind a
+//! [`Live`](crate::live::Live) (or any shared value) and marks the frame stale
+//! through [`Runner::redraw_handle`]; both runners expose that handle.
+//!
+//! # The two frame sources
+//!
+//! Both describe the same thing and neither is legacy:
+//!
+//! - **Closures** (`run`): `view: FnMut(&State, u64) -> Element` beside
+//!   `update: FnMut(&mut State, Signal)`. State is the runner's argument
+//!   because a closure cannot hold `&state` and `&mut state` at once. The view
+//!   closure is `FnMut`, so it may carry scratch state of its own, and it
+//!   returns an *owned* tree.
+//! - **An application** (`run_app`): [`Application`] (or [`AsyncApplication`]).
+//!   `view(&self)` returns a [`ScopedElement<'_>`](crate::ScopedElement) — a
+//!   tree that borrows the application for the frame — so a large transcript,
+//!   table, or log is painted in place instead of being cloned into an owned
+//!   tree or shared through `Rc<RefCell<_>>`. The `&self` receiver also states
+//!   the contract the closure form only documents: rendering is pure.
+//!
+//! Since `Element` is `ScopedElement<'static>`, the application seam is the more
+//! general of the two in what it can *return*; the closure seam is the more
+//! permissive in how the view may *capture*. Start with closures, move to
+//! [`Application`] when a frame wants to borrow host data.
 
 #[cfg(feature = "async")]
 mod asynchronous;
 
 #[cfg(feature = "async")]
-pub use asynchronous::{AsyncRunner, AsyncSignal};
+pub use asynchronous::{AsyncApplication, AsyncRunner, AsyncSignal};
 
 use std::io::{self, Write};
 use std::sync::Arc;
@@ -51,6 +91,13 @@ use crate::{
     Clock, Element, Event, RenderCtx, ScopedElement, SystemClock, TerminalSession, Theme, View,
     paint_with_context, translate_event,
 };
+
+/// Receives a frame's root view for painting.
+///
+/// A frame source hands its root to this callback instead of returning it,
+/// which is what lets one loop serve an owned [`Element`] and a tree that
+/// borrows application state: the borrow only has to outlive the call.
+pub(crate) type PaintRoot<'a> = &'a mut dyn FnMut(&dyn View);
 
 const RESIZE_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 
@@ -154,7 +201,10 @@ pub enum UpdateResult {
     Exit,
 }
 
-/// A data-driven synchronous terminal application.
+/// A data-driven terminal application, driven by [`Runner::run_app`].
+///
+/// [`AsyncApplication`] is the same seam for a host whose `update` awaits;
+/// the split exists because only the runtime differs, not the contract.
 ///
 /// The runner mutably borrows the application only while delivering a
 /// [`Signal`], then immutably borrows it to build the next frame. Because the
@@ -435,7 +485,7 @@ impl Runner {
     ) -> io::Result<()>
     where
         B: Backend<Error = io::Error>,
-        V: FnMut(&S, u64, &mut dyn FnMut(&dyn View)),
+        V: FnMut(&S, u64, PaintRoot<'_>),
         U: FnMut(&mut S, Signal) -> UpdateResult,
     {
         let mode = self.config.screen_mode;
@@ -585,7 +635,7 @@ fn draw<S, B, V>(
 ) -> io::Result<()>
 where
     B: Backend<Error = io::Error>,
-    V: FnMut(&S, u64, &mut dyn FnMut(&dyn View)),
+    V: FnMut(&S, u64, PaintRoot<'_>),
 {
     let mut copied = None;
     terminal.draw(|terminal_frame| {

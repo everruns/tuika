@@ -143,7 +143,7 @@ pub use runner::{
     Application, Runner, RunnerAction, RunnerConfig, RunnerCore, Signal, UpdateResult,
 };
 #[cfg(feature = "async")]
-pub use runner::{AsyncRunner, AsyncSignal};
+pub use runner::{AsyncApplication, AsyncRunner, AsyncSignal};
 pub use scene::{Backdrop, Scene, SceneOverlay, ScopedScene};
 pub use screen::{ScreenMode, Scrollback};
 pub use style::{SemanticRole, StyleResolver, StyleRole, StyleSheet, Theme};
