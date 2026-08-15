@@ -11,20 +11,7 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
-## [0.9.1] - 2026-08-15
-
-This release supersedes 0.9.0, whose GitHub Release was created but whose crate
-archive exceeded crates.io's 10 MiB upload limit. It publishes the companion
-versions announced with 0.9.0 unchanged.
-
-### What's Changed
-
-* fix(package): exclude the generated documentation site from the crate archive
-
 ## [0.9.0] - 2026-08-15
-
-> **Publication note:** the tag and GitHub Release exist, but this version was
-> not published to crates.io. Use 0.9.1 instead.
 
 Released alongside `tuika-charts` 0.1.0 — its first release — plus
 `tuika-mermaid` 0.3.0, `tuika-codeformatters` 0.4.2, and `tuika-html` 0.1.2.
@@ -117,6 +104,9 @@ let several panes in one screen share focus and the mouse.
 
 ### Fixed
 
+- The published crate excludes the generated `site/` bundle, keeping the 0.9.0
+  archive below crates.io's 10 MiB upload limit while retaining every source,
+  manifest, README, and README asset needed by consumers.
 - `tuika-mermaid` renders a Mermaid decision node with a `<br/>` label as a
   diagram, with every label line inside the shape. The upstream defect
   ([mmdflux#387](https://github.com/kevinswiber/mmdflux/issues/387)) — which
