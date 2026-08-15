@@ -8,7 +8,7 @@
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui_core::style::{Modifier, Style};
 
-use crate::components::code_block::code_block_lines;
+use crate::components::code_block::code_block_rows;
 use crate::highlight::CodeHighlighter;
 use crate::style::{StyleBundle, StyleSheet, Theme};
 
@@ -592,8 +592,7 @@ impl<'a> Builder<'a> {
     fn push_code_block(&mut self, language: String, body: String) {
         let source = body.strip_suffix('\n').unwrap_or(&body).to_string();
         let lines: Vec<&str> = source.split('\n').collect();
-        let fallback =
-            code_block_lines(&language, &lines, self.theme, self.highlighter, true, None);
+        let fallback = code_block_rows(&language, &lines, self.theme, self.highlighter, true, None);
         self.items.push(MdItem::CodeBlock {
             language,
             source,

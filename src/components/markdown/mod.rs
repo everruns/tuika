@@ -513,6 +513,57 @@ mod tests {
     }
 
     #[test]
+    fn fenced_code_background_fills_the_available_width() {
+        let theme = Theme::default();
+        // Wider than the shared padding chunk, so the multi-span path is also
+        // covered without changing the visible contract.
+        let width = 300;
+        let lines = to_lines(
+            "```text\nx\n```",
+            width,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+        );
+
+        assert_eq!(lines.len(), 2);
+        for line in &lines {
+            assert_eq!(crate::components::text::line_width(line), width);
+            assert!(
+                line.spans
+                    .iter()
+                    .all(|span| span.style.bg == Some(theme.code.background)),
+                "all code cells should carry the code background: {line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn nested_fenced_code_fills_only_after_its_indent() {
+        let theme = Theme::default();
+        let lines = to_lines(
+            "> ```text\n> x\n> ```",
+            12,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+        );
+        let label = lines
+            .iter()
+            .find(|line| text(line).contains("text"))
+            .expect("language label");
+
+        assert_eq!(crate::components::text::line_width(label), 12);
+        assert_eq!(label.spans[0].content.as_ref(), "  ");
+        assert_eq!(label.spans[0].style.bg, None);
+        assert!(
+            label.spans[1..]
+                .iter()
+                .all(|span| span.style.bg == Some(theme.code.background))
+        );
+    }
+
+    #[test]
     fn code_fence_is_not_word_wrapped() {
         // A long code line exceeds width but is emitted as a single (clipped)
         // row, never reflowed into multiple lines.

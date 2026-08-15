@@ -4,12 +4,12 @@
   "benchmarks": {
     "frame_full.large": 81473338,
     "frame_windowed.large": 888796,
-    "one_shot.large": 5906747,
-    "one_shot.small": 249437,
+    "one_shot.large": 6451206,
+    "one_shot.small": 267214,
     "paging.large": 252164,
     "reflow.mixed": 12337073,
     "render.large": 869279,
     "render.small": 869213,
-    "streaming.mixed": 12114055
+    "streaming.mixed": 12610354
   }
 }
