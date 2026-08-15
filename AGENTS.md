@@ -87,7 +87,8 @@ cargo run --example codex -- --split-footer   # the agent UI in that mode
 
 Criterion targets measure wall clock and are advisory; the `*_iai` targets count
 instructions against a committed baseline and are a CI gate. Procedure lives in
-[`benches/README.md`](benches/README.md).
+[`benches/README.md`](benches/README.md). The baseline snapshots are repository
+CI inputs and are excluded from the published crates; benchmark source remains.
 
 ### Testing
 

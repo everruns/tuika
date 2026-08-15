@@ -108,6 +108,8 @@ let several panes in one screen share focus and the mouse.
   asset, keeping the 0.9.0 archive below crates.io's 10 MiB upload limit. README
   images now use release-tag-pinned absolute URLs, and the split-footer
   recording lives in its focused guide rather than being duplicated there.
+  Committed IAI benchmark result snapshots are excluded from both crates that
+  own them; benchmark source remains available.
 - `tuika-mermaid` renders a Mermaid decision node with a `<br/>` label as a
   diagram, with every label line inside the shape. The upstream defect
   ([mmdflux#387](https://github.com/kevinswiber/mmdflux/issues/387)) — which

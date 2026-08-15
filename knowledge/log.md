@@ -10,7 +10,9 @@
     and tests that boundary explicitly. The root copy of the companion chart
     screenshots follows the same GitHub-only rule. Root README images now use
     release-tag-pinned absolute URLs, allowing every image asset to stay out of
-    the crate without making past crates.io pages drift.
+    the crate without making past crates.io pages drift. Committed IAI
+    baselines remain repository CI inputs but are excluded from the two crates
+    that own them; a workspace-wide packaging test rejects benchmark results.
 
 - **A run loop that cannot be driven without a terminal cannot be tested**
   - The synchronous loop had no end-to-end coverage for as long as every entry

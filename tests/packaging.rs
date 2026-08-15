@@ -1,6 +1,6 @@
 //! Guards the published `.crate` contents.
 //!
-//! Two things must stay out of the tarball, and `Cargo.toml`'s `exclude` is the
+//! Three things must stay out of the tarball, and `Cargo.toml`'s `exclude` is the
 //! only thing keeping them out:
 //!
 //! - The demo/chart/showcase/theme/styling assets under `docs/`, and the `codex`
@@ -14,6 +14,9 @@
 //!   `README.md` directly and cannot use the site bundle.
 //!   `tuika-codeformatters` has one GitHub-only recording of its own
 //!   (`docs/languages.gif`) under the same rule.
+//! - Benchmark output. Cargo naturally leaves generated `target/` reports out,
+//!   while manifest exclusions keep committed IAI result snapshots out. The
+//!   benchmark sources still ship and remain reproducible.
 //!
 //! This test drives the real packaging path (`cargo package --list`) so a stray
 //! asset — or a regression that drops an image the crates.io README needs —
@@ -132,6 +135,30 @@ fn generated_site_is_excluded_from_the_package() {
         leaked.is_empty(),
         "the generated documentation site must not ship in the crate: {leaked:?}"
     );
+}
+
+#[test]
+fn benchmark_results_are_excluded_from_every_package() {
+    for package in [
+        "tuika",
+        "tuika-charts",
+        "tuika-codeformatters",
+        "tuika-html",
+        "tuika-mermaid",
+    ] {
+        let files = packaged_files(package);
+        let leaked: Vec<&String> = files
+            .iter()
+            .filter(|path| {
+                path.starts_with("target/")
+                    || (path.starts_with("benches/") && path.ends_with(".json"))
+            })
+            .collect();
+        assert!(
+            leaked.is_empty(),
+            "benchmark results must not ship in {package}: {leaked:?}"
+        );
+    }
 }
 
 #[test]

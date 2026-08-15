@@ -41,7 +41,7 @@ repository.workspace = true
 readme = "README.md"
 keywords = ["tui", "terminal", "ratatui", "framework", "widgets"]
 categories = ["command-line-interface"]
-# Two kinds of file are kept out of the published `.crate`:
+# Three kinds of file are kept out of the published `.crate`:
 #
 # 1. The alternate logo exports, demo/chart/showcase/theme/styling assets under
 #    `docs/`, and recording beside the `codex` example are consumed only from
@@ -49,7 +49,9 @@ categories = ["command-line-interface"]
 #    of them from its crate front page, so bundling them just bloats the tarball.
 #    The crates.io README reaches its images through release-tag-pinned absolute
 #    URLs, so their packaged copies are unreachable and excluded too.
-# 2. Repository machinery. Since tuika is the root package, everything beside it
+# 2. Benchmark result snapshots. Benchmark sources remain reproducible, but the
+#    committed IAI baseline is a CI input rather than a consumer file.
+# 3. Repository machinery. Since tuika is the root package, everything beside it
 #    in the repo would otherwise ship: the generated documentation site,
 #    internal knowledge, agent skills, CI definitions, and asset-generation
 #    scripts are all repo-only.
@@ -70,6 +72,7 @@ exclude = [
     "examples/codex/*.gif",
     "docs/styling/*.gif",
     "docs/themes/*.gif",
+    "/benches/*.json",
     "/.agents",
     "/.claude",
     "/.github",

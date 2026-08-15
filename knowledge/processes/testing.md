@@ -131,6 +131,11 @@ baseline updated in a separate commit hides which change moved the numbers. To
 refresh from CI's exact environment, dispatch the workflow manually and commit
 the uploaded `iai-baseline` artifact.
 
+Those committed baselines are repository CI inputs, not crate contents. Package
+manifests exclude `benches/*.json` while retaining benchmark source, and the
+packaging test guards both the committed snapshots and generated `target/`
+results across every published workspace member.
+
 **Adding code to the library counts as a legitimate shift, even code the
 benchmark never calls.** rustc partitions a crate into codegen units, so a new
 module changes which functions share a unit and therefore which ones get inlined;
