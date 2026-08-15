@@ -45,10 +45,10 @@ else. No CSS — this renders content, not pages. Ships in the companion crate
 ### `CodeBlock`
 
 A themed, syntax-highlighted fenced block: a language label, a left rail, and a
-code background. Highlighting comes from a pluggable `Highlighter` (none → plain,
-theme-colored text); the `tuika-codeformatters` crate ships a tree-sitter one. An
-optional line-number gutter (`line_numbers(true)` / `start_line(n)`) rides to the
-left of the rail.
+code background that fills the available width. Highlighting comes from a
+pluggable `Highlighter` (none → plain, theme-colored text); the
+`tuika-codeformatters` crate ships a tree-sitter one. An optional line-number
+gutter (`line_numbers(true)` / `start_line(n)`) rides to the left of the rail.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.CodeBlock.html)
 
 <img src="../demos/code_block.png" width="880" alt="CodeBlock demo">

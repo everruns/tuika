@@ -75,9 +75,10 @@ computation that only looks at the tail would silently lose the settled part.
 
 ### Highlighting is a seam, not a dependency
 
-tuika owns the presentation of code — frame, background, language label,
-optional line-number gutter, wrapping — and takes token colors from any
-`Highlighter` the host supplies. The trait is deliberately narrow: given a
+tuika owns the presentation of code — frame, a background that fills the
+available width, language label, optional line-number gutter, wrapping — and
+takes token colors from any `Highlighter` the host supplies. Nested blocks keep
+their outer indentation unpainted. The trait is deliberately narrow: given a
 language name and source, return styled spans.
 
 This is the [goal.md](./goal.md) boundary applied to syntax: grammar crates are

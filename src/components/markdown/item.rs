@@ -6,8 +6,9 @@
 
 use pulldown_cmark::Alignment;
 use ratatui_core::style::Style;
-use ratatui_core::text::{Line, Span};
+use ratatui_core::text::Span;
 
+use crate::components::code_block::CodeRow;
 use crate::term::image::ImageData;
 
 /// Columns of indentation added per level of list / block-quote nesting.
@@ -24,7 +25,7 @@ pub(super) enum MdItem {
     CodeBlock {
         language: String,
         source: String,
-        fallback: Vec<Line<'static>>,
+        fallback: Vec<CodeRow>,
         indent: u16,
     },
     /// A GFM table, laid out to the available width when flattened.

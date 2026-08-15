@@ -21,9 +21,16 @@ use crate::highlight::CodeHighlighter;
 use crate::style::Theme;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
+use crate::width::str_cols;
 
 /// The left rail glyph + trailing pad that frames every code line.
 const RAIL: &str = "▏ ";
+
+/// A prepared fallback row and its source-derived display width.
+pub(crate) struct CodeRow {
+    pub(crate) line: Line<'static>,
+    pub(crate) width: u16,
+}
 
 /// Build the styled lines for a fenced code block: an optional language-label
 /// row followed by one verbatim row per source line.
@@ -45,6 +52,21 @@ pub(crate) fn code_block_lines(
     show_label: bool,
     gutter: Option<usize>,
 ) -> Vec<Line<'static>> {
+    code_block_rows(lang, body, theme, highlighter, show_label, gutter)
+        .into_iter()
+        .map(|row| row.line)
+        .collect()
+}
+
+/// Build code rows while retaining their intrinsic widths for markdown reflow.
+pub(crate) fn code_block_rows(
+    lang: &str,
+    body: &[&str],
+    theme: &Theme,
+    highlighter: CodeHighlighter,
+    show_label: bool,
+    gutter: Option<usize>,
+) -> Vec<CodeRow> {
     let code = &theme.code;
     let rail_style = Style::default().fg(code.label).bg(code.background);
     let plain = Style::default().fg(code.text).bg(code.background);
@@ -70,9 +92,16 @@ pub(crate) fn code_block_lines(
             format!("{RAIL}{label}"),
             Style::default()
                 .fg(code.label)
+                .bg(code.background)
                 .add_modifier(Modifier::ITALIC),
         ));
-        out.push(Line::from(spans));
+        out.push(CodeRow {
+            line: Line::from(spans),
+            width: u16::try_from(gutter_width.unwrap_or(0))
+                .unwrap_or(u16::MAX)
+                .saturating_add(str_cols(RAIL))
+                .saturating_add(str_cols(label)),
+        });
     }
 
     // Highlighted spans (one vector per body line) or the plain fallback.
@@ -101,14 +130,20 @@ pub(crate) fn code_block_lines(
             }
             _ => spans.push(Span::styled((*source).to_string(), plain)),
         }
-        out.push(Line::from(spans));
+        out.push(CodeRow {
+            line: Line::from(spans),
+            width: u16::try_from(gutter_width.unwrap_or(0))
+                .unwrap_or(u16::MAX)
+                .saturating_add(str_cols(RAIL))
+                .saturating_add(str_cols(source)),
+        });
     }
 
     out
 }
 
 /// A themed, syntax-highlighted code block — a language label, a left rail, a
-/// code background, and verbatim (never-reflowed) body lines.
+/// full-width code background, and verbatim (never-reflowed) body lines.
 ///
 /// ![code_block demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/code_block.png)
 ///
@@ -211,10 +246,16 @@ impl View for CodeBlock<'_> {
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
         let lines = self.lines(ctx.theme);
+        let background = Style::default().bg(ctx.theme.code.background);
         for (row, line) in lines.iter().enumerate() {
             let y = area.y.saturating_add(row as u16);
             if y >= area.bottom() {
                 break;
+            }
+            // A code block is a full-width visual region, even when its source
+            // lines are short.
+            for x in area.x..area.right() {
+                surface.set(x, y, ' ', background);
             }
             let mut x = area.x;
             for span in &line.spans {
@@ -283,5 +324,18 @@ mod tests {
         let buf = crate::testing::render(&block, 20, 1, &theme);
         // Rail is first, with no leading numeric column.
         assert!(row(&buf, 0).starts_with('▏'), "row0: {:?}", row(&buf, 0));
+    }
+
+    #[test]
+    fn background_fills_the_assigned_width() {
+        let theme = crate::tests::support::rainbow_theme();
+        let block = CodeBlock::new("text", "x");
+        let buf = crate::testing::render(&block, 12, 2, &theme);
+
+        for y in 0..2 {
+            for x in 0..12 {
+                assert_eq!(buf[(x, y)].bg, theme.code.background, "cell ({x}, {y})");
+            }
+        }
     }
 }

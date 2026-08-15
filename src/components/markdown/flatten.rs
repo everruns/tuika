@@ -18,6 +18,15 @@ use super::item::{MdItem, RichSpan};
 use super::table::render_table_linked;
 use super::{MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer};
 
+/// Reusable blank cells for full-width code backgrounds. Keeping the padding
+/// borrowed avoids allocating and copying one new string per code row.
+const CODE_PADDING_CHUNK: &str = concat!(
+    "                                ",
+    "                                ",
+    "                                ",
+    "                                ",
+);
+
 /// Trim surrounding whitespace from a cell's span run: the leading edge of the
 /// first span and the trailing edge of the last, dropping any span left empty.
 pub(super) fn trim_spans(mut spans: Vec<RichSpan>) -> Vec<RichSpan> {
@@ -111,8 +120,17 @@ pub(super) fn flatten_linked_into<R: MarkdownBlockRenderer + ?Sized>(
                     MarkdownBlock::Fenced { language, source },
                     MarkdownBlockContext::new(avail, theme, sheet),
                 );
-                for line in rendered.as_ref().unwrap_or(fallback) {
-                    out.push(prefix_rendered_line(*indent, line));
+                if let Some(rendered) = rendered {
+                    for line in rendered {
+                        out.push(prefix_rendered_line(*indent, line));
+                    }
+                } else {
+                    let background = Style::default().bg(theme.code.background);
+                    for row in fallback {
+                        out.push(fill_code_line(
+                            *indent, avail, &row.line, row.width, background,
+                        ));
+                    }
                 }
             }
             MdItem::Table { table, indent } => {
@@ -137,7 +155,7 @@ pub(super) fn flatten_linked_into<R: MarkdownBlockRenderer + ?Sized>(
                     MarkdownBlock::Html { source },
                     MarkdownBlockContext::new(avail, theme, sheet),
                 ) {
-                    for line in &rendered {
+                    for line in rendered {
                         out.push(prefix_rendered_line(*indent, line));
                     }
                 }
@@ -163,14 +181,44 @@ pub(super) fn flatten_linked_into<R: MarkdownBlockRenderer + ?Sized>(
     (out, links)
 }
 
+/// Prefix and right-pad one fallback code row in a single span allocation.
+fn fill_code_line(
+    indent: u16,
+    available: u16,
+    line: &Line<'static>,
+    line_width: u16,
+    background: Style,
+) -> Line<'static> {
+    let padding = usize::from(available.saturating_sub(line_width));
+    let chunks = padding.div_ceil(CODE_PADDING_CHUNK.len());
+    let mut spans = Vec::with_capacity(
+        line.spans
+            .len()
+            .saturating_add(usize::from(indent > 0))
+            .saturating_add(chunks),
+    );
+    if indent > 0 {
+        spans.push(Span::raw(" ".repeat(indent as usize)));
+    }
+    spans.extend(line.spans.iter().cloned());
+
+    let mut remaining = padding;
+    while remaining > 0 {
+        let width = remaining.min(CODE_PADDING_CHUNK.len());
+        spans.push(Span::styled(&CODE_PADDING_CHUNK[..width], background));
+        remaining -= width;
+    }
+    Line::from(spans)
+}
+
 /// Prefix an already-rendered line with `indent` blank columns.
-fn prefix_rendered_line(indent: u16, line: &Line<'static>) -> Line<'static> {
+fn prefix_rendered_line(indent: u16, line: Line<'static>) -> Line<'static> {
     if indent == 0 {
-        return line.clone();
+        return line;
     }
     let mut spans = Vec::with_capacity(line.spans.len() + 1);
     spans.push(Span::raw(" ".repeat(indent as usize)));
-    spans.extend(line.spans.iter().cloned());
+    spans.extend(line.spans);
     Line::from(spans)
 }
 
