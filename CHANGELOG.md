@@ -11,7 +11,31 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
-## Unreleased
+## [0.9.0] - 2026-08-15
+
+Released alongside `tuika-charts` 0.1.0 — its first release — plus
+`tuika-mermaid` 0.3.0, `tuika-codeformatters` 0.4.2, and `tuika-html` 0.1.2.
+Their tuika dependency requirements now track 0.9.
+
+### Highlights
+
+**Charts, in a companion crate.** `tuika-charts` renders line, area, bar, step,
+and scatter series and picks its own fidelity: terminal graphics where the
+emulator supports them, portable half-block and Braille cells everywhere else,
+from the same `Chart` description.
+
+![chart demo](https://raw.githubusercontent.com/everruns/tuika/v0.9.0/docs/charts/line-graphics.png)
+
+**Trees and multi-pane interaction.** `TreeList` brings stable-id expansion,
+selection, and persistent scrolling over host-owned rows, on the same reusable
+primitives — `SelectViewportState`, `FocusRegistry::focus`, hit testing — that
+let several panes in one screen share focus and the mouse.
+
+![tree list demo](https://raw.githubusercontent.com/everruns/tuika/v0.9.0/docs/demos/tree_list.gif)
+
+- **Runner**: one `FrameSource` seam and one `Signal` replace ten `run*` methods
+  across the two runtimes; the synchronous loop is now drivable from a
+  caller-owned terminal, so a whole application can be tested with no tty.
 
 ### Added
 

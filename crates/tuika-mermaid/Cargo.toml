@@ -1,6 +1,6 @@
 [package]
 name = "tuika-mermaid"
-version = "0.2.1"
+version = "0.3.0"
 # Identity, MSRV, and license come from `[workspace.package]` in the root
 # manifest — see the comment there for what is and isn't shared.
 edition.workspace = true
@@ -19,6 +19,6 @@ keywords = ["tui", "mermaid", "markdown", "ratatui", "diagrams"]
 categories = ["command-line-interface", "text-processing"]
 
 [dependencies]
-tuika = { version = "0.8.0", path = "../.." }
+tuika = { version = "0.9.0", path = "../.." }
 ratatui-core = "0.1"
 mmdflux = { version = "2.6.1", default-features = false }
