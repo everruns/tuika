@@ -32,6 +32,17 @@ let chart = Chart::new()
     ]));
 ```
 
+Both axes are labelled by default. `Axis::format` supplies units, `Axis::ticks`
+targets a tick count, and `Axis::hidden` drops the labels for a sparkline:
+
+```rust
+use tuika_charts::{Axis, Chart};
+
+let chart = Chart::new()
+    .y_axis(Axis::new().ticks(4).format(|value| format!("{value:.0}ms")))
+    .x_axis(Axis::hidden());
+```
+
 `Chart` is a normal tuika `View`. Return it from `Application::view` and run the
 application normally. To try the complete gallery (`q` or `Esc` quits):
 
@@ -94,8 +105,9 @@ Horizontal-then-vertical transitions for state and level changes.
 | Sixel host configuration | Palette-quantized Sixel image |
 | Anything else | Unicode terminal cells |
 
-The graphics path rasterizes plot geometry; the title and legend remain cells,
-so text stays sharp and theme-consistent. The portable path uses 2×2 quadrant
+The graphics path rasterizes plot geometry; the title, legend, and axis tick
+labels remain cells, so text stays sharp, theme-consistent, and identical
+between the two paths. The portable path uses 2×2 quadrant
 subcells for connected geometry and area boundaries, 2×4 Braille subcells for
 scatter points, and solid cells for bars.
 

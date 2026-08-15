@@ -5,7 +5,7 @@ use std::io;
 
 use tuika::prelude::*;
 use tuika::testing::{grid, render};
-use tuika_charts::{Chart, Point, Series};
+use tuika_charts::{Axis, Chart, Point, Series};
 
 #[derive(Clone, Copy)]
 enum ChartKind {
@@ -105,6 +105,7 @@ fn errors_chart() -> Chart {
 fn latency_chart() -> Chart {
     Chart::new()
         .title("Latency · scatter")
+        .y_axis(Axis::new().format(|value| format!("{value:.0}ms")))
         .series(Series::scatter(
             "p95",
             [

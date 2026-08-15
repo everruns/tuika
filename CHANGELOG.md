@@ -25,6 +25,13 @@ described in the release process begins with the entry below.
 - **Virtualization**: `VirtualWindow::keeping` is the edge-following policy as a
   pure function of the caller's current start; `SelectViewportState::resolve`
   now uses it, so the persistent and stateless paths share one implementation.
+- **Charts**: both axes carry tick labels, so a chart states its scale instead
+  of leaving the reader to guess it. Ticks land on round values (a power of ten
+  times 1, 2, 2.5, or 5) and label precision follows the tick step.
+  `Axis::format` replaces the numeric formatter, `Axis::ticks` targets a tick
+  count, and `Axis::hidden` opts an axis out. Labels are drawn as cells in
+  **both** render modes — the graphics image covers the plot only — so the same
+  numbers land in the same cells whether or not the terminal has graphics.
 
 ### Changed
 
@@ -37,6 +44,13 @@ described in the release process begins with the entry below.
 - `MarkdownState::links` preserves labeled and bare hyperlink targets across
   incremental updates, settled-prefix caching, wrapping, and resize, so hosts
   drawing streaming lines can apply native OSC 8 links without re-parsing.
+- **Breaking:** chart axis labels are on by default, so a chart that previously
+  filled its whole area now gives a few columns to the y-axis gutter.
+  `Chart::x_axis` and `Chart::y_axis` with `Axis::hidden` restore the old
+  geometry exactly; the x labels reuse the margin row the plot already reserved
+  and cost no plot height. Aligning both renderers on one cell grid also removed
+  the graphics path's internal margins, so a graphics plot now covers the same
+  data cells its portable counterpart does.
 
 ## [0.9.0] - 2026-08-15
 

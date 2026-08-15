@@ -3,20 +3,17 @@ use ratatui_core::style::Style;
 use ratatui_core::symbols::pixel::QUADRANTS;
 use tuika::{RenderCtx, Surface};
 
-use crate::{Chart, PlotModel, Point, Series, SeriesKind, chart_color, draw_line, plot_rect};
+use crate::axis::AxisLayout;
+use crate::{Chart, PlotModel, Point, Series, SeriesKind, chart_color, draw_line};
 
 pub(super) fn render_cells(
-    area: Rect,
+    plot: Rect,
     surface: &mut Surface,
     chart: &Chart,
     model: &PlotModel,
+    layout: &AxisLayout,
     ctx: &RenderCtx,
 ) {
-    surface.fill(Style::default().bg(ctx.theme.background));
-    if !chart.title.is_empty() {
-        surface.set_string(area.x, area.y, &chart.title, ctx.theme.accent_style());
-    }
-    let plot = plot_rect(area, chart);
     if plot.width == 0 || plot.height == 0 {
         return;
     }
@@ -26,6 +23,13 @@ pub(super) fn render_cells(
     }
     for x in plot.x..plot.right() {
         surface.set(x, plot.bottom() - 1, '─', axis);
+    }
+    // Tick marks before the corner, so a tick on the origin cannot erase it.
+    for tick in &layout.y {
+        surface.set(plot.x, tick.at, '┤', axis);
+    }
+    for tick in &layout.x {
+        surface.set(tick.at, plot.bottom() - 1, '┬', axis);
     }
     surface.set(plot.x, plot.bottom() - 1, '└', axis);
 
@@ -93,7 +97,6 @@ pub(super) fn render_cells(
             }
         }
     }
-    render_legend(area, surface, chart, ctx);
 }
 
 fn map_finite_points(

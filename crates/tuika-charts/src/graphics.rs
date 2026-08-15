@@ -2,6 +2,7 @@ use ratatui_core::style::Color;
 use tuika::RenderCtx;
 use tuika::term::image::ImageData;
 
+use crate::axis::AxisLayout;
 use crate::{Chart, PlotModel, Point, SeriesKind, chart_color, draw_line};
 
 const PIXELS_PER_COL: u32 = 8;
@@ -12,6 +13,7 @@ pub(super) fn render_pixels(
     rows: u16,
     chart: &Chart,
     model: &PlotModel,
+    layout: &AxisLayout,
     ctx: &RenderCtx,
 ) -> Option<ImageData> {
     let width = u32::from(cols).checked_mul(PIXELS_PER_COL)?;
@@ -22,30 +24,55 @@ pub(super) fn render_pixels(
     let background = rgb(ctx.theme.background);
     let pixels = usize::try_from(width.checked_mul(height)?).ok()?;
     let mut rgba = [background.0, background.1, background.2, 255].repeat(pixels);
-    let top = 4;
+    // The image plot occupies exactly the cells the portable renderer plots
+    // into: one column for the axis, one row for its baseline. Tick labels sit
+    // outside the image, so any other margin would misalign them.
+    let top = 0;
     let left = PIXELS_PER_COL;
-    let plot_width = width.saturating_sub(left + 4);
-    let plot_height = height.saturating_sub(top + 4);
+    let plot_width = width.saturating_sub(left);
+    let plot_height = height.saturating_sub(PIXELS_PER_ROW);
     if plot_width == 0 || plot_height == 0 {
         return ImageData::from_rgba(width, height, rgba);
     }
     let axis = rgb(ctx.theme.border);
+    let axis_x = left as i32 - 1;
     pixel_line(
         &mut rgba,
         width,
         height,
-        (left as i32, top as i32),
-        (left as i32, (top + plot_height) as i32),
+        (axis_x, top as i32),
+        (axis_x, (top + plot_height) as i32),
         axis,
     );
     pixel_line(
         &mut rgba,
         width,
         height,
-        (left as i32, (top + plot_height) as i32),
+        (axis_x, (top + plot_height) as i32),
         ((left + plot_width) as i32, (top + plot_height) as i32),
         axis,
     );
+    for tick in &layout.y {
+        let y = model
+            .map(Point::new(model.x.min, tick.value), plot_width, plot_height)
+            .1;
+        pixel_line(&mut rgba, width, height, (axis_x - 3, y), (axis_x, y), axis);
+    }
+    for tick in &layout.x {
+        let x = model
+            .map(Point::new(tick.value, model.y.min), plot_width, plot_height)
+            .0
+            + left as i32;
+        let baseline = (top + plot_height) as i32;
+        pixel_line(
+            &mut rgba,
+            width,
+            height,
+            (x, baseline),
+            (x, baseline + 3),
+            axis,
+        );
+    }
     for (index, series) in chart.series.iter().enumerate() {
         let color = rgb(chart_color(series, index, ctx));
         let mapped: Vec<_> = series

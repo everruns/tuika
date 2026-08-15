@@ -14,10 +14,13 @@ use ratatui_core::style::{Color, Style};
 use tuika::term::image::{ImageLayer, ImageSupport};
 use tuika::{RenderCtx, Size, Surface, View};
 
+mod axis;
 mod cells;
 mod graphics;
 mod model;
 
+pub use axis::Axis;
+use axis::AxisLayout;
 use cells::{render_cells, render_legend};
 use graphics::render_pixels;
 use model::PlotModel;
@@ -42,6 +45,8 @@ pub struct Chart {
     series: Vec<Series>,
     x_domain: Option<Domain>,
     y_domain: Option<Domain>,
+    x_axis: Axis,
+    y_axis: Axis,
     support: Option<ImageSupport>,
     layer: Option<ImageLayer>,
     legend: bool,
@@ -55,6 +60,8 @@ impl Chart {
             series: Vec::new(),
             x_domain: None,
             y_domain: None,
+            x_axis: Axis::new(),
+            y_axis: Axis::new(),
             support: None,
             layer: None,
             legend: true,
@@ -82,6 +89,18 @@ impl Chart {
     /// Use an explicit vertical domain.
     pub fn y_domain(mut self, domain: Domain) -> Self {
         self.y_domain = Some(domain);
+        self
+    }
+
+    /// Configure the horizontal axis. Tick labels are shown by default.
+    pub fn x_axis(mut self, axis: Axis) -> Self {
+        self.x_axis = axis;
+        self
+    }
+
+    /// Configure the vertical axis. Tick labels are shown by default.
+    pub fn y_axis(mut self, axis: Axis) -> Self {
+        self.y_axis = axis;
         self
     }
 
@@ -156,15 +175,22 @@ impl View for Chart {
             render_empty(area, surface, ctx, &self.title);
             return;
         };
+        surface.fill(Style::default().bg(ctx.theme.background));
+        if !self.title.is_empty() {
+            surface.set_string(area.x, area.y, &self.title, ctx.theme.accent_style());
+        }
+        render_legend(area, surface, self, ctx);
+
+        let mut layout = AxisLayout::new(area, self, &model);
+        let plot = plot_rect(area, self, &layout);
+        layout.resolve(plot, area, self, &model);
+        // Labels are cells in both modes: the graphics image covers the plot
+        // only, so the same text lands beside it either way.
+        layout.render(plot, surface, ctx);
+
         let (support, layer) = self.graphics(ctx);
         if self.render_mode_in(ctx) == RenderMode::Graphics {
-            surface.fill(Style::default().bg(ctx.theme.background));
-            if !self.title.is_empty() {
-                surface.set_string(area.x, area.y, &self.title, ctx.theme.accent_style());
-            }
-            render_legend(area, surface, self, ctx);
-            let plot = plot_rect(area, self);
-            let data = render_pixels(plot.width, plot.height, self, &model, ctx);
+            let data = render_pixels(plot.width, plot.height, self, &model, &layout, ctx);
             if let (Some(data), Some(layer)) = (data, layer) {
                 // Image owns capability-gated placement; using it here keeps the
                 // same protocol lifecycle and fallback semantics as core images.
@@ -175,7 +201,7 @@ impl View for Chart {
                 return;
             }
         }
-        render_cells(area, surface, self, &model, ctx);
+        render_cells(plot, surface, self, &model, &layout, ctx);
     }
 }
 
@@ -199,13 +225,17 @@ fn chart_color(series: &Series, index: usize, ctx: &RenderCtx) -> Color {
     })
 }
 
-fn plot_rect(area: Rect, chart: &Chart) -> Rect {
+/// The plot rect: the axis column and every data cell, but no chrome.
+///
+/// The trailing row it always leaves below the plot is where x tick labels go,
+/// so labelling that axis costs no plot height.
+fn plot_rect(area: Rect, chart: &Chart, layout: &AxisLayout) -> Rect {
     let title = u16::from(!chart.title.is_empty());
     let legend = u16::from(chart.legend && !chart.series.is_empty());
     Rect::new(
-        area.x.saturating_add(1),
+        area.x.saturating_add(layout.gutter),
         area.y.saturating_add(title),
-        area.width.saturating_sub(2),
+        area.width.saturating_sub(layout.gutter + 1),
         area.height.saturating_sub(title + legend + 1),
     )
 }
@@ -246,6 +276,33 @@ mod tests {
 
     fn is_quadrant(ch: char) -> bool {
         ratatui_core::symbols::pixel::QUADRANTS[1..].contains(&ch)
+    }
+
+    pub(super) fn grid_of(buffer: &Buffer, area: Rect) -> String {
+        (0..area.height)
+            .map(|y| {
+                (0..area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// The column the vertical axis line occupies, i.e. the gutter width.
+    pub(super) fn axis_column(buffer: &Buffer, area: Rect) -> Option<u16> {
+        (0..area.width).find(|&x| (0..area.height).any(|y| buffer[(x, y)].symbol() == "│"))
+    }
+
+    pub(super) fn render_to(chart: &Chart, width: u16, height: u16) -> (Buffer, Rect) {
+        let area = Rect::new(0, 0, width, height);
+        let mut buffer = Buffer::empty(area);
+        chart.render(
+            area,
+            &mut Surface::new(&mut buffer, area),
+            &RenderCtx::new(&Theme::default()),
+        );
+        (buffer, area)
     }
 
     fn sample() -> Chart {
@@ -315,14 +372,7 @@ mod tests {
             &mut Surface::new(&mut buffer, area),
             &RenderCtx::new(&Theme::default()),
         );
-        let grid = (0..area.height)
-            .map(|y| {
-                (0..area.width)
-                    .map(|x| buffer[(x, y)].symbol())
-                    .collect::<String>()
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        let grid = grid_of(&buffer, area);
         assert!(grid.contains("Traffic"));
         assert!(grid.contains('└'));
         assert!(grid.chars().any(is_quadrant));
@@ -376,7 +426,23 @@ mod tests {
         );
 
         assert_eq!(buffer[(0, 0)].fg, theme.accent, "title uses accent");
-        assert_eq!(buffer[(1, 1)].fg, theme.border, "axis uses border");
+        let axis = axis_column(&buffer, area).expect("axis column");
+        assert_eq!(buffer[(axis, 1)].fg, theme.border, "axis uses border");
+        let (label_x, label_y) = (0..area.height)
+            .flat_map(|y| (0..axis).map(move |x| (x, y)))
+            .find(|&(x, y)| {
+                buffer[(x, y)]
+                    .symbol()
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_digit())
+            })
+            .expect("a y tick label");
+        assert_eq!(
+            buffer[(label_x, label_y)].fg,
+            theme.muted,
+            "tick labels use muted text"
+        );
         assert_eq!(
             buffer[(0, 9)].fg,
             theme.accent,
@@ -672,5 +738,155 @@ mod tests {
             Domain { min: 0.0, max: 2.0 },
             "explicit bounds remain exact clipping bounds"
         );
+    }
+}
+
+#[cfg(test)]
+mod axis_tests {
+    use super::tests::{axis_column, grid_of, render_to};
+    use super::*;
+
+    fn labelled() -> Chart {
+        Chart::new().legend(false).series(Series::line(
+            "latency",
+            (0..=10).map(|i| Point::new(f64::from(i), f64::from(i) * 10.0)),
+        ))
+    }
+
+    #[test]
+    fn both_axes_are_labelled_by_default() {
+        let (buffer, area) = render_to(&labelled(), 40, 12);
+        let grid = grid_of(&buffer, area);
+
+        let gutter = axis_column(&buffer, area).expect("axis column");
+        assert!(gutter > 1, "y labels claim a gutter, got {gutter}");
+        assert!(grid.contains('┤'), "y ticks mark the vertical axis");
+        assert!(grid.contains('┬'), "x ticks mark the horizontal axis");
+        assert!(
+            grid.lines().last().is_some_and(|row| row.contains('0')),
+            "x labels sit on the margin row below the plot"
+        );
+    }
+
+    #[test]
+    fn hidden_axes_give_their_space_back_to_the_plot() {
+        let bare = labelled().x_axis(Axis::hidden()).y_axis(Axis::hidden());
+        let (plain, area) = render_to(&bare, 40, 12);
+        let (labelled, _) = render_to(&labelled(), 40, 12);
+
+        assert_eq!(
+            axis_column(&plain, area),
+            Some(1),
+            "no gutter without y labels"
+        );
+        assert!(axis_column(&labelled, area).is_some_and(|gutter| gutter > 1));
+        let grid = grid_of(&plain, area);
+        assert!(!grid.contains('┤') && !grid.contains('┬'));
+        assert!(
+            !grid.chars().any(|ch| ch.is_ascii_digit()),
+            "a hidden axis prints no tick labels"
+        );
+    }
+
+    #[test]
+    fn ticks_land_on_round_values() {
+        let chart = labelled()
+            .y_domain(Domain::new(0.0, 100.0).unwrap())
+            .y_axis(Axis::new().ticks(4));
+        let (buffer, area) = render_to(&chart, 40, 14);
+        let gutter = axis_column(&buffer, area).expect("axis column");
+        let labels = (0..area.height)
+            .map(|y| {
+                (0..gutter)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+                    .trim()
+                    .to_string()
+            })
+            .filter(|label| !label.is_empty())
+            .collect::<Vec<_>>();
+        assert_eq!(labels, ["100", "75", "50", "25", "0"]);
+    }
+
+    #[test]
+    fn the_format_hook_replaces_the_numeric_label() {
+        let chart = labelled().y_axis(Axis::new().ticks(2).format(|value| format!("{value:.0}ms")));
+        let (buffer, area) = render_to(&chart, 40, 12);
+        assert!(grid_of(&buffer, area).contains("ms"));
+    }
+
+    #[test]
+    fn crowded_x_labels_are_thinned_rather_than_overlapped() {
+        let chart = Chart::new().legend(false).series(Series::line(
+            "wide",
+            (0..=50).map(|i| Point::new(f64::from(i) * 1000.0, f64::from(i))),
+        ));
+        let (buffer, area) = render_to(&chart, 30, 10);
+        let row = grid_of(&buffer, area)
+            .lines()
+            .last()
+            .expect("label row")
+            .to_string();
+
+        // Every label is separated by whitespace: none was written over another.
+        let labels = row.split_whitespace().collect::<Vec<_>>();
+        assert!(!labels.is_empty(), "at least one x label survives");
+        for label in labels {
+            assert!(label.chars().all(|ch| ch.is_ascii_digit()), "{label:?}");
+        }
+    }
+
+    #[test]
+    fn labels_are_dropped_before_the_plot_is_crowded_out() {
+        let chart = Chart::new().legend(false).series(Series::line(
+            "huge",
+            [Point::new(0.0, 0.0), Point::new(1.0, 123_456_789.0)],
+        ));
+        for width in 1..=14 {
+            let (buffer, area) = render_to(&chart, width, 8);
+            // Below a handful of columns there is no plot at all, which is the
+            // pre-existing degenerate case rather than anything labels caused.
+            let Some(gutter) = axis_column(&buffer, area) else {
+                continue;
+            };
+            assert!(
+                gutter <= width / 2,
+                "gutter {gutter} must not swallow a {width}-wide chart"
+            );
+        }
+    }
+
+    #[test]
+    fn both_render_modes_place_labels_in_the_same_cells() {
+        let chart = labelled();
+        let (cells, area) = render_to(&chart, 36, 12);
+
+        let layer = ImageLayer::new();
+        let mut graphics = ratatui_core::buffer::Buffer::empty(area);
+        chart.support(ImageSupport::Kitty).in_layer(&layer).render(
+            area,
+            &mut Surface::new(&mut graphics, area),
+            &RenderCtx::new(&tuika::Theme::default()),
+        );
+
+        let gutter = axis_column(&cells, area).expect("axis column");
+        for y in 0..area.height {
+            for x in 0..gutter {
+                assert_eq!(
+                    cells[(x, y)].symbol(),
+                    graphics[(x, y)].symbol(),
+                    "gutter cell ({x}, {y}) differs between render modes"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tiny_areas_stay_safe_with_labels_enabled() {
+        for width in 0..=12 {
+            for height in 0..=12 {
+                render_to(&labelled(), width, height);
+            }
+        }
     }
 }

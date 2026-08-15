@@ -15,7 +15,8 @@ Accepted.
 Charts live in the separately published `tuika-charts` companion, not core.
 The companion exposes one renderer-independent numeric grammar: line,
 vertical-bar, filled-area, scatter, and stepped-line series; finite `(x, y)`
-points; automatic or explicit domains; series colors; title; and legend.
+points; automatic or explicit domains; series colors; title; legend; and numeric
+axis tick labels.
 
 A chart selects smooth RGBA rasterization when its `RenderCtx` provides terminal
 graphics support and an `ImageLayer`. The real-terminal `Runner` detects and
@@ -32,8 +33,21 @@ above it. The graphics renderer retains distinct dim fill and bright edge colors
 Quadrants deliberately trade some vertical resolution for continuous strokes
 across terminal fonts; separated Braille dots are reserved for discrete marks.
 
-The title and legend remain cells even in graphics mode, preserving readable
-text and consistent semantics while only plot geometry becomes pixel-dense.
+The title, legend, and axis tick labels remain cells even in graphics mode,
+preserving readable text and consistent semantics while only plot geometry
+becomes pixel-dense. Because the labels sit outside the image, both renderers
+plot into the *same* cells: the graphics path carries no internal margin of its
+own, or a label would point at a different value than the pixel beside it.
+
+Both axes are labelled by default, because an unlabelled plot states a shape
+without stating a scale. Ticks are placed on round values — a power of ten times
+1, 2, 2.5, or 5 — and label precision is derived from the tick step rather than
+its magnitude. Chrome yields to data when space runs short: y labels claim a
+gutter but are dropped whole rather than take half the width, x labels reuse the
+margin row the plot already reserved, and colliding x labels are thinned left to
+right so a narrow chart loses labels instead of legibility. `Axis::hidden`
+restores the unlabelled geometry for sparklines and dense dashboards.
+
 Non-finite points are ignored; no finite data renders a stable empty state.
 Automatic x domains containing bars extend by half the smallest finite bar
 interval on each side, keeping centered edge bars inside either renderer.
@@ -61,6 +75,6 @@ lifecycle.
 ## Non-goals
 
 Categorical axes, interactions, tooltips, custom marks, stacking, smooth curves,
-HTML/SVG configuration, and renderer-specific escape hatches are not part of
-the portable grammar. They require a future design that preserves parity rather
-than silently degrading one renderer.
+grid lines, HTML/SVG configuration, and renderer-specific escape hatches are not
+part of the portable grammar. They require a future design that preserves parity
+rather than silently degrading one renderer.

@@ -28,9 +28,9 @@ the framework detects the terminal and owns the image lifecycle:
 - all other environments render directly into terminal cells.
 
 The selection changes fidelity, not meaning. Both paths share the same title,
-legend, series, colors, numeric domains, clipping, empty state, and handling of
-non-finite points. The graphics plot is an image, while its title and legend
-remain cells for crisp, consistent text.
+legend, axis tick labels, series, colors, numeric domains, clipping, empty
+state, and handling of non-finite points. The graphics plot is an image, while
+its title, legend, and tick labels remain cells for crisp, consistent text.
 
 ```rust,ignore
 let chart = Chart::new()
@@ -101,6 +101,32 @@ states, thresholds, and other values held until the next sample.
 | --- | --- |
 | <img src="charts/step-cells.png" alt="Cell step chart" width="560"> | <img src="charts/step-graphics.png" alt="Graphics step chart" width="560"> |
 
+## Axes
+
+Both axes carry tick labels by default. Ticks land on round values — a power of
+ten times 1, 2, 2.5, or 5 — so a reader gets numbers they recognize rather than
+the raw division of the domain, and the label precision follows the step: a step
+of `0.25` prints two decimals, a step of `20` prints none.
+
+```rust
+use tuika_charts::{Axis, Chart};
+
+let chart = Chart::new()
+    // Aim for four intervals and label them in milliseconds.
+    .y_axis(Axis::new().ticks(4).format(|value| format!("{value:.0}ms")))
+    // Give the label row back to the plot.
+    .x_axis(Axis::hidden());
+```
+
+Labels never crowd out the chart they describe. The y labels claim a gutter left
+of the axis, and are dropped entirely rather than take more than half the width;
+x labels use the margin row the plot already reserved, so labelling that axis
+costs no plot height at all. Where x labels would collide, they are thinned left
+to right — a narrow chart shows fewer labels, never overlapping ones.
+
+Both renderers draw tick labels as cells, because the graphics image covers the
+plot only. The same numbers therefore appear in the same places in both modes.
+
 ## Portable grammar
 
 The shared grammar deliberately includes only features both paths can preserve:
@@ -109,6 +135,7 @@ The shared grammar deliberately includes only features both paths can preserve:
 - line, area, bar, scatter, and horizontal-then-vertical step series;
 - multiple named and colored series;
 - automatic or explicit numeric x/y domains;
+- numeric axis tick labels, with an optional format hook;
 - an optional title and legend.
 
 Interactions, tooltips, categorical axes, smooth curves, stacked data,
