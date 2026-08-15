@@ -416,19 +416,42 @@ pub struct ScriptedEvents<I> {
 /// [`UpdateResult::Exit`]. End a script with an event that exits, or set a
 /// short [`RunnerConfig::tick_rate`] and exit on a tick.
 ///
-/// ```no_run
+/// ```
 /// use tuika::prelude::*;
 /// use tuika::runner::scripted_events;
-/// # use ratatui_core::backend::TestBackend;
-/// # use ratatui_core::terminal::Terminal;
-/// # fn demo(runner: &Runner, app: &mut impl FrameSource) -> std::io::Result<()> {
-/// let mut terminal = Terminal::new(TestBackend::new(20, 3)).unwrap();
-/// runner.run_driven_by(
-///     &mut terminal,
-///     &Theme::default(),
-///     app,
-///     scripted_events([Event::Key(Key::new(KeyCode::Char('j'))), Event::Key(Key::new(KeyCode::Esc))]),
-/// )
+/// use ratatui::backend::TestBackend;
+/// use ratatui::Terminal;
+///
+/// # fn main() {
+/// let mut terminal = Terminal::new(TestBackend::new(20, 1)).unwrap();
+/// let mut count = 0u32;
+///
+/// Runner::new(RunnerConfig::default())
+///     .run_driven_by(
+///         &mut terminal,
+///         &Theme::default(),
+///         from_fn(
+///             &mut count,
+///             |count, _frame| element(Text::raw(format!("count: {count}"))),
+///             |count, signal| match signal {
+///                 Signal::Event(Event::Key(key)) if key.code == KeyCode::Esc => {
+///                     UpdateResult::Exit
+///                 }
+///                 Signal::Event(Event::Key(_)) => {
+///                     *count += 1;
+///                     UpdateResult::Dirty
+///                 }
+///                 _ => UpdateResult::Clean,
+///             },
+///         ),
+///         scripted_events([
+///             Event::Key(Key::new(KeyCode::Char('j'))),
+///             Event::Key(Key::new(KeyCode::Esc)),
+///         ]),
+///     )
+///     .unwrap();
+///
+/// assert_eq!(count, 1, "the whole loop ran with no terminal at all");
 /// # }
 /// ```
 pub fn scripted_events<I>(events: I) -> ScriptedEvents<I::IntoIter>
