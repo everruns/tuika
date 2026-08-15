@@ -2,6 +2,12 @@
 
 ## 2026-08-15
 
+- **The generated website is not part of the published crate**
+  - `site/` mirrors public documentation and bundles generated assets for the
+    tuika.dev deployment; crates.io renders `README.md` directly and cannot use
+    it. Shipping that tree inflated 0.9.0 past crates.io's 10 MiB archive limit,
+    so the package boundary now excludes it and tests that boundary explicitly.
+
 - **A run loop that cannot be driven without a terminal cannot be tested**
   - The synchronous loop had no end-to-end coverage for as long as every entry
     point reached crossterm; only its extracted pieces were testable. Giving it

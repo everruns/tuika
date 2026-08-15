@@ -9,7 +9,9 @@
 //!   hand-written `//!` header in `lib.rs`, which references no images.
 //! - Repository machinery. tuika is the *root* package of its repo, so the
 //!   internal knowledge bundle, agent skills, CI definitions, and
-//!   asset-generation scripts all sit beside it and would otherwise ship.
+//!   asset-generation scripts all sit beside it and would otherwise ship. The
+//!   generated documentation site is repository-only too; crates.io renders
+//!   `README.md` directly and cannot use the site bundle.
 //!   `tuika-codeformatters` has one GitHub-only recording of its own
 //!   (`docs/languages.gif`) under the same rule.
 //!
@@ -118,6 +120,17 @@ fn repository_machinery_is_excluded_from_the_package() {
     assert!(
         nested.is_empty(),
         "nested workspace packages must not ship inside tuika's crate: {nested:?}"
+    );
+}
+
+#[test]
+fn generated_site_is_excluded_from_the_package() {
+    let files = packaged_files("tuika");
+    let leaked: Vec<&String> = files.iter().filter(|f| f.starts_with("site/")).collect();
+
+    assert!(
+        leaked.is_empty(),
+        "the generated documentation site must not ship in the crate: {leaked:?}"
     );
 }
 

@@ -316,10 +316,11 @@ The root package's alternate logo exports, demos, showcases, themes, and styling
 assets are consumed only by GitHub-rendered pages and repository tooling. docs.rs
 renders the hand-written `//!` header, which references none of them, so bundling
 them only bloats the published `.crate`. Root `Cargo.toml`'s `exclude` keeps them
-— and the repository machinery (`knowledge/`, `.agents/`, `.github/`,
-`scripts/`) — out of that tarball; only `logo.svg`, `docs/hero.gif`,
-`docs/demos/image.svg`, and `docs/split-footer.gif`, which its crates.io README
-embeds by relative path, ship. `docs/demos/` is excluded wholesale, so the two
+— the generated `site/` bundle, and the repository machinery (`knowledge/`,
+.agents/`, `.github/`, `scripts/`) — out of that tarball; only `logo.svg`,
+`docs/hero.gif`, `docs/demos/image.svg`, and `docs/split-footer.gif`, which its
+crates.io README embeds by relative path, ship. `docs/demos/` is excluded
+wholesale, so the two
 recordings that must ship live directly under `docs/` — which is also where they
 belong for a second reason: that directory is the registry's, and `demo -- check`
 fails an asset in it with no scene behind it.

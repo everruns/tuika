@@ -183,9 +183,10 @@ tuika's own suite covers more:
   dump would throw away the styling that is half of what the crate does.
 
 The root package's alternate logo, demo, showcase, example, theme, and styling
-assets are GitHub-only: `Cargo.toml`'s `exclude` keeps them (and the repository
-machinery — `knowledge/`, `.agents/`, `.github/`, `scripts/`) out of tuika's
-published `.crate`, and `tests/packaging.rs` guards that split. Only `logo.svg`,
+assets are GitHub-only: `Cargo.toml`'s `exclude` keeps them (and the generated
+`site/` bundle plus repository machinery — `knowledge/`, `.agents/`, `.github/`,
+`scripts/`) out of tuika's published `.crate`, and `tests/packaging.rs` guards
+that split. Only `logo.svg`,
 `docs/hero.gif`, `docs/demos/image.svg`, and `docs/split-footer.gif`, which
 the crates.io README embeds by relative path, ship in tuika.
 

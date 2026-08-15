@@ -29,7 +29,7 @@ repository = "https://github.com/everruns/tuika"
 
 [package]
 name = "tuika"
-version = "0.9.0"
+version = "0.9.1"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -53,8 +53,9 @@ categories = ["command-line-interface"]
 #    under `docs/` rather than in `docs/demos/`, which is reserved for the
 #    registry's component scenes and excluded wholesale.
 # 2. Repository machinery. Since tuika is the root package, everything beside it
-#    in the repo would otherwise ship: internal knowledge, agent skills, CI
-#    definitions, and the asset-generation scripts are all repo-only.
+#    in the repo would otherwise ship: the generated documentation site,
+#    internal knowledge, agent skills, CI definitions, and asset-generation
+#    scripts are all repo-only.
 #
 # See `tests/packaging.rs` for the guard that keeps this list honest.
 exclude = [
@@ -72,6 +73,7 @@ exclude = [
     "/.github",
     "/knowledge",
     "/scripts",
+    "/site",
     "/AGENTS.md",
     "/CLAUDE.md",
     "/CODE_OF_CONDUCT.md",
