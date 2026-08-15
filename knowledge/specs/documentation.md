@@ -312,16 +312,17 @@ regeneration instead of leaving them stale.
 
 ### The crate/GitHub asset split
 
-The root package's alternate logo exports, demos, chart screenshots, showcases,
-themes, and styling assets are consumed only by GitHub-rendered pages and
-repository tooling. docs.rs renders the hand-written `//!` header, which
-references none of them, so bundling them only bloats the published `.crate`.
+The root package's public `docs/` tree and alternate logo exports are consumed
+only by GitHub-rendered pages and repository tooling. docs.rs renders the
+hand-written `//!` header, which references neither, so bundling an incomplete
+copy without its large recordings adds weight without a usable offline guide.
 Root `Cargo.toml`'s `exclude` keeps them
 — the generated `site/` bundle, and the repository machinery (`knowledge/`,
 `.agents/`, `.github/`, `scripts/`) — out of that tarball. The root README
-reaches its logo, hero, and image-protocol demo through absolute URLs pinned to
-the release tag; the split-footer recording lives in the focused guide instead
-of the README. No image asset therefore ships in the root crate.
+reaches every public guide through a GitHub `blob` URL and its logo, hero, and
+image-protocol demo through a raw URL, all pinned to the release tag; the
+split-footer recording lives in the focused guide instead of the README. No
+`docs/` file therefore ships in the root crate.
 
 The split is per **published crate**, not per repository, and the deciding
 question is how that crate's own README reaches the asset — because that is what
@@ -336,6 +337,9 @@ determines whether the packaged copy is ever read:
   later asset refresh cannot rewrite a published crates.io page;
   `tuika-codeformatters` and `tuika-charts` use `main` for their repository-owned
   galleries.
+- **Absolute GitHub `blob` URL** — the same rule for public Markdown guides. The
+  root README pins all guide links to the release tag, so the complete guide and
+  its repository-hosted media remain versioned together outside the crate.
 
 So a member needs an `exclude` only when it has an absolute-URL asset; what every
 published member does need is a case in `tests/packaging.rs`, which drives the

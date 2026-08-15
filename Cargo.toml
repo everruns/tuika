@@ -43,12 +43,11 @@ keywords = ["tui", "terminal", "ratatui", "framework", "widgets"]
 categories = ["command-line-interface"]
 # Three kinds of file are kept out of the published `.crate`:
 #
-# 1. The alternate logo exports, demo/chart/showcase/theme/styling assets under
-#    `docs/`, and recording beside the `codex` example are consumed only from
-#    the repository by public pages or tooling. rustdoc/docs.rs references none
-#    of them from its crate front page, so bundling them just bloats the tarball.
-#    The crates.io README reaches its images through release-tag-pinned absolute
-#    URLs, so their packaged copies are unreachable and excluded too.
+# 1. The public `docs/` tree, alternate logo exports, and recording beside the
+#    `codex` example are consumed from the tagged repository by public pages or
+#    tooling. rustdoc/docs.rs references none of them from its crate front page,
+#    and the crates.io README uses release-tag-pinned absolute URLs for guides
+#    and images, so packaged copies would be incomplete and unreachable.
 # 2. Benchmark result snapshots. Benchmark sources remain reproducible, but the
 #    committed IAI baseline is a CI input rather than a consumer file.
 # 3. Repository machinery. Since tuika is the root package, everything beside it
@@ -62,16 +61,8 @@ exclude = [
     "/logo-dark.svg",
     "/logo-mono.svg",
     "/logo*.png",
-    "docs/demos/*.gif",
-    "docs/demos/*.png",
-    "docs/demos/image.svg",
-    "docs/charts/*.png",
-    "docs/hero.gif",
-    "docs/split-footer.gif",
-    "docs/showcases/*.gif",
+    "/docs",
     "examples/codex/*.gif",
-    "docs/styling/*.gif",
-    "docs/themes/*.gif",
     "/benches/*.json",
     "/.agents",
     "/.claude",

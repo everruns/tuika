@@ -10,7 +10,9 @@
     and tests that boundary explicitly. The root copy of the companion chart
     screenshots follows the same GitHub-only rule. Root README images now use
     release-tag-pinned absolute URLs, allowing every image asset to stay out of
-    the crate without making past crates.io pages drift. Committed IAI
+    the crate without making past crates.io pages drift. The public Markdown
+    guides follow the same rule: the README pins them to the release tag and the
+    incomplete image-less `docs/` copy no longer ships. Committed IAI
     baselines remain repository CI inputs but are excluded from the two crates
     that own them; a workspace-wide packaging test rejects benchmark results.
 

@@ -3,10 +3,9 @@
 //! Three things must stay out of the tarball, and `Cargo.toml`'s `exclude` is the
 //! only thing keeping them out:
 //!
-//! - The demo/chart/showcase/theme/styling assets under `docs/`, and the `codex`
-//!   example's own recording, are ~14 MiB and are read only from repository
-//!   docs or absolute rustdoc URLs; docs.rs builds the crate front page from the
-//!   hand-written `//!` header in `lib.rs`, which references no images.
+//! - The root public `docs/` tree and the `codex` example's own recording are
+//!   read only from the tagged repository; docs.rs builds the crate front page
+//!   from the hand-written `//!` header in `lib.rs`, which references neither.
 //! - Repository machinery. tuika is the *root* package of its repo, so the
 //!   internal knowledge bundle, agent skills, CI definitions, and
 //!   asset-generation scripts all sit beside it and would otherwise ship. The
@@ -19,8 +18,8 @@
 //!   benchmark sources still ship and remain reproducible.
 //!
 //! This test drives the real packaging path (`cargo package --list`) so a stray
-//! asset — or a regression that drops an image the crates.io README needs —
-//! fails loudly instead of silently re-inflating the crate.
+//! repository file or stale README tag pin fails loudly instead of silently
+//! re-inflating the crate or breaking a published guide link.
 //!
 //! It guards all five published crates. The packaging rule is repository-wide,
 //! so the root package checks every companion in one place rather than
@@ -66,27 +65,29 @@ fn packaged_files(package: &str) -> Vec<String> {
 }
 
 #[test]
-fn heavy_doc_assets_are_excluded_from_the_package() {
+fn public_docs_are_tag_pinned_and_excluded_from_the_package() {
     let files = packaged_files("tuika");
-
-    // No demo/chart/showcase/theme/styling asset, and no example recording, may
-    // ship: those are GitHub-only assets. README images use tag-pinned absolute
-    // URLs and are asserted below.
-    let bundled_heavy_assets: Vec<&String> = files
-        .iter()
-        .filter(|f| {
-            (f.ends_with(".gif") || f.ends_with(".png"))
-                && (f.starts_with("docs/demos/")
-                    || f.starts_with("docs/charts/")
-                    || f.starts_with("docs/showcases/")
-                    || f.starts_with("examples/codex/")
-                    || f.starts_with("docs/styling/")
-                    || f.starts_with("docs/themes/"))
-        })
-        .collect();
+    let bundled_docs: Vec<&String> = files.iter().filter(|f| f.starts_with("docs/")).collect();
     assert!(
-        bundled_heavy_assets.is_empty(),
-        "these assets must not ship in the crate (see Cargo.toml `exclude`): {bundled_heavy_assets:?}"
+        bundled_docs.is_empty(),
+        "public docs must stay in the tagged repository, not the crate: {bundled_docs:?}"
+    );
+
+    let readme = std::fs::read_to_string("README.md").expect("read root README");
+    let version = env!("CARGO_PKG_VERSION");
+    let expected_prefix = format!("https://github.com/everruns/tuika/blob/v{version}/docs/");
+    let doc_links: Vec<&str> = readme
+        .split("](")
+        .skip(1)
+        .filter_map(|rest| rest.split(')').next())
+        .filter(|destination| destination.contains("docs/"))
+        .collect();
+    assert!(!doc_links.is_empty(), "README must link to the public docs");
+    assert!(
+        doc_links
+            .iter()
+            .all(|destination| destination.starts_with(&expected_prefix)),
+        "README doc links must be pinned to v{version}: {doc_links:?}"
     );
 }
 

@@ -184,13 +184,13 @@ tuika's own suite covers more:
   example runs as a real app rather than printing a grid, because a plain-text
   dump would throw away the styling that is half of what the crate does.
 
-The root package's alternate logo, demo, chart, showcase, example, theme, and
-styling assets are GitHub-only: `Cargo.toml`'s `exclude` keeps them (and the
-generated `site/` bundle plus repository machinery — `knowledge/`, `.agents/`,
-`.github/`, `scripts/`) out of tuika's published `.crate`, and
-`tests/packaging.rs` guards that split. The root README's three image embeds use
+The root package's public `docs/` tree and alternate logo/demo assets are
+repository-only: `Cargo.toml`'s `exclude` keeps them (and the generated `site/`
+bundle plus repository machinery — `knowledge/`, `.agents/`, `.github/`,
+`scripts/`) out of tuika's published `.crate`, and `tests/packaging.rs` guards
+that split. The root README's guide links and three image embeds use
 release-tag-pinned absolute URLs, and the split-footer recording lives only in
-the focused guide, so no image asset ships in tuika.
+the focused guide, so no `docs/` file ships in tuika.
 
 Every published member owns the same rule, and how its README embeds a recording
 decides the answer: `tuika-mermaid`'s small recording ships, because its README
