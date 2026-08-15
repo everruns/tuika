@@ -439,7 +439,8 @@ let root = Flex::column()
 code and tables verbatim. `MarkdownState` is its streaming form: fed deltas as a
 message arrives, it re-parses only the in-flight tail and caches everything
 before the last stable block boundary, so long transcripts don't re-tokenize and
-settled code blocks aren't re-highlighted every frame.
+settled code blocks aren't re-highlighted every frame. Its `links()` metadata
+keeps OSC 8 targets aligned with the cached lines through streaming and resize.
 
 Highlighting is a seam, not a dependency: `tuika` owns the *presentation* of code
 (framing, background, language label, wrapping) via `CodeBlock`, and takes token
@@ -533,8 +534,8 @@ Each takes over the terminal — the alternate screen, or a pinned footer for
 
 | Example    | Command                                   | Shows                                              |
 | ---------- | ----------------------------------------- | -------------------------------------------------- |
-| [`gallery`](examples/gallery.rs)  | `cargo run --example gallery`    | motion components + native OSC 9;4 progress        |
-| [`markdown`](examples/markdown.rs) | `cargo run --example markdown`   | streaming `MarkdownState` + highlighted `CodeBlock`, following the stream until you scroll back |
+| [`gallery`](examples/gallery.rs)  | `cargo run --example gallery`    | motion components + native OSC 9;4 progress and OSC 8 links |
+| [`markdown`](examples/markdown.rs) | `cargo run --example markdown`   | streaming `MarkdownState` + highlighted `CodeBlock`, native OSC 8 links, following the stream until you scroll back |
 | [`select`](examples/select.rs)   | `cargo run --example select`     | interactive multi-select with aliases, numbers, and mouse hit-testing |
 | [`keyed_table`](examples/keyed_table.rs) | `cargo run --example keyed_table` | dynamic borrowed rows, stable keyed selection, filtering, and reordering |
 | [`tree_list`](examples/tree_list.rs) | `cargo run --example tree_list` | expandable stable-id tree, refresh, mouse selection, and persistent scrolling |
@@ -649,7 +650,8 @@ threads, tasks, retries, and lifecycle.
 `ScreenMode` picks which part of the terminal a frame owns:
 
 - `ScreenMode::Alternate` (the default) takes the whole window on the alternate
-  buffer and restores the user's screen and scrollback on exit.
+  buffer and restores the user's screen and scrollback on exit. It leaves mouse
+  handling to the terminal, so native OSC 8 links, selection, and scrolling work.
 - `ScreenMode::split_footer(rows)` reserves those rows at the bottom of the
   *main* screen. Everything above stays the terminal's own scrollback: the shell
   prompt that launched the app, the wheel, and mouse selection all keep working,
@@ -697,8 +699,7 @@ the composer keeps the bottom rows. Hosts driving their own loop reserve and
 release the footer's rows with `screen::pin_footer` and `screen::close_footer`.
 
 `TerminalSession` is the complete RAII guard for either mode: it owns raw mode,
-enhanced
-keyboard reporting, the alternate screen, mouse capture, and cursor visibility,
+enhanced keyboard reporting, the alternate screen, optional mouse capture, and cursor visibility,
 including rollback after partial initialization, and restores exactly what it
 took. Enhanced reporting preserves
 non-character modifiers, so `Shift+Enter` reaches `TextInputState` as a
@@ -861,12 +862,20 @@ To check support across every terminal feature in one place — `graphics`,
 
 ## Mouse, selection, and clipboard
 
-Enabling mouse capture (which `AltScreen` / `TerminalSession` do) means the
-terminal stops doing its own click-drag text selection and hands every drag to
-the app instead. `Runner` and `AsyncRunner` restore selection by default over
-the final rendered grid: a plain left drag highlights text, a same-cell double
-click selects a word, and releasing copies through OSC 52. Wheel events still
-reach application scrolling. An
+Mouse handling stays with the terminal by default, including in alternate-screen
+mode. That preserves native OSC 8 link activation, click-drag selection, and
+terminal scrolling. An app that needs pointer or wheel events opts into capture
+with `ScreenMode::Alternate.with_mouse_capture()`,
+`ScreenMode::split_footer(rows).with_mouse_capture()`, an enabled
+`TerminalSessionConfig::mouse_capture`, or
+`AltScreen::enter_with_mouse_capture()`.
+
+Capture is a deliberate trade: the terminal stops activating OSC 8 links and
+performing its own selection/scrolling because it hands those mouse events to
+the app instead. `Runner` and `AsyncRunner` then restore selection over the
+final rendered grid: a plain left drag highlights text, a same-cell double
+click selects a word, and releasing copies through OSC 52. Wheel events reach
+application scrolling. An
 application claims a mouse gesture by returning `UpdateResult::Consumed` (no
 repaint) or `UpdateResult::Dirty` (repaint), and can disable the default
 entirely with `with_text_selection(false)`.
@@ -881,6 +890,10 @@ Hosts with their own loop use the `mouse` module to build the same affordances:
   style)` paints it in. A same-cell double click selects a word;
   `handle_with_clock` accepts a virtual monotonic `Clock`, while `handle` uses
   `SystemClock`.
+- **Application link fallback.** `ctrl_click_url` resolves an OSC 8 target or
+  bare URL under a captured Ctrl-click. The host must open it itself. This is
+  opt-in fallback behavior for an app that chose capture, not a replacement for
+  native terminal activation.
 - **Clicks and regions.** `HitMap<T>` maps screen rects to values (a button, a
   link, a row); the last-pushed match wins, so children/overlays registered
   after their parents take precedence. `ClickTracker` turns a same-cell

@@ -140,7 +140,8 @@ terminal actually answers without taking over the screen.
 ## Screen modes: alternate screen & split footer
 
 `ScreenMode` decides which part of the terminal a frame owns. The default takes
-the whole window on the alternate buffer. `ScreenMode::split_footer(rows)`
+the whole window on the alternate buffer while leaving mouse handling native.
+`ScreenMode::split_footer(rows)`
 instead reserves rows at the bottom of the *main* screen and leaves everything
 above as the terminal's own scrollback — the shell prompt, the wheel, mouse
 selection, and the output the app publishes, which is still there after it
@@ -211,9 +212,12 @@ so the host chooses which schemes are linked. The default (`LinkPolicy::WEB`) is
 `LinkPolicy::WEB.with_mailto()` also links `mailto:` addresses.
 `LinkPolicy::NONE` skips emission entirely.
 
-OSC 8 activation belongs to the terminal emulator. A host should not open the
-same URL again when mouse reporting also delivers the modifier-click to the
-application. Full-screen hosts that capture pointer motion can use
+OSC 8 activation belongs to the terminal emulator, and tuika leaves mouse
+handling native by default in both screen modes. This is required for terminal
+modifier-click activation: enabling mouse capture routes mouse events to the
+application instead, disabling the emulator's native link activation,
+selection, and scrolling. A host should opt into capture only when it needs
+application pointer/wheel events. Full-screen hosts that capture pointer motion can use
 `write_pointer_shape(..., PointerShape::Pointer)` on link hover; it emits OSC 22
 and should be paired with `PointerShape::Default` on hover exit and shutdown.
 
@@ -246,8 +250,13 @@ must be enabled: `set -g allow-passthrough on`.
 
 ## Mouse: selection, highlight & clicks
 
-Once an app captures the mouse, the terminal stops doing its own click-drag text
-selection. `Runner` and `AsyncRunner` restore it by default over the final cell
+Tuika leaves mouse handling to the terminal by default, preserving native OSC 8
+activation, selection, and scrolling. Capture is explicit through
+`ScreenMode::with_mouse_capture`, `MouseCapture::Enabled`, or
+`AltScreen::enter_with_mouse_capture`.
+
+Once an app opts into capture, the terminal stops handling links and selection.
+`Runner` and `AsyncRunner` restore selection over the final cell
 frame: a plain left drag highlights text, a same-cell double click selects a
 word, and releasing copies through OSC 52. Wheel events continue to reach the
 application. Return
@@ -271,11 +280,13 @@ selection, copy, and hit-testing — from tuika's enriched event model
   back out of the rendered buffer (wide glyphs intact) and `mouse::paint_selection(buffer,
   area, range, style)` paints it in. `handle_with_clock` accepts a host `Clock`
   for deterministic gesture timing; `handle` uses `SystemClock`.
-- `ctrl_click_url(event, buffer, area)` returns the URL under a Ctrl+left-button
+- `ctrl_click_url(event, buffer, area)` is an application-side fallback for a
+  host that opted into capture. It returns the URL under a Ctrl+left-button
   release: first an OSC 8 target embedded in the cell run (labeled markdown
   links after `apply_buffer_links`), then a visible bare `http(s)://` run. The
-  host remains responsible for opening it; Yolop's fullscreen host opens it in
-  the system browser.
+  host remains responsible for opening it. Because capture disables terminal
+  link activation and selection, prefer native OSC 8 unless the application
+  genuinely needs mouse events.
 - `HitMap<T>` maps screen rects to values (a button, a link, a row); the
   last-pushed match wins, so children and overlays registered after their
   parents take precedence. `ClickTracker` turns a same-cell `Down`/`Up` into a

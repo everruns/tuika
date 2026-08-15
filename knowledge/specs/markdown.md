@@ -25,8 +25,9 @@ a document whose prefix cannot change.
   verbatim so their alignment survives.
 - `MarkdownState` is the streaming form. Fed deltas as a message arrives, it
   re-parses only the in-flight tail and caches everything before the last stable
-  block boundary. Settled blocks keep their already-computed lines — and their
-  already-computed highlighting.
+  block boundary. Settled blocks keep their already-computed lines, highlighting,
+  image placements, and hyperlink runs. `links()` exposes row-aligned targets
+  for hosts that scroll or window those lines before applying OSC 8.
 - Inline images (`![alt](url)`) are promoted to block images when the host
   supplies a resolver; see [images.md](./images.md).
 - A fixed whitelist of *inline* HTML tags renders through the same style roles as

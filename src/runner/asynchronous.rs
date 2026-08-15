@@ -766,6 +766,7 @@ mod tests {
     use std::convert::Infallible;
 
     use super::*;
+    use crate::ScreenMode;
     use crate::components::Text;
     use crate::event::{Key, KeyCode, Mouse, MouseButton, MouseKind};
     use crate::view::element;
@@ -904,10 +905,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn clean_mouse_drag_uses_default_text_selection() {
+    async fn clean_mouse_drag_uses_selection_when_mouse_is_captured() {
         let runner = AsyncRunner::new(RunnerConfig {
             tick_rate: Duration::from_secs(3600),
-            ..RunnerConfig::default()
+            screen_mode: ScreenMode::Alternate.with_mouse_capture(),
         });
         let mut terminal = terminal(11, 1);
         let mut mouse_events = 0usize;

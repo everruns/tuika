@@ -4,8 +4,8 @@
 //! and never touch a real terminal. This drives real examples under a
 //! pseudo-terminal (`portable-pty`) and asserts the terminal-facing behavior a
 //! buffer test cannot see: entering and restoring the alternate screen, enhanced
-//! keyboard reporting, cursor and mouse-capture lifecycle, runner-provided OSC
-//! 52 text selection, the native OSC 9;4 progress indicator, OSC 8 hyperlinks,
+//! keyboard reporting, native mouse defaults and explicit capture lifecycle,
+//! runner-provided OSC 52 text selection, the native OSC 9;4 progress indicator, OSC 8 hyperlinks,
 //! truecolor and Braille cells surviving a reference terminal parser, resize
 //! survival, and a clean exit — `hello` and `gallery` for the alternate screen,
 //! and `split_footer` for a footer over live scrollback.
@@ -25,6 +25,7 @@ use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 
 /// The URL rendered in the gallery footer, emitted as an OSC 8 hyperlink target.
 const GALLERY_URL: &str = "https://github.com/everruns/tuika";
+const MARKDOWN_URL: &str = "https://docs.rs/tuika";
 
 /// Locate a compiled example binary.
 ///
@@ -424,10 +425,13 @@ fn gallery_drives_altscreen_and_native_progress() {
         contains(out, b"\x1b[?25h"),
         "should restore the cursor on exit"
     );
-    assert!(contains(out, b"\x1b[?1000h"), "should enable mouse capture");
     assert!(
-        contains(out, b"\x1b[?1000l"),
-        "should disable mouse capture on exit"
+        !contains(out, b"\x1b[?1000h"),
+        "native terminal mouse handling should remain enabled"
+    );
+    assert!(
+        !contains(out, b"\x1b[?1000l"),
+        "uncaptured mouse needs no teardown"
     );
     assert!(
         contains(out, b"\x1b[>7u"),
@@ -460,6 +464,7 @@ fn runner_drag_selection_copies_the_rendered_cells() {
     // one-based: press on H, drag through o, then release there.
     let drag_hello = b"\x1b[<0;4;3M\x1b[<32;8;3M\x1b[<0;8;3m";
     let run = Script::new("hello")
+        .arg("--mouse")
         .size(8, 40)
         .settle(Duration::from_millis(500))
         .key(drag_hello, Duration::from_millis(500))
@@ -473,9 +478,9 @@ fn runner_drag_selection_copies_the_rendered_cells() {
 }
 
 #[test]
-fn gallery_session_config_can_disable_mouse_without_leaking_terminal_state() {
+fn gallery_can_opt_into_mouse_capture_without_leaking_terminal_state() {
     let run = Script::new("gallery")
-        .arg("--no-mouse")
+        .arg("--mouse")
         .size(24, 80)
         .settle(Duration::from_millis(900))
         .run();
@@ -487,12 +492,12 @@ fn gallery_session_config_can_disable_mouse_without_leaking_terminal_state() {
     );
     assert!(contains(out, b"\x1b[?1049l"), "should restore main screen");
     assert!(
-        !contains(out, b"\x1b[?1000h"),
-        "mouse override must be honored"
+        contains(out, b"\x1b[?1000h"),
+        "explicit mouse capture must be honored"
     );
     assert!(
-        !contains(out, b"\x1b[?1000l"),
-        "disabled mouse needs no teardown"
+        contains(out, b"\x1b[?1000l"),
+        "captured mouse must be restored on exit"
     );
     assert!(
         contains(out, b"\x1b[?25l"),
@@ -580,6 +585,24 @@ fn gallery_emits_osc8_hyperlink() {
     assert!(
         footer.contains("docs") && footer.contains(GALLERY_URL),
         "OSC 8 wrapping should leave the footer text intact: {footer:?}"
+    );
+}
+
+#[test]
+fn markdown_emits_native_link_without_capturing_the_mouse() {
+    let run = Script::new("markdown")
+        .size(30, 100)
+        .settle(Duration::from_millis(2200))
+        .run();
+    assert!(run.exited_ok, "markdown should exit cleanly");
+    let osc8 = format!("\x1b]8;;{MARKDOWN_URL}\x1b\\");
+    assert!(
+        contains(&run.output, osc8.as_bytes()),
+        "expected an OSC 8 hyperlink for {MARKDOWN_URL}"
+    );
+    assert!(
+        !contains(&run.output, b"\x1b[?1000h"),
+        "native link activation requires mouse capture to stay disabled"
     );
 }
 

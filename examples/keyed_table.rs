@@ -215,7 +215,7 @@ fn summary_line<'a>(summary: &'a str, positions: &[usize]) -> Line<'a> {
 
 fn main() -> io::Result<()> {
     let theme = Theme::default();
-    let _session = TerminalSession::enter()?;
+    let _session = TerminalSession::enter_with(ScreenMode::Alternate.with_mouse_capture())?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     let mut app = App::new();
 

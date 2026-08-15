@@ -52,20 +52,9 @@ pub(super) fn flatten_linked<R: MarkdownBlockRenderer + ?Sized>(
     flatten_linked_into(items, width, theme, sheet, renderers, &mut images)
 }
 
-/// Flatten into lines and collect the block images reserved, with the row each
-/// landed on, so the [`Markdown`](super::Markdown) view can overlay an [`Image`](crate::components::Image) at the matching
-/// screen rect. A block image reserves `rows` blank lines here.
-pub(super) fn flatten_into<R: MarkdownBlockRenderer + ?Sized>(
-    items: &[MdItem],
-    width: u16,
-    theme: &Theme,
-    sheet: &StyleSheet,
-    renderers: &R,
-    images: &mut Vec<MarkdownImage>,
-) -> Vec<Line<'static>> {
-    flatten_linked_into(items, width, theme, sheet, renderers, images).0
-}
-
+/// Flatten into lines and links while collecting each reserved block image and
+/// its row, so [`Markdown`](super::Markdown) can overlay an
+/// [`Image`](crate::components::Image) at the matching screen rect.
 pub(super) fn flatten_linked_into<R: MarkdownBlockRenderer + ?Sized>(
     items: &[MdItem],
     width: u16,

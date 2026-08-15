@@ -50,13 +50,16 @@ neither a layout slot nor a stream.
 use tuika::prelude::*;
 let mut md = MarkdownState::new();
 md.push_str(delta);                                  // forward each stream delta
-let lines = md.lines(width, &theme, &sheet, CodeHighlighter::Plain);
-view! { node(tuika::components::Text::new(lines)) }
+let lines = md.lines(width, &theme, &sheet, CodeHighlighter::Plain).to_vec();
+let links = md.links().to_vec();
+view! { node(tuika::components::Text::new(lines)) }  // then apply links to this area
 ```
 
 Lines come out already wrapped to the width you passed. Draw them **without**
 further wrapping — tuika's `Text`, or ratatui's `Paragraph` with no `.wrap` —
-or code indentation and table borders will be re-flowed into nonsense.
+or code indentation and table borders will be re-flowed into nonsense. After
+painting, pass the visible `links` to `apply_buffer_links`; the metadata is
+cached and row-aligned with the lines, including while a URL is still streaming.
 
 ## What renders
 
@@ -308,6 +311,10 @@ A `[label](url)` paints the label in the theme's link style and emits the
 destination as an [OSC 8 hyperlink](features.md#hyperlinks-osc-8) — clickable in
 terminals that support it, plain styled text everywhere else. Bare URLs in prose
 are linked in place.
+
+The one-shot `Markdown` view applies this metadata itself. A host drawing
+`MarkdownState::lines` applies `MarkdownState::links` after scrolling or
+windowing the lines, as shown in the streaming example.
 
 `link_policy` decides which schemes are emitted:
 

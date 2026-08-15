@@ -26,12 +26,15 @@ until it happens.
 
 | Mode | Owns | Scrollback above | Mouse capture |
 | --- | --- | --- | --- |
-| `Alternate` (default) | the whole window, alternate buffer | n/a — restored on exit | on |
+| `Alternate` (default) | the whole window, alternate buffer | n/a — restored on exit | off by default |
 | `SplitFooter { height }` | `height` rows at the bottom of the main screen | the terminal's, live | off by default |
 
-When a runner captures the mouse, it restores plain drag selection over its
-final cell frame while continuing to route wheel events to the application.
-Custom-loop hosts opt into capture and selection independently.
+Both modes preserve the terminal's native OSC 8 activation, selection, and
+scrolling by default. A host that needs pointer or wheel events opts into mouse
+capture with `with_mouse_capture`; capture necessarily takes those native
+behaviors away from the terminal. When a runner captures, it restores plain
+drag selection over its final cell frame while continuing to route wheel events
+to the application. Custom-loop hosts opt into capture and selection independently.
 
 A split footer renders into a ratatui `Viewport::Inline`. The pieces around it:
 
@@ -67,13 +70,14 @@ surrounding session rather than a pasted panel.
 Queued blocks are discarded in `Alternate`: there is no scrollback of the host's
 to write into, and retaining them would grow without bound.
 
-### A split footer does not capture the mouse
+### Mouse capture is opt-in in both modes
 
-Capture is on for the alternate screen and off for a split footer. Capturing on
-the main screen takes the wheel and drag-selection away from the terminal —
-which is precisely the interaction the mode exists to preserve. A footer that
-needs mouse input opts back in with `with_mouse_capture`; that is a trade the
-host makes deliberately, not a default.
+Mouse reporting is global terminal state: there is no portable mode that sends
+ordinary clicks to the application while retaining native OSC 8 modifier-clicks.
+Both screen modes therefore leave mouse handling to the emulator. A mode that
+needs application pointer or wheel input opts in with `with_mouse_capture`,
+accepting that native link activation, selection, and scrolling stop until the
+session restores the terminal state.
 
 ### The footer is pinned, not merely inline
 

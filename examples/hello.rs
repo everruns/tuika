@@ -8,7 +8,16 @@ use tuika::prelude::*;
 
 fn main() -> io::Result<()> {
     let theme = Theme::default();
-    let runner = Runner::new(RunnerConfig::default());
+    let capture_mouse = std::env::args().any(|argument| argument == "--mouse");
+    let screen_mode = if capture_mouse {
+        ScreenMode::Alternate.with_mouse_capture()
+    } else {
+        ScreenMode::Alternate
+    };
+    let runner = Runner::new(RunnerConfig {
+        screen_mode,
+        ..RunnerConfig::default()
+    });
 
     runner.run(
         &theme,

@@ -281,6 +281,10 @@ fn osc8_target_in(symbol: &str) -> Option<String> {
 
 /// Return the visible HTTP(S) URL under a Ctrl+left-button release.
 ///
+/// This is an application-side fallback for a host that explicitly captured
+/// the mouse. Prefer native terminal OSC 8 activation when application mouse
+/// events are not required; capture disables that native path.
+///
 /// Resolution order:
 /// 1. An OSC 8 target already embedded in the cell run under the pointer
 ///    (markdown `[label](url)` after [`apply_buffer_links`]).

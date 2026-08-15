@@ -70,9 +70,11 @@ terminal on the other end of a pty could catch the difference (see
 cursor-position report an inline viewport is anchored with, from a vt100 model of
 the same byte stream — a fixed row would silently test a fiction.
 
-It asserts *pairs*: every enter has its matching restore. A renderer that leaves
-the terminal in the alternate screen, with the cursor hidden or mouse capture on,
-is the failure mode a user notices most and a buffer test can never catch.
+It asserts *pairs*: every enter has its matching restore, including the explicit
+mouse-capture path; the default alternate-screen path asserts that capture is
+never enabled. A renderer that leaves the terminal in the alternate screen,
+with the cursor hidden or mouse capture on, is the failure mode a user notices
+most and a buffer test can never catch.
 
 Because it launches a *built example* rather than calling into the library, the
 `gallery` binary must exist beside the test binary. That constrains how coverage

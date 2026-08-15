@@ -493,4 +493,6 @@ fn the_non_prelude_surface_keeps_its_module_path() {
     let _ = tuika::runner::Runner::new(RunnerConfig::default());
     // `AltScreen::enter` touches the real terminal, so only its path is pinned.
     let _: fn() -> std::io::Result<tuika::host::AltScreen> = tuika::host::AltScreen::enter;
+    let _: fn() -> std::io::Result<tuika::host::AltScreen> =
+        tuika::host::AltScreen::enter_with_mouse_capture;
 }

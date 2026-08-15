@@ -36,19 +36,38 @@ use super::style::{StyleSheet, Theme};
 use super::surface::Surface;
 use super::view::{RenderCtx, View};
 
-/// RAII guard for the alternate screen + mouse capture.
+/// RAII guard for the alternate screen.
 pub struct AltScreen {
     active: bool,
+    mouse_capture: bool,
 }
 
 impl AltScreen {
-    /// Enter the alternate screen and enable mouse capture. Assumes raw mode is
-    /// already enabled by the caller.
+    /// Enter the alternate screen, leaving mouse handling to the terminal.
+    /// Assumes raw mode is already enabled by the caller.
     pub fn enter() -> io::Result<Self> {
+        Self::enter_with(false)
+    }
+
+    /// Enter the alternate screen and enable terminal mouse reporting.
+    ///
+    /// Capture gives the application pointer and wheel events, but prevents
+    /// native OSC 8 link activation, selection, and scrolling.
+    pub fn enter_with_mouse_capture() -> io::Result<Self> {
+        Self::enter_with(true)
+    }
+
+    fn enter_with(mouse_capture: bool) -> io::Result<Self> {
         let mut out = io::stdout();
-        execute!(out, EnterAlternateScreen, EnableMouseCapture)?;
+        execute!(out, EnterAlternateScreen)?;
+        if mouse_capture {
+            execute!(out, EnableMouseCapture)?;
+        }
         out.flush()?;
-        Ok(Self { active: true })
+        Ok(Self {
+            active: true,
+            mouse_capture,
+        })
     }
 
     /// Explicitly leave (also runs on drop; idempotent).
@@ -59,7 +78,10 @@ impl AltScreen {
                 crate::term::pointer::encode(crate::term::pointer::PointerShape::Default)
                     .as_bytes(),
             );
-            let _ = execute!(out, DisableMouseCapture, LeaveAlternateScreen);
+            if self.mouse_capture {
+                let _ = execute!(out, DisableMouseCapture);
+            }
+            let _ = execute!(out, LeaveAlternateScreen);
             let _ = out.flush();
             self.active = false;
         }
@@ -75,8 +97,9 @@ impl Drop for AltScreen {
 /// Complete RAII ownership of a terminal session, in either [`ScreenMode`].
 ///
 /// Construction enables raw mode and enhanced keyboard reporting, hides the
-/// cursor, and — depending on the mode — enters the alternate screen and
-/// enables mouse capture. Enhanced reporting is what lets crossterm distinguish
+/// cursor, and — depending on the mode — enters the alternate screen. Mouse
+/// capture is explicit; the defaults preserve native terminal links, selection,
+/// and scrolling. Enhanced reporting is what lets crossterm distinguish
 /// chords such as Shift+Enter from plain Enter on ANSI terminals; Windows
 /// console events already carry modifier state through the native input API.
 /// Drop restores exactly what it took, including when unwinding from a panic.
@@ -105,9 +128,10 @@ pub enum MouseCapture {
     /// Follow the selected [`ScreenMode`].
     #[default]
     ModeDefault,
-    /// Enable mouse reporting regardless of the mode default.
+    /// Enable mouse reporting regardless of the mode default. This gives mouse
+    /// events to the application instead of native terminal links and selection.
     Enabled,
-    /// Leave mouse reporting disabled.
+    /// Leave mouse reporting disabled, preserving native terminal handling.
     Disabled,
 }
 
