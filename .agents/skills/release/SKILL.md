@@ -214,6 +214,11 @@ cargo update -p tuika-codeformatters   # only if it was bumped
 cargo update -p tuika-mermaid          # only if it was bumped
 ```
 
+Update the three root README image URLs (`logo.svg`, `docs/hero.gif`, and
+`docs/demos/image.svg`) to
+`https://raw.githubusercontent.com/everruns/tuika/vX.Y.Z/...`. The packaging
+test derives `CARGO_PKG_VERSION` and fails if any URL points at another tag.
+
 ### 5. Run local verification
 
 Review commits since the previous tag for durable knowledge impact. Update the
@@ -353,9 +358,9 @@ Releases).
 - **Tag/Cargo drift.** A same-day patch release is almost always caused by
   version drift between `Cargo.toml` and what `cargo publish` actually sees. The
   dry-run catches it.
-- **Stale demo assets in the tarball.** `docs/hero.gif` ships in the crate. If it
-  no longer matches the current look, the crates.io page misrepresents the
-  release — regenerate before cutting.
+- **A stale root README asset pin.** Root README images live outside the crate
+  and pin the release tag. Update all three URLs with the version bump; the
+  packaging test guards this mechanically.
 - **A highlight demo that shows the old behavior.** Recording is part of
   preparing the release, not something to inherit from the gallery. If the
   scene existed before the change, re-record it, or the release note advertises

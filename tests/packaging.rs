@@ -3,7 +3,7 @@
 //! Two things must stay out of the tarball, and `Cargo.toml`'s `exclude` is the
 //! only thing keeping them out:
 //!
-//! - The demo/showcase/theme/styling assets under `docs/`, and the `codex`
+//! - The demo/chart/showcase/theme/styling assets under `docs/`, and the `codex`
 //!   example's own recording, are ~14 MiB and are read only from repository
 //!   docs or absolute rustdoc URLs; docs.rs builds the crate front page from the
 //!   hand-written `//!` header in `lib.rs`, which references no images.
@@ -24,10 +24,10 @@
 //! scattering equivalent subprocess tests. Which way it falls for a given
 //! recording is decided by how that crate's
 //! README embeds it: an absolute `raw.githubusercontent.com` URL means the
-//! packaged copy is unreachable and must not ship (`tuika-codeformatters` and
-//! `tuika-charts`), while a relative path means crates.io renders from the
-//! packaged copy and it must (`tuika-mermaid`, `tuika-html`, and tuika's four
-//! README assets).
+//! packaged copy is unreachable and must not ship (`tuika`,
+//! `tuika-codeformatters`, and `tuika-charts`), while a relative path means
+//! crates.io renders from the packaged copy and it must (`tuika-mermaid` and
+//! `tuika-html`).
 
 use std::process::Command;
 
@@ -66,15 +66,15 @@ fn packaged_files(package: &str) -> Vec<String> {
 fn heavy_doc_assets_are_excluded_from_the_package() {
     let files = packaged_files("tuika");
 
-    // No demo/showcase/theme/styling asset, and no example recording, may ship:
-    // those are GitHub-only assets. The two recordings the crates.io README
-    // embeds by relative path — the hero and the split footer — sit directly
-    // under `docs/` for exactly this reason, and are asserted below.
+    // No demo/chart/showcase/theme/styling asset, and no example recording, may
+    // ship: those are GitHub-only assets. README images use tag-pinned absolute
+    // URLs and are asserted below.
     let bundled_heavy_assets: Vec<&String> = files
         .iter()
         .filter(|f| {
             (f.ends_with(".gif") || f.ends_with(".png"))
                 && (f.starts_with("docs/demos/")
+                    || f.starts_with("docs/charts/")
                     || f.starts_with("docs/showcases/")
                     || f.starts_with("examples/codex/")
                     || f.starts_with("docs/styling/")
@@ -135,21 +135,33 @@ fn generated_site_is_excluded_from_the_package() {
 }
 
 #[test]
-fn crates_io_readme_assets_and_source_are_kept() {
+fn root_readme_assets_are_tag_pinned_and_excluded() {
     let files = packaged_files("tuika");
     let has = |p: &str| files.iter().any(|f| f == p);
 
-    // The assets the crates.io README embeds by relative path.
-    assert!(has("logo.svg"), "README logo must ship");
-    assert!(has("docs/hero.gif"), "README hero image must ship");
+    let readme = std::fs::read_to_string("README.md").expect("read root README");
+    let version = env!("CARGO_PKG_VERSION");
+    for asset in ["logo.svg", "docs/hero.gif", "docs/demos/image.svg"] {
+        let url = format!("https://raw.githubusercontent.com/everruns/tuika/v{version}/{asset}");
+        assert!(
+            readme.contains(&url),
+            "README must pin {asset} to v{version}"
+        );
+    }
     assert!(
-        has("docs/demos/image.svg"),
-        "README image-protocol asset must ship"
+        !readme.contains("docs/split-footer.gif"),
+        "split-footer recording belongs in the focused guide, not the root README"
     );
-    assert!(
-        has("docs/split-footer.gif"),
-        "README split-footer recording must ship"
-    );
+
+    for asset in [
+        "logo.svg",
+        "docs/hero.gif",
+        "docs/demos/image.svg",
+        "docs/split-footer.gif",
+    ] {
+        assert!(!has(asset), "absolute README asset must not ship: {asset}");
+    }
+
     // Sanity: the crate still carries its source and manifest.
     assert!(has("src/lib.rs"), "library source must ship");
     assert!(has("Cargo.toml"), "manifest must ship");

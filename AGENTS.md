@@ -129,7 +129,8 @@ tuika's own suite covers more:
 
 - `logo.svg`, `logo-dark.svg`, and `logo-mono.svg` — the hand-authored vector
   sources for tuika's primary, dark-surface, and one-color marks. The primary is
-  embedded in the README and ships so crates.io can resolve the relative path.
+  embedded in the README through a release-tag-pinned absolute URL, so none of
+  the rendered copies need to ship in the crate.
   Their 1024 px PNG exports (`logo*.png`) are GitHub-only; regenerate them with
   `scripts/gen-logo-assets.sh`.
 - `docs/components.md` — the public component-gallery index, covering **every**
@@ -182,13 +183,13 @@ tuika's own suite covers more:
   example runs as a real app rather than printing a grid, because a plain-text
   dump would throw away the styling that is half of what the crate does.
 
-The root package's alternate logo, demo, showcase, example, theme, and styling
-assets are GitHub-only: `Cargo.toml`'s `exclude` keeps them (and the generated
-`site/` bundle plus repository machinery — `knowledge/`, `.agents/`, `.github/`,
-`scripts/`) out of tuika's published `.crate`, and `tests/packaging.rs` guards
-that split. Only `logo.svg`,
-`docs/hero.gif`, `docs/demos/image.svg`, and `docs/split-footer.gif`, which
-the crates.io README embeds by relative path, ship in tuika.
+The root package's alternate logo, demo, chart, showcase, example, theme, and
+styling assets are GitHub-only: `Cargo.toml`'s `exclude` keeps them (and the
+generated `site/` bundle plus repository machinery — `knowledge/`, `.agents/`,
+`.github/`, `scripts/`) out of tuika's published `.crate`, and
+`tests/packaging.rs` guards that split. The root README's three image embeds use
+release-tag-pinned absolute URLs, and the split-footer recording lives only in
+the focused guide, so no image asset ships in tuika.
 
 Every published member owns the same rule, and how its README embeds a recording
 decides the answer: `tuika-mermaid`'s small recording ships, because its README
@@ -347,8 +348,8 @@ ffprobe -v error -show_entries format=duration -of csv=p=0 docs/showcases/yolop.
 
 ## Split-footer demo
 
-`docs/split-footer.gif` (embedded in the README, `docs/features.md`, and
-`ScreenMode`'s rustdoc) shows a whole terminal, not a component: the footer *and*
+`docs/split-footer.gif` (embedded in `docs/features.md` and `ScreenMode`'s
+rustdoc) shows a whole terminal, not a component: the footer *and*
 the scrollback above it, which no `Buffer` holds — so it cannot come from the
 `DEMOS` registry. It is recorded from the real session by
 [`scripts/gen-split-footer-demo.sh`](scripts/gen-split-footer-demo.sh), which

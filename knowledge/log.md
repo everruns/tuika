@@ -7,7 +7,10 @@
     tuika.dev deployment; crates.io renders `README.md` directly and cannot use
     it. The first 0.9.0 release attempt included that tree and exceeded
     crates.io's 10 MiB archive limit, so the package boundary now excludes it
-    and tests that boundary explicitly.
+    and tests that boundary explicitly. The root copy of the companion chart
+    screenshots follows the same GitHub-only rule. Root README images now use
+    release-tag-pinned absolute URLs, allowing every image asset to stay out of
+    the crate without making past crates.io pages drift.
 
 - **A run loop that cannot be driven without a terminal cannot be tested**
   - The synchronous loop had no end-to-end coverage for as long as every entry

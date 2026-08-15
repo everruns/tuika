@@ -312,31 +312,30 @@ regeneration instead of leaving them stale.
 
 ### The crate/GitHub asset split
 
-The root package's alternate logo exports, demos, showcases, themes, and styling
-assets are consumed only by GitHub-rendered pages and repository tooling. docs.rs
-renders the hand-written `//!` header, which references none of them, so bundling
-them only bloats the published `.crate`. Root `Cargo.toml`'s `exclude` keeps them
+The root package's alternate logo exports, demos, chart screenshots, showcases,
+themes, and styling assets are consumed only by GitHub-rendered pages and
+repository tooling. docs.rs renders the hand-written `//!` header, which
+references none of them, so bundling them only bloats the published `.crate`.
+Root `Cargo.toml`'s `exclude` keeps them
 — the generated `site/` bundle, and the repository machinery (`knowledge/`,
-.agents/`, `.github/`, `scripts/`) — out of that tarball; only `logo.svg`,
-`docs/hero.gif`, `docs/demos/image.svg`, and `docs/split-footer.gif`, which its
-crates.io README embeds by relative path, ship. `docs/demos/` is excluded
-wholesale, so the two
-recordings that must ship live directly under `docs/` — which is also where they
-belong for a second reason: that directory is the registry's, and `demo -- check`
-fails an asset in it with no scene behind it.
+`.agents/`, `.github/`, `scripts/`) — out of that tarball. The root README
+reaches its logo, hero, and image-protocol demo through absolute URLs pinned to
+the release tag; the split-footer recording lives in the focused guide instead
+of the README. No image asset therefore ships in the root crate.
 
 The split is per **published crate**, not per repository, and the deciding
 question is how that crate's own README reaches the asset — because that is what
 determines whether the packaged copy is ever read:
 
 - **Relative path** — crates.io renders the page from the tarball, so the asset
-  must ship. tuika's README assets (`logo.svg`, `docs/hero.gif`,
-  `docs/demos/image.svg`, and `docs/split-footer.gif`) and `tuika-mermaid`'s
-  ~32 KiB recording beside its example are here.
+  must ship. `tuika-mermaid`'s and `tuika-html`'s recordings beside their
+  examples are here.
 - **Absolute `raw.githubusercontent.com` URL** — the packaged copy is
   unreachable from inside the `.crate` and is pure weight, so it is excluded
-  wherever it lives. `tuika-codeformatters`' `docs/languages.gif` was shipping
-  428 KiB this way, 94% of that crate's download.
+  wherever it lives. The root README pins these URLs to its release tag so a
+  later asset refresh cannot rewrite a published crates.io page;
+  `tuika-codeformatters` and `tuika-charts` use `main` for their repository-owned
+  galleries.
 
 So a member needs an `exclude` only when it has an absolute-URL asset; what every
 published member does need is a case in `tests/packaging.rs`, which drives the
