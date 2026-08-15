@@ -9,3 +9,5 @@ ignoredBuiltDependencies: # pnpm 10
   - esbuild
   - sharp
   - workerd
+overrides:
+  "@iconify/tools@^4.0.5": 5.0.12
