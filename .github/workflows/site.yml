@@ -23,7 +23,7 @@ jobs:
       run:
         working-directory: site
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Sitemap lastmod dates come from each page's latest source commit.
           fetch-depth: 0
