@@ -2,6 +2,20 @@
 
 ## 2026-08-15
 
+- **The generated website is not part of the published crate**
+  - `site/` mirrors public documentation and bundles generated assets for the
+    tuika.dev deployment; crates.io renders `README.md` directly and cannot use
+    it. The first 0.9.0 release attempt included that tree and exceeded
+    crates.io's 10 MiB archive limit, so the package boundary now excludes it
+    and tests that boundary explicitly. The root copy of the companion chart
+    screenshots follows the same GitHub-only rule. Root README images now use
+    release-tag-pinned absolute URLs, allowing every image asset to stay out of
+    the crate without making past crates.io pages drift. The public Markdown
+    guides follow the same rule: the README pins them to the release tag and the
+    incomplete image-less `docs/` copy no longer ships. Committed IAI
+    baselines remain repository CI inputs but are excluded from the two crates
+    that own them; a workspace-wide packaging test rejects benchmark results.
+
 - **A run loop that cannot be driven without a terminal cannot be tested**
   - The synchronous loop had no end-to-end coverage for as long as every entry
     point reached crossterm; only its extracted pieces were testable. Giving it

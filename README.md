@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.svg" width="144" alt="tuika logo: two offset rounded interface panels intersect at a gold anchor point">
+  <img src="https://raw.githubusercontent.com/everruns/tuika/v0.9.0/logo.svg" width="144" alt="tuika logo: two offset rounded interface panels intersect at a gold anchor point">
 </p>
 
 <h1 align="center">tuika</h1>
@@ -11,24 +11,24 @@
 [![downloads](https://img.shields.io/crates/d/tuika.svg)](https://crates.io/crates/tuika)
 [![license](https://img.shields.io/crates/l/tuika.svg)](https://github.com/everruns/tuika/blob/main/LICENSE)
 ![msrv](https://img.shields.io/badge/rust-1.88%2B-blue.svg) \
-[Website](https://tuika.dev) · [Rust API](https://docs.rs/tuika) · [Getting started](docs/getting-started.md) · [Components](docs/components.md) · [Layout](docs/layout.md) ·
-[Markdown](docs/markdown.md) · [Charts](docs/charts.md) ·
-[Terminal features](docs/features.md) ·
-[Keymap](docs/keymap.md) · [Styling](docs/styling.md) ·
-[Themes](docs/themes.md) \
-[Showcases](docs/showcases.md) · [Examples](#runnable-examples) ·
+[Website](https://tuika.dev) · [Rust API](https://docs.rs/tuika) · [Getting started](https://github.com/everruns/tuika/blob/v0.9.0/docs/getting-started.md) · [Components](https://github.com/everruns/tuika/blob/v0.9.0/docs/components.md) · [Layout](https://github.com/everruns/tuika/blob/v0.9.0/docs/layout.md) ·
+[Markdown](https://github.com/everruns/tuika/blob/v0.9.0/docs/markdown.md) · [Charts](https://github.com/everruns/tuika/blob/v0.9.0/docs/charts.md) ·
+[Terminal features](https://github.com/everruns/tuika/blob/v0.9.0/docs/features.md) ·
+[Keymap](https://github.com/everruns/tuika/blob/v0.9.0/docs/keymap.md) · [Styling](https://github.com/everruns/tuika/blob/v0.9.0/docs/styling.md) ·
+[Themes](https://github.com/everruns/tuika/blob/v0.9.0/docs/themes.md) \
+[Showcases](https://github.com/everruns/tuika/blob/v0.9.0/docs/showcases.md) · [Examples](#runnable-examples) ·
 [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) ·
 [Report a bug](https://github.com/everruns/tuika/issues)
 
 </div>
 
 <p align="center">
-  <img src="docs/hero.gif" width="880" alt="Animated tuika gallery: a terminal window with tabs, an activity panel of spinners, progress bars and a loader, a command palette, a commit-message input, and a status bar — all animating.">
+  <img src="https://raw.githubusercontent.com/everruns/tuika/v0.9.0/docs/hero.gif" width="880" alt="Animated tuika gallery: a terminal window with tabs, an activity panel of spinners, progress bars and a loader, a command palette, a commit-message input, and a status bar — all animating.">
 </p>
 
 <div align="center">
 
-### tuika's goal is to become the default TUI [application](./docs/showcases.md) framework for Rust
+### tuika's goal is to become the default TUI [application](https://github.com/everruns/tuika/blob/v0.9.0/docs/showcases.md) framework for Rust
 
 **Build the app, not the render loop.**
 
@@ -70,14 +70,14 @@ You write views; tuika owns the rest:
 
 - **A whole app, not a widget set** — [flexbox layout](#model), anchored
   [overlays](#owned-scenes-dialogs-and-forms), focus, a declarative
-  [keymap](docs/keymap.md), [themes and stylesheets](#theming), and a
+  [keymap](https://github.com/everruns/tuika/blob/v0.9.0/docs/keymap.md), [themes and stylesheets](#theming), and a
   [runner](#screen-modes-lifecycle-and-runner) that owns raw mode, the alternate
   screen (or a [split footer](#screen-modes-lifecycle-and-runner) over live
   scrollback), and event translation.
 - **Batteries the terminal era expects** — [30+ components](#components)
-  including streaming [Markdown](docs/markdown.md) with pluggable syntax
+  including streaming [Markdown](https://github.com/everruns/tuika/blob/v0.9.0/docs/markdown.md) with pluggable syntax
   highlighting, [images](#images) over Kitty/iTerm2/Sixel, adaptive
-  [charts](docs/charts.md), mermaid diagrams,
+  [charts](https://github.com/everruns/tuika/blob/v0.9.0/docs/charts.md), mermaid diagrams,
   [mouse selection and clipboard](#mouse-selection-and-clipboard), and
   [native OSC 9;4 progress](#native-terminal-progress).
 - **No lock-in** — it is additive to ratatui, not a replacement: wrap any
@@ -104,7 +104,7 @@ ratatui widget it likes (see [Compatibility](#compatibility)). (The optional
 `async` feature adds Tokio for [`AsyncRunner`](#screen-modes-lifecycle-and-runner);
 it is off by default.)
 
-See what that buys in practice: the [showcases](docs/showcases.md) are
+See what that buys in practice: the [showcases](https://github.com/everruns/tuika/blob/v0.9.0/docs/showcases.md) are
 recordings of real applications running on tuika (also listed under
 [Used in](#used-in)), and the [`codex` example](examples/codex) is a whole
 coding-agent UI built with nothing else.
@@ -132,7 +132,7 @@ with tuika's surfaces (see [Compatibility](#compatibility)).
 - **Live data** (`Live` / `LiveView`) is shared application state read at render
   time. Updates request a redraw from the runner; Tuika does not spawn data
   sources or reconcile a retained widget tree.
-- **Layout** is an [integer-native flexbox subset](docs/layout.md) (`layout`): wrapped flex lines,
+- **Layout** is an [integer-native flexbox subset](https://github.com/everruns/tuika/blob/v0.9.0/docs/layout.md) (`layout`): wrapped flex lines,
   independent basis/grow/shrink/min/max child styles, cross-line alignment, and
   exact boundary rounding over one direction-agnostic solver. `Flow` packages
   intrinsic wrapping; `Grid` is the smaller equal-column, row-major alternative
@@ -140,14 +140,14 @@ with tuika's surfaces (see [Compatibility](#compatibility)).
 - **Overlays** (`overlay`) anchor a view over the base tree; the **host**
   (`host`) owns the alternate screen, translates crossterm input, and
   composites the frame.
-- **Keymap** ([`keymap`](docs/keymap.md)) resolves declarative key bindings to
+- **Keymap** ([`keymap`](https://github.com/everruns/tuika/blob/v0.9.0/docs/keymap.md)) resolves declarative key bindings to
   named commands: chords (`ctrl+r`) and multi-stroke sequences (`g g`) grouped
   into prioritized, mode-gated `Layer`s, dispatched from a translated `Key` and
   queryable for help/`KeyHints` surfaces. Character chords are exact logical
   text (`A`, `?`, `ж`), so the active keyboard layout is applied before
   matching; Shift stays explicit for non-character keys such as `Shift+Enter`.
   Host-agnostic, so it unit-tests without a terminal. See the
-  [keymap guide](docs/keymap.md).
+  [keymap guide](https://github.com/everruns/tuika/blob/v0.9.0/docs/keymap.md).
 - **Motion** (`anim`, `components::{Spinner, ProgressBar, Loader}`,
   `term::progress::TerminalProgress`) animates from a host-supplied frame counter and
   can drive the terminal's own OSC 9;4 progress indicator. `anim::Timeline` adds
@@ -182,50 +182,50 @@ path always means "you will use this constantly".
 
 ## Components
 
-See the [component gallery](docs/components.md) for an animated demo of each
+See the [component gallery](https://github.com/everruns/tuika/blob/v0.9.0/docs/components.md) for an animated demo of each
 component. Linked names below jump straight to their demo.
 
 | Component | Purpose |
 | --- | --- |
-| [`Text`](docs/components/text.md#text) / `Paragraph` | Literal styled lines / word-wrapped prose with bare web links |
+| [`Text`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/text.md#text) / `Paragraph` | Literal styled lines / word-wrapped prose with bare web links |
 | `Wrap` | Word-wraps pre-styled lines, preserving per-span styles |
-| [`Markdown`](docs/markdown.md) (+ `MarkdownState`) | CommonMark → styled lines; `MarkdownState` streams incrementally — see the [markdown guide](docs/markdown.md) |
-| [`CodeBlock`](docs/components/markdown-code.md#codeblock) | Themed, framed code block with a pluggable `Highlighter` and optional line-number gutter |
-| [`Html`](docs/components/markdown-code.md#html) | HTML fragment → styled lines (companion crate [`tuika-html`](crates/tuika-html/)) |
+| [`Markdown`](https://github.com/everruns/tuika/blob/v0.9.0/docs/markdown.md) (+ `MarkdownState`) | CommonMark → styled lines; `MarkdownState` streams incrementally — see the [markdown guide](https://github.com/everruns/tuika/blob/v0.9.0/docs/markdown.md) |
+| [`CodeBlock`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/markdown-code.md#codeblock) | Themed, framed code block with a pluggable `Highlighter` and optional line-number gutter |
+| [`Html`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/markdown-code.md#html) | HTML fragment → styled lines (companion crate [`tuika-html`](crates/tuika-html/)) |
 | `Diff` | Line diff (LCS), unified or side-by-side, with `+`/`-` gutters and line numbers |
 | `AsciiFont` | Large "figlet-style" block-letter banner text |
 | `QrCode` (+ `QrEcc`) | QR code (byte-mode v1–4 encoder) rendered with half-blocks |
-| [`Rule`](docs/components/text.md#rule) | Horizontal separator: optional title + fill glyph to width |
-| [`Flex`](docs/components/layout.md#flex) | Flexbox container (the composition primitive) |
-| [`Flow`](docs/components/layout.md#flow) | Intrinsic-width items wrapped into flex lines |
-| [`Grid`](docs/components/layout.md#grid) | Small equal-column, row-major terminal grid |
+| [`Rule`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/text.md#rule) | Horizontal separator: optional title + fill glyph to width |
+| [`Flex`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/layout.md#flex) | Flexbox container (the composition primitive) |
+| [`Flow`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/layout.md#flow) | Intrinsic-width items wrapped into flex lines |
+| [`Grid`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/layout.md#grid) | Small equal-column, row-major terminal grid |
 | `Responsive` / `Constrained` | Breakpoint selection and min/max measurement |
-| [`Boxed`](docs/components/layout.md#boxed) | Border + padding + title, focus-aware |
+| [`Boxed`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/layout.md#boxed) | Border + padding + title, focus-aware |
 | `Scene` / `ScopedScene` / `Dialog` | Owned or frame-borrowed root + anchored overlays |
-| [`ConfirmDialog`](docs/components/interactive.md#dialog-presets) / `ChoiceDialog` / `MultiChoiceDialog` / `InputDialog` | Stateful presets for common modal flows |
+| [`ConfirmDialog`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/interactive.md#dialog-presets) / `ChoiceDialog` / `MultiChoiceDialog` / `InputDialog` | Stateful presets for common modal flows |
 | `Spacer` | Flexible filler |
-| [`Scroll`](docs/components/interactive.md#scroll--scrollstate) (+ `ScrollState`) | Vertical scroll viewport + scrollbar over lines |
-| [`ItemScroll`](docs/components/interactive.md#itemscroll) | The same viewport over laid-out items (panels, tables, nested layouts) |
+| [`Scroll`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/interactive.md#scroll--scrollstate) (+ `ScrollState`) | Vertical scroll viewport + scrollbar over lines |
+| [`ItemScroll`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/interactive.md#itemscroll) | The same viewport over laid-out items (panels, tables, nested layouts) |
 | `Viewport` | Two-dimensional clipping/panning over any child view |
-| [`Scrollbar`](docs/components/layout.md#scrollbar--virtualwindow) / `VirtualWindow` | Reusable bars and clamped ranges for virtualized collections |
+| [`Scrollbar`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/layout.md#scrollbar--virtualwindow) / `VirtualWindow` | Reusable bars and clamped ranges for virtualized collections |
 | `Form` / `FormField` (+ `FormState`) | Responsive labeled controls and validation |
 | `DrawView` / `CanvasView` | Closure-based custom cell drawing |
-| [`SelectList`](docs/components/interactive.md#selectlist--selectstate) (+ `SelectState`) | Selectable list, including host-windowed collections |
-| [`TreeList`](docs/components/interactive.md#treelist--treestate) (+ `TreeState`) | Stable-id expandable tree over host-provided rows |
-| [`SelectionScreen`](docs/components/layout.md#selectionscreen) | Responsive full-screen action/agent/permission pickers |
-| [`KeyedTable`](docs/components/interactive.md#keyedtable--keyedselectstate) (+ keyed single/multi-selection) | Borrowed, virtualized slice or projected rows whose selection follows stable application keys |
-| [`CompletionPalette`](docs/components/interactive.md#completionpalette--completionstate) (+ `CompletionState`, `CompletionItem`) | Filter-ranked command and token completion |
+| [`SelectList`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/interactive.md#selectlist--selectstate) (+ `SelectState`) | Selectable list, including host-windowed collections |
+| [`TreeList`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/interactive.md#treelist--treestate) (+ `TreeState`) | Stable-id expandable tree over host-provided rows |
+| [`SelectionScreen`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/layout.md#selectionscreen) | Responsive full-screen action/agent/permission pickers |
+| [`KeyedTable`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/interactive.md#keyedtable--keyedselectstate) (+ keyed single/multi-selection) | Borrowed, virtualized slice or projected rows whose selection follows stable application keys |
+| [`CompletionPalette`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/interactive.md#completionpalette--completionstate) (+ `CompletionState`, `CompletionItem`) | Filter-ranked command and token completion |
 | `Slider` (+ `SliderState`) | One-row value picker over a numeric range |
-| [`TextInput`](docs/components/interactive.md#textinput--textinputstate) (+ `TextInputState`) | Multi-line composer: soft-wrap, placeholder, highlighted ranges, `@`/`/` tokens |
-| [`StatusBar`](docs/components/layout.md#statusbar) | One-row left/right status segments |
-| [`Tabs`](docs/components/interactive.md#tabs--tabsstate) / `KeyHints` | Host-state tab navigation and command hints |
+| [`TextInput`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/interactive.md#textinput--textinputstate) (+ `TextInputState`) | Multi-line composer: soft-wrap, placeholder, highlighted ranges, `@`/`/` tokens |
+| [`StatusBar`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/layout.md#statusbar) | One-row left/right status segments |
+| [`Tabs`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/interactive.md#tabs--tabsstate) / `KeyHints` | Host-state tab navigation and command hints |
 | `TabSelect` (+ `TabSelectState`) | Value-selecting segmented control |
 | `Toasts` / `ToastList` | Transient notification stack with frame-driven expiry |
 | `Console` (+ `ConsoleLog`) | Captured stdout/log ring buffer + tailing overlay view |
-| [`Spinner`](docs/components/motion.md#spinner) | Frame-cycled activity glyph |
-| [`ProgressBar`](docs/components/motion.md#progressbar) | Determinate (sub-cell) / indeterminate bar |
-| [`ActivityList`](docs/components/motion.md#activitylist) | Multi-step lifecycle status with optional per-step progress |
-| [`Loader`](docs/components/motion.md#loader) | Spinner + message + hint row |
+| [`Spinner`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/motion.md#spinner) | Frame-cycled activity glyph |
+| [`ProgressBar`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/motion.md#progressbar) | Determinate (sub-cell) / indeterminate bar |
+| [`ActivityList`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/motion.md#activitylist) | Multi-step lifecycle status with optional per-step progress |
+| [`Loader`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/motion.md#loader) | Spinner + message + hint row |
 
 ## Example
 
@@ -484,10 +484,10 @@ HTML parser is a dependency tuika will not carry. Attach a
 same ordered renderer chain handles fenced diagrams and block HTML with one
 context, including the active stylesheet.
 [`tuika-html`](crates/tuika-html/) is the ready-made one, and it also supplies
-the [`Html`](docs/components/markdown-code.md#html) component for markup that is not inside
+the [`Html`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/markdown-code.md#html) component for markup that is not inside
 markdown at all. See the markdown guide for
-[inline HTML](docs/markdown.md#inline-html) and
-[block HTML](docs/markdown.md#block-html).
+[inline HTML](https://github.com/everruns/tuika/blob/v0.9.0/docs/markdown.md#inline-html) and
+[block HTML](https://github.com/everruns/tuika/blob/v0.9.0/docs/markdown.md#block-html).
 
 ## Theming
 
@@ -506,7 +506,7 @@ let b = tuika::Theme::gruvbox_dark();                  // named constructor
 let c = tuika::themes::by_name("gruvbox-dark").unwrap(); // config / --theme
 ```
 
-See the [theme gallery](docs/themes.md) for a screenshot of each bundled
+See the [theme gallery](https://github.com/everruns/tuika/blob/v0.9.0/docs/themes.md) for a screenshot of each bundled
 palette, or `themes::PRESETS` to enumerate them for a picker.
 
 An app can also inherit the palette the user already configured in their
@@ -514,7 +514,7 @@ terminal, rather than bringing its own — either implicitly with `themes::TERMI
 (ANSI slots, no I/O) or by asking the terminal for its actual colors and deriving
 a full theme from the reply. It is opt-in: tuika never probes unless a host asks
 it to. The query lives with the other out-of-band escapes, in `term::palette`. See
-[inheriting the terminal's colors](docs/features.md#inheriting-the-terminals-colors).
+[inheriting the terminal's colors](https://github.com/everruns/tuika/blob/v0.9.0/docs/features.md#inheriting-the-terminals-colors).
 
 Where a `Theme` is the color *tokens*, a `StyleSheet` is the *rules* — a mapping
 from a semantic role (heading, link, inline code, a panel's border and fill, …)
@@ -522,7 +522,7 @@ onto the style it draws with. Override a role in one place and every element wit
 that role restyles at once; markdown, toast severities, diff rows, and key hints
 are role-driven too. Companion crates and applications can define namespaced
 `StyleRole`s and install a `StyleResolver` without expanding tuika's closed data
-model. See the [styling guide](docs/styling.md). `StyleBundle::padding` is layout, not a
+model. See the [styling guide](https://github.com/everruns/tuika/blob/v0.9.0/docs/styling.md). `StyleBundle::padding` is layout, not a
 paint-only hint: `Boxed` resolves panel padding during both measurement and
 rendering; an explicit `Boxed::padding` remains the per-instance override.
 
@@ -657,9 +657,8 @@ threads, tasks, retries, and lifecycle.
   shape for a long-running tool with a live composer, status line, or progress
   panel over output the user wants to keep.
 
-<p align="center">
-  <img src="docs/split-footer.gif" width="880" alt="A terminal running the split_footer example: a bordered status box pinned to the last rows while published build lines accumulate above it as ordinary scrollback; after the example exits the lines remain and the box's rows are gone.">
-</p>
+The [screen-modes guide](https://github.com/everruns/tuika/blob/v0.9.0/docs/features.md#screen-modes-alternate-screen--split-footer)
+shows the mode in motion and covers its terminal contract in detail.
 
 In split-footer mode a host must not `println!` — the footer owns the cursor.
 `Runner::scrollback()` (and `AsyncRunner::scrollback()`) returns a `Scrollback`
@@ -828,7 +827,7 @@ cells it reserves, using whichever terminal graphics protocol
 **iTerm2**, or **Sixel** (foot, xterm +sixel, mlterm, contour). Terminals with
 none show the alt text, so the same view tree renders everywhere.
 
-<img src="docs/demos/image.svg" width="880" alt="Two terminal windows side by side: on a Kitty/Ghostty/WezTerm/Konsole terminal an Image view renders a red/green gradient in place; on every other terminal the same view shows a dimmed italic '[image: a red/green gradient]' placeholder.">
+<img src="https://raw.githubusercontent.com/everruns/tuika/v0.9.0/docs/demos/image.svg" width="880" alt="Two terminal windows side by side: on a Kitty/Ghostty/WezTerm/Konsole terminal an Image view renders a red/green gradient in place; on every other terminal the same view shows a dimmed italic '[image: a red/green gradient]' placeholder.">
 
 Decoding stays in the host — a heavy dependency, kept out like the highlighter
 seam — so you hand in raw RGBA via `ImageData::from_rgba` and `tuika` owns the
@@ -900,7 +899,7 @@ selection — so a host should act on `plain()` left-drags.
 `Down`+`Up` and a swipe to scroll or a drag, so touch flows through this same
 path — there is no separate touch event to handle.
 
-> See the [terminal features guide](docs/features.md) for these
+> See the [terminal features guide](https://github.com/everruns/tuika/blob/v0.9.0/docs/features.md) for these
 > terminal-integration capabilities — OSC 8 hyperlinks, mouse selection and
 > clicks, OSC 52 clipboard, OSC 9;4 progress, and Kitty/iTerm2/Sixel images —
 > plus `Capabilities` detection, with demos and runnable examples.
@@ -942,7 +941,7 @@ not enter raw mode, capture input, hide the cursor, or own a screen.
 - [**LLMSim**](https://github.com/chaliy/llmsim) — an LLM traffic simulator whose
   live stats dashboard is a tuika screen.
 
-See the [showcases](docs/showcases.md) for a recording of each. Building
+See the [showcases](https://github.com/everruns/tuika/blob/v0.9.0/docs/showcases.md) for a recording of each. Building
 something on tuika? Open a PR adding it here.
 
 ## Compatibility
@@ -995,7 +994,7 @@ The separately published companion crates live in this repository:
   terminal diagrams through mmdflux.
 - [`tuika-html`](crates/tuika-html/) lays out block-level HTML with html5ever —
   inside Markdown through the `MarkdownBlockRenderer` seam, or standalone
-  through its own [`Html`](docs/components/markdown-code.md#html) component.
+  through its own [`Html`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/markdown-code.md#html) component.
 
 All four keep specialized rendering and heavier parsers or grammars out of
 tuika core.

@@ -127,7 +127,8 @@ When asked to release, the agent:
 3. **Bump the versions.** The root `Cargo.toml` for `tuika`; and either
    companion's `Cargo.toml` when its API changed or it must track a new tuika
    range — updating its `tuika` dependency requirement to match. Regenerate
-   `Cargo.lock`.
+   `Cargo.lock`. Update every release-pinned root README guide and image URL to
+   the same `vX.Y.Z` tag; the packaging test rejects stale pins.
 
 4. **Run local verification:**
    - `cargo fmt --all -- --check`
@@ -200,6 +201,7 @@ When asked to release, the agent:
 - [ ] Highlights embed a current, tag-pinned demo recording for the release's
       main TUI-facing feature (or the release genuinely has nothing visual).
 - [ ] `Cargo.toml` and `Cargo.lock` both read `X.Y.Z`.
+- [ ] Root README guide and image URLs are pinned to `vX.Y.Z`.
 - [ ] `cargo publish --dry-run -p tuika` succeeds.
 - [ ] `X.Y.Z` is greater than the latest crates.io version.
 - [ ] Manual terminal matrix walked (below) if the renderer or an escape encoder

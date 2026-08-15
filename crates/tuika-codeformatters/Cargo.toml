@@ -17,8 +17,10 @@ categories = ["command-line-interface", "text-processing"]
 # crate's README embeds `docs/languages.gif` by absolute
 # `raw.githubusercontent.com` URL, so nothing in the published `.crate` reads it
 # — shipping it just adds ~400 KiB to every download. `tests/packaging.rs` in the
-# root package guards this for both crates.
-exclude = ["docs/*.gif"]
+# root package guards this for both crates. The committed IAI baseline is a CI
+# result snapshot, not a consumer file; benchmark sources still ship so the
+# published benchmark remains reproducible.
+exclude = ["docs/*.gif", "benches/*.json"]
 
 # See the root Cargo.toml: disable the default lib bench harness so `cargo bench`
 # runs only the Criterion target below.
