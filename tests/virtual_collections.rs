@@ -1,4 +1,7 @@
-use tuika::components::{Column, Scrollbar, SelectList, SelectState, Table, VirtualWindow};
+use tuika::components::{
+    Column, Scrollbar, SelectList, SelectState, SelectViewportState, SelectionAnchor, Table,
+    VirtualWindow,
+};
 use tuika::prelude::{Line, Style, Theme};
 use tuika::testing::{grid, render};
 
@@ -64,4 +67,39 @@ fn built_in_collections_accept_only_the_visible_data_window() {
             .skip(1)
             .any(|line| line.ends_with(['█', '│']))
     );
+}
+
+/// Both windowing policies are reachable from a stateless host: 20 rows in a
+/// 5-row pane, with the selection past the first window.
+#[test]
+fn selection_anchor_picks_centering_or_edge_following() {
+    let rows: Vec<Vec<Line>> = (0..20).map(|i| vec![Line::from(format!("r{i}"))]).collect();
+    let mut state = SelectState::new();
+    state.select(Some(7));
+    let table = |anchor: SelectionAnchor| {
+        let table = Table::new(vec![Column::auto("n")], rows.clone(), &state)
+            .viewport(5)
+            .header(false)
+            .selection_anchor(anchor);
+        grid(&render(&table, 8, 5, &Theme::default()))
+    };
+
+    // Edge trails the selection by one row: rows 3..8.
+    let edge = table(SelectionAnchor::Edge);
+    assert!(edge.contains("r3") && edge.contains("r7"), "{edge}");
+    assert!(!edge.contains("r9"), "{edge}");
+
+    // Center puts it mid-window: rows 5..10.
+    let centered = table(SelectionAnchor::Center);
+    assert!(
+        centered.contains("r5") && centered.contains("r9"),
+        "{centered}"
+    );
+    assert!(!centered.contains("r3"), "{centered}");
+
+    // The same policy as a bare window, against the persistent path's math.
+    assert_eq!(VirtualWindow::keeping(20, 5, 0, Some(7)).range(), 3..8);
+    let mut viewport = SelectViewportState::new();
+    viewport.select(Some(7));
+    assert_eq!(viewport.resolve(20, 5).range(), 3..8);
 }

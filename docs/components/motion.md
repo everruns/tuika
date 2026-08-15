@@ -33,7 +33,9 @@ view! {
 
 A single-row bar: determinate (sub-cell eighth-block fill, optional `NN%`) or an
 indeterminate marquee driven by the frame counter. `.label("…")` overlays a
-centered caption and clips it on narrow terminals.
+centered caption and clips it on narrow terminals; `.colors(filled, track)` and
+`.label_style(Style)` override the theme defaults for a host whose bar has its
+own palette.
 [API](https://docs.rs/tuika/latest/tuika/components/struct.ProgressBar.html)
 
 <img src="../demos/progress_bar.gif" width="880" alt="ProgressBar demo">
@@ -42,7 +44,12 @@ centered caption and clips it on narrow terminals.
 use tuika::prelude::*;
 view! {
     col(gap = 1) {
-        node(ProgressBar::determinate(0.6).label("0:42/3:07").percent(true))
+        node(
+            ProgressBar::determinate(0.6)
+                .label("0:42/3:07")
+                .label_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::ITALIC))
+                .percent(true),
+        )
         node(ProgressBar::indeterminate(frame))
     }
 }

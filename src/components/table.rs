@@ -33,7 +33,7 @@ use crate::view::{RenderCtx, View};
 
 use super::select::SelectState;
 use super::text::line_width;
-use super::{Scrollbar, VirtualWindow};
+use super::{Scrollbar, SelectionAnchor, VirtualWindow};
 
 /// One table column: a header cell and a main-axis width policy.
 #[derive(Clone)]
@@ -111,6 +111,7 @@ pub struct Table {
     header_style: Option<Style>,
     preserve_selection_fg: bool,
     selection_style: Option<Style>,
+    selection_anchor: SelectionAnchor,
 }
 
 impl Table {
@@ -131,6 +132,7 @@ impl Table {
             header_style: None,
             preserve_selection_fg: false,
             selection_style: None,
+            selection_anchor: SelectionAnchor::default(),
         }
     }
 
@@ -161,6 +163,7 @@ impl Table {
             header_style: None,
             preserve_selection_fg: false,
             selection_style: None,
+            selection_anchor: SelectionAnchor::default(),
         }
     }
 
@@ -236,6 +239,17 @@ impl Table {
         self
     }
 
+    /// Choose how the table windows itself around the selection when it
+    /// resolves its own window — i.e. under [`viewport`](Self::viewport) or a
+    /// body shorter than the row count, not under
+    /// [`visible_window`](Self::visible_window) or [`windowed`](Self::windowed).
+    ///
+    /// Defaults to [`SelectionAnchor::Center`].
+    pub fn selection_anchor(mut self, anchor: SelectionAnchor) -> Self {
+        self.selection_anchor = anchor;
+        self
+    }
+
     /// Cells the caret gutter occupies (caret + space), or 0 when hidden.
     fn gutter_width(&self) -> u16 {
         if self.gutter { 2 } else { 0 }
@@ -277,7 +291,8 @@ impl Table {
 
     /// The visible data-row window: the whole table unless a
     /// [`viewport`](Self::viewport) smaller than the row count is set, in which
-    /// case a slice centered on the selection and clamped to the ends.
+    /// case a slice placed around the selection by
+    /// [`selection_anchor`](Self::selection_anchor) and clamped to the ends.
     fn window(&self, available_rows: u16) -> VirtualWindow {
         let viewport = self
             .viewport
@@ -295,7 +310,10 @@ impl Table {
                 source.len().min(usize::from(viewport)),
                 source.start(),
             ),
-            None => VirtualWindow::around(self.rows.len(), usize::from(viewport), self.selected),
+            None => {
+                self.selection_anchor
+                    .window(self.rows.len(), usize::from(viewport), self.selected)
+            }
         }
     }
 
@@ -523,6 +541,73 @@ mod tests {
         // 20 - 4 (fixed) - 1 (gap) = 15 for the flex column.
         assert_eq!(rects[1].width, 15, "flex column takes the leftover");
         assert_eq!(rects[1].x, 5, "second column starts after col1 + gap");
+    }
+
+    /// The acceptance table for [`SelectionAnchor`]: 20 rows in a 5-row pane.
+    #[test]
+    fn table_selection_anchor_picks_the_windowing_policy() {
+        let table = |selected: usize, anchor: SelectionAnchor| {
+            let rows: Vec<Vec<Line>> = (0..20)
+                .map(|i| vec![Line::from(format!("row{i}"))])
+                .collect();
+            let mut state = SelectState::new();
+            state.select(Some(selected));
+            Table::new(vec![Column::auto("n")], rows, &state)
+                .viewport(5)
+                .selection_anchor(anchor)
+                .window(5)
+                .start()
+        };
+
+        // Near the top neither policy has anything to scroll.
+        assert_eq!(table(2, SelectionAnchor::Edge), 0);
+        assert_eq!(table(2, SelectionAnchor::Center), 0);
+        // Mid-collection is where the two differ.
+        assert_eq!(table(7, SelectionAnchor::Edge), 3);
+        assert_eq!(table(7, SelectionAnchor::Center), 5);
+        // Both clamp to the last full window at the end.
+        assert_eq!(table(19, SelectionAnchor::Edge), 15);
+        assert_eq!(table(19, SelectionAnchor::Center), 15);
+
+        // Center stays the default.
+        let rows: Vec<Vec<Line>> = (0..20)
+            .map(|i| vec![Line::from(format!("row{i}"))])
+            .collect();
+        let mut state = SelectState::new();
+        state.select(Some(7));
+        assert_eq!(
+            Table::new(vec![Column::auto("n")], rows, &state)
+                .viewport(5)
+                .window(5)
+                .start(),
+            5
+        );
+    }
+
+    /// The stateless `Edge` window re-derives itself every frame; the
+    /// persistent one remembers. Moving 7 -> 6 is where that shows.
+    #[test]
+    fn table_edge_anchor_is_stateless_where_the_viewport_state_is_not() {
+        let rows: Vec<Vec<Line>> = (0..20)
+            .map(|i| vec![Line::from(format!("row{i}"))])
+            .collect();
+        let mut state = SelectState::new();
+        state.select(Some(6));
+        let stateless = Table::new(vec![Column::auto("n")], rows.clone(), &state)
+            .viewport(5)
+            .selection_anchor(SelectionAnchor::Edge)
+            .window(5);
+        assert_eq!(stateless.start(), 2, "trails the selection from the top");
+
+        let mut viewport = super::super::SelectViewportState::new();
+        viewport.select(Some(7));
+        assert_eq!(viewport.resolve(20, 5).start(), 3);
+        viewport.select(Some(6));
+        let persistent = viewport.resolve(20, 5);
+        assert_eq!(persistent.start(), 3, "row 6 is already visible");
+        let table = Table::new(vec![Column::auto("n")], rows, viewport.selection())
+            .visible_window(persistent);
+        assert_eq!(table.window(5), persistent, "explicit window wins");
     }
 
     #[test]

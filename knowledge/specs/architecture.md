@@ -62,6 +62,10 @@ rather than beside it.
   `SelectViewportState` resolves one explicit `VirtualWindow` that is reused by
   rendering and mouse hit testing. Selection crossing an edge moves the window
   minimally; resize and collection refresh are explicit reconciliation points.
+  Centering and edge-following are the *same* window math (`VirtualWindow::around`
+  and `VirtualWindow::keeping`) with and without a remembered start, so a
+  stateless component can offer either policy via `SelectionAnchor` without a
+  host threading persistent state through its model to get the common one.
   `TreeState` extends the same host-owned model with stable node identity,
   expansion, and remembered ancestry while domain traversal remains outside the
   toolkit.

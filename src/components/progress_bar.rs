@@ -27,6 +27,7 @@ pub struct ProgressBar {
     /// Append a right-aligned `NN%` label to a determinate bar.
     show_percent: bool,
     label: Option<String>,
+    label_style: Option<Style>,
     filled: Option<ratatui_core::style::Color>,
     track: Option<ratatui_core::style::Color>,
 }
@@ -39,6 +40,7 @@ impl ProgressBar {
             frame: 0,
             show_percent: false,
             label: None,
+            label_style: None,
             filled: None,
             track: None,
         }
@@ -51,6 +53,7 @@ impl ProgressBar {
             frame,
             show_percent: false,
             label: None,
+            label_style: None,
             filled: None,
             track: None,
         }
@@ -65,6 +68,18 @@ impl ProgressBar {
     /// Draw a centered caption over the bar, clipped to its available width.
     pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
+        self
+    }
+
+    /// Style the caption set by [`label`](Self::label), overriding the default
+    /// (the theme's body-text style) — the same theme-by-default,
+    /// explicit-override pattern as [`colors`](Self::colors).
+    ///
+    /// This restyles only the caption; the trailing `NN%` of
+    /// [`percent`](Self::percent) is separate chrome and keeps the theme's
+    /// muted style.
+    pub fn label_style(mut self, style: Style) -> Self {
+        self.label_style = Some(style);
         self
     }
 
@@ -177,7 +192,8 @@ impl ProgressBar {
             .x
             .saturating_add(region.width.saturating_sub(width) / 2);
         let mut clipped = surface.child(region);
-        clipped.set_string(x, area.y, label, ctx.theme.text_style());
+        let style = self.label_style.unwrap_or_else(|| ctx.theme.text_style());
+        clipped.set_string(x, area.y, label, style);
     }
 }
 
@@ -248,6 +264,34 @@ mod tests {
         let narrow = crate::testing::render(&bar, 4, 1, &theme);
         assert_eq!(row(&narrow, 0), "0:42");
         assert_eq!(narrow[(0, 0)].fg, theme.text);
+    }
+
+    #[test]
+    fn progress_bar_label_style_overrides_the_theme() {
+        let theme = Theme::default();
+        let style = Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(ratatui_core::style::Modifier::ITALIC);
+        let bar = ProgressBar::determinate(0.5)
+            .colors(Color::Green, Color::Black)
+            .label("0:42")
+            .label_style(style);
+        // 10 cells, a 4-column caption: centered at x = 3..7.
+        let buf = crate::testing::render(&bar, 10, 1, &theme);
+        assert!(row(&buf, 0).contains("0:42"));
+        for x in 3..7 {
+            assert_eq!(buf[(x, 0)].fg, Color::Cyan, "caption fg at {x}");
+            assert!(
+                buf[(x, 0)]
+                    .modifier
+                    .contains(ratatui_core::style::Modifier::ITALIC),
+                "caption italic at {x}"
+            );
+        }
+        // Track cells keep the bar colors; the caption did not bleed into them.
+        assert_eq!(buf[(0, 0)].fg, Color::Green, "filled cell fg");
+        assert_eq!(buf[(9, 0)].bg, Color::Black, "track cell bg");
+        assert_ne!(buf[(9, 0)].fg, Color::Cyan, "track cell fg");
     }
 
     #[test]

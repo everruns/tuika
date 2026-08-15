@@ -116,4 +116,4 @@ pub use textinput::{
 pub use toast::{ToastLevel, ToastList, Toasts};
 pub use tree_list::{TreeList, TreeRow, TreeState};
 pub use viewport::Viewport;
-pub use virtualization::{Scrollbar, VirtualWindow};
+pub use virtualization::{Scrollbar, SelectionAnchor, VirtualWindow};

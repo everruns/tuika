@@ -191,7 +191,9 @@ A selectable list; `SelectState` navigates with the arrow keys (wrapping),
 confirms on Enter, cancels on Esc. `new()` and `default()` select the first row;
 `SelectState::unselected()` starts cursorless, and `state.select(None)` clears an
 existing selection so neither caret nor highlight is drawn. `.selection_style(style)`
-overrides the theme selection style for one list. `handle_with` accepts a
+overrides the theme selection style for one list, and
+`.selection_anchor(SelectionAnchor::Edge)` scrolls only when the selection would
+leave the window instead of recentering on it. `handle_with` accepts a
 `SelectNavigation` policy; `SelectNavigation::common()` enables j/k, Ctrl+N/P,
 Tab/Shift+Tab, and numeric shortcuts. `handle_mouse` hit-tests explicit list
 bounds and a viewport offset. `MultiSelectState` adds Enter/Space/click toggling
@@ -295,7 +297,10 @@ sets the gutter marker,
 `.header_style(Style)` restyles the header, `.selection_style(Style)` controls
 one table's selection band (including modifiers), and
 `.preserve_selection_fg(true)` keeps color-coded columns' own colors under the
-selection highlight.
+selection highlight. `.selection_anchor(SelectionAnchor::Edge)` swaps the
+stateless windowing policy from "recenter on the selection" (the default,
+`SelectionAnchor::Center`) to "move only when the selection would leave the
+window".
 [API](https://docs.rs/tuika/latest/tuika/components/struct.Table.html)
 
 ```rust
