@@ -217,8 +217,10 @@ before a release when the renderer changed; tick a box only after confirming it
 yourself.
 
 Run `cargo run --example gallery` in each terminal and check alt-screen
-enter/exit, Braille and wide glyphs, truecolor, mouse-wheel scroll, and that the
-footer URL is a clickable OSC 8 link:
+enter/exit, Braille and wide glyphs, truecolor, and that the footer URL is a
+clickable OSC 8 link. Then run it with `-- --mouse` and check application mouse
+input, accepting that native link activation is intentionally unavailable while
+capture is active:
 
 - [ ] Ghostty
 - [ ] iTerm2

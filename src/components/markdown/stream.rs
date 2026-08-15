@@ -9,9 +9,10 @@ use ratatui_core::text::Line;
 
 use crate::highlight::CodeHighlighter;
 use crate::style::{StyleSheet, Theme};
+use crate::term::hyperlink::BufferLink;
 
 use super::MarkdownBlockRenderer;
-use super::flatten::flatten_into;
+use super::flatten::flatten_linked_into;
 use super::image::{ImageResolver, MarkdownImage};
 use super::item::MdItem;
 use super::parse::parse_with;
@@ -46,7 +47,8 @@ fn stable_boundary(source: &str, from: usize) -> usize {
 ///
 /// Feed it deltas with [`push_str`](Self::push_str) (or replace the whole buffer
 /// with [`set`](Self::set)); call [`lines`](Self::lines) each frame for the
-/// current width-fitted rendering. Settled blocks — everything before the last
+/// current width-fitted rendering, then read [`links`](Self::links) and
+/// [`images`](Self::images) for its out-of-band metadata. Settled blocks — everything before the last
 /// blank line outside an open code fence — are parsed, highlighted, **and
 /// flattened once** and cached; each delta re-does only the in-flight tail. That
 /// keeps a streamed render linear in the transcript length, instead of
@@ -98,6 +100,10 @@ pub struct MarkdownState {
     /// Settled + tail images with absolute rows, rebuilt each [`lines`](Self::lines)
     /// call; returned by [`images`](Self::images).
     frame_images: Vec<MarkdownImage>,
+    /// Settled + tail links with absolute rows, rebuilt by [`lines`](Self::lines).
+    frame_links: Vec<BufferLink>,
+    /// Count of leading `frame_links` entries that belong to settled lines.
+    settled_link_count: usize,
 }
 
 impl MarkdownState {
@@ -140,6 +146,16 @@ impl MarkdownState {
         &self.frame_images
     }
 
+    /// Hyperlink runs produced by the last [`lines`](Self::lines) call, with
+    /// rows relative to those lines.
+    ///
+    /// After painting the lines, pass the visible runs to
+    /// [`apply_buffer_links`](crate::term::hyperlink::apply_buffer_links) so
+    /// labeled and incrementally streamed links retain native OSC 8 activation.
+    pub fn links(&self) -> &[BufferLink] {
+        &self.frame_links
+    }
+
     /// Append a streamed delta to the buffer (the settled-prefix cache is kept).
     pub fn push_str(&mut self, delta: &str) {
         self.source.push_str(delta);
@@ -166,6 +182,8 @@ impl MarkdownState {
         self.rendered_width = None;
         self.settled_images.clear();
         self.frame_images.clear();
+        self.frame_links.clear();
+        self.settled_link_count = 0;
     }
 
     /// Render the current buffer to final, width-fitted styled lines, advancing
@@ -175,6 +193,7 @@ impl MarkdownState {
     /// every color via [`Theme::code`](crate::style::CodeTheme); `highlighter` colors
     /// fenced code ([`CodeHighlighter::Plain`] for none). Draw the result
     /// **without** further wrapping (e.g. ratatui `Paragraph` with no `.wrap`).
+    /// After painting, apply [`links`](Self::links) to the same area.
     ///
     /// Returns a borrow of an internally-cached line buffer: settled blocks are
     /// flattened once and only the in-flight tail is recomputed per call, so a
@@ -204,6 +223,8 @@ impl MarkdownState {
             self.settled_lines = 0;
             self.flattened_items = 0;
             self.settled_images.clear();
+            self.frame_links.clear();
+            self.settled_link_count = 0;
         }
 
         let boundary = stable_boundary(&self.source, self.stable_len);
@@ -228,10 +249,11 @@ impl MarkdownState {
         // `flatten` maps each item independently, so appending the new items'
         // lines equals re-flattening the whole prefix.
         self.rendered.truncate(self.settled_lines);
+        self.frame_links.truncate(self.settled_link_count);
         if self.flattened_items < self.stable.len() {
             let base = self.rendered.len() as u16;
             let mut settled_imgs = Vec::new();
-            let settled = flatten_into(
+            let (settled, settled_links) = flatten_linked_into(
                 &self.stable[self.flattened_items..],
                 width,
                 theme,
@@ -239,6 +261,10 @@ impl MarkdownState {
                 self.block_renderers.as_slice(),
                 &mut settled_imgs,
             );
+            for mut link in settled_links {
+                link.line = link.line.saturating_add(base);
+                self.frame_links.push(link);
+            }
             for mut img in settled_imgs {
                 img.row = img.row.saturating_add(base);
                 self.settled_images.push(img);
@@ -246,6 +272,7 @@ impl MarkdownState {
             self.rendered.extend(settled);
             self.flattened_items = self.stable.len();
             self.settled_lines = self.rendered.len();
+            self.settled_link_count = self.frame_links.len();
         }
 
         let tail = parse_with(
@@ -256,7 +283,7 @@ impl MarkdownState {
             self.resolver.as_deref(),
         );
         let mut tail_imgs = Vec::new();
-        let tail_lines = flatten_into(
+        let (tail_lines, tail_links) = flatten_linked_into(
             &tail,
             width,
             theme,
@@ -284,6 +311,10 @@ impl MarkdownState {
             img.row = img.row.saturating_add(tail_base);
             self.frame_images.push(img);
         }
+        for mut link in tail_links {
+            link.line = link.line.saturating_add(tail_base);
+            self.frame_links.push(link);
+        }
         &self.rendered
     }
 }
@@ -309,6 +340,30 @@ mod tests {
     use std::rc::Rc;
 
     use super::super::{MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer};
+
+    #[test]
+    fn streaming_preserves_link_targets_across_tail_settling_and_resize() {
+        let theme = Theme::default();
+        let sheet = StyleSheet::from_theme(&theme);
+        let mut state = MarkdownState::new();
+
+        state.push_str("see <https://docs.rs/");
+        state.lines(40, &theme, &sheet, CodeHighlighter::Plain);
+
+        state.push_str("tuika>.\n\nnext");
+        state.lines(40, &theme, &sheet, CodeHighlighter::Plain);
+        assert_eq!(state.links().len(), 1);
+        assert_eq!(state.links()[0].url, "https://docs.rs/tuika");
+
+        state.lines(20, &theme, &sheet, CodeHighlighter::Plain);
+        assert!(!state.links().is_empty());
+        assert!(
+            state
+                .links()
+                .iter()
+                .all(|link| link.url == "https://docs.rs/tuika")
+        );
+    }
 
     #[test]
     fn sheet_change_invalidates_stream_cache() {

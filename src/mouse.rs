@@ -1,9 +1,10 @@
 //! Mouse interaction over the rendered cell grid: text selection, click
 //! hit-testing, and click detection.
 //!
-//! Terminals don't hand you selection or clickable regions — once an app
-//! enables mouse capture (see [`AltScreen`](crate::host::AltScreen)) the terminal's
-//! own click-drag selection stops working, and every drag arrives as a
+//! Terminals don't hand captured applications selection or clickable regions —
+//! once an app opts into mouse capture (see
+//! [`AltScreen::enter_with_mouse_capture`](crate::host::AltScreen::enter_with_mouse_capture))
+//! the terminal's own link activation and click-drag selection stop working, and every drag arrives as a
 //! [`Mouse`] event instead. This module rebuilds those affordances *on top of*
 //! the grid the app already rendered:
 //!

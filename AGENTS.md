@@ -113,9 +113,10 @@ tuika's own suite covers more:
   no out-of-clip writes.
 - **PTY smoke** (`tests/pty_smoke.rs`) — drives examples under a pseudo-terminal
   and asserts the terminal-facing protocol: `gallery` for the alternate screen
-  (enter/leave, cursor, keyboard-reporting and mouse-capture lifecycle, OSC 9;4
-  progress, OSC 8 hyperlinks, truecolor and Braille cells through a reference
-  terminal parser, resize survival, clean exit) and `split_footer`/`codex
+  (enter/leave, cursor, keyboard reporting, native mouse default plus explicit
+  capture lifecycle, OSC 9;4 progress, OSC 8 hyperlinks, truecolor and Braille
+  cells through a reference terminal parser, resize survival, clean exit),
+  `markdown` for a streaming OSC 8 link, and `split_footer`/`codex
   --split-footer` for the split-footer mode (no alt-screen, no mouse capture, the
   footer pinned to the bottom with published blocks above it, and its rows handed
   back on exit with the scrollback intact). The harness answers the

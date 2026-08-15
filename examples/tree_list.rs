@@ -146,7 +146,11 @@ impl Application for TreeApp {
 }
 
 fn main() -> io::Result<()> {
-    Runner::new(RunnerConfig::default()).run(&Theme::default(), &mut TreeApp::new())
+    Runner::new(RunnerConfig {
+        screen_mode: ScreenMode::Alternate.with_mouse_capture(),
+        ..RunnerConfig::default()
+    })
+    .run(&Theme::default(), &mut TreeApp::new())
 }
 
 #[cfg(test)]

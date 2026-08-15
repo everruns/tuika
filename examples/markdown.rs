@@ -1,5 +1,5 @@
 //! Streaming Markdown renderer. Run with `cargo run --example markdown`
-//! (space pause/resume · r restart · PgUp/PgDn/Home/End or wheel scroll ·
+//! (space pause/resume · r restart · PgUp/PgDn/Home/End scroll ·
 //! q or esc quit).
 //!
 //! Demonstrates [`MarkdownState`]: a rich CommonMark document is fed in a few
@@ -7,7 +7,9 @@
 //! streams — while only the in-flight tail re-parses each frame. Fenced code is
 //! syntax-highlighted through a tiny self-contained [`Highlighter`](tuika::highlight::Highlighter)
 //! (see `DemoHighlighter` below); for production highlighting across many
-//! languages, use the `tuika-codeformatters` crate.
+//! languages, use the `tuika-codeformatters` crate. The document's URL is a
+//! native OSC 8 link; pass `--mouse` to trade native link activation for
+//! application mouse-wheel events.
 //!
 //! # Following a stream
 //!
@@ -32,12 +34,12 @@ use std::io;
 use std::time::Duration;
 
 use crossterm::event::{self};
-use ratatui::backend::CrosstermBackend;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Span;
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
 use tuika::prelude::*;
+use tuika::term::hyperlink::{HyperlinkBackend, LinkPolicy, apply_buffer_links};
 
 /// A tiny self-contained Rust highlighter — enough to satisfy the
 /// [`Highlighter`] seam without a grammar dependency. Real hosts use the
@@ -177,9 +179,15 @@ fn main() -> io::Result<()> {
     let mut cursor = 0usize;
     let mut paused = false;
 
-    let _session = TerminalSession::enter()?;
+    let capture_mouse = std::env::args().any(|argument| argument == "--mouse");
+    let mode = if capture_mouse {
+        ScreenMode::Alternate.with_mouse_capture()
+    } else {
+        ScreenMode::Alternate
+    };
+    let _session = TerminalSession::enter_with(mode)?;
     let mut terminal = Terminal::with_options(
-        CrosstermBackend::new(io::stdout()),
+        HyperlinkBackend::new(io::stdout(), true),
         TerminalOptions {
             viewport: Viewport::Fullscreen,
         },
@@ -216,6 +224,20 @@ fn main() -> io::Result<()> {
         // the newest content while the state is stuck to the bottom, and leaves
         // a reader who scrolled back exactly where they were.
         scroll.clamp(content_h, viewport_h);
+        let visible_links = state
+            .links()
+            .iter()
+            .filter_map(|link| {
+                let line = usize::from(link.line);
+                (line >= scroll.offset() && line < scroll.offset().saturating_add(viewport_h)).then(
+                    || {
+                        let mut visible = link.clone();
+                        visible.line = u16::try_from(line - scroll.offset()).unwrap_or(u16::MAX);
+                        visible
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
 
         terminal.draw(|f| {
             let area = f.area();
@@ -248,6 +270,15 @@ fn main() -> io::Result<()> {
                 }
             };
             paint(f.buffer_mut(), area, &theme, root.as_ref(), &[]);
+            apply_buffer_links(
+                f.buffer_mut(),
+                ratatui::layout::Position {
+                    x: area.x.saturating_add(1),
+                    y: area.y.saturating_add(1),
+                },
+                &visible_links,
+                LinkPolicy::WEB,
+            );
         })?;
 
         if !event::poll(Duration::from_millis(70))? {

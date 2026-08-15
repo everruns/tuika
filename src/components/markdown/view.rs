@@ -26,8 +26,9 @@ use super::parse::parse_with;
 ///
 /// ![markdown demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/markdown.gif)
 ///
-/// For a *streaming* transcript, hold a [`MarkdownState`](super::MarkdownState) and draw its
-/// [`lines`](super::MarkdownState::lines) directly (that is what the demo above does);
+/// For a *streaming* transcript, hold a [`MarkdownState`](super::MarkdownState), draw its
+/// [`lines`](super::MarkdownState::lines), and apply its
+/// [`links`](super::MarkdownState::links) directly (that is what the demo above does);
 /// this view is the one-shot convenience for static markdown placed in a layout.
 ///
 /// The presentational inline HTML tags render through the same style roles as the

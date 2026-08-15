@@ -1127,7 +1127,14 @@ mod tests {
 
     #[test]
     fn text_selection_follows_capture_and_can_be_disabled() {
-        assert!(Runner::new(RunnerConfig::default()).selects_text());
+        assert!(!Runner::new(RunnerConfig::default()).selects_text());
+        assert!(
+            Runner::new(RunnerConfig {
+                screen_mode: ScreenMode::Alternate.with_mouse_capture(),
+                ..RunnerConfig::default()
+            })
+            .selects_text()
+        );
         assert!(
             !Runner::new(RunnerConfig {
                 screen_mode: ScreenMode::split_footer(3),

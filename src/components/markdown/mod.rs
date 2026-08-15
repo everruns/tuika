@@ -16,6 +16,8 @@
 //! code, emoji). Callers draw the returned lines **without** further wrapping
 //! (e.g. ratatui's `Paragraph` with no `.wrap`, or tuika's
 //! [`Text`](crate::components::Text)).
+//! Streaming callers apply [`MarkdownState::links`] after painting so link
+//! targets stay aligned through incremental diffs and viewporting.
 //!
 //! For one-shot (non-streaming) text, [`to_lines`] renders a whole
 //! string in one call. The [`Markdown`] view wraps either for direct placement

@@ -2,6 +2,17 @@
 
 ## 2026-08-15
 
+- **Native terminal links own the default mouse path**
+  - Both screen modes leave mouse reporting disabled by default, so emulators
+    retain OSC 8 modifier-click activation, selection, and scrolling.
+  - Application mouse capture is explicit because terminal reporting is global:
+    opting in gives pointer and wheel events to the host and necessarily takes
+    those native behaviors away. Runner selection and `ctrl_click_url` remain
+    available as application-side fallbacks for captured sessions.
+  - Streaming markdown retains hyperlink runs alongside cached lines; backend
+    inference cannot recover a URL emitted across several incremental terminal
+    diffs, so hosts apply `MarkdownState::links` after viewporting instead.
+
 - **The generated website is not part of the published crate**
   - `site/` mirrors public documentation and bundles generated assets for the
     tuika.dev deployment; crates.io renders `README.md` directly and cannot use

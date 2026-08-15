@@ -45,7 +45,7 @@ enum Btn {
 
 fn main() -> io::Result<()> {
     enable_raw_mode()?;
-    let mut alt = AltScreen::enter()?; // also enables mouse capture
+    let mut alt = AltScreen::enter_with_mouse_capture()?;
     let mut term = Terminal::with_options(
         CrosstermBackend::new(io::stdout()),
         TerminalOptions {

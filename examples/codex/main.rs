@@ -165,7 +165,7 @@ fn run() -> io::Result<()> {
     let sheet = StyleSheet::from_theme(&theme);
     let probe = RectProbe::new();
 
-    let _session = TerminalSession::enter()?;
+    let _session = TerminalSession::enter_with(ScreenMode::Alternate.with_mouse_capture())?;
     let mut terminal = Terminal::with_options(
         CrosstermBackend::new(io::stdout()),
         TerminalOptions {

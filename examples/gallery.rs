@@ -1,6 +1,6 @@
 //! Live component gallery. Run with `cargo run --example gallery`
-//! (press `q` or `Esc` to quit). Pass `--no-mouse` to keep terminal mouse
-//! handling while still using the alternate screen.
+//! (press `q` or `Esc` to quit). Native terminal links work by default. Pass
+//! `--mouse` to opt into application mouse capture instead.
 //!
 //! Demonstrates the declarative `view!` DSL, the motion components, the native
 //! OSC 9;4 progress indicator, and OSC 8 hyperlinks (the footer URL is
@@ -134,16 +134,13 @@ fn build(frame: u64, theme: &Theme) -> tuika::Element {
 }
 
 fn main() -> io::Result<()> {
-    let no_mouse = std::env::args().any(|argument| argument == "--no-mouse");
-    let config = tuika::TerminalSessionConfig {
-        mouse_capture: if no_mouse {
-            tuika::MouseCapture::Disabled
-        } else {
-            tuika::MouseCapture::ModeDefault
-        },
-        ..tuika::TerminalSessionConfig::default()
+    let capture_mouse = std::env::args().any(|argument| argument == "--mouse");
+    let mode = if capture_mouse {
+        ScreenMode::Alternate.with_mouse_capture()
+    } else {
+        ScreenMode::Alternate
     };
-    let _session = tuika::TerminalSession::enter_config(config)?;
+    let _session = tuika::TerminalSession::enter_with(mode)?;
     // Hyperlinks enabled so the footer URL demos as a real OSC 8 link.
     let mut terminal = Terminal::with_options(
         HyperlinkBackend::new(io::stdout(), true),

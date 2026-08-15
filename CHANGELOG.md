@@ -11,6 +11,20 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
+## Unreleased
+
+### Changed
+
+- **Breaking:** Mouse capture is now opt-in in alternate-screen mode, preserving native OSC 8
+  link activation, terminal selection, and scrolling by default. Applications
+  that need pointer or wheel events use `ScreenMode::with_mouse_capture`,
+  `MouseCapture::Enabled`, or `AltScreen::enter_with_mouse_capture`; captured
+  sessions may use runner selection and `ctrl_click_url` as application-side
+  fallbacks.
+- `MarkdownState::links` preserves labeled and bare hyperlink targets across
+  incremental updates, settled-prefix caching, wrapping, and resize, so hosts
+  drawing streaming lines can apply native OSC 8 links without re-parsing.
+
 ## [0.9.0] - 2026-08-15
 
 Released alongside `tuika-charts` 0.1.0 — its first release — plus

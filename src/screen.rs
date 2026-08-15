@@ -5,8 +5,8 @@
 //!
 //! - [`ScreenMode::Alternate`] — the terminal's alternate buffer. The frame owns
 //!   the whole window and the user's scrollback is restored untouched on exit.
-//!   This is the default and what [`TerminalSession`](crate::TerminalSession)
-//!   has always done.
+//!   This is the default; native terminal mouse handling stays active so OSC 8
+//!   links, selection, and scrolling keep their emulator behavior.
 //! - [`ScreenMode::SplitFooter`] — a reserved region pinned to the bottom of the
 //!   *main* screen. The frame owns only those rows; everything above stays the
 //!   terminal's own scrollback, so ordinary program output, the shell prompt
@@ -87,9 +87,16 @@ pub const DEFAULT_FOOTER_HEIGHT: u16 = 12;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ScreenMode {
     /// Own the whole window on the terminal's alternate buffer, restoring the
-    /// previous screen and scrollback on exit. Captures the mouse.
+    /// previous screen and scrollback on exit. Leaves mouse handling to the
+    /// terminal so native OSC 8 links and selection keep working.
     #[default]
     Alternate,
+    /// Alternate-screen mode with terminal mouse reporting enabled.
+    ///
+    /// Prefer constructing this through [`with_mouse_capture`](Self::with_mouse_capture).
+    /// Capture gives the application pointer and wheel events, but prevents the
+    /// terminal from providing native OSC 8 activation, selection, and scrolling.
+    AlternateWithMouseCapture,
     /// Own `height` rows pinned to the bottom of the main screen, leaving the
     /// rows above as ordinary terminal scrollback.
     SplitFooter {
@@ -120,11 +127,13 @@ impl ScreenMode {
         Self::split_footer(DEFAULT_FOOTER_HEIGHT)
     }
 
-    /// Capture the mouse in this mode. [`Alternate`](Self::Alternate) already
-    /// does, so this only affects a split footer.
+    /// Capture the mouse in this mode.
+    ///
+    /// This is opt-in because terminal mouse reporting takes native OSC 8 link
+    /// activation, selection, and scrolling away from the terminal emulator.
     pub fn with_mouse_capture(self) -> Self {
         match self {
-            Self::Alternate => Self::Alternate,
+            Self::Alternate | Self::AlternateWithMouseCapture => Self::AlternateWithMouseCapture,
             Self::SplitFooter { height, .. } => Self::SplitFooter {
                 height,
                 mouse_capture: true,
@@ -134,13 +143,13 @@ impl ScreenMode {
 
     /// Whether this mode owns the alternate screen.
     pub fn is_alternate(self) -> bool {
-        matches!(self, Self::Alternate)
+        matches!(self, Self::Alternate | Self::AlternateWithMouseCapture)
     }
 
     /// The reserved footer height, or `None` in [`Alternate`](Self::Alternate).
     pub fn footer_height(self) -> Option<u16> {
         match self {
-            Self::Alternate => None,
+            Self::Alternate | Self::AlternateWithMouseCapture => None,
             Self::SplitFooter { height, .. } => Some(height),
         }
     }
@@ -148,7 +157,8 @@ impl ScreenMode {
     /// Whether the host should enable mouse capture for this mode.
     pub fn captures_mouse(self) -> bool {
         match self {
-            Self::Alternate => true,
+            Self::Alternate => false,
+            Self::AlternateWithMouseCapture => true,
             Self::SplitFooter { mouse_capture, .. } => mouse_capture,
         }
     }
@@ -157,7 +167,7 @@ impl ScreenMode {
     /// own [`Terminal`].
     pub fn viewport(self) -> Viewport {
         match self {
-            Self::Alternate => Viewport::Fullscreen,
+            Self::Alternate | Self::AlternateWithMouseCapture => Viewport::Fullscreen,
             Self::SplitFooter { height, .. } => Viewport::Inline(height),
         }
     }
@@ -478,16 +488,19 @@ mod tests {
     }
 
     #[test]
-    fn alternate_is_the_default_and_always_captures_the_mouse() {
+    fn alternate_defaults_to_native_terminal_mouse_handling() {
         let mode = ScreenMode::default();
         assert_eq!(mode, ScreenMode::Alternate);
         assert_eq!(mode.viewport(), Viewport::Fullscreen);
         assert_eq!(mode.footer_height(), None);
-        assert!(mode.captures_mouse());
+        assert!(!mode.captures_mouse());
         assert!(mode.is_alternate());
-        // Requesting capture on the alternate screen is redundant, not a
-        // different mode.
-        assert_eq!(mode.with_mouse_capture(), ScreenMode::Alternate);
+
+        let captured = mode.with_mouse_capture();
+        assert!(captured.captures_mouse());
+        assert!(captured.is_alternate());
+        assert_eq!(captured.viewport(), Viewport::Fullscreen);
+        assert_eq!(captured.with_mouse_capture(), captured);
     }
 
     #[test]

@@ -123,10 +123,12 @@ the terminal as a control sequence" class of bug out of scope by construction â€
 see [`SECURITY.md`](../../SECURITY.md).
 
 Runner-provided mouse selection is the one framework-initiated clipboard path.
-It reads only the cells the runner just rendered and passes that text through
-the same base64 OSC 52 encoder on release. A caller-owned async event loop gets
-the selection overlay only; it can disable that default and compose the public
-selection primitives when it needs a custom clipboard sink.
+It is active only after a host explicitly opts into mouse capture, reads only
+the cells the runner just rendered, and passes that text through the same
+base64 OSC 52 encoder on release. Native terminal mouse handling remains the
+default because capture also disables emulator-owned OSC 8 activation,
+selection, and scrolling. `ctrl_click_url` is an opt-in application fallback
+for captured sessions; opening its result remains host policy.
 
 ## Constraints
 
