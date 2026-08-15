@@ -143,8 +143,8 @@ pub use overlay::{Overlay, OverlaySpec, TargetAlign, TargetPlacement, TargetSide
 #[allow(deprecated)]
 pub use runner::AsyncSignal;
 pub use runner::{
-    Application, FrameSource, Runner, RunnerAction, RunnerConfig, RunnerCore, Signal, UpdateResult,
-    from_fn,
+    Application, EventSource, FrameSource, Runner, RunnerAction, RunnerConfig, RunnerCore, Signal,
+    UpdateResult, from_fn, scripted_events,
 };
 #[cfg(feature = "async")]
 pub use runner::{AsyncApplication, AsyncFrameSource, AsyncRunner, async_from_fn, no_messages};

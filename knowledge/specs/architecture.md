@@ -137,6 +137,14 @@ rather than beside it.
   synchronous loop has nothing to select with — so a background producer's
   runner-neutral option stays the redraw handle, which both runners expose and
   which wakes a parked async loop rather than waiting for its next tick.
+- **The loop is reachable without a terminal.** `run_driven_by` is the loop with
+  no session, no terminal construction, and no stdout-facing work; every other
+  entry point on both runners is built on it. A host that owns its terminal and
+  input calls it directly, and a test drives a whole application through it over
+  an in-memory backend — the same hermetic principle the view layer already had,
+  extended to the run loop. The synchronous side gets its input through an
+  `EventSource` because it blocks on a timeout rather than selecting on a
+  stream; that trait is the seam a scripted or custom input implements.
 - **The frame source is an argument, not a method name.** `FrameSource` has two
   implementors — `&mut app` for an `Application`, and `from_fn` over a state
   value and closures — so a run method never has to name which one it takes.

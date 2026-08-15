@@ -797,6 +797,14 @@ is only where the terminal and the input come from — `run`, `run_with_backend`
 `run_with_messages`, `run_driven_by`. The runtime is the runner type; everything
 else is `RunnerConfig` or a builder method.
 
+`run_driven_by` is the loop with nothing around it — no session, no terminal
+construction, no stdout-facing work — and both runners build their other entry
+points on it. It is also how you test an application end to end: give it a
+`TestBackend` and, on the synchronous side, `scripted_events([...])`, and the
+whole loop runs with no tty, no raw mode, and no real clock. A host that already
+owns its terminal and input can use it the same way; implement `EventSource` for
+a custom input.
+
 Enabling `async` adds Tokio (timer + `select!`) and crossterm's `event-stream`
 feature; it stays off by default so sync-only hosts pull in no runtime. The
 [`async_dashboard`](examples/async_dashboard.rs) example demonstrates that

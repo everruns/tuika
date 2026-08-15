@@ -33,11 +33,18 @@
 //! | [`Runner::run`] / [`AsyncRunner::run`] | the runner enters a [`TerminalSession`] | terminal events and ticks |
 //! | [`Runner::run_with_backend`] / [`AsyncRunner::run_with_backend`] | the runner enters a session over your backend | terminal events and ticks |
 //! | [`AsyncRunner::run_with_messages`] | the runner enters a session | plus a typed application stream |
-//! | [`AsyncRunner::run_driven_by`] | yours, no lifecycle | your event and message streams |
+//! | [`Runner::run_driven_by`] / [`AsyncRunner::run_driven_by`] | yours, no lifecycle | your event source (async: your event and message streams) |
 //!
 //! The runtime axis is the runner you construct, and everything else — screen
 //! mode, tick rate, session policy, text selection — is [`RunnerConfig`] or a
 //! builder method rather than another name.
+//!
+//! `run_driven_by` is the loop with nothing around it: no session, no terminal
+//! construction, no stdout-facing work. Both runners build their other entry
+//! points on it, and a test can drive a whole application through it over a
+//! [`TestBackend`](ratatui_core::backend::TestBackend) — with
+//! [`scripted_events`] on the synchronous side — so the loop is testable
+//! without a tty.
 //!
 //! Messages ride the same [`Signal`] the loop always delivered:
 //! `Signal<M>::Message` carries them, and `M` defaults to the uninhabited
@@ -351,6 +358,124 @@ where
     }
 }
 
+/// Where a synchronous [`Runner`] gets its terminal input.
+///
+/// [`Runner::run`] uses the real terminal; [`Runner::run_driven_by`] takes one
+/// of these instead, which is what lets a host — or a test — drive the loop
+/// without a tty. The asynchronous runner takes a
+/// [`Stream`](tokio_stream::Stream) for the same reason.
+///
+/// An implementation must **consume the timeout** when it has nothing to
+/// deliver: the loop uses this call as its only sleep, so returning `Ok(None)`
+/// immediately would spin the CPU. [`scripted_events`] handles that for a
+/// finite script.
+/// `Er` is the run's error type, shared with the backend: for the real terminal
+/// that is [`io::Error`], but leaving it generic lets an infallible backend
+/// ([`TestBackend`](ratatui_core::backend::TestBackend), whose error is
+/// [`Infallible`]) pair with an infallible source.
+pub trait EventSource<Er = io::Error> {
+    /// Wait up to `timeout` for the next event.
+    ///
+    /// `Ok(None)` means the timeout elapsed with nothing to report, which is
+    /// how a source stays idle without ending the run.
+    fn poll_event(&mut self, timeout: Duration) -> Result<Option<Event>, Er>;
+}
+
+/// The real terminal, read through crossterm. What [`Runner::run`] uses.
+struct CrosstermEvents;
+
+impl EventSource<io::Error> for CrosstermEvents {
+    fn poll_event(&mut self, timeout: Duration) -> io::Result<Option<Event>> {
+        if event::poll(timeout)? {
+            // A crossterm event tuika does not model is not an idle timeout —
+            // report it as nothing this round and let the loop re-poll.
+            return Ok(translate_event(event::read()?));
+        }
+        Ok(None)
+    }
+}
+
+/// A finite [`EventSource`] over a known sequence of events.
+///
+/// Returned by [`scripted_events`].
+pub struct ScriptedEvents<I> {
+    events: I,
+    idle: fn(Duration),
+}
+
+/// Build an [`EventSource`] that replays `events` in order.
+///
+/// Each call takes the next event immediately, ignoring the timeout — a
+/// scripted run should not wait on a clock. That also means there is no idle
+/// gap *between* events, so a repaint the loop defers (the one a resize
+/// schedules) may not land before the next event arrives; implement
+/// [`EventSource`] yourself when a test needs that gap. Once the script is
+/// exhausted the
+/// source goes idle like a quiet terminal, sleeping out each timeout, so tick
+/// pacing is unchanged and the loop still exits only on
+/// [`UpdateResult::Exit`]. End a script with an event that exits, or set a
+/// short [`RunnerConfig::tick_rate`] and exit on a tick.
+///
+/// ```
+/// use tuika::prelude::*;
+/// use tuika::runner::scripted_events;
+/// use ratatui::backend::TestBackend;
+/// use ratatui::Terminal;
+///
+/// # fn main() {
+/// let mut terminal = Terminal::new(TestBackend::new(20, 1)).unwrap();
+/// let mut count = 0u32;
+///
+/// Runner::new(RunnerConfig::default())
+///     .run_driven_by(
+///         &mut terminal,
+///         &Theme::default(),
+///         from_fn(
+///             &mut count,
+///             |count, _frame| element(Text::raw(format!("count: {count}"))),
+///             |count, signal| match signal {
+///                 Signal::Event(Event::Key(key)) if key.code == KeyCode::Esc => {
+///                     UpdateResult::Exit
+///                 }
+///                 Signal::Event(Event::Key(_)) => {
+///                     *count += 1;
+///                     UpdateResult::Dirty
+///                 }
+///                 _ => UpdateResult::Clean,
+///             },
+///         ),
+///         scripted_events([
+///             Event::Key(Key::new(KeyCode::Char('j'))),
+///             Event::Key(Key::new(KeyCode::Esc)),
+///         ]),
+///     )
+///     .unwrap();
+///
+/// assert_eq!(count, 1, "the whole loop ran with no terminal at all");
+/// # }
+/// ```
+pub fn scripted_events<I>(events: I) -> ScriptedEvents<I::IntoIter>
+where
+    I: IntoIterator<Item = Event>,
+{
+    ScriptedEvents {
+        events: events.into_iter(),
+        idle: std::thread::sleep,
+    }
+}
+
+impl<I: Iterator<Item = Event>, Er> EventSource<Er> for ScriptedEvents<I> {
+    fn poll_event(&mut self, timeout: Duration) -> Result<Option<Event>, Er> {
+        match self.events.next() {
+            Some(event) => Ok(Some(event)),
+            None => {
+                (self.idle)(timeout);
+                Ok(None)
+            }
+        }
+    }
+}
+
 /// Runtime-neutral decision produced by [`RunnerCore`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RunnerAction {
@@ -565,6 +690,35 @@ impl Runner {
         self.run_with_backend(theme, backend, app)
     }
 
+    /// Run against a caller-owned terminal and event source, with no terminal
+    /// lifecycle of the runner's own.
+    ///
+    /// This is the loop itself, and what [`run`](Self::run) builds on — the
+    /// synchronous counterpart to
+    /// [`AsyncRunner::run_driven_by`](crate::AsyncRunner::run_driven_by). A host
+    /// that already owns its terminal and input can call it directly, and a test
+    /// can drive a whole application over a
+    /// [`TestBackend`](ratatui_core::backend::TestBackend) with
+    /// [`scripted_events`] — no tty, no raw mode, no real clock.
+    ///
+    /// It enters no [`TerminalSession`], so raw mode, the alternate screen, and
+    /// mouse capture are the caller's to arrange. It also performs no graphics
+    /// or clipboard I/O, since both target the process's own stdout.
+    pub fn run_driven_by<F, B, E, Er>(
+        &self,
+        terminal: &mut Terminal<B>,
+        theme: &Theme,
+        mut frames: F,
+        mut events: E,
+    ) -> Result<(), Er>
+    where
+        F: FrameSource,
+        B: Backend<Error = Er>,
+        E: EventSource<Er>,
+    {
+        self.drive(terminal, theme, &mut frames, &mut events, None, |_| Ok(()))
+    }
+
     fn run_inner<F, B>(
         &self,
         theme: &Theme,
@@ -592,22 +746,65 @@ impl Runner {
         // Declared after the session so cleanup runs first on every exit path,
         // while placements still belong to the screen on which they were made.
         let _graphics_cleanup = graphics.map(FrameGraphicsCleanup);
+        // This entry point owns the process's stdout, so it is the one that may
+        // emit the image layer and the OSC 52 copy after each frame.
+        let result = self.drive(
+            &mut terminal,
+            theme,
+            frames,
+            &mut CrosstermEvents,
+            graphics,
+            |copied| {
+                if let Some(graphics) = graphics {
+                    graphics.finish_frame()?;
+                }
+                if let Some(text) = copied {
+                    let _ = clipboard::write(&mut io::stdout(), &text)?;
+                }
+                Ok(())
+            },
+        );
+
+        // Some terminal emulators do not answer the cursor-position query used
+        // by `clear`. Session restoration must still succeed and a cosmetic
+        // cleanup failure must not turn a completed run into an application
+        // error.
+        if split {
+            let _ = close_footer(&mut terminal);
+        } else {
+            let _ = terminal.clear();
+        }
+        result
+    }
+
+    /// The loop shared by every entry point: no session, no terminal
+    /// construction, no cleanup — those belong to whoever owns the terminal.
+    fn drive<F, B, E, Er, Finish>(
+        &self,
+        terminal: &mut Terminal<B>,
+        theme: &Theme,
+        frames: &mut F,
+        events: &mut E,
+        graphics: Option<&FrameGraphics>,
+        mut finish_frame: Finish,
+    ) -> Result<(), Er>
+    where
+        F: FrameSource,
+        B: Backend<Error = Er>,
+        E: EventSource<Er>,
+        Finish: FnMut(Option<String>) -> Result<(), Er>,
+    {
+        let split = !self.config.screen_mode.is_alternate();
         let mut core = RunnerCore::new();
         let mut selection = RunnerSelection::new(self.selects_text());
         let mut last_tick = self.clock.now();
 
         if split {
-            pin_footer(&mut terminal)?;
+            pin_footer(terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
-            draw(
-                &mut terminal,
-                theme,
-                frames,
-                frame,
-                graphics,
-                &mut selection,
-            )?;
+            let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+            finish_frame(copied)?;
         }
         let mut last_frame = self.clock.now();
         let mut redraw_at = None;
@@ -621,7 +818,7 @@ impl Runner {
             if split {
                 // Publishing scrolls the terminal and may clear the viewport,
                 // so a committed block always makes the footer dirty.
-                if self.scrollback.flush(&mut terminal, theme)? {
+                if self.scrollback.flush(terminal, theme)? {
                     core.request_redraw();
                     schedule_redraw(&mut redraw_at, now);
                 }
@@ -645,16 +842,10 @@ impl Runner {
                 if let RunnerAction::Render(frame) = core.next_action() {
                     if split {
                         terminal.autoresize()?;
-                        pin_footer(&mut terminal)?;
+                        pin_footer(terminal)?;
                     }
-                    draw(
-                        &mut terminal,
-                        theme,
-                        frames,
-                        frame,
-                        graphics,
-                        &mut selection,
-                    )?;
+                    let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+                    finish_frame(copied)?;
                     last_frame = self.clock.now();
                 }
                 redraw_at = None;
@@ -666,9 +857,7 @@ impl Runner {
                 deadline.saturating_duration_since(self.clock.now())
             });
             let timeout = tick_timeout.min(redraw_timeout);
-            if event::poll(timeout)?
-                && let Some(event) = translate_event(event::read()?)
-            {
+            if let Some(event) = events.poll_event(timeout)? {
                 let signal = Signal::Event(event);
                 let requires_redraw = signal.requires_redraw();
                 let selection_event = match &signal {
@@ -696,30 +885,26 @@ impl Runner {
             }
         }
 
-        // Some terminal emulators do not answer the cursor-position query used
-        // by `clear`. Session restoration must still succeed and a cosmetic
-        // cleanup failure must not turn a completed run into an application
-        // error.
-        if split {
-            let _ = close_footer(&mut terminal);
-        } else {
-            let _ = terminal.clear();
-        }
         Ok(())
     }
 }
 
 /// Paint one numbered frame from immutable state.
-fn draw<F, B>(
+///
+/// Emitting the image layer and the OSC 52 copy is deliberately *not* done
+/// here: both target the process's own stdout, which only an entry point that
+/// owns the terminal may write to. `draw` reports the copied text and lets the
+/// caller decide.
+fn draw<F, B, Er>(
     terminal: &mut Terminal<B>,
     theme: &Theme,
     frames: &mut F,
     frame: u64,
     graphics: Option<&FrameGraphics>,
     selection: &mut RunnerSelection,
-) -> io::Result<()>
+) -> Result<Option<String>, Er>
 where
-    B: Backend<Error = io::Error>,
+    B: Backend<Error = Er>,
     F: FrameSource,
 {
     let mut copied = None;
@@ -731,13 +916,7 @@ where
         });
         copied = selection.finish_frame(terminal_frame.buffer_mut(), area, theme);
     })?;
-    if let Some(graphics) = graphics {
-        graphics.finish_frame()?;
-    }
-    if let Some(text) = copied {
-        let _ = clipboard::write(&mut io::stdout(), &text)?;
-    }
-    Ok(())
+    Ok(copied)
 }
 
 struct RunnerSelection {
@@ -911,12 +1090,8 @@ mod tests {
     fn default_selection_highlights_and_returns_dragged_text() {
         let clock = FixedClock(Instant::now());
         let mut selection = RunnerSelection::new(true);
-        let mut buffer = crate::testing::render(
-            &crate::components::Text::raw("hello world"),
-            11,
-            1,
-            &Theme::default(),
-        );
+        let mut buffer =
+            crate::testing::render(&Text::raw("hello world"), 11, 1, &Theme::default());
         let area = buffer.area;
         let down = crate::Mouse::at(crate::MouseKind::Down(crate::MouseButton::Left), 0, 0);
         let drag = crate::Mouse::at(crate::MouseKind::Drag(crate::MouseButton::Left), 4, 0);
@@ -983,10 +1158,400 @@ mod tests {
         });
         let handle = runner.scrollback();
         assert!(handle.is_empty());
-        handle.write(|_width| crate::element(crate::components::Text::raw("queued")));
+        handle.write(|_width| crate::element(Text::raw("queued")));
         assert!(
             !runner.scrollback().is_empty(),
             "every handle sees the same queue"
+        );
+    }
+
+    // ---- End-to-end loop coverage, via `run_driven_by`. ----
+    //
+    // Before this seam existed the synchronous loop had no test at all: every
+    // entry point reached crossterm and a real terminal, so only its pieces
+    // (`RunnerCore`, the clock, `RunnerSelection`) could be exercised. These
+    // drive the whole thing over a `TestBackend`.
+
+    use ratatui_core::backend::TestBackend;
+
+    use crate::components::Text;
+    use crate::event::KeyCode;
+    use crate::view::element;
+
+    fn key_event(code: KeyCode) -> Event {
+        Event::Key(crate::event::Key::new(code))
+    }
+
+    fn terminal(width: u16, height: u16) -> Terminal<TestBackend> {
+        Terminal::new(TestBackend::new(width, height)).expect("test terminal")
+    }
+
+    fn buffer_text(terminal: &Terminal<TestBackend>) -> String {
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(ratatui_core::buffer::Cell::symbol)
+            .collect()
+    }
+
+    /// A quiet runner: the tick timer is far enough out that only scripted
+    /// events drive these tests.
+    fn quiet_runner() -> Runner {
+        Runner::new(RunnerConfig {
+            tick_rate: Duration::from_secs(3600),
+            ..RunnerConfig::default()
+        })
+    }
+
+    #[test]
+    fn the_initial_frame_paints_before_any_event() {
+        let runner = quiet_runner();
+        let mut terminal = terminal(12, 1);
+        let mut state = ();
+
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut state,
+                    |(), _frame| element(Text::raw("ready")),
+                    |(), signal| match signal {
+                        Signal::Event(Event::Key(_)) => UpdateResult::Exit,
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                scripted_events([key_event(KeyCode::Esc)]),
+            )
+            .expect("run");
+
+        assert!(
+            buffer_text(&terminal).contains("ready"),
+            "a frame is painted before the first signal: {:?}",
+            buffer_text(&terminal)
+        );
+    }
+
+    #[test]
+    fn events_drive_state_and_exit_ends_the_run() {
+        let runner = quiet_runner();
+        let mut terminal = terminal(12, 1);
+        let mut count = 0u32;
+
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut count,
+                    |count, _frame| element(Text::raw(format!("n={count}"))),
+                    |count, signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        Signal::Event(Event::Key(_)) => {
+                            *count += 1;
+                            UpdateResult::Dirty
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                scripted_events([
+                    key_event(KeyCode::Char('a')),
+                    key_event(KeyCode::Char('a')),
+                    key_event(KeyCode::Esc),
+                ]),
+            )
+            .expect("run");
+
+        assert_eq!(count, 2, "both keys counted, Esc exited");
+        assert!(buffer_text(&terminal).contains("n=2"));
+    }
+
+    #[test]
+    fn clean_updates_neither_rebuild_nor_repaint() {
+        let runner = quiet_runner();
+        let mut terminal = terminal(12, 1);
+        let views = std::cell::Cell::new(0usize);
+        let mut state = ();
+
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut state,
+                    |(), _frame| {
+                        views.set(views.get() + 1);
+                        element(Text::raw("idle"))
+                    },
+                    |(), signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                scripted_events([key_event(KeyCode::Char('a')), key_event(KeyCode::Esc)]),
+            )
+            .expect("run");
+
+        assert_eq!(views.get(), 1, "only the initial frame was built");
+    }
+
+    /// The borrowed seam over the synchronous loop: no clone into an owned tree.
+    struct Notes {
+        title: String,
+        hits: Vec<char>,
+    }
+
+    struct NotesView<'app> {
+        title: &'app str,
+        hits: &'app [char],
+    }
+
+    impl View for NotesView<'_> {
+        fn measure(&self, available: crate::Size, _ctx: &RenderCtx) -> crate::Size {
+            crate::Size::new(available.width, 1.min(available.height))
+        }
+
+        fn render(&self, area: Rect, surface: &mut crate::Surface, ctx: &RenderCtx) {
+            let line = format!("{}:{}", self.title, self.hits.iter().collect::<String>());
+            surface.set_string(area.x, area.y, &line, ctx.theme.text_style());
+        }
+    }
+
+    impl Application for Notes {
+        fn update(&mut self, signal: Signal) -> UpdateResult {
+            match signal {
+                Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => UpdateResult::Exit,
+                Signal::Event(Event::Key(crate::event::Key {
+                    code: KeyCode::Char(c),
+                    ..
+                })) => {
+                    self.hits.push(c);
+                    UpdateResult::Dirty
+                }
+                _ => UpdateResult::Clean,
+            }
+        }
+
+        fn view(&self, _frame: u64) -> ScopedElement<'_> {
+            element(NotesView {
+                title: &self.title,
+                hits: &self.hits,
+            })
+        }
+    }
+
+    #[test]
+    fn an_application_paints_a_borrowed_view() {
+        let runner = quiet_runner();
+        let mut terminal = terminal(12, 1);
+        let mut app = Notes {
+            title: "n".into(),
+            hits: Vec::new(),
+        };
+
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                &mut app,
+                scripted_events([
+                    key_event(KeyCode::Char('a')),
+                    key_event(KeyCode::Char('b')),
+                    key_event(KeyCode::Esc),
+                ]),
+            )
+            .expect("run");
+
+        assert_eq!(app.hits, vec!['a', 'b']);
+        assert!(
+            buffer_text(&terminal).contains("n:ab"),
+            "the frame borrows application data: {:?}",
+            buffer_text(&terminal)
+        );
+    }
+
+    #[test]
+    fn a_redraw_request_repaints_without_an_event() {
+        let runner = quiet_runner();
+        let mut terminal = terminal(12, 1);
+        let redraw = runner.redraw_handle();
+        let value = std::cell::Cell::new(0u32);
+        let views = std::cell::Cell::new(0usize);
+        let mut state = ();
+
+        // A background producer's write, landing before the loop starts: the
+        // handle is a flag, so when it is set does not matter, only that the
+        // loop notices it without an event of its own.
+        value.set(41);
+        redraw.request();
+
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut state,
+                    |(), _frame| {
+                        views.set(views.get() + 1);
+                        element(Text::raw(format!("v={}", value.get())))
+                    },
+                    |(), signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                scripted_events([key_event(KeyCode::Esc)]),
+            )
+            .expect("run");
+
+        assert_eq!(views.get(), 2, "initial frame plus the requested repaint");
+        assert!(buffer_text(&terminal).contains("v=41"));
+    }
+
+    /// A script that goes quiet for one round between events, the way a real
+    /// terminal is quiet between keystrokes.
+    ///
+    /// [`scripted_events`] delivers back-to-back, which is what a test usually
+    /// wants; a repaint the loop *defers* needs an idle gap to land in, and
+    /// waiting out the loop's own timeout is what creates one. Implementing
+    /// [`EventSource`] for that is the intended escape hatch.
+    struct QuietBetween<I> {
+        events: I,
+        idle_next: bool,
+    }
+
+    impl<I: Iterator<Item = Event>, Er> EventSource<Er> for QuietBetween<I> {
+        fn poll_event(&mut self, timeout: Duration) -> Result<Option<Event>, Er> {
+            if self.idle_next {
+                self.idle_next = false;
+                std::thread::sleep(timeout);
+                return Ok(None);
+            }
+            match self.events.next() {
+                Some(event) => {
+                    self.idle_next = true;
+                    Ok(Some(event))
+                }
+                None => {
+                    std::thread::sleep(timeout);
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_resize_repaints_even_when_the_update_stays_clean() {
+        let runner = quiet_runner();
+        let mut terminal = terminal(12, 1);
+        let views = std::cell::Cell::new(0usize);
+        let mut state = ();
+
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut state,
+                    |(), _frame| {
+                        views.set(views.get() + 1);
+                        element(Text::raw("sized"))
+                    },
+                    |(), signal| match signal {
+                        Signal::Event(Event::Key(_)) => UpdateResult::Exit,
+                        // Deliberately clean: layout must still be repainted.
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                // The idle round after the resize waits out exactly the loop's
+                // own redraw deadline, so the deferred frame lands before the
+                // quit key regardless of how loaded the machine is.
+                QuietBetween {
+                    events: [
+                        Event::Resize {
+                            width: 12,
+                            height: 1,
+                        },
+                        key_event(KeyCode::Esc),
+                    ]
+                    .into_iter(),
+                    idle_next: false,
+                },
+            )
+            .expect("run");
+
+        assert_eq!(
+            views.get(),
+            2,
+            "the initial frame plus one forced by the resize, despite a clean update"
+        );
+    }
+
+    #[test]
+    fn a_split_footer_publishes_above_the_pinned_footer() {
+        use ratatui_core::layout::Position;
+
+        let runner = Runner::new(RunnerConfig {
+            tick_rate: Duration::from_secs(3600),
+            screen_mode: ScreenMode::split_footer(2),
+        });
+        let scrollback = runner.scrollback();
+        let mut backend = TestBackend::new(12, 6);
+        backend
+            .set_cursor_position(Position::new(0, 0))
+            .expect("place cursor");
+        let mut terminal = Terminal::with_options(
+            backend,
+            TerminalOptions {
+                viewport: runner.config.screen_mode.viewport(),
+            },
+        )
+        .expect("inline terminal");
+        let mut state = ();
+
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut state,
+                    |(), _frame| {
+                        element(Text::new(vec![
+                            ratatui_core::text::Line::from("FOOTER"),
+                            ratatui_core::text::Line::from("FOOTER"),
+                        ]))
+                    },
+                    |(), signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Char('q') => {
+                            UpdateResult::Exit
+                        }
+                        Signal::Event(_) => {
+                            scrollback.write(|_width| element(Text::raw("published")));
+                            UpdateResult::Dirty
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                scripted_events([key_event(KeyCode::Char('a')), key_event(KeyCode::Char('q'))]),
+            )
+            .expect("run");
+
+        let buffer = terminal.backend().buffer();
+        let lines: Vec<String> = (0..6)
+            .map(|y| crate::tests::support::row(buffer, y))
+            .collect();
+        assert_eq!(
+            &lines[3..],
+            &["published", "FOOTER", "FOOTER"],
+            "the block sits directly above the repainted footer: {lines:?}"
         );
     }
 }
