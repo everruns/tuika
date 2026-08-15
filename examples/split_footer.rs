@@ -136,28 +136,30 @@ fn main() -> std::io::Result<()> {
     let mut state = ();
     let result = runner.run(
         &theme,
-        &mut state,
-        move |(), frame| {
-            element(LiveView::new(view_status.clone(), move |status| {
-                footer(status, frame, &theme)
-            }))
-        },
-        |(), signal| match signal {
-            Signal::Event(Event::Key(key)) if key.plain() => match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => UpdateResult::Exit,
-                KeyCode::Char('p') => {
-                    status.update(|status| status.paused = !status.paused);
-                    UpdateResult::Clean
-                }
-                KeyCode::Char(' ') | KeyCode::Enter => {
-                    publish(&scrollback, seq.fetch_add(1, Ordering::AcqRel), &theme);
-                    status.update(|status| status.published += 1);
-                    UpdateResult::Clean
-                }
+        from_fn(
+            &mut state,
+            move |(), frame| {
+                element(LiveView::new(view_status.clone(), move |status| {
+                    footer(status, frame, &theme)
+                }))
+            },
+            |(), signal| match signal {
+                Signal::Event(Event::Key(key)) if key.plain() => match key.code {
+                    KeyCode::Char('q') | KeyCode::Esc => UpdateResult::Exit,
+                    KeyCode::Char('p') => {
+                        status.update(|status| status.paused = !status.paused);
+                        UpdateResult::Clean
+                    }
+                    KeyCode::Char(' ') | KeyCode::Enter => {
+                        publish(&scrollback, seq.fetch_add(1, Ordering::AcqRel), &theme);
+                        status.update(|status| status.published += 1);
+                        UpdateResult::Clean
+                    }
+                    _ => UpdateResult::Clean,
+                },
                 _ => UpdateResult::Clean,
             },
-            _ => UpdateResult::Clean,
-        },
+        ),
     );
 
     stop.store(true, Ordering::Release);

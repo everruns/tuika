@@ -40,7 +40,7 @@ let chart = Chart::new()
 // Return `chart` from Application::view. Runner supplies graphics when the
 // terminal supports them and otherwise leaves Chart on its cell path.
 Runner::new(RunnerConfig::default())
-    .run_app(&Theme::default(), &mut app)?;
+    .run(&Theme::default(), &mut app)?;
 ```
 
 Direct calls to `paint` use cells by default, making in-memory tests stable.

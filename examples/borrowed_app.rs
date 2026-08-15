@@ -60,5 +60,5 @@ fn main() -> io::Result<()> {
         title: "Borrowed application state".into(),
         count: 0,
     };
-    Runner::new(RunnerConfig::default()).run_app(&Theme::default(), &mut app)
+    Runner::new(RunnerConfig::default()).run(&Theme::default(), &mut app)
 }

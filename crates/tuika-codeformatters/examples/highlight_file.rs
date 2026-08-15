@@ -179,7 +179,7 @@ fn invalid_usage(extra: Option<OsString>) -> io::Error {
 
 fn main() -> io::Result<()> {
     let mut viewer = FileViewer::open(input_path()?)?;
-    Runner::new(RunnerConfig::default()).run_app(&Theme::default(), &mut viewer)
+    Runner::new(RunnerConfig::default()).run(&Theme::default(), &mut viewer)
 }
 
 #[cfg(test)]

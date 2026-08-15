@@ -639,9 +639,10 @@ let layout = activity.resolve(Rect::new(0, 0, 120, 30), DockSpec::right(90, 40))
 
 `Live<T>` is shared application data with a narrow read/update API. `LiveView`
 derives a fresh view from its current value each frame. Connect it to
-`Runner::redraw_handle()` when background producers should invalidate the
-screen. Producers retain ownership of their threads, tasks, retries, and
-lifecycle.
+`Runner::redraw_handle()` — or `AsyncRunner::redraw_handle()`, which wakes a
+parked `select!` rather than waiting for its next tick — when background
+producers should invalidate the screen. Producers retain ownership of their
+threads, tasks, retries, and lifecycle.
 
 ## Screen modes, lifecycle, and runner
 
@@ -746,15 +747,16 @@ impl Application for Stats {
 }
 
 let mut app = Stats::default();
-runner.run_app(&Theme::default(), &mut app)?;
+runner.run(&Theme::default(), &mut app)?;
 ```
 
 `UpdateResult::Clean` leaves an input available to runner defaults such as text
 selection. Return `Consumed` when the application handled it without changing
 the frame, `Dirty` when handling changed the frame, or `Exit` to stop.
 
-`Runner::run` and `run_with_backend` retain the separate state/view/update
-closure API for owned `Element` trees. The
+Every run method takes a `FrameSource`, and there are exactly two: `&mut app`
+for an `Application`, as above, or `from_fn(&mut state, view, update)` for the
+closure form over an owned `Element` tree. The
 [`borrowed_app`](examples/borrowed_app.rs) example implements a custom `View`
 that directly borrows a `String` from its application.
 
@@ -776,14 +778,24 @@ network or disk I/O — and lets its update closure `.await`. It ties
 `EventStream` and a tick timer in one `tokio::select!`, so the host keeps a
 single event loop. Its update closure returns the same
 `UpdateResult::{Clean, Consumed, Dirty, Exit}` as `Runner`, so awaited work only
-rebuilds and repaints when it actually changes visible state.
+rebuilds and repaints when it actually changes visible state. `AsyncApplication`
+is its `Application` twin — the same borrowed-view seam, with an awaiting
+`update` — and `&mut app` is a `FrameSource` for it just as it is for `Runner`.
 
 `run_with_messages` adds a typed host stream beside terminal events and ticks.
-Its update callback receives `AsyncSignal::{Event, Tick, Message}`; a background
-producer can therefore wake and update the UI immediately without
-`Arc<Mutex<_>>`, fabricated keys, or a short polling interval. The lower-level
-`run_with_events_and_messages` accepts both streams and a caller-owned backend,
-which also makes completion and error behavior deterministic under `TestBackend`.
+Messages arrive as `Signal::Message`, so a background producer can wake and
+update the UI immediately without `Arc<Mutex<_>>`, fabricated keys, or a short
+polling interval — and the frame source is the same one `run` takes, at
+`Signal<M>` instead of the default. The lower-level `run_driven_by` accepts a
+caller-owned terminal and both streams, which also makes completion and error
+behavior deterministic under `TestBackend`.
+
+`Signal<M>` is that one signal type: `M` defaults to the uninhabited
+`Infallible`, so a loop with no message stream has no `Message` variant to
+handle and a two-arm `match` stays exhaustive. What is left in the method names
+is only where the terminal and the input come from — `run`, `run_with_backend`,
+`run_with_messages`, `run_driven_by`. The runtime is the runner type; everything
+else is `RunnerConfig` or a builder method.
 
 Enabling `async` adds Tokio (timer + `select!`) and crossterm's `event-stream`
 feature; it stays off by default so sync-only hosts pull in no runtime. The

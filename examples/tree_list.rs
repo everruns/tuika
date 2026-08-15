@@ -146,7 +146,7 @@ impl Application for TreeApp {
 }
 
 fn main() -> io::Result<()> {
-    Runner::new(RunnerConfig::default()).run_app(&Theme::default(), &mut TreeApp::new())
+    Runner::new(RunnerConfig::default()).run(&Theme::default(), &mut TreeApp::new())
 }
 
 #[cfg(test)]

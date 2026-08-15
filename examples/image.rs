@@ -42,41 +42,43 @@ fn main() -> io::Result<()> {
 
     Runner::new(RunnerConfig::default()).run(
         &theme,
-        &mut state,
-        move |_state, _frame| {
-            let image = Image::new(data.clone(), COLS, ROWS).alt("a red/green gradient");
-            let status = match support {
-                ImageSupport::Kitty => " graphics: Kitty protocol detected ",
-                ImageSupport::ITerm2 => " graphics: iTerm2 protocol detected ",
-                ImageSupport::Sixel => " graphics: Sixel protocol detected ",
-                ImageSupport::None => " graphics: none — showing text fallback ",
-            };
-            let bar = StatusBar::new()
-                .left(vec![Span::styled(status, theme.selection_style())])
-                .right(vec![Span::styled(" q quit ", theme.muted_style())])
-                .background(Style::default().bg(theme.surface));
-            view! {
-                col(padding = Padding::all(1), gap = 1) {
-                    grow(1) { node(Spacer) }
-                    fixed(ROWS) {
-                        row {
-                            grow(1) { node(Spacer) }
-                            fixed(COLS) { node(image) }
-                            grow(1) { node(Spacer) }
+        from_fn(
+            &mut state,
+            move |_state, _frame| {
+                let image = Image::new(data.clone(), COLS, ROWS).alt("a red/green gradient");
+                let status = match support {
+                    ImageSupport::Kitty => " graphics: Kitty protocol detected ",
+                    ImageSupport::ITerm2 => " graphics: iTerm2 protocol detected ",
+                    ImageSupport::Sixel => " graphics: Sixel protocol detected ",
+                    ImageSupport::None => " graphics: none — showing text fallback ",
+                };
+                let bar = StatusBar::new()
+                    .left(vec![Span::styled(status, theme.selection_style())])
+                    .right(vec![Span::styled(" q quit ", theme.muted_style())])
+                    .background(Style::default().bg(theme.surface));
+                view! {
+                    col(padding = Padding::all(1), gap = 1) {
+                        grow(1) { node(Spacer) }
+                        fixed(ROWS) {
+                            row {
+                                grow(1) { node(Spacer) }
+                                fixed(COLS) { node(image) }
+                                grow(1) { node(Spacer) }
+                            }
                         }
+                        grow(1) { node(Spacer) }
+                        fixed(1) { node(bar) }
                     }
-                    grow(1) { node(Spacer) }
-                    fixed(1) { node(bar) }
                 }
-            }
-        },
-        |_state, signal| match signal {
-            Signal::Event(Event::Key(key))
-                if key.plain() && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
-            {
-                UpdateResult::Exit
-            }
-            _ => UpdateResult::Clean,
-        },
+            },
+            |_state, signal| match signal {
+                Signal::Event(Event::Key(key))
+                    if key.plain() && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
+                {
+                    UpdateResult::Exit
+                }
+                _ => UpdateResult::Clean,
+            },
+        ),
     )
 }

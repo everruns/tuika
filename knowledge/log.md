@@ -1,5 +1,32 @@
 # Knowledge Log
 
+## 2026-08-14
+
+- **One seam, named axes only for what the names must carry**
+  - `FrameSource` makes the frame source an argument, and a message type
+    parameter on `Signal` makes the message stream a type rather than a method
+    name. The `run*` surface collapses to terminal ownership plus the presence
+    of a stream, and the combinations that were missing cannot recur.
+  - An uninhabited default message type is what keeps that unification cheap for
+    callers: existing matches stay exhaustive, so the generalization is a
+    compile-time no-op unless a host actually wants messages.
+
+- **The application seam is a runner axis, not a synchronous privilege**
+  - `AsyncApplication` gives the async runner the borrowed-view seam the sync
+    runner already had, and carries its signal type as a parameter so a
+    message-consuming application is the same seam with a different signal
+    rather than a third trait.
+  - Both frame sources are kept deliberately: the application seam is the more
+    general in what a frame returns and states render purity in its receiver,
+    while the closure seam's `FnMut` view is the more permissive in what it
+    captures. Neither is legacy.
+
+- **A redraw request must reach a parked loop**
+  - `RedrawHandle` registers the waiting task's waker, making it a runner-neutral
+    wakeup rather than a flag only a polling loop can notice, and both runners
+    expose one. It stays executor-agnostic: the wait is a plain `poll_fn`, not a
+    Tokio primitive.
+
 ## 2026-08-11
 
 - **Collection interaction state owns the window hosts need to preserve**

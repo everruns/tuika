@@ -33,7 +33,8 @@ use ratatui::text::{Line, Span};
 use tuika::components::{Flex, Rule, Text};
 use tuika::term::capabilities::Capabilities;
 use tuika::{
-    Event, KeyCode, Padding, Runner, RunnerConfig, Signal, Theme, UpdateResult, themes, view,
+    Event, KeyCode, Padding, Runner, RunnerConfig, Signal, Theme, UpdateResult, from_fn, themes,
+    view,
 };
 
 /// How long to wait for the terminal to answer. A real tty replies to the
@@ -162,15 +163,17 @@ fn main() -> io::Result<()> {
     let runner = Runner::new(RunnerConfig::default());
     runner.run(
         &theme,
-        &mut (),
-        |(), _frame| build(&theme, source),
-        |(), signal| match signal {
-            Signal::Event(Event::Key(key))
-                if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
-            {
-                UpdateResult::Exit
-            }
-            _ => UpdateResult::Clean,
-        },
+        from_fn(
+            &mut (),
+            |(), _frame| build(&theme, source),
+            |(), signal| match signal {
+                Signal::Event(Event::Key(key))
+                    if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
+                {
+                    UpdateResult::Exit
+                }
+                _ => UpdateResult::Clean,
+            },
+        ),
     )
 }

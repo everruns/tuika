@@ -41,15 +41,17 @@ fn main() -> std::io::Result<()> {
     let runner = Runner::new(RunnerConfig::default());
     runner.run(
         &theme,
-        &mut (),
-        |(), _frame| scene(),
-        |(), signal| match signal {
-            Signal::Event(Event::Key(key))
-                if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
-            {
-                UpdateResult::Exit
-            }
-            _ => UpdateResult::Clean,
-        },
+        from_fn(
+            &mut (),
+            |(), _frame| scene(),
+            |(), signal| match signal {
+                Signal::Event(Event::Key(key))
+                    if matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
+                {
+                    UpdateResult::Exit
+                }
+                _ => UpdateResult::Clean,
+            },
+        ),
     )
 }

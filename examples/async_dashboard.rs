@@ -112,24 +112,26 @@ async fn main() -> std::io::Result<()> {
     runner
         .run_with_messages(
             &Theme::default(),
-            &mut metrics,
-            UnboundedReceiverStream::new(receive),
-            |metrics, _frame| dashboard(metrics),
-            async |metrics, signal| match signal {
-                AsyncSignal::Message(requests) => {
-                    metrics.ingest(requests);
-                    UpdateResult::Dirty
-                }
-                AsyncSignal::Event(Event::Key(key)) if key.plain() => match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => UpdateResult::Exit,
-                    KeyCode::Char('r') => {
-                        metrics.ingest(fetch_stats(metrics.requests).await);
+            async_from_fn(
+                &mut metrics,
+                |metrics, _frame| dashboard(metrics),
+                async |metrics, signal| match signal {
+                    Signal::Message(requests) => {
+                        metrics.ingest(requests);
                         UpdateResult::Dirty
                     }
-                    _ => UpdateResult::Clean,
+                    Signal::Event(Event::Key(key)) if key.plain() => match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => UpdateResult::Exit,
+                        KeyCode::Char('r') => {
+                            metrics.ingest(fetch_stats(metrics.requests).await);
+                            UpdateResult::Dirty
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                    Signal::Tick | Signal::Event(_) => UpdateResult::Clean,
                 },
-                AsyncSignal::Tick | AsyncSignal::Event(_) => UpdateResult::Clean,
-            },
+            ),
+            UnboundedReceiverStream::new(receive),
         )
         .await
 }

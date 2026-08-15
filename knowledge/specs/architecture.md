@@ -114,12 +114,16 @@ rather than beside it.
   52 on release. Wheel input still routes to the application. A handled gesture
   returns `UpdateResult::Consumed` or `Dirty`; custom-loop hosts keep using the
   public selection primitives directly.
-- **Runners own application state directly**: `Application` receives signals
-  through `&mut self` and builds a `ScopedElement<'_>` through `&self`, so a
-  frame can borrow application data without shared interior mutability. The
-  compatible closure seam renders an owned `Element` from `&State` and updates
-  through `&mut State`. Repaint is an explicit dirty result (or, synchronously,
-  an external redraw request); terminal resize is the exception because layout
+- **Runners own application state directly**: `Application` (and its awaiting
+  counterpart `AsyncApplication`) receives signals through `&mut self` and
+  builds a `ScopedElement<'_>` through `&self`, so a frame can borrow
+  application data without shared interior mutability. The compatible closure
+  seam renders an owned `Element` from `&State` and updates through
+  `&mut State`. Both seams are kept: the application seam is more general in
+  what a frame may *return* (`Element` is `ScopedElement<'static>`) and states
+  render purity in its receiver, while the closure seam's `FnMut` view is more
+  permissive in what it may *capture*. Repaint is an explicit dirty result or an
+  external redraw request; terminal resize is the exception because layout
   must be repainted even when application state is unchanged. Rendering stays
   pure, and idle ticks do not churn the terminal. The
   synchronous runner's monotonic clock defaults to the process clock and is
@@ -129,7 +133,20 @@ rather than beside it.
   remain outside it.
   The async shell may additionally select over a typed application stream;
   messages use the same dirty/exit contract as events and ticks, and completion
-  disables only that source.
+  disables only that source. That stream is the async shell's alone — a
+  synchronous loop has nothing to select with — so a background producer's
+  runner-neutral option stays the redraw handle, which both runners expose and
+  which wakes a parked async loop rather than waiting for its next tick.
+- **The frame source is an argument, not a method name.** `FrameSource` has two
+  implementors — `&mut app` for an `Application`, and `from_fn` over a state
+  value and closures — so a run method never has to name which one it takes.
+  Messages ride the same `Signal<M>`, whose default message type is
+  uninhabited, so a loop without a stream has no variant to handle and existing
+  two-arm matches stay exhaustive. What remains in the names is only terminal
+  ownership and whether there is a message stream; the runtime is the runner
+  type, and everything else is `RunnerConfig` or a builder. A capability added
+  at one point of that surface belongs across it — a cross product encoded as
+  names grows holes, which is what the pre-0.9 `run*`/`run_app*` matrix did.
 
 `measure` and `render` are the two halves of every view, and both receive the
 same `RenderCtx`: `measure` reports a size in whole cells so the solver can

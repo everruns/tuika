@@ -119,12 +119,14 @@ fn main() -> io::Result<()> {
     let mut state = PickerState::new();
     runner.run(
         &theme,
-        &mut state,
-        |state, _frame| scene(state, &theme),
-        |state, signal| match signal {
-            Signal::Event(event) => update(state, &event),
-            Signal::Tick => UpdateResult::Clean,
-        },
+        from_fn(
+            &mut state,
+            |state, _frame| scene(state, &theme),
+            |state, signal| match signal {
+                Signal::Event(event) => update(state, &event),
+                Signal::Tick => UpdateResult::Clean,
+            },
+        ),
     )
 }
 
