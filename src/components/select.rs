@@ -15,7 +15,7 @@ use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
 
-use super::{Scrollbar, VirtualWindow};
+use super::{Scrollbar, SelectionAnchor, VirtualWindow};
 
 /// Optional navigation bindings for [`SelectState`].
 ///
@@ -129,19 +129,16 @@ impl SelectViewportState {
     /// never changes its start.
     pub fn resolve(&mut self, len: usize, visible: usize) -> VirtualWindow {
         self.selection.clamp(len);
-        let visible = visible.min(len);
-        self.offset = self.offset.min(VirtualWindow::max_start_for(len, visible));
-        if self.follow_selection
-            && visible > 0
-            && let Some(selected) = self.selection.selected()
-        {
-            if selected < self.offset {
-                self.offset = selected;
-            } else if selected >= self.offset.saturating_add(visible) {
-                self.offset = selected.saturating_add(1).saturating_sub(visible);
-            }
-        }
-        VirtualWindow::new(len, visible, self.offset)
+        // The persistent offset is exactly `keeping`'s `start`: the stateless
+        // policy and this one are the same math, differing only in whether the
+        // caller remembers where the window was.
+        let anchor = self
+            .follow_selection
+            .then(|| self.selection.selected())
+            .flatten();
+        let window = VirtualWindow::keeping(len, visible, self.offset, anchor);
+        self.offset = window.start();
+        window
     }
 
     /// Handle keyboard navigation and wheel scrolling, then reconcile the
@@ -505,6 +502,7 @@ pub struct SelectList {
     visible_window: Option<VirtualWindow>,
     scrollbar: bool,
     selection_style: Option<Style>,
+    selection_anchor: SelectionAnchor,
 }
 
 pub(crate) struct SelectRows<'items> {
@@ -515,6 +513,7 @@ pub(crate) struct SelectRows<'items> {
     visible_window: Option<VirtualWindow>,
     scrollbar: bool,
     selection_style: Option<Style>,
+    selection_anchor: SelectionAnchor,
 }
 
 impl<'items> SelectRows<'items> {
@@ -527,6 +526,7 @@ impl<'items> SelectRows<'items> {
             visible_window: None,
             scrollbar: true,
             selection_style: None,
+            selection_anchor: SelectionAnchor::default(),
         }
     }
 
@@ -576,7 +576,9 @@ impl<'items> SelectRows<'items> {
                     )
                 }
             }
-            None => VirtualWindow::around(self.items.len(), visible, self.selected),
+            None => self
+                .selection_anchor
+                .window(self.items.len(), visible, self.selected),
         }
     }
 }
@@ -675,6 +677,7 @@ impl SelectList {
             visible_window: None,
             scrollbar: true,
             selection_style: None,
+            selection_anchor: SelectionAnchor::default(),
         }
     }
 
@@ -692,6 +695,7 @@ impl SelectList {
             visible_window: None,
             scrollbar: true,
             selection_style: None,
+            selection_anchor: SelectionAnchor::default(),
         }
     }
 
@@ -726,6 +730,17 @@ impl SelectList {
         self
     }
 
+    /// Choose how the list windows itself around the selection when it resolves
+    /// its own window — i.e. under [`viewport`](Self::viewport) or a smaller
+    /// assigned height, not under [`visible_window`](Self::visible_window) or
+    /// [`windowed`](Self::windowed).
+    ///
+    /// Defaults to [`SelectionAnchor::Center`].
+    pub fn selection_anchor(mut self, anchor: SelectionAnchor) -> Self {
+        self.selection_anchor = anchor;
+        self
+    }
+
     fn rows(&self) -> SelectRows<'_> {
         SelectRows {
             items: &self.items,
@@ -735,6 +750,7 @@ impl SelectList {
             visible_window: self.visible_window,
             scrollbar: self.scrollbar,
             selection_style: self.selection_style,
+            selection_anchor: self.selection_anchor,
         }
     }
 }
@@ -977,6 +993,33 @@ mod tests {
             has_scrollbar,
             "overflowing list should draw a scrollbar:\n{text}"
         );
+    }
+
+    #[test]
+    fn select_list_edge_anchor_trails_the_selection_instead_of_centering() {
+        let items: Vec<Line> = (0..20).map(|i| Line::from(format!("item{i}"))).collect();
+        let mut state = SelectState::new();
+        state.select(Some(7));
+        let list = |anchor: SelectionAnchor| {
+            SelectList::new(items.clone(), &state)
+                .viewport(5)
+                .selection_anchor(anchor)
+                .rows()
+                .window(Some(5))
+                .range()
+        };
+        // Edge trails the selection by one row; Center recenters on it.
+        assert_eq!(list(SelectionAnchor::Edge), 3..8);
+        assert_eq!(list(SelectionAnchor::Center), 5..10);
+
+        // The rendered rows follow the policy, not just the window token.
+        let edge = SelectList::new(items, &state)
+            .viewport(5)
+            .selection_anchor(SelectionAnchor::Edge);
+        let text = crate::testing::grid(&crate::testing::render(&edge, 12, 5, &Theme::default()));
+        assert!(text.contains("item3"), "top of the edge window:\n{text}");
+        assert!(text.contains("item7"), "selection stays visible:\n{text}");
+        assert!(!text.contains("item9"), "below the edge window:\n{text}");
     }
 
     #[test]

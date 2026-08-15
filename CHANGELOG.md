@@ -13,6 +13,19 @@ described in the release process begins with the entry below.
 
 ## Unreleased
 
+### Added
+
+- **Components**: `ProgressBar::label_style` styles the caption set by
+  `label`, the same theme-by-default/explicit-override pattern as `colors`. The
+  trailing `NN%` of `percent` stays separate chrome on the theme's muted style.
+- **Components**: `SelectionAnchor` selects how `Table` and `SelectList` window
+  themselves around the selection when they resolve their own window —
+  `Center` (today's recentering behavior, still the default) or `Edge`, which
+  moves the window only when the selection would leave it.
+- **Virtualization**: `VirtualWindow::keeping` is the edge-following policy as a
+  pure function of the caller's current start; `SelectViewportState::resolve`
+  now uses it, so the persistent and stateless paths share one implementation.
+
 ### Changed
 
 - **Breaking:** Mouse capture is now opt-in in alternate-screen mode, preserving native OSC 8

@@ -13,6 +13,24 @@
     inference cannot recover a URL emitted across several incremental terminal
     diffs, so hosts apply `MarkdownState::links` after viewporting instead.
 
+- **A stateless component still owes a choice of windowing policy**
+  - `VirtualWindow::around` was the only policy a component could reach without
+    host state, so the more common list behaviour — scroll only when the
+    selection leaves the window — was available exclusively through
+    `SelectViewportState`, i.e. by threading persistent state and a known pane
+    height through a host's model. That is the custom-`View` cost the
+    render-height windowing was added to remove.
+  - The two policies were never different math, only different memory:
+    `VirtualWindow::keeping` takes the caller's current start (`0` for a
+    stateless caller) and `around` recenters unconditionally. `SelectViewportState`
+    now uses `keeping`, so there is one implementation and `SelectionAnchor`
+    exposes the choice on `Table` and `SelectList`.
+  - Component chrome overridable "everywhere except one place" is a defect, not
+    a gap: `ProgressBar` could recolor its fill and track but pinned the caption
+    to the theme, which silently dropped a host's configured caption color. Each
+    visual property a component paints needs its own override, and semantically
+    distinct chrome (the caption vs the `NN%` suffix) keeps distinct knobs.
+
 - **The generated website is not part of the published crate**
   - `site/` mirrors public documentation and bundles generated assets for the
     tuika.dev deployment; crates.io renders `README.md` directly and cannot use

@@ -145,7 +145,8 @@ fn components_are_reachable_flat() {
         ConfirmDialogState, Console, Dialog, Diff, Form, FormField, FormState, Image, InputDialog,
         InputDialogState, KeyedColumn, KeyedMultiSelectState, KeyedRowSource, KeyedSelectState,
         KeyedTable, Markdown, MultiChoiceDialog, MultiChoiceDialogState, NavigableKeyedRowSource,
-        QrCode, SelectViewportState, Toasts, TreeList, TreeRow, TreeState, Viewport,
+        QrCode, SelectViewportState, SelectionAnchor, Toasts, TreeList, TreeRow, TreeState,
+        Viewport,
     };
 
     let theme = Theme::default();
@@ -164,6 +165,7 @@ fn components_are_reachable_flat() {
     let _ = Markdown::new("# hi");
     let _ = QrCode::encode("hi", QrEcc::Low);
     let _ = Toasts::new;
+    let _ = SelectionAnchor::Edge;
     let state = FormState::new();
     let _ = Form::new(
         vec![FormField::new("name", element(Text::raw("Ada")))],
