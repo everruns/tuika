@@ -1,6 +1,8 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import Header from "../components/Header.astro";
+import { Icon } from "astro-icon/components";
+import { Code } from "astro:components";
 import "../styles/home.css";
 
 const guides = [
@@ -62,8 +64,7 @@ const head = [{
             <h1>tuika</h1>
             <p class="home-subtitle">Rust terminal application framework</p>
             <p class="home-lede">
-              Layout, overlays, focus, keymaps, components, and terminal
-              lifecycle over ratatui.
+              <a href="/layout/">Layout</a>{", "}<a href="/components/interactive/#scene--dialog">overlays</a>{", "}<a href="/components/layout/#focusscope">focus</a>{", "}<a href="/keymap/">keymaps</a>{", "}<a href="/components/">components</a>{", and "}<a href="/features/">terminal lifecycle</a>{" over "}<a href="https://ratatui.rs">ratatui</a>.
             </p>
 
             <div class="home-actions">
@@ -71,10 +72,21 @@ const head = [{
               <a class="home-button" href="https://github.com/everruns/tuika">GitHub</a>
             </div>
 
-            <div class="home-install" aria-label="Install tuika">
-              <span>Install</span>
+            <button
+              class="home-install"
+              type="button"
+              data-home-install
+              data-command="cargo add tuika"
+              aria-label="Copy install command: cargo add tuika"
+            >
+              <span class="home-install-label" data-home-install-label>Install</span>
               <code>cargo add tuika</code>
-            </div>
+              <span class="home-install-icon" aria-hidden="true">
+                <Icon name="ph:copy" data-home-install-icon-copy />
+                <Icon name="ph:check" data-home-install-icon-check />
+              </span>
+            </button>
+            <span class="home-install-status" role="status" aria-live="polite" data-home-install-status></span>
           </div>
 
           <div class="home-mark" aria-hidden="true">
@@ -130,7 +142,9 @@ const head = [{
               <li>Render tests use an in-memory buffer, not a terminal.</li>
             </ul>
           </div>
-          <pre class="home-code"><code>{codeSample}</code></pre>
+          {/* Pinned to a dark Shiki theme rather than the docs' mode-aware pair:
+              this panel is dark in both color modes. */}
+          <Code class="home-code" code={codeSample} lang="rust" theme="github-dark-default" />
         </div>
       </section>
 
@@ -182,3 +196,7 @@ const head = [{
     </footer>
   </div>
 </BaseLayout>
+
+<script>
+  import "../lib/home-install.client";
+</script>
