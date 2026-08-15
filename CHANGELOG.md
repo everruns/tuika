@@ -15,6 +15,22 @@ described in the release process begins with the entry below.
 
 ### Added
 
+- `Runner::run_driven_by` is the synchronous counterpart to
+  `AsyncRunner::run_driven_by`: the loop against a caller-owned terminal and
+  event source, with no `TerminalSession`, no terminal construction, and no
+  stdout-facing graphics or clipboard work. `run` and `run_with_backend` are now
+  built on it, so every synchronous entry point shares one loop. It is generic
+  over the run's error type, so an infallible backend (`TestBackend`) pairs with
+  an infallible source.
+- `EventSource` is where that loop gets its input, and `scripted_events` builds
+  one from a known sequence of events — replaying them in order, then going idle
+  like a quiet terminal so tick pacing is unchanged. Together they let a host
+  (or a test) drive a whole application with no tty: previously the synchronous
+  loop could not be exercised at all, and only its pieces (`RunnerCore`, the
+  clock, selection) had coverage. Seven end-to-end tests now cover the initial
+  frame, event-driven state, clean updates neither rebuilding nor repainting,
+  the borrowed application seam, redraw requests, deferred resize repaints, and
+  split-footer publishing.
 - `SelectViewportState` couples index selection to a persistent top row for
   `SelectList` and `Table`. Its resolved `VirtualWindow` is shared with mouse
   hit testing, so selection scrolls only across viewport edges and clicks do not

@@ -1,5 +1,16 @@
 # Knowledge Log
 
+## 2026-08-15
+
+- **A run loop that cannot be driven without a terminal cannot be tested**
+  - The synchronous loop had no end-to-end coverage for as long as every entry
+    point reached crossterm; only its extracted pieces were testable. Giving it
+    the same caller-owned-terminal seam the async runner already had made the
+    loop itself assertable, and the tests followed immediately.
+  - Input is a trait (`EventSource`) rather than a stream on this side, because
+    a blocking loop consumes a timeout instead of selecting. An implementation
+    owes that timeout: returning "nothing" without waiting would spin.
+
 ## 2026-08-14
 
 - **One seam, named axes only for what the names must carry**
