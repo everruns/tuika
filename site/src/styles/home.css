@@ -76,6 +76,22 @@
   line-height: 1.6;
 }
 
+/* Each term points at the guide that covers it; underlined on hover only, so
+   the lede still reads as a sentence rather than a link list. */
+.home-lede a {
+  color: #cfcfcf;
+  text-decoration: underline;
+  text-decoration-color: #3a3a3a;
+  text-underline-offset: 0.25em;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.home-lede a:hover,
+.home-lede a:focus-visible {
+  color: var(--home-gold);
+  text-decoration-color: var(--home-gold);
+}
+
 .home-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
 
 .home-button {
@@ -95,17 +111,95 @@
 .home-button-primary { border-color: var(--home-gold); background: var(--home-gold); color: #090909; }
 .home-button-primary:hover { border-color: #e7b94f; background: #e7b94f; color: #090909; }
 
-.home-install {
-  display: flex;
-  width: fit-content;
-  margin-top: 1rem;
-  border: 1px solid #2a2a2a;
-  font-family: var(--nb-font-mono);
-  font-size: 0.78rem;
+/* These surfaces are dark in both color modes, so the global ::selection —
+   which resolves its text color from the mode-dependent --nb-foreground —
+   turns invisible on them in light mode. Pin it to their own palette. */
+.home-hero::selection,
+.home-hero ::selection,
+pre.home-code ::selection,
+pre.home-code::selection {
+  background: rgb(212 164 58 / 0.32);
+  color: #fff;
 }
 
-.home-install span { padding: 0.6rem 0.75rem; color: #777; border-right: 1px solid #2a2a2a; }
-.home-install code { padding: 0.6rem 0.75rem; background: transparent; color: #e6e6e6; }
+.home-install {
+  display: flex;
+  align-items: stretch;
+  width: fit-content;
+  margin-top: 1rem;
+  padding: 0;
+  border: 1px solid #2a2a2a;
+  background: transparent;
+  color: inherit;
+  font-family: var(--nb-font-mono);
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.home-install:hover { border-color: #4a4a4a; background: #101010; }
+.home-install:hover .home-install-icon { color: #e6e6e6; }
+
+.home-install-label {
+  padding: 0.6rem 0.75rem;
+  border-right: 1px solid #2a2a2a;
+  color: #777;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.home-install code {
+  padding: 0.6rem 0.75rem;
+  background: transparent;
+  color: #e6e6e6;
+  user-select: text;
+}
+
+.home-install-icon {
+  display: grid;
+  place-items: center;
+  padding: 0 0.7rem;
+  border-left: 1px solid #2a2a2a;
+  color: #777;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.home-install-icon svg { width: 1rem; height: 1rem; }
+.home-install [data-home-install-icon-check] { display: none; }
+
+.home-install[data-state="copied"] {
+  border-color: var(--home-gold);
+  background: rgb(212 164 58 / 0.08);
+}
+
+.home-install[data-state="copied"] .home-install-label,
+.home-install[data-state="copied"] .home-install-icon {
+  border-color: var(--home-gold);
+  color: var(--home-gold);
+}
+
+.home-install[data-state="copied"] [data-home-install-icon-copy] { display: none; }
+.home-install[data-state="copied"] [data-home-install-icon-check] { display: block; }
+
+.home-install[data-state="failed"] .home-install-label { color: #e6e6e6; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .home-install[data-state="copied"] { animation: home-install-flash 0.4s ease-out; }
+}
+
+@keyframes home-install-flash {
+  from { background: rgb(212 164 58 / 0.3); }
+  to { background: rgb(212 164 58 / 0.08); }
+}
+
+.home-install-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
 .home-mark {
   width: 100%;
@@ -169,7 +263,19 @@
 .home-model p { margin-top: 1.25rem; }
 .home-list { display: grid; gap: 0.65rem; margin-top: 1.5rem; color: var(--nb-muted-foreground); font-size: 0.9rem; }
 .home-list li { margin-left: 1rem; padding-left: 0.25rem; }
-.home-code { margin: 0; overflow-x: auto; border: 1px solid #252525; background: #0b0d10; padding: clamp(1.25rem, 4vw, 2rem); color: #e8e8e8; font: 0.84rem/1.8 var(--nb-font-mono); }
+pre.home-code {
+  margin: 0;
+  overflow-x: auto;
+  border: 1px solid #252525;
+  border-radius: 0;
+  background: #0b0d10;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  color: #e8e8e8;
+  font: 0.84rem/1.8 var(--nb-font-mono);
+}
+
+/* Shiki paints tokens inline; only the panel chrome is ours. */
+pre.home-code code { background: transparent; }
 
 .home-guide-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--nb-border-strong); }
 .home-guide-grid a { display: grid; grid-template-columns: 10rem 1fr auto; gap: 1rem; padding: 1.25rem 0; border-bottom: 1px solid var(--nb-border); color: var(--home-ink); text-decoration: none; }
