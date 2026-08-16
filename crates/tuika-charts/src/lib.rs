@@ -38,7 +38,11 @@ pub enum RenderMode {
     Cells,
 }
 
-/// An adaptive line, bar, area, scatter, or step chart view.
+/// An adaptive line, bar, area, scatter, step, or donut chart view.
+///
+/// Bar and area series can be grouped or stacked, the axes can be labelled with
+/// categories and swapped into a horizontal layout, and one position can be
+/// focused to list every series' value there.
 ///
 /// | Portable cells | Terminal graphics |
 /// | --- | --- |
@@ -229,6 +233,18 @@ impl View for Chart {
         // it takes the whole body and returns.
         if plan.radial {
             let body = body_rect(area, self);
+            let (support, layer) = self.graphics(ctx);
+            if self.render_mode_in(ctx) == RenderMode::Graphics {
+                let data = graphics::render_donut_pixels(body.width, body.height, &plan);
+                if let (Some(data), Some(layer)) = (data, layer) {
+                    tuika::components::Image::new(data, body.width, body.height)
+                        .support(support)
+                        .in_layer(layer)
+                        .render(body, &mut surface.child(body), ctx);
+                    cells::render_center(body, surface, self, ctx);
+                    return;
+                }
+            }
             cells::render_donut(body, surface, self, &plan, ctx);
             return;
         }
@@ -255,7 +271,7 @@ impl View for Chart {
                 // Value labels and the focus rule are text and thin rules, so
                 // they stay cells over the image for the same reason the tick
                 // labels do.
-                cells::render_overlays(plot, surface, self, &plan, ctx);
+                cells::render_overlays(plot, surface, self, &plan, ctx, false);
                 return;
             }
         }

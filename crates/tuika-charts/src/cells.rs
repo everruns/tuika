@@ -92,7 +92,7 @@ pub(super) fn render_cells(
             }
         }
     }
-    render_overlays(plot, surface, chart, plan, ctx);
+    render_overlays(plot, surface, chart, plan, ctx, true);
 }
 
 /// Draw a rule along zero when the value domain straddles it, so negative
@@ -133,6 +133,7 @@ pub(super) fn render_overlays(
     chart: &Chart,
     plan: &ChartPlan,
     ctx: &RenderCtx,
+    focus_rule: bool,
 ) {
     let data_width = plot.width.saturating_sub(1) as u32;
     let data_height = plot.height.saturating_sub(1) as u32;
@@ -141,7 +142,7 @@ pub(super) fn render_overlays(
     }
     let model = &plan.model;
 
-    if let Some(focus) = chart.focus {
+    if let Some(focus) = chart.focus.filter(|_| focus_rule) {
         let style = Style::default().fg(ctx.theme.accent);
         if model.horizontal {
             let row = model.map(model.up_at(focus), data_width, data_height).1;
@@ -281,12 +282,21 @@ pub(super) fn render_donut(
         }
     }
 
-    if !chart.center.is_empty() {
-        let len = chart.center.chars().count() as u16;
-        let x = (cx as u16).saturating_sub(len / 2);
-        if x + len <= body.right() {
-            surface.set_string(x, cy as u16, &chart.center, ctx.theme.accent_style());
-        }
+    render_center(body, surface, chart, ctx);
+}
+
+/// The donut's centre text. Cells in both modes, like every other label.
+pub(super) fn render_center(body: Rect, surface: &mut Surface, chart: &Chart, ctx: &RenderCtx) {
+    if chart.center.is_empty() || body.width == 0 || body.height == 0 {
+        return;
+    }
+    let Ok(len) = u16::try_from(chart.center.chars().count()) else {
+        return;
+    };
+    let x = (body.x + body.width / 2).saturating_sub(len / 2);
+    let y = body.y + body.height / 2;
+    if x + len <= body.right() && y < body.bottom() {
+        surface.set_string(x, y, &chart.center, ctx.theme.accent_style());
     }
 }
 

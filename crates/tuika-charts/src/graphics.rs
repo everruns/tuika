@@ -17,16 +17,19 @@ pub(super) fn render_pixels(
     layout: &AxisLayout,
     ctx: &RenderCtx,
 ) -> Option<ImageData> {
-    let _ = chart;
     let model = &plan.model;
     let width = u32::from(cols).checked_mul(PIXELS_PER_COL)?;
     let height = u32::from(rows).checked_mul(PIXELS_PER_ROW)?;
     if width == 0 || height == 0 {
         return None;
     }
-    let background = rgb(ctx.theme.background);
+    // Transparent, not filled with the theme background: the terminal
+    // composites the image over the cells, so anything opaque here hides the
+    // text beneath it. Leaving the empty space clear is what lets value labels
+    // and the focus readout stay cells in graphics mode, exactly as the tick
+    // labels outside the image already do.
     let pixels = usize::try_from(width.checked_mul(height)?).ok()?;
-    let mut rgba = [background.0, background.1, background.2, 255].repeat(pixels);
+    let mut rgba = vec![0u8; pixels * 4];
     // The image plot occupies exactly the cells the portable renderer plots
     // into: one column for the axis, one row for its baseline. Tick labels sit
     // outside the image, so any other margin would misalign them.
@@ -95,6 +98,24 @@ pub(super) fn render_pixels(
         }
     }
 
+    if let Some(focus) = chart.focus {
+        let accent = rgb(ctx.theme.accent);
+        if model.horizontal {
+            let y = at(model.up_at(focus)).1;
+            pixel_line(
+                &mut rgba,
+                width,
+                height,
+                (left as i32, y),
+                ((left + plot_width) as i32, y),
+                accent,
+            );
+        } else {
+            let x = at(model.across_at(focus)).0;
+            pixel_line(&mut rgba, width, height, (x, 0), (x, baseline_y), accent);
+        }
+    }
+
     for mark in &plan.marks {
         let color = rgb(mark.color);
         match &mark.geometry {
@@ -127,6 +148,60 @@ pub(super) fn render_pixels(
         if mark.markers {
             for sample in &mark.samples {
                 pixel_marker(&mut rgba, width, height, at(*sample), color);
+            }
+        }
+    }
+    ImageData::from_rgba(width, height, rgba)
+}
+
+/// A smooth ring. The cell renderer paints the same arcs in block glyphs; here
+/// the boundary between segments lands on a pixel instead of a cell.
+pub(super) fn render_donut_pixels(cols: u16, rows: u16, plan: &ChartPlan) -> Option<ImageData> {
+    let width = u32::from(cols).checked_mul(PIXELS_PER_COL)?;
+    let height = u32::from(rows).checked_mul(PIXELS_PER_ROW)?;
+    if width == 0 || height == 0 {
+        return None;
+    }
+    // Transparent everywhere but the ring, so the hole shows the centre text
+    // the cell renderer drew beneath it.
+    let pixels = usize::try_from(width.checked_mul(height)?).ok()?;
+    let mut rgba = vec![0u8; pixels * 4];
+
+    let (cx, cy) = (width as f64 / 2.0, height as f64 / 2.0);
+    let radius = cx.min(cy) - 2.0;
+    if radius <= 2.0 {
+        return ImageData::from_rgba(width, height, rgba);
+    }
+    let inner = radius * 0.58;
+
+    // Walk the disc once and colour each pixel by the arc its angle falls in,
+    // which keeps segment boundaries exact without stroking arcs one by one.
+    let arcs: Vec<(f64, f64, (u8, u8, u8))> = plan
+        .marks
+        .iter()
+        .filter_map(|mark| match &mark.geometry {
+            Geometry::Arcs(arcs) => arcs
+                .first()
+                .map(|arc| (arc.start, arc.start + arc.sweep, rgb(mark.color))),
+            _ => None,
+        })
+        .collect();
+
+    for y in 0..height {
+        for x in 0..width {
+            let (dx, dy) = (x as f64 + 0.5 - cx, y as f64 + 0.5 - cy);
+            let distance = dx.hypot(dy);
+            if distance > radius || distance < inner {
+                continue;
+            }
+            // Turns clockwise from twelve o'clock, matching the arc order.
+            let mut turn = (dy.atan2(dx) + std::f64::consts::FRAC_PI_2) / std::f64::consts::TAU;
+            turn -= turn.floor();
+            if let Some(&(_, _, color)) = arcs
+                .iter()
+                .find(|&&(start, end, _)| turn >= start && turn < end)
+            {
+                set_pixel(&mut rgba, width, height, x as i32, y as i32, color);
             }
         }
     }

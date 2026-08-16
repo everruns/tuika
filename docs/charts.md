@@ -101,6 +101,51 @@ states, thresholds, and other values held until the next sample.
 | --- | --- |
 | <img src="charts/step-cells.png" alt="Cell step chart" width="560"> | <img src="charts/step-graphics.png" alt="Graphics step chart" width="560"> |
 
+### Grouped bars
+
+Several bar series share a category band, each taking a slot inside it with a
+gutter between neighbouring groups.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="charts/grouped-cells.png" alt="Cell grouped bar chart" width="560"> | <img src="charts/grouped-graphics.png" alt="Graphics grouped bar chart" width="560"> |
+
+### Stacked
+
+`Chart::stack` sums bar or area series at each position, each starting where the
+one below it ended.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="charts/stacked-cells.png" alt="Cell stacked area chart" width="560"> | <img src="charts/stacked-graphics.png" alt="Graphics stacked area chart" width="560"> |
+
+### Horizontal
+
+`Chart::horizontal` puts categories down the side, where a name gets a whole row
+of width instead of one column.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="charts/horizontal-cells.png" alt="Cell horizontal bar chart" width="560"> | <img src="charts/horizontal-graphics.png" alt="Graphics horizontal bar chart" width="560"> |
+
+### Donut
+
+A ring with optional centre text — the one polar shape that stays readable in
+cells. Slices are named by the legend rather than by radial labels.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="charts/donut-cells.png" alt="Cell donut chart" width="560"> | <img src="charts/donut-graphics.png" alt="Graphics donut chart" width="560"> |
+
+### Focus readout
+
+`Chart::focus` marks one position with a rule and lists every series' value
+there — the terminal's answer to a hover tooltip.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="charts/focus-cells.png" alt="Cell chart with a focus readout" width="560"> | <img src="charts/focus-graphics.png" alt="Graphics chart with a focus readout" width="560"> |
+
 ## Axes
 
 Both axes carry tick labels by default. Ticks land on round values — a power of
@@ -127,19 +172,72 @@ to right — a narrow chart shows fewer labels, never overlapping ones.
 Both renderers draw tick labels as cells, because the graphics image covers the
 plot only. The same numbers therefore appear in the same places in both modes.
 
+### Categories
+
+Most bar and area charts are not measuring a numeric x axis, they are naming
+positions. `Axis::categories` does that: series carry `Point::new(index, value)`
+and the axis names each index.
+
+```rust
+use tuika_charts::{Axis, Chart, Point, Series};
+
+let chart = Chart::new()
+    .x_axis(Axis::new().categories(["Jan", "Feb", "Mar"]))
+    .series(Series::bar("desktop", [
+        Point::new(0.0, 18.0),
+        Point::new(1.0, 30.0),
+        Point::new(2.0, 23.0),
+    ]));
+```
+
+Ticks then land on every category instead of on round numbers, and thinning
+drops whole names rather than truncating them — half a month is not a shorter
+month.
+
+## Stacking, grouping, and orientation
+
+Several bar series in one chart sit side by side inside each category band by
+default, sharing it between them. `Chart::stack` combines them instead:
+`Stack::Normal` sums them, `Stack::Percent` sums and then scales every position
+to 100. Area series stack the same way, each resting on the one below.
+
+`Chart::horizontal` swaps the axes. In a terminal this is often the better
+default for bars: a category name gets a whole row of width, rather than the
+single column a vertical bar leaves it.
+
+When the value domain straddles zero, a rule is drawn along it so negative bars
+are read against the baseline rather than against the frame.
+
+## Annotations
+
+`Series::markers` draws a glyph at every sample, keeping individual readings
+visible on a line that would otherwise only show a trend. `Series::labels`
+prints each value beside its mark.
+
+A label annotates a reading and must never cover one: each is tried in a few
+positions around its mark and dropped if none is clear. Losing a label is a
+smaller loss than obscuring the value it describes.
+
+`Chart::focus` marks one position: a rule through the plot, and a row beneath it
+naming that position and every series' value there. The chart stays a pure view
+— the host owns the index and moves it in response to keys — so the same
+mechanism serves a keyboard cursor, a replayed session, or a fixed annotation.
+
 ## Portable grammar
 
 The shared grammar deliberately includes only features both paths can preserve:
 
 - finite numeric `(x, y)` points;
-- line, area, bar, scatter, and horizontal-then-vertical step series;
+- line, area, bar, scatter, horizontal-then-vertical step, and donut series;
 - multiple named and colored series;
 - automatic or explicit numeric x/y domains;
-- numeric axis tick labels, with an optional format hook;
+- numeric or categorical axis tick labels, with an optional format hook;
+- stacking, bar grouping, and horizontal orientation;
+- sample markers, value labels, and a focused-position readout;
 - an optional title and legend.
 
-Interactions, tooltips, categorical axes, smooth curves, stacked data,
-HTML/SVG marks, and renderer-specific styling are outside this portable model.
+Smooth curves, filled pie and radar geometry, gradients, icon marks, HTML/SVG
+marks, and renderer-specific styling are outside this portable model.
 That boundary prevents a chart from silently losing meaning when it moves to a
 terminal with different capabilities.
 

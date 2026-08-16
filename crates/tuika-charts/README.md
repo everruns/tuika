@@ -32,15 +32,24 @@ let chart = Chart::new()
     ]));
 ```
 
-Both axes are labelled by default. `Axis::format` supplies units, `Axis::ticks`
-targets a tick count, and `Axis::hidden` drops the labels for a sparkline:
+Both axes are labelled by default. `Axis::categories` names positions instead of
+measuring them, `Axis::format` supplies units, and `Axis::hidden` drops the
+labels for a sparkline. `Chart::stack` combines bar and area series,
+`Chart::horizontal` gives each category a full row of width for its name, and
+`Chart::focus` is the terminal's answer to a hover tooltip:
 
 ```rust
-use tuika_charts::{Axis, Chart};
+use tuika_charts::{Axis, Chart, Point, Series, Stack};
 
 let chart = Chart::new()
-    .y_axis(Axis::new().ticks(4).format(|value| format!("{value:.0}ms")))
-    .x_axis(Axis::hidden());
+    .x_axis(Axis::new().categories(["Jan", "Feb", "Mar"]))
+    .stack(Stack::Normal)
+    .focus(1.0)
+    .series(Series::bar("desktop", [
+        Point::new(0.0, 18.0),
+        Point::new(1.0, 30.0),
+        Point::new(2.0, 23.0),
+    ]));
 ```
 
 `Chart` is a normal tuika `View`. Return it from `Application::view` and run the
@@ -95,6 +104,30 @@ Horizontal-then-vertical transitions for state and level changes.
 | Cells | Graphics |
 | --- | --- |
 | <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/charts/step-cells.png" alt="Cell step chart" width="560"> | <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/charts/step-graphics.png" alt="Graphics step chart" width="560"> |
+
+### Grouped and stacked
+
+Bar series share a category band by default; `Chart::stack` sums them instead.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/charts/grouped-cells.png" alt="Cell grouped bar chart" width="560"> | <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/charts/grouped-graphics.png" alt="Graphics grouped bar chart" width="560"> |
+
+### Horizontal
+
+Categories down the side, where a name gets a whole row of width.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/charts/horizontal-cells.png" alt="Cell horizontal bar chart" width="560"> | <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/charts/horizontal-graphics.png" alt="Graphics horizontal bar chart" width="560"> |
+
+### Donut
+
+A ring with centre text — the one polar shape that stays readable in cells.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/charts/donut-cells.png" alt="Cell donut chart" width="560"> | <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/charts/donut-graphics.png" alt="Graphics donut chart" width="560"> |
 
 ## How adaptation works
 
