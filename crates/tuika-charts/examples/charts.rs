@@ -138,7 +138,7 @@ fn radar_chart() -> Chart {
     Chart::new()
         .title("Attributes · radar")
         .x_axis(Axis::new().categories(["Strength", "Speed", "Stamina", "Skill", "Focus", "Luck"]))
-        .y_axis(Axis::new())
+        .y_axis(Axis::hidden())
         .series(Series::radar(
             "Orion",
             points(&[92., 55., 80., 68., 71., 38.]),

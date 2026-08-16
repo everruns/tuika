@@ -19,6 +19,7 @@ mod cells;
 mod graphics;
 mod model;
 mod plan;
+mod radar;
 
 pub use axis::Axis;
 use axis::AxisLayout;
@@ -38,7 +39,7 @@ pub enum RenderMode {
     Cells,
 }
 
-/// An adaptive line, bar, area, scatter, step, or donut chart view.
+/// An adaptive line, bar, area, scatter, step, donut, or radar chart view.
 ///
 /// Bar and area series can be grouped or stacked, the axes can be labelled with
 /// categories and swapped into a horizontal layout, and one position can be
@@ -251,6 +252,22 @@ impl View for Chart {
 
         if plan.radar {
             let body = body_rect(area, self);
+            let (support, layer) = self.graphics(ctx);
+            if self.render_mode_in(ctx) == RenderMode::Graphics {
+                let data = graphics::render_radar_pixels(body.width, body.height, &plan, ctx);
+                if let (Some(data), Some(layer)) = (data, layer) {
+                    tuika::components::Image::new(data, body.width, body.height)
+                        .support(support)
+                        .in_layer(layer)
+                        .render(body, &mut surface.child(body), ctx);
+                    if let Some(plan::Geometry::Radar { labels, .. }) =
+                        plan.marks.first().map(|mark| &mark.geometry)
+                    {
+                        cells::render_radar_labels(body, surface, labels, ctx);
+                    }
+                    return;
+                }
+            }
             for mark in &plan.marks {
                 if let plan::Geometry::Radar { values, labels } = &mark.geometry {
                     cells::render_radar_cells(
@@ -434,11 +451,11 @@ fn draw_line(mut from: (i32, i32), to: (i32, i32), mut draw: impl FnMut(i32, i32
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cells::{draw_quadrant_band, BrailleGrid, QuadrantGrid};
+    use crate::cells::{BrailleGrid, QuadrantGrid, draw_quadrant_band};
     use ratatui_core::buffer::Buffer;
     use tuika::Theme;
 
-    fn is_braille(ch: char) -> bool {
+    pub(super) fn is_braille(ch: char) -> bool {
         ('\u{2801}'..='\u{28ff}').contains(&ch)
     }
 
@@ -654,18 +671,20 @@ mod tests {
                 .iter()
                 .any(|cell| cell.symbol().chars().next().is_some_and(is_braille));
             assert_eq!(has_braille, expected_braille);
-            assert!(buffer
-                .content
-                .iter()
-                .any(|cell| cell
-                    .symbol()
-                    .chars()
-                    .next()
-                    .is_some_and(if expected_braille {
-                        is_braille
-                    } else {
-                        is_quadrant
-                    })));
+            assert!(
+                buffer
+                    .content
+                    .iter()
+                    .any(|cell| cell
+                        .symbol()
+                        .chars()
+                        .next()
+                        .is_some_and(if expected_braille {
+                            is_braille
+                        } else {
+                            is_quadrant
+                        }))
+            );
         }
     }
 
@@ -759,9 +778,10 @@ mod tests {
                 "
 ",
             );
-        assert!(grid
-            .lines()
-            .any(|line| line.chars().filter(|&ch| is_quadrant(ch)).count() >= 5));
+        assert!(
+            grid.lines()
+                .any(|line| line.chars().filter(|&ch| is_quadrant(ch)).count() >= 5)
+        );
     }
 
     #[test]
@@ -1217,7 +1237,7 @@ mod baseline_tests {
 
 #[cfg(test)]
 mod grammar_tests {
-    use super::tests::{axis_column, grid_of, plan_of, render_to};
+    use super::tests::{axis_column, grid_of, is_braille, plan_of, render_to};
     use super::*;
     use crate::plan::Geometry;
     use tuika::Theme;
@@ -1492,6 +1512,9 @@ mod grammar_tests {
             Chart::new()
                 .center("x")
                 .series(Series::donut("a", [Point::new(0.0, 1.0)])),
+            Chart::new()
+                .x_axis(Axis::new().categories(["A", "B", "C"]))
+                .series(Series::radar("profile", at([25.0, 50.0, 75.0]))),
         ];
         for chart in charts {
             for width in 0..=14 {
@@ -1547,8 +1570,27 @@ mod grammar_tests {
 
         assert!(grid.contains("Strength"));
         assert!(grid.contains("Stamina"));
-        assert!(grid.contains('░'));
+        assert!(grid.chars().any(is_braille));
+        assert!(grid.contains('◆'));
         assert!(!grid.contains("No chart data"));
+    }
+
+    #[test]
+    fn radar_uses_graphics_when_the_host_provides_them() {
+        let theme = Theme::default();
+        let layer = ImageLayer::new();
+        let ctx = RenderCtx::new(&theme).with_image_graphics(ImageSupport::Kitty, &layer);
+        let chart = Chart::new()
+            .x_axis(Axis::new().categories(["Reasoning", "Speed", "Memory"]))
+            .series(Series::radar("profile", at([80.0, 65.0, 90.0])));
+
+        let buffer = tuika::testing::render_with_context(&chart, 48, 16, &ctx);
+        let grid = grid_of(&buffer, buffer.area);
+
+        assert_eq!(layer.len(), 1);
+        assert!(grid.contains("Reasoning"));
+        assert!(grid.contains("Speed"));
+        assert!(grid.contains("Memory"));
     }
 
     #[test]

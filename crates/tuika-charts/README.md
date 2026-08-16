@@ -142,7 +142,8 @@ The graphics path rasterizes plot geometry; the title, legend, and axis tick
 labels remain cells, so text stays sharp, theme-consistent, and identical
 between the two paths. The portable path uses 2×2 quadrant
 subcells for connected geometry and area boundaries, 2×4 Braille subcells for
-scatter points, and solid cells for bars.
+scatter points and radar webs, and solid cells for bars. Radar graphics retain
+the same cell-space geometry and add a translucent polygon fill.
 
 Direct/custom hosts can opt into graphics with
 `RenderCtx::with_image_graphics`. Plain `paint` calls use cells by default,

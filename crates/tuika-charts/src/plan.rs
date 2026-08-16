@@ -11,7 +11,7 @@ use ratatui_core::style::Color;
 use tuika::RenderCtx;
 
 use crate::model::{Domain, PlotModel, Point};
-use crate::{chart_color, Chart, SeriesKind};
+use crate::{Chart, SeriesKind, chart_color};
 
 /// How overlapping bar or area series combine.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]

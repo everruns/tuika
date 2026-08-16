@@ -1,10 +1,11 @@
 use ratatui_core::style::Color;
-use tuika::term::image::ImageData;
 use tuika::RenderCtx;
+use tuika::term::image::ImageData;
 
 use crate::axis::AxisLayout;
 use crate::plan::{ChartPlan, Geometry};
-use crate::{draw_line, Chart, Point};
+use crate::radar::RadarLayout;
+use crate::{Chart, Point, draw_line};
 
 const PIXELS_PER_COL: u32 = 8;
 const PIXELS_PER_ROW: u32 = 16;
@@ -143,17 +144,7 @@ pub(super) fn render_pixels(
                     }
                 }
             }
-            Geometry::Radar { values, .. } => {
-                render_radar_pixels(
-                    &mut rgba,
-                    width,
-                    height,
-                    (left as i32, 0, plot_width, plot_height),
-                    values,
-                    color,
-                    axis,
-                );
-            }
+            Geometry::Radar { .. } => {}
             Geometry::Arcs(_) => {}
         }
         if mark.markers {
@@ -165,44 +156,104 @@ pub(super) fn render_pixels(
     ImageData::from_rgba(width, height, rgba)
 }
 
-fn render_radar_pixels(
+pub(super) fn render_radar_pixels(
+    cols: u16,
+    rows: u16,
+    plan: &ChartPlan,
+    ctx: &RenderCtx,
+) -> Option<ImageData> {
+    let width = u32::from(cols).checked_mul(PIXELS_PER_COL)?;
+    let height = u32::from(rows).checked_mul(PIXELS_PER_ROW)?;
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let pixels = usize::try_from(width.checked_mul(height)?).ok()?;
+    let mut rgba = vec![0u8; pixels * 4];
+    let (values, labels) = plan.marks.iter().find_map(|mark| match &mark.geometry {
+        Geometry::Radar { values, labels } => Some((values, labels)),
+        _ => None,
+    })?;
+    if values.len() < 3 {
+        return ImageData::from_rgba(width, height, rgba);
+    }
+    let layout = RadarLayout::new(cols, rows, labels)?;
+    let at = |point: (f64, f64)| {
+        (
+            (point.0 * f64::from(PIXELS_PER_COL)).round() as i32,
+            (point.1 * f64::from(PIXELS_PER_ROW)).round() as i32,
+        )
+    };
+    let center = at(layout.center());
+    let axis = rgb(ctx.theme.dim);
+    for level in 1..=3 {
+        let ring: Vec<_> = (0..values.len())
+            .map(|index| at(layout.point(index, values.len(), level as f64 / 3.0)))
+            .collect();
+        pixel_closed_polyline(&mut rgba, width, height, &ring, axis);
+    }
+    for index in 0..values.len() {
+        pixel_line(
+            &mut rgba,
+            width,
+            height,
+            center,
+            at(layout.point(index, values.len(), 1.0)),
+            axis,
+        );
+    }
+
+    for mark in &plan.marks {
+        let Geometry::Radar { values, .. } = &mark.geometry else {
+            continue;
+        };
+        let color = rgb(mark.color);
+        let data: Vec<_> = values
+            .iter()
+            .enumerate()
+            .map(|(index, value)| {
+                at(layout.point(index, values.len(), (*value / 100.0).clamp(0.0, 1.0)))
+            })
+            .collect();
+        pixel_polygon_alpha(&mut rgba, width, height, &data, color, 52);
+        pixel_closed_polyline(&mut rgba, width, height, &data, color);
+        for point in data {
+            pixel_marker(&mut rgba, width, height, point, color);
+        }
+    }
+    ImageData::from_rgba(width, height, rgba)
+}
+
+fn pixel_polygon_alpha(
     rgba: &mut [u8],
     width: u32,
     height: u32,
-    plot: (i32, i32, u32, u32),
-    values: &[f64],
+    points: &[(i32, i32)],
     color: (u8, u8, u8),
-    axis: (u8, u8, u8),
+    alpha: u8,
 ) {
-    if values.len() < 3 {
+    if points.len() < 3 {
         return;
     }
-    let center = (plot.0 + plot.2 as i32 / 2, plot.1 + plot.3 as i32 / 2);
-    let radius = f64::from(plot.2.min(plot.3)) * 0.39;
-    let radial = |index: usize, scale: f64| {
-        let angle = -std::f64::consts::FRAC_PI_2
-            + std::f64::consts::TAU * index as f64 / values.len() as f64;
-        (
-            center.0 + (radius * scale * angle.cos()).round() as i32,
-            center.1 + (radius * scale * angle.sin()).round() as i32,
-        )
-    };
-    for level in 1..=4 {
-        let ring: Vec<_> = (0..values.len())
-            .map(|index| radial(index, level as f64 / 4.0))
-            .collect();
-        pixel_closed_polyline(rgba, width, height, &ring, axis);
+    let min_y = points.iter().map(|point| point.1).min().unwrap_or(0);
+    let max_y = points.iter().map(|point| point.1).max().unwrap_or(-1);
+    for y in min_y..=max_y {
+        let mut xs = Vec::new();
+        for index in 0..points.len() {
+            let (x1, y1) = points[index];
+            let (x2, y2) = points[(index + 1) % points.len()];
+            if (y1 <= y && y < y2) || (y2 <= y && y < y1) {
+                xs.push(
+                    x1 + ((y - y1) as f64 * (x2 - x1) as f64 / (y2 - y1) as f64).round() as i32,
+                );
+            }
+        }
+        xs.sort_unstable();
+        for pair in xs.chunks_exact(2) {
+            for x in pair[0]..=pair[1] {
+                set_pixel_alpha(rgba, width, height, x, y, color, alpha);
+            }
+        }
     }
-    for index in 0..values.len() {
-        pixel_line(rgba, width, height, center, radial(index, 1.0), axis);
-    }
-    let data: Vec<_> = values
-        .iter()
-        .enumerate()
-        .map(|(index, value)| radial(index, (*value / 100.0).clamp(0.0, 1.0)))
-        .collect();
-    pixel_polygon(rgba, width, height, &data, dim(color));
-    pixel_closed_polyline(rgba, width, height, &data, color);
 }
 
 fn pixel_closed_polyline(
@@ -226,36 +277,6 @@ fn pixel_closed_polyline(
         points[0],
         color,
     );
-}
-
-fn pixel_polygon(
-    rgba: &mut [u8],
-    width: u32,
-    height: u32,
-    points: &[(i32, i32)],
-    color: (u8, u8, u8),
-) {
-    if points.len() < 3 {
-        return;
-    }
-    let min_y = points.iter().map(|point| point.1).min().unwrap_or(0);
-    let max_y = points.iter().map(|point| point.1).max().unwrap_or(-1);
-    for y in min_y..=max_y {
-        let mut xs = Vec::new();
-        for index in 0..points.len() {
-            let (x1, y1) = points[index];
-            let (x2, y2) = points[(index + 1) % points.len()];
-            if (y1 <= y && y < y2) || (y2 <= y && y < y1) {
-                xs.push(
-                    x1 + ((y - y1) as f64 * (x2 - x1) as f64 / (y2 - y1) as f64).round() as i32,
-                );
-            }
-        }
-        xs.sort_unstable();
-        for pair in xs.chunks_exact(2) {
-            pixel_line(rgba, width, height, (pair[0], y), (pair[1], y), color);
-        }
-    }
 }
 
 /// A smooth ring. The cell renderer paints the same arcs in block glyphs; here
@@ -409,4 +430,20 @@ fn set_pixel(rgba: &mut [u8], width: u32, height: u32, x: i32, y: i32, color: (u
     }
     let offset = ((y as u32 * width + x as u32) * 4) as usize;
     rgba[offset..offset + 4].copy_from_slice(&[color.0, color.1, color.2, 255]);
+}
+
+fn set_pixel_alpha(
+    rgba: &mut [u8],
+    width: u32,
+    height: u32,
+    x: i32,
+    y: i32,
+    color: (u8, u8, u8),
+    alpha: u8,
+) {
+    if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
+        return;
+    }
+    let offset = ((y as u32 * width + x as u32) * 4) as usize;
+    rgba[offset..offset + 4].copy_from_slice(&[color.0, color.1, color.2, alpha]);
 }

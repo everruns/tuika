@@ -14,7 +14,7 @@ Accepted.
 
 Charts live in the separately published `tuika-charts` companion, not core.
 The companion exposes one renderer-independent grammar: line, bar, filled-area,
-scatter, stepped-line, and donut series; finite `(x, y)` points; automatic or
+scatter, stepped-line, donut, and radar series; finite `(x, y)` points; automatic or
 explicit domains; series colors; title; legend; numeric or categorical axis tick
 labels; stacking and bar grouping; horizontal orientation; sample markers, value
 labels, and a focused-position readout.
@@ -62,10 +62,13 @@ in a few positions around its mark and dropped when none is clear. The focused
 position is host state rather than chart state, so the chart stays a pure view
 and one mechanism serves a keyboard cursor, a replay, or a fixed annotation.
 
-The donut is the only polar shape in the grammar, and only as a ring with
-optional centre text: a filled pie's wedge boundaries and radial labels both
-degrade badly at cell resolution, while a thick ring does not. Slices are named
-by the legend. Both renderers paint the same arcs.
+The polar grammar is deliberately narrow. A donut is a ring with optional
+centre text; its slices are named by the legend. A radar is a three-ring web of
+categorical spokes with values normalized to `0..=100`. Its portable renderer
+uses fine Braille subcells for the web and data outline plus whole-cell vertices,
+while graphics adds a translucent fill behind the same outline. Spoke labels
+remain cells in both modes and the two paths share one cell-space layout, so a
+capability change cannot move the values away from their labels.
 
 Graphics images are transparent where nothing is drawn rather than filled with
 the theme background, because the terminal composites them over the cell grid:
@@ -113,10 +116,7 @@ lifecycle.
 
 ## Non-goals
 
-Smooth curves, filled pie and radar geometry, gradients, icon marks, grid lines,
+Smooth curves, filled pie geometry, gradients, icon marks, Cartesian grid lines,
 HTML/SVG configuration, and renderer-specific escape hatches are not part of the
-portable grammar. Radar is excluded on the same ground the pie is: diagonal webs
-and around-the-circle labels look right in graphics and wrong in cells, and a
-feature that only survives one renderer is the divergence this contract exists
-to prevent. The rest require a future design that preserves parity rather than
-silently degrading one renderer.
+portable grammar. They require a future design that preserves parity rather
+than silently degrading one renderer.

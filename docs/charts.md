@@ -137,6 +137,29 @@ cells. Slices are named by the legend rather than by radial labels.
 | --- | --- |
 | <img src="charts/donut-cells.png" alt="Cell donut chart" width="560"> | <img src="charts/donut-graphics.png" alt="Graphics donut chart" width="560"> |
 
+### Radar
+
+A radar series maps ordered x-axis categories to spokes and interprets each
+point's y value as a percentage. The cell path uses a fine Braille web and
+outline; graphics adds translucent fill without moving the cell-drawn labels.
+
+| Cells | Graphics |
+| --- | --- |
+| <img src="charts/radar-cells.png" alt="Cell radar chart" width="560"> | <img src="charts/radar-graphics.png" alt="Graphics radar chart" width="560"> |
+
+```rust
+let chart = Chart::new()
+    .x_axis(Axis::new().categories(["Reasoning", "Speed", "Memory"]))
+    .series(Series::radar("profile", [
+        Point::new(0.0, 84.0),
+        Point::new(1.0, 91.0),
+        Point::new(2.0, 72.0),
+    ]));
+```
+
+The `radar` example composes that chart into an interactive local-model picker;
+Up/Down or j/k changes the selected model and redraws its values immediately.
+
 ### Focus readout
 
 `Chart::focus` marks one position with a rule and lists every series' value
@@ -228,7 +251,7 @@ mechanism serves a keyboard cursor, a replayed session, or a fixed annotation.
 The shared grammar deliberately includes only features both paths can preserve:
 
 - finite numeric `(x, y)` points;
-- line, area, bar, scatter, horizontal-then-vertical step, and donut series;
+- line, area, bar, scatter, horizontal-then-vertical step, donut, and radar series;
 - multiple named and colored series;
 - automatic or explicit numeric x/y domains;
 - numeric or categorical axis tick labels, with an optional format hook;
@@ -236,7 +259,7 @@ The shared grammar deliberately includes only features both paths can preserve:
 - sample markers, value labels, and a focused-position readout;
 - an optional title and legend.
 
-Smooth curves, filled pie and radar geometry, gradients, icon marks, HTML/SVG
+Smooth curves, filled pie geometry, gradients, icon marks, HTML/SVG
 marks, and renderer-specific styling are outside this portable model.
 That boundary prevents a chart from silently losing meaning when it moves to a
 terminal with different capabilities.
