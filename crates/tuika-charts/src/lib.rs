@@ -231,7 +231,7 @@ impl View for Chart {
 
         // A ring has no axes to label and no cell/pixel plot rect to share, so
         // it takes the whole body and returns.
-        if plan.radial {
+        if plan.donut {
             let body = body_rect(area, self);
             let (support, layer) = self.graphics(ctx);
             if self.render_mode_in(ctx) == RenderMode::Graphics {
@@ -246,6 +246,23 @@ impl View for Chart {
                 }
             }
             cells::render_donut(body, surface, self, &plan, ctx);
+            return;
+        }
+
+        if plan.radar {
+            let body = body_rect(area, self);
+            for mark in &plan.marks {
+                if let plan::Geometry::Radar { values, labels } = &mark.geometry {
+                    cells::render_radar_cells(
+                        body,
+                        surface,
+                        values,
+                        labels,
+                        Style::default().fg(mark.color),
+                        ctx,
+                    );
+                }
+            }
             return;
         }
 
@@ -417,7 +434,7 @@ fn draw_line(mut from: (i32, i32), to: (i32, i32), mut draw: impl FnMut(i32, i32
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cells::{BrailleGrid, QuadrantGrid, draw_quadrant_band};
+    use crate::cells::{draw_quadrant_band, BrailleGrid, QuadrantGrid};
     use ratatui_core::buffer::Buffer;
     use tuika::Theme;
 
@@ -637,20 +654,18 @@ mod tests {
                 .iter()
                 .any(|cell| cell.symbol().chars().next().is_some_and(is_braille));
             assert_eq!(has_braille, expected_braille);
-            assert!(
-                buffer
-                    .content
-                    .iter()
-                    .any(|cell| cell
-                        .symbol()
-                        .chars()
-                        .next()
-                        .is_some_and(if expected_braille {
-                            is_braille
-                        } else {
-                            is_quadrant
-                        }))
-            );
+            assert!(buffer
+                .content
+                .iter()
+                .any(|cell| cell
+                    .symbol()
+                    .chars()
+                    .next()
+                    .is_some_and(if expected_braille {
+                        is_braille
+                    } else {
+                        is_quadrant
+                    })));
         }
     }
 
@@ -744,10 +759,9 @@ mod tests {
                 "
 ",
             );
-        assert!(
-            grid.lines()
-                .any(|line| line.chars().filter(|&ch| is_quadrant(ch)).count() >= 5)
-        );
+        assert!(grid
+            .lines()
+            .any(|line| line.chars().filter(|&ch| is_quadrant(ch)).count() >= 5));
     }
 
     #[test]
@@ -1206,6 +1220,7 @@ mod grammar_tests {
     use super::tests::{axis_column, grid_of, plan_of, render_to};
     use super::*;
     use crate::plan::Geometry;
+    use tuika::Theme;
 
     fn at(values: [f64; 3]) -> Vec<Point> {
         values
@@ -1436,7 +1451,7 @@ mod grammar_tests {
             .series(Series::donut("desktop", [Point::new(0.0, 55.0)]))
             .series(Series::donut("mobile", [Point::new(0.0, 45.0)]));
         let plan = plan_of(&chart);
-        assert!(plan.radial);
+        assert!(plan.donut);
         let Geometry::Arcs(first) = &plan.marks[0].geometry else {
             panic!("expected arcs");
         };
@@ -1485,5 +1500,64 @@ mod grammar_tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn radar_plan_uses_categories_and_ignores_non_finite_values() {
+        let chart = Chart::new()
+            .x_axis(Axis::new().categories(["A", "B", "C", "D"]))
+            .series(Series::radar(
+                "profile",
+                [
+                    Point::new(0.0, 10.0),
+                    Point::new(1.0, f64::NAN),
+                    Point::new(2.0, 30.0),
+                    Point::new(3.0, 40.0),
+                ],
+            ));
+        let plan = plan_of(&chart);
+
+        assert!(!plan.donut);
+        assert_eq!(plan.marks.len(), 1);
+        match &plan.marks[0].geometry {
+            plan::Geometry::Radar { values, labels } => {
+                assert_eq!(values, &[10.0, 30.0, 40.0]);
+                assert_eq!(labels, &["A", "C", "D"]);
+            }
+            geometry => panic!("expected radar geometry, got {geometry:?}"),
+        }
+    }
+
+    #[test]
+    fn radar_cell_renderer_uses_the_body_and_keeps_labels_visible() {
+        let chart = Chart::new()
+            .title("Attributes")
+            .x_axis(
+                Axis::new().categories(["Strength", "Speed", "Stamina", "Skill", "Focus", "Luck"]),
+            )
+            .series(Series::radar(
+                "profile",
+                [92.0, 55.0, 80.0, 68.0, 71.0, 38.0]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, value)| Point::new(index as f64, value)),
+            ));
+        let (buffer, area) = render_to(&chart, 70, 24);
+        let grid = grid_of(&buffer, area);
+
+        assert!(grid.contains("Strength"));
+        assert!(grid.contains("Stamina"));
+        assert!(grid.contains('░'));
+        assert!(!grid.contains("No chart data"));
+    }
+
+    #[test]
+    fn radar_requires_at_least_three_finite_values() {
+        let chart = Chart::new().series(Series::radar(
+            "profile",
+            [Point::new(0.0, 10.0), Point::new(1.0, 20.0)],
+        ));
+
+        assert!(ChartPlan::new(&chart, &RenderCtx::new(&Theme::default())).is_none());
     }
 }

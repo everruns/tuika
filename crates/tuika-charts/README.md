@@ -150,3 +150,20 @@ which keeps snapshots and tests deterministic.
 
 See the full [chart guide](https://github.com/everruns/tuika/blob/main/docs/charts.md)
 for domains, fallback behavior, and the intentionally portable grammar.
+
+## Radar charts
+
+Radar series interpret each point's `y` value as a percentage (`0..=100`) and
+use x-axis categories as spoke labels:
+
+```rust
+let chart = Chart::new()
+    .x_axis(Axis::new().categories(["Strength", "Speed", "Skill"]))
+    .series(Series::radar(
+        "Profile",
+        [Point::new(0.0, 80.0), Point::new(1.0, 65.0), Point::new(2.0, 90.0)],
+    ));
+```
+
+Run `cargo run -p tuika-charts --example radar` for an interactive profile
+picker whose list selection updates the chart.

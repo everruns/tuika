@@ -28,6 +28,11 @@ pub enum SeriesKind {
     Bar,
     /// Connect points and fill the region down to the zero baseline.
     Area,
+    /// Project values onto categorical axes around a shared center.
+    ///
+    /// The point order defines the axes and each point's `y` coordinate is
+    /// treated as a percentage in the range `0..=100`; `x` is ignored.
+    Radar,
     /// Draw independent point markers without connecting them.
     Scatter,
     /// Connect points with horizontal-then-vertical segments.
@@ -67,6 +72,12 @@ impl Series {
     /// Construct a filled area series.
     pub fn area(name: impl Into<String>, points: impl IntoIterator<Item = Point>) -> Self {
         Self::new(name, SeriesKind::Area, points)
+    }
+
+    /// Construct a radar series. Point order defines the axes and each point's
+    /// `y` coordinate is its value; `x` is ignored.
+    pub fn radar(name: impl Into<String>, points: impl IntoIterator<Item = Point>) -> Self {
+        Self::new(name, SeriesKind::Radar, points)
     }
 
     /// Construct a scatter series.

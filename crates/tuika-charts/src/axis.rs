@@ -90,6 +90,11 @@ impl Axis {
         names.get(index).cloned()
     }
 
+    /// All categorical labels assigned to this axis.
+    pub(crate) fn category_names(&self) -> Option<&[String]> {
+        self.categories.as_deref()
+    }
+
     /// Whether this axis names positions instead of measuring them.
     pub(crate) fn categorical(&self) -> bool {
         self.categories

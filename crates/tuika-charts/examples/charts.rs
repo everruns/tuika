@@ -19,6 +19,7 @@ enum ChartKind {
     Horizontal,
     Donut,
     Focus,
+    Radar,
 }
 
 struct ChartGallery {
@@ -87,6 +88,7 @@ fn chart(kind: ChartKind) -> Chart {
         ChartKind::Horizontal => horizontal_chart(),
         ChartKind::Donut => donut_chart(),
         ChartKind::Focus => focus_chart(),
+        ChartKind::Radar => radar_chart(),
     }
 }
 
@@ -130,6 +132,17 @@ fn donut_chart() -> Chart {
         .series(Series::donut("desktop", [Point::new(0., 55.)]))
         .series(Series::donut("mobile", [Point::new(0., 30.)]))
         .series(Series::donut("other", [Point::new(0., 15.)]))
+}
+
+fn radar_chart() -> Chart {
+    Chart::new()
+        .title("Attributes · radar")
+        .x_axis(Axis::new().categories(["Strength", "Speed", "Stamina", "Skill", "Focus", "Luck"]))
+        .y_axis(Axis::new())
+        .series(Series::radar(
+            "Orion",
+            points(&[92., 55., 80., 68., 71., 38.]),
+        ))
 }
 
 fn focus_chart() -> Chart {
@@ -215,6 +228,7 @@ fn selected_chart() -> Option<ChartKind> {
         "horizontal" => Some(ChartKind::Horizontal),
         "donut" => Some(ChartKind::Donut),
         "focus" => Some(ChartKind::Focus),
+        "radar" => Some(ChartKind::Radar),
         _ => None,
     }
 }

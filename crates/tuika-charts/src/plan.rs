@@ -11,7 +11,7 @@ use ratatui_core::style::Color;
 use tuika::RenderCtx;
 
 use crate::model::{Domain, PlotModel, Point};
-use crate::{Chart, SeriesKind, chart_color};
+use crate::{chart_color, Chart, SeriesKind};
 
 /// How overlapping bar or area series combine.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -57,6 +57,11 @@ pub(crate) enum Geometry {
     Bars { bars: Vec<BarRect>, band: f64 },
     /// Ring segments, as (start, sweep) fractions of a turn.
     Arcs(Vec<Arc>),
+    /// Values and captions arranged around a shared radial center.
+    Radar {
+        values: Vec<f64>,
+        labels: Vec<String>,
+    },
 }
 
 /// One ring segment.
@@ -82,17 +87,24 @@ pub(crate) struct Mark {
 pub(crate) struct ChartPlan {
     pub(crate) marks: Vec<Mark>,
     pub(crate) model: PlotModel,
-    /// True when the chart is a ring rather than a Cartesian plot.
-    pub(crate) radial: bool,
+    /// True when the radial geometry is a donut and needs the ring renderer.
+    pub(crate) donut: bool,
+    /// True when the radial geometry is a radar and needs the web renderer.
+    pub(crate) radar: bool,
 }
 
 impl ChartPlan {
     pub(crate) fn new(chart: &Chart, ctx: &RenderCtx) -> Option<Self> {
-        let radial = chart
+        let donut = chart
             .series
             .iter()
             .any(|series| matches!(series.kind, SeriesKind::Donut));
-        let marks = if radial {
+        let radar = chart
+            .series
+            .iter()
+            .any(|series| matches!(series.kind, SeriesKind::Radar));
+        let radial = donut || radar;
+        let marks = if donut {
             arc_marks(chart, ctx)
         } else {
             cartesian_marks(chart, ctx)
@@ -111,7 +123,8 @@ impl ChartPlan {
         Some(Self {
             marks,
             model,
-            radial,
+            donut,
+            radar,
         })
     }
 }
@@ -194,6 +207,26 @@ fn cartesian_marks(chart: &Chart, ctx: &RenderCtx) -> Vec<Mark> {
                 stepped: true,
             },
             SeriesKind::Scatter => Geometry::Points(samples.clone()),
+            SeriesKind::Radar => {
+                let categories = chart.x_axis.category_names();
+                let (values, labels): (Vec<f64>, Vec<String>) = series
+                    .points
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, point)| point.y.is_finite())
+                    .map(|(index, point)| {
+                        let label = categories
+                            .and_then(|labels| labels.get(index))
+                            .cloned()
+                            .unwrap_or_else(|| (index + 1).to_string());
+                        (point.y, label)
+                    })
+                    .unzip();
+                if values.len() < 3 {
+                    continue;
+                }
+                Geometry::Radar { values, labels }
+            }
             SeriesKind::Donut => continue,
             SeriesKind::Area => {
                 let mut upper = Vec::with_capacity(samples.len());
@@ -365,7 +398,7 @@ impl Geometry {
                     ]
                 }))
             }
-            Geometry::Arcs(_) => Box::new(std::iter::empty()),
+            Geometry::Arcs(_) | Geometry::Radar { .. } => Box::new(std::iter::empty()),
         };
         boxed
     }

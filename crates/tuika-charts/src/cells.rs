@@ -1,11 +1,11 @@
 use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
+use ratatui_core::style::{Color, Style};
 use ratatui_core::symbols::pixel::QUADRANTS;
 use tuika::{RenderCtx, Surface};
 
 use crate::axis::AxisLayout;
 use crate::plan::{ChartPlan, Geometry, Mark};
-use crate::{Chart, PlotModel, Point, chart_color, draw_line, trim_number};
+use crate::{chart_color, draw_line, trim_number, Chart, PlotModel, Point};
 
 pub(super) fn render_cells(
     plot: Rect,
@@ -81,6 +81,9 @@ pub(super) fn render_cells(
                     }
                 }
             }
+            Geometry::Radar { values, labels } => {
+                render_radar_cells(plot, surface, values, labels, style, ctx);
+            }
             Geometry::Arcs(_) => {}
         }
         if mark.markers {
@@ -93,6 +96,174 @@ pub(super) fn render_cells(
         }
     }
     render_overlays(plot, surface, chart, plan, ctx, true);
+}
+
+pub(super) fn render_radar_cells(
+    plot: Rect,
+    surface: &mut Surface,
+    values: &[f64],
+    labels: &[String],
+    style: Style,
+    ctx: &RenderCtx,
+) {
+    if values.len() < 3 || plot.width < 20 || plot.height < 9 {
+        return;
+    }
+    let center = (
+        i32::from(plot.x) + i32::from(plot.width) / 2,
+        i32::from(plot.y) + i32::from(plot.height) / 2,
+    );
+    let label_margin = labels
+        .iter()
+        .map(|label| label.chars().count())
+        .max()
+        .unwrap_or(0)
+        .saturating_add(2)
+        .min(usize::from(plot.width / 3)) as u16;
+    let radius_x =
+        (f64::from(plot.width.saturating_sub(label_margin.saturating_mul(2))) / 2.0).max(2.0);
+    let radius_y = (f64::from(plot.height.saturating_sub(4)) / 2.0).max(2.0);
+    let radial = |index: usize, scale: f64| {
+        let angle = -std::f64::consts::FRAC_PI_2
+            + std::f64::consts::TAU * index as f64 / values.len() as f64;
+        (
+            center.0 + (radius_x * scale * angle.cos()).round() as i32,
+            center.1 + (radius_y * scale * angle.sin()).round() as i32,
+        )
+    };
+
+    // The web is deliberately low contrast so the data silhouette reads first.
+    for level in 1..=4 {
+        let ring: Vec<_> = (0..values.len())
+            .map(|index| radial(index, level as f64 / 4.0))
+            .collect();
+        draw_text_polyline(surface, &closed(&ring), '·', ctx.theme.border);
+    }
+    for index in 0..values.len() {
+        draw_text_polyline(
+            surface,
+            &[center, radial(index, 1.0)],
+            '·',
+            ctx.theme.border,
+        );
+    }
+
+    let data: Vec<_> = values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| radial(index, (*value / 100.0).clamp(0.0, 1.0)))
+        .collect();
+    fill_text_polygon(surface, &data, '░', style.fg.unwrap_or(ctx.theme.accent));
+    draw_text_polyline(
+        surface,
+        &closed(&data),
+        '●',
+        style.fg.unwrap_or(ctx.theme.accent),
+    );
+
+    for (index, label) in labels.iter().take(values.len()).enumerate() {
+        let (anchor_x, anchor_y) = radial(index, 1.08);
+        let width = label.chars().count() as i32;
+        let x = if anchor_x < center.0 {
+            anchor_x - width
+        } else if anchor_x > center.0 {
+            anchor_x + 1
+        } else {
+            anchor_x - width / 2
+        };
+        let y = if anchor_y < center.1 {
+            anchor_y - 1
+        } else if anchor_y > center.1 {
+            anchor_y + 1
+        } else {
+            anchor_y
+        };
+        if x >= i32::from(plot.x)
+            && y >= i32::from(plot.y)
+            && x + width <= i32::from(plot.right())
+            && y < i32::from(plot.bottom())
+        {
+            surface.set_string(
+                x as u16,
+                y as u16,
+                label,
+                Style::default().fg(ctx.theme.text),
+            );
+        }
+    }
+}
+
+fn draw_text_polyline(surface: &mut Surface, points: &[(i32, i32)], glyph: char, color: Color) {
+    for pair in points.windows(2) {
+        draw_text_line(surface, pair[0], pair[1], glyph, color);
+    }
+}
+
+fn draw_text_line(
+    surface: &mut Surface,
+    (mut x0, mut y0): (i32, i32),
+    (x1, y1): (i32, i32),
+    glyph: char,
+    color: Color,
+) {
+    let dx = (x1 - x0).abs();
+    let sx = if x0 < x1 { 1 } else { -1 };
+    let dy = -(y1 - y0).abs();
+    let sy = if y0 < y1 { 1 } else { -1 };
+    let mut error = dx + dy;
+    loop {
+        if x0 >= 0 && y0 >= 0 {
+            surface.set(x0 as u16, y0 as u16, glyph, Style::default().fg(color));
+        }
+        if x0 == x1 && y0 == y1 {
+            break;
+        }
+        let twice_error = error * 2;
+        if twice_error >= dy {
+            error += dy;
+            x0 += sx;
+        }
+        if twice_error <= dx {
+            error += dx;
+            y0 += sy;
+        }
+    }
+}
+
+fn fill_text_polygon(surface: &mut Surface, points: &[(i32, i32)], glyph: char, color: Color) {
+    if points.len() < 3 {
+        return;
+    }
+    let min_y = points.iter().map(|point| point.1).min().unwrap_or(0);
+    let max_y = points.iter().map(|point| point.1).max().unwrap_or(-1);
+    for y in min_y..=max_y {
+        let mut xs = Vec::new();
+        for index in 0..points.len() {
+            let (x1, y1) = points[index];
+            let (x2, y2) = points[(index + 1) % points.len()];
+            if (y1 <= y && y < y2) || (y2 <= y && y < y1) {
+                xs.push(
+                    x1 + ((y - y1) as f64 * (x2 - x1) as f64 / (y2 - y1) as f64).round() as i32,
+                );
+            }
+        }
+        xs.sort_unstable();
+        for pair in xs.chunks_exact(2) {
+            for x in pair[0]..=pair[1] {
+                if x >= 0 && y >= 0 {
+                    surface.set(x as u16, y as u16, glyph, Style::default().fg(color));
+                }
+            }
+        }
+    }
+}
+
+fn closed(points: &[(i32, i32)]) -> Vec<(i32, i32)> {
+    points
+        .iter()
+        .copied()
+        .chain(points.first().copied())
+        .collect()
 }
 
 /// Draw a rule along zero when the value domain straddles it, so negative
