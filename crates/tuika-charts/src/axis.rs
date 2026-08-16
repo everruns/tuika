@@ -12,7 +12,7 @@ use ratatui_core::layout::Rect;
 use tuika::{RenderCtx, Surface};
 
 use crate::Chart;
-use crate::model::{Domain, PlotModel, Point};
+use crate::model::{Domain, PlotModel};
 
 type Formatter = Arc<dyn Fn(f64) -> String>;
 
@@ -34,6 +34,7 @@ pub struct Axis {
     visible: bool,
     ticks: Option<usize>,
     format: Option<Formatter>,
+    categories: Option<Vec<String>>,
 }
 
 impl Axis {
@@ -43,6 +44,7 @@ impl Axis {
             visible: true,
             ticks: None,
             format: None,
+            categories: None,
         }
     }
 
@@ -69,10 +71,44 @@ impl Axis {
         self
     }
 
+    /// Label positions `0, 1, 2, …` with names instead of numbers.
+    ///
+    /// This is what turns a numeric plot into the categorical one most bar and
+    /// area charts actually want: series carry `Point::new(index, value)`, and
+    /// the axis names each index. Ticks land on every category rather than on
+    /// round numbers, and thinning drops whole names rather than truncating
+    /// them, because half a month is not a shorter month.
+    pub fn categories<T: Into<String>>(mut self, names: impl IntoIterator<Item = T>) -> Self {
+        self.categories = Some(names.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// The name this axis gives a position, when it names positions at all.
+    pub(crate) fn category_name(&self, position: f64) -> Option<String> {
+        let names = self.categories.as_ref()?;
+        let index = usize::try_from(position.round() as i64).ok()?;
+        names.get(index).cloned()
+    }
+
+    /// Whether this axis names positions instead of measuring them.
+    pub(crate) fn categorical(&self) -> bool {
+        self.categories
+            .as_ref()
+            .is_some_and(|names| !names.is_empty())
+    }
+
     /// Tick values paired with their rendered labels.
     fn labels(&self, domain: Domain, target: usize) -> Vec<(f64, String)> {
         if !self.visible {
             return Vec::new();
+        }
+        if let Some(names) = self.categories.as_ref().filter(|names| !names.is_empty()) {
+            return names
+                .iter()
+                .enumerate()
+                .map(|(index, name)| (index as f64, name.clone()))
+                .filter(|(value, _)| (domain.min..=domain.max).contains(value))
+                .collect();
         }
         let target = self.ticks.unwrap_or(target).clamp(1, 12);
         let step = nice_step(domain.max - domain.min, target);
@@ -105,6 +141,7 @@ impl fmt::Debug for Axis {
             .field("visible", &self.visible)
             .field("ticks", &self.ticks)
             .field("format", &self.format.is_some())
+            .field("categories", &self.categories)
             .finish()
     }
 }
@@ -160,6 +197,17 @@ fn default_label(value: f64, step: f64) -> String {
     format!("{value:.decimals$}")
 }
 
+/// The axes as the screen uses them: the one along the bottom, then the one up
+/// the side. Horizontal orientation swaps which configured axis plays each
+/// role, so every consumer below can stay in screen terms.
+pub(crate) fn screen_axes(chart: &Chart) -> (&Axis, &Axis) {
+    if chart.horizontal {
+        (&chart.y_axis, &chart.x_axis)
+    } else {
+        (&chart.x_axis, &chart.y_axis)
+    }
+}
+
 /// A tick resolved to a screen position.
 pub(crate) struct Tick {
     pub(crate) value: f64,
@@ -206,9 +254,11 @@ impl AxisLayout {
         if rows < 3 {
             return layout;
         }
-        layout.labelled_bottom = chart.x_axis.visible;
+        let (across_axis, up_axis) = screen_axes(chart);
+        layout.labelled_bottom = across_axis.visible;
+        let (_, up_domain) = model.axes();
         let target = usize::from(rows / 2).clamp(2, 6);
-        let labels = chart.y_axis.labels(model.y, target);
+        let labels = up_axis.labels(up_domain, target);
         let width = labels
             .iter()
             .map(|(_, label)| label.chars().count())
@@ -236,9 +286,7 @@ impl AxisLayout {
         self.y = std::mem::take(&mut self.y_labels)
             .into_iter()
             .filter_map(|(value, label)| {
-                let row = model
-                    .map(Point::new(model.x.min, value), data_width, data_height)
-                    .1;
+                let row = model.map(model.up_at(value), data_width, data_height).1;
                 let row = plot.y.checked_add(u16::try_from(row).ok()?)?;
                 let len = u16::try_from(label.chars().count()).ok()?;
                 let start = plot.x.checked_sub(len + 1)?;
@@ -257,15 +305,15 @@ impl AxisLayout {
         // Thin left to right: a label that would touch the previous one is
         // dropped, so a narrow plot degrades to fewer labels, never to a
         // smear of overlapping ones.
+        let (across_axis, _) = screen_axes(chart);
+        let (across_domain, _) = model.axes();
         let target = usize::try_from(data_width / 10).unwrap_or(2).clamp(2, 8);
         let mut next = area.x;
-        for (value, label) in chart.x_axis.labels(model.x, target) {
+        for (value, label) in across_axis.labels(across_domain, target) {
             let Ok(len) = u16::try_from(label.chars().count()) else {
                 continue;
             };
-            let column = model
-                .map(Point::new(value, model.y.min), data_width, data_height)
-                .0;
+            let column = model.map(model.across_at(value), data_width, data_height).0;
             let Some(centre) = u16::try_from(column).ok().map(|c| plot.x + 1 + c) else {
                 continue;
             };
