@@ -52,6 +52,15 @@ described in the release process begins with the entry below.
   the graphics path's internal margins, so a graphics plot now covers the same
   data cells its portable counterpart does.
 
+### Fixed
+
+- **Charts**: automatic y domains reach the zero baseline whenever a chart
+  carries a bar or area series. These marks encode their value in the filled
+  span, so a domain starting at the data minimum drew a bar of 1 beside a bar
+  of 5 as a sliver beside a full column — a ratio the data never contained.
+  Line, step, and scatter series are read as positions and keep the tighter
+  domain that resolves their variation; `Chart::y_domain` still overrides both.
+
 ## [0.9.0] - 2026-08-15
 
 Released alongside `tuika-charts` 0.1.0 — its first release — plus

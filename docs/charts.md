@@ -166,6 +166,13 @@ let chart = Chart::new()
     ]));
 ```
 
+Automatic y domains reach the zero baseline whenever a chart carries a bar or
+area series. Those marks encode their value in the filled span, so a domain
+starting at the data minimum would show a bar of 1 beside a bar of 5 as a
+sliver beside a full column. Line, step, and scatter series are read as
+positions instead, and keep the tighter domain that resolves their variation.
+Set `y_domain` to override either choice.
+
 Non-finite points are ignored. A chart with no finite data renders `No chart
 data`. Explicit domains are used verbatim and therefore control clipping
 directly.

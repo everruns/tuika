@@ -140,7 +140,10 @@ impl PlotModel {
             let domain = padded_domain(xmin, xmax);
             pad_automatic_bar_domain(chart, domain)
         });
-        let y = chart.y_domain.unwrap_or_else(|| padded_domain(ymin, ymax));
+        let y = chart.y_domain.unwrap_or_else(|| {
+            let domain = padded_domain(ymin, ymax);
+            include_baseline(chart, domain)
+        });
         Some(Self { x, y })
     }
 
@@ -154,6 +157,32 @@ impl PlotModel {
         let y = (height.saturating_sub(1) as f64 - normalized_y * height.saturating_sub(1) as f64)
             .round() as i32;
         (x, y)
+    }
+}
+
+/// Extend an automatic y domain to the zero baseline when the chart draws
+/// geometry that is read as a distance from it.
+///
+/// A bar or an area encodes its value in the filled span, not in the position
+/// of its tip. Starting the domain at the data minimum makes a bar of 1 beside
+/// a bar of 5 a sliver beside a full column, which states a ratio the data does
+/// not contain. Lines, steps, and scatter marks are read as positions, so they
+/// keep the tighter domain that resolves their variation.
+///
+/// Explicit domains are untouched: they remain exact clipping bounds.
+fn include_baseline(chart: &Chart, domain: Domain) -> Domain {
+    let baselined = chart
+        .series
+        .iter()
+        .any(|series| matches!(series.kind, SeriesKind::Bar | SeriesKind::Area));
+    if !baselined {
+        return domain;
+    }
+    let (min, max) = (domain.min.min(0.0), domain.max.max(0.0));
+    if min < max && min.is_finite() && max.is_finite() {
+        Domain { min, max }
+    } else {
+        domain
     }
 }
 

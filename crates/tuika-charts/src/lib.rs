@@ -890,3 +890,144 @@ mod axis_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod baseline_tests {
+    use super::*;
+
+    fn domain_of(chart: &Chart) -> Domain {
+        PlotModel::new(chart).unwrap().y
+    }
+
+    fn points(values: [f64; 3]) -> [Point; 3] {
+        [
+            Point::new(0.0, values[0]),
+            Point::new(1.0, values[1]),
+            Point::new(2.0, values[2]),
+        ]
+    }
+
+    #[test]
+    fn bars_and_areas_reach_the_zero_baseline() {
+        for series in [
+            Series::bar("bars", points([1.0, 4.0, 5.0])),
+            Series::area("area", points([1.0, 4.0, 5.0])),
+        ] {
+            let domain = domain_of(&Chart::new().series(series));
+            assert_eq!(domain, Domain { min: 0.0, max: 5.0 });
+        }
+    }
+
+    #[test]
+    fn positional_series_keep_the_tighter_domain() {
+        for series in [
+            Series::line("line", points([12.0, 18.0, 16.0])),
+            Series::step("step", points([12.0, 18.0, 16.0])),
+            Series::scatter("scatter", points([12.0, 18.0, 16.0])),
+        ] {
+            let domain = domain_of(&Chart::new().series(series));
+            assert_eq!(
+                domain,
+                Domain {
+                    min: 12.0,
+                    max: 18.0
+                },
+                "a positional series should not be flattened toward zero"
+            );
+        }
+    }
+
+    #[test]
+    fn one_baselined_series_anchors_the_whole_chart() {
+        // The shared domain has to satisfy the bar, or the bar would lie.
+        let chart = Chart::new()
+            .series(Series::line("line", points([12.0, 18.0, 16.0])))
+            .series(Series::bar("bars", points([2.0, 5.0, 3.0])));
+        assert_eq!(
+            domain_of(&chart),
+            Domain {
+                min: 0.0,
+                max: 18.0
+            }
+        );
+    }
+
+    #[test]
+    fn negative_values_extend_to_zero_from_the_other_side() {
+        let chart = Chart::new().series(Series::bar("debt", points([-5.0, -2.0, -1.0])));
+        assert_eq!(
+            domain_of(&chart),
+            Domain {
+                min: -5.0,
+                max: 0.0
+            }
+        );
+
+        let straddling = Chart::new().series(Series::bar("delta", points([-3.0, 2.0, 4.0])));
+        assert_eq!(
+            domain_of(&straddling),
+            Domain {
+                min: -3.0,
+                max: 4.0
+            },
+            "a domain already containing zero is unchanged"
+        );
+    }
+
+    #[test]
+    fn a_constant_bar_series_still_gets_a_usable_domain() {
+        let chart = Chart::new().series(Series::bar("flat", points([4.0, 4.0, 4.0])));
+        let domain = domain_of(&chart);
+        assert_eq!(domain.min, 0.0);
+        assert!(domain.max > 4.0, "the bar must not touch the top edge");
+
+        let zeroed = Chart::new().series(Series::bar("zero", points([0.0, 0.0, 0.0])));
+        let domain = domain_of(&zeroed);
+        assert!(domain.min < domain.max, "a degenerate domain stays valid");
+    }
+
+    #[test]
+    fn an_explicit_domain_is_never_widened() {
+        let chart = Chart::new()
+            .series(Series::bar("bars", points([12.0, 18.0, 16.0])))
+            .y_domain(Domain::new(10.0, 20.0).unwrap());
+        assert_eq!(
+            domain_of(&chart),
+            Domain {
+                min: 10.0,
+                max: 20.0
+            }
+        );
+    }
+
+    #[test]
+    fn bars_render_proportional_heights_from_the_baseline() {
+        let area = Rect::new(0, 0, 30, 12);
+        let mut buffer = ratatui_core::buffer::Buffer::empty(area);
+        Chart::new()
+            .legend(false)
+            .series(Series::bar("bars", points([1.0, 2.0, 4.0])))
+            .render(
+                area,
+                &mut Surface::new(&mut buffer, area),
+                &RenderCtx::new(&tuika::Theme::default()),
+            );
+
+        // Column heights must grow with the values, and the smallest bar must
+        // still be drawn rather than collapse onto the axis.
+        let heights: Vec<usize> = (0..area.width)
+            .map(|x| {
+                (0..area.height)
+                    .filter(|&y| buffer[(x, y)].symbol() == "█")
+                    .count()
+            })
+            .filter(|&count| count > 0)
+            .collect();
+        assert_eq!(heights.len(), 3, "one column per bar: {heights:?}");
+        assert!(heights[0] >= 2, "the smallest bar is visible: {heights:?}");
+        assert!(
+            heights[0] < heights[1] && heights[1] < heights[2],
+            "{heights:?}"
+        );
+    }
+}

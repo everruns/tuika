@@ -51,6 +51,12 @@ restores the unlabelled geometry for sparklines and dense dashboards.
 Non-finite points are ignored; no finite data renders a stable empty state.
 Automatic x domains containing bars extend by half the smallest finite bar
 interval on each side, keeping centered edge bars inside either renderer.
+Automatic y domains extend to the zero baseline whenever the chart carries a
+bar or area series, because those encode their value in the filled span rather
+than the position of the tip: a domain starting at the data minimum would draw
+a bar of 1 beside a bar of 5 as a sliver beside a full column, stating a ratio
+the data does not contain. Line, step, and scatter series are read as positions
+and keep the tighter domain that resolves their variation.
 Explicit domains remain exact clipping bounds.
 
 
