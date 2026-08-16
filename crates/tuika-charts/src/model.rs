@@ -1,6 +1,7 @@
 use ratatui_core::style::Color;
 
 use crate::Chart;
+use crate::plan::Mark;
 
 /// A numeric point in chart coordinates.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -31,6 +32,8 @@ pub enum SeriesKind {
     Scatter,
     /// Connect points with horizontal-then-vertical segments.
     Step,
+    /// A ring segment sized by the series' total, drawn as part of a donut.
+    Donut,
 }
 
 /// One named data series.
@@ -44,6 +47,10 @@ pub struct Series {
     pub points: Vec<Point>,
     /// Explicit series color. The chart palette supplies one when absent.
     pub color: Option<Color>,
+    /// Draw a glyph at every sample, not just the connecting geometry.
+    pub markers: bool,
+    /// Print each sample's value beside its mark.
+    pub labelled: bool,
 }
 
 impl Series {
@@ -72,6 +79,11 @@ impl Series {
         Self::new(name, SeriesKind::Step, points)
     }
 
+    /// Construct a donut segment. Its share of the ring is its total.
+    pub fn donut(name: impl Into<String>, points: impl IntoIterator<Item = Point>) -> Self {
+        Self::new(name, SeriesKind::Donut, points)
+    }
+
     fn new(
         name: impl Into<String>,
         kind: SeriesKind,
@@ -82,12 +94,28 @@ impl Series {
             kind,
             points: points.into_iter().collect(),
             color: None,
+            markers: false,
+            labelled: false,
         }
     }
 
     /// Override the palette color.
     pub fn color(mut self, color: Color) -> Self {
         self.color = Some(color);
+        self
+    }
+
+    /// Mark every sample, so individual readings stay visible on a line that
+    /// would otherwise only show a trend.
+    pub fn markers(mut self) -> Self {
+        self.markers = true;
+        self
+    }
+
+    /// Print each sample's value beside its mark. Labels that would overlap one
+    /// already placed, or leave the plot, are dropped.
+    pub fn labels(mut self) -> Self {
+        self.labelled = true;
         self
     }
 }
@@ -110,77 +138,87 @@ impl Domain {
 
 #[derive(Clone, Copy)]
 pub(crate) struct PlotModel {
+    /// The category domain in vertical orientation, the value domain otherwise.
     pub(crate) x: Domain,
     pub(crate) y: Domain,
+    pub(crate) horizontal: bool,
 }
 
 impl PlotModel {
-    pub(crate) fn new(chart: &Chart) -> Option<Self> {
-        let points = chart
-            .series
-            .iter()
-            .flat_map(|series| series.points.iter())
-            .filter(|point| point.x.is_finite() && point.y.is_finite());
-        let (mut xmin, mut xmax, mut ymin, mut ymax) = (
-            f64::INFINITY,
-            f64::NEG_INFINITY,
-            f64::INFINITY,
-            f64::NEG_INFINITY,
-        );
-        for point in points {
-            xmin = xmin.min(point.x);
-            xmax = xmax.max(point.x);
-            ymin = ymin.min(point.y);
-            ymax = ymax.max(point.y);
-        }
-        if !xmin.is_finite() {
-            return None;
-        }
-        let x = chart.x_domain.unwrap_or_else(|| {
-            let domain = padded_domain(xmin, xmax);
-            pad_automatic_bar_domain(chart, domain)
-        });
-        let y = chart.y_domain.unwrap_or_else(|| padded_domain(ymin, ymax));
-        Some(Self { x, y })
+    /// Size the plot around resolved geometry rather than raw points, so
+    /// stacked totals and bar widths are inside the domain by construction.
+    pub(crate) fn new(chart: &Chart, marks: &[Mark]) -> Option<Self> {
+        let (x, y) = crate::plan::extents(marks)?;
+        Some(Self {
+            x: chart
+                .x_domain
+                .unwrap_or_else(|| padded_domain(x.min, x.max)),
+            y: chart
+                .y_domain
+                .unwrap_or_else(|| padded_domain(y.min, y.max)),
+            horizontal: chart.horizontal,
+        })
     }
 
+    /// A placeholder domain for charts that are not plotted against axes.
+    pub(crate) fn unit() -> Self {
+        Self {
+            x: Domain { min: 0.0, max: 1.0 },
+            y: Domain { min: 0.0, max: 1.0 },
+            horizontal: false,
+        }
+    }
+
+    /// Map a data point to a cell or pixel offset inside a `width × height`
+    /// plot, with the origin at the bottom left.
+    ///
+    /// In horizontal orientation the two axes exchange roles: `x` carries the
+    /// value and `y` the category, so one mapping serves both orientations and
+    /// no caller has to branch.
     pub(crate) fn map(&self, point: Point, width: u32, height: u32) -> (i32, i32) {
+        let (across, up) = if self.horizontal {
+            (point.y, point.x)
+        } else {
+            (point.x, point.y)
+        };
+        let (across_domain, up_domain) = self.axes();
         // Clamp before converting to integer coordinates. Besides defining the
         // public clipping behavior, this bounds line work for extreme finite
         // input values against a small explicit domain.
-        let normalized_x = ((point.x - self.x.min) / (self.x.max - self.x.min)).clamp(0.0, 1.0);
-        let normalized_y = ((point.y - self.y.min) / (self.y.max - self.y.min)).clamp(0.0, 1.0);
+        let normalized_x = ((across - across_domain.min) / (across_domain.max - across_domain.min))
+            .clamp(0.0, 1.0);
+        let normalized_y = ((up - up_domain.min) / (up_domain.max - up_domain.min)).clamp(0.0, 1.0);
         let x = (normalized_x * width.saturating_sub(1) as f64).round() as i32;
         let y = (height.saturating_sub(1) as f64 - normalized_y * height.saturating_sub(1) as f64)
             .round() as i32;
         (x, y)
     }
-}
 
-fn pad_automatic_bar_domain(chart: &Chart, domain: Domain) -> Domain {
-    let mut positions = chart
-        .series
-        .iter()
-        .filter(|series| matches!(series.kind, SeriesKind::Bar))
-        .flat_map(|series| series.points.iter())
-        .filter(|point| point.x.is_finite() && point.y.is_finite())
-        .map(|point| point.x)
-        .collect::<Vec<_>>();
-    positions.sort_by(f64::total_cmp);
-    positions.dedup();
-    let spacing = positions
-        .windows(2)
-        .map(|pair| pair[1] - pair[0])
-        .filter(|spacing| spacing.is_finite() && *spacing > 0.0)
-        .min_by(f64::total_cmp);
-    let Some(pad) = spacing.map(|spacing| spacing / 2.0) else {
-        return domain;
-    };
-    let (min, max) = (domain.min - pad, domain.max + pad);
-    if min.is_finite() && max.is_finite() {
-        Domain { min, max }
-    } else {
-        domain
+    /// The domains as the screen uses them: horizontal first, then vertical.
+    pub(crate) fn axes(&self) -> (Domain, Domain) {
+        if self.horizontal {
+            (self.y, self.x)
+        } else {
+            (self.x, self.y)
+        }
+    }
+
+    /// A point that maps to `value` on the screen's vertical axis.
+    pub(crate) fn up_at(&self, value: f64) -> Point {
+        if self.horizontal {
+            Point::new(value, self.y.min)
+        } else {
+            Point::new(self.x.min, value)
+        }
+    }
+
+    /// A point that maps to `value` on the screen's horizontal axis.
+    pub(crate) fn across_at(&self, value: f64) -> Point {
+        if self.horizontal {
+            Point::new(self.x.min, value)
+        } else {
+            Point::new(value, self.y.min)
+        }
     }
 }
 

@@ -5,7 +5,7 @@ use std::io;
 
 use tuika::prelude::*;
 use tuika::testing::{grid, render};
-use tuika_charts::{Chart, Point, Series};
+use tuika_charts::{Axis, Chart, Point, Series, Stack};
 
 #[derive(Clone, Copy)]
 enum ChartKind {
@@ -14,6 +14,11 @@ enum ChartKind {
     Bar,
     Scatter,
     Step,
+    Grouped,
+    Stacked,
+    Horizontal,
+    Donut,
+    Focus,
 }
 
 struct ChartGallery {
@@ -60,6 +65,12 @@ fn gallery_view(isolated: Option<ChartKind>) -> Element {
                     grow(1) { node(deploy_chart()) }
                 }
             }
+            grow(1) {
+                row {
+                    grow(1) { node(grouped_chart()) }
+                    grow(1) { node(horizontal_chart()) }
+                }
+            }
         }
     }
 }
@@ -71,7 +82,63 @@ fn chart(kind: ChartKind) -> Chart {
         ChartKind::Bar => errors_chart(),
         ChartKind::Scatter => latency_chart(),
         ChartKind::Step => deploy_chart(),
+        ChartKind::Grouped => grouped_chart(),
+        ChartKind::Stacked => stacked_chart(),
+        ChartKind::Horizontal => horizontal_chart(),
+        ChartKind::Donut => donut_chart(),
+        ChartKind::Focus => focus_chart(),
     }
+}
+
+const MONTHS: [&str; 6] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+const DESKTOP: &[f64] = &[18., 30., 23., 27., 20., 34.];
+const MOBILE: &[f64] = &[12., 20., 15., 17., 14., 22.];
+
+fn months() -> Axis {
+    Axis::new().categories(MONTHS)
+}
+
+fn grouped_chart() -> Chart {
+    Chart::new()
+        .title("Visits · grouped bars")
+        .x_axis(months())
+        .series(Series::bar("desktop", points(DESKTOP)))
+        .series(Series::bar("mobile", points(MOBILE)))
+}
+
+fn stacked_chart() -> Chart {
+    Chart::new()
+        .title("Visits · stacked")
+        .x_axis(months())
+        .stack(Stack::Normal)
+        .series(Series::area("desktop", points(DESKTOP)))
+        .series(Series::area("mobile", points(MOBILE)))
+}
+
+fn horizontal_chart() -> Chart {
+    Chart::new()
+        .title("Browsers · horizontal")
+        .horizontal()
+        .x_axis(Axis::new().categories(["Chrome", "Safari", "Firefox", "Edge", "Other"]))
+        .series(Series::bar("share", points(&[42., 26., 15., 10., 7.])).labels())
+}
+
+fn donut_chart() -> Chart {
+    Chart::new()
+        .title("Traffic · donut")
+        .center("1.2k")
+        .series(Series::donut("desktop", [Point::new(0., 55.)]))
+        .series(Series::donut("mobile", [Point::new(0., 30.)]))
+        .series(Series::donut("other", [Point::new(0., 15.)]))
+}
+
+fn focus_chart() -> Chart {
+    Chart::new()
+        .title("Visits · focus readout")
+        .x_axis(months())
+        .focus(3.0)
+        .series(Series::line("desktop", points(DESKTOP)).markers())
+        .series(Series::line("mobile", points(MOBILE)).markers())
 }
 
 fn line_chart() -> Chart {
@@ -105,6 +172,7 @@ fn errors_chart() -> Chart {
 fn latency_chart() -> Chart {
     Chart::new()
         .title("Latency · scatter")
+        .y_axis(Axis::new().format(|value| format!("{value:.0}ms")))
         .series(Series::scatter(
             "p95",
             [
@@ -142,6 +210,11 @@ fn selected_chart() -> Option<ChartKind> {
         "bar" => Some(ChartKind::Bar),
         "scatter" => Some(ChartKind::Scatter),
         "step" => Some(ChartKind::Step),
+        "grouped" => Some(ChartKind::Grouped),
+        "stacked" => Some(ChartKind::Stacked),
+        "horizontal" => Some(ChartKind::Horizontal),
+        "donut" => Some(ChartKind::Donut),
+        "focus" => Some(ChartKind::Focus),
         _ => None,
     }
 }
@@ -153,7 +226,7 @@ fn main() -> io::Result<()> {
     if std::env::args().any(|arg| arg == "--dump") {
         println!(
             "{}",
-            grid(&render(gallery_view(isolated).as_ref(), 96, 28, &theme))
+            grid(&render(gallery_view(isolated).as_ref(), 96, 42, &theme))
         );
         return Ok(());
     }

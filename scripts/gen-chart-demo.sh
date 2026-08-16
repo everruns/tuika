@@ -77,7 +77,7 @@ EOF_TAPE
 
 kinds=("$@")
 if [[ ${#kinds[@]} -eq 0 ]]; then
-  kinds=(line area bar scatter step)
+  kinds=(line area bar scatter step grouped stacked horizontal donut focus)
 fi
 
 for kind in "${kinds[@]}"; do

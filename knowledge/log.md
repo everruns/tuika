@@ -1,5 +1,36 @@
 # Knowledge Log
 
+## 2026-08-16
+
+- **A chart's geometry is resolved once, before either renderer runs**
+  - Stacking, bar group slotting, percent scaling, and category placement all
+    turn series into shapes. Deciding them inside the renderers would mean two
+    implementations of every rule, and two chances for the cell and graphics
+    paths to state different things about the same data.
+  - Domains are sized from the resolved geometry rather than from raw points,
+    which is why bars and areas reach the zero baseline without a separate rule:
+    each carries its baseline as its own low edge. It is also why a bar position
+    keeps the whole band it owns, so an edge bar keeps its gutter.
+
+- **Chrome and annotations yield to data, and never sit on top of it**
+  - An unlabelled plot states a shape without stating a scale, so both axes are
+    labelled by default. When space runs short the labels go, not the plot: the
+    y gutter is dropped whole rather than taking half the width, and colliding
+    x labels are thinned left to right.
+  - A value label annotates a reading and may never cover one. Each is tried in
+    a few positions around its mark and dropped when none is clear; losing a
+    label is a smaller loss than obscuring the value it describes.
+
+- **What the adaptive contract excludes is as load-bearing as what it carries**
+  - The donut is the only polar shape in the grammar, and only as a ring with
+    centre text. Filled pie wedges and radar webs look right in graphics and
+    wrong in cells, and a feature surviving only one renderer is exactly the
+    divergence the contract exists to prevent.
+  - Graphics images are transparent where nothing is drawn. The terminal
+    composites them over the cell grid, so an opaque background would hide the
+    cell-drawn text beneath — which is what lets value labels and a donut's
+    centre text stay cells in graphics mode, as tick labels already do.
+
 ## 2026-08-15
 
 - **Native terminal links own the default mouse path**

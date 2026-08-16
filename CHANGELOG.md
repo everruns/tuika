@@ -25,6 +25,13 @@ described in the release process begins with the entry below.
 - **Virtualization**: `VirtualWindow::keeping` is the edge-following policy as a
   pure function of the caller's current start; `SelectViewportState::resolve`
   now uses it, so the persistent and stateless paths share one implementation.
+- **Charts**: both axes carry tick labels, so a chart states its scale instead
+  of leaving the reader to guess it. Ticks land on round values (a power of ten
+  times 1, 2, 2.5, or 5) and label precision follows the tick step.
+  `Axis::format` replaces the numeric formatter, `Axis::ticks` targets a tick
+  count, and `Axis::hidden` opts an axis out. Labels are drawn as cells in
+  **both** render modes — the graphics image covers the plot only — so the same
+  numbers land in the same cells whether or not the terminal has graphics.
 
 ### Changed
 
@@ -37,6 +44,34 @@ described in the release process begins with the entry below.
 - `MarkdownState::links` preserves labeled and bare hyperlink targets across
   incremental updates, settled-prefix caching, wrapping, and resize, so hosts
   drawing streaming lines can apply native OSC 8 links without re-parsing.
+- **Charts**: `Axis::categories` names positions instead of measuring them,
+  which is what most bar and area charts actually want. `Chart::stack` combines
+  bar and area series — `Stack::Normal` sums them, `Stack::Percent` scales every
+  position to 100 — while unstacked bar series split their category band into
+  slots and sit side by side. `Chart::horizontal` swaps the axes so a category
+  gets a whole row of width for its name. `Series::markers` and `Series::labels`
+  annotate samples, `Chart::focus` marks one position and lists every series'
+  value there, and `Series::donut` with `Chart::center` draws a ring. A rule is
+  drawn along zero whenever the value domain straddles it.
+- **Breaking:** chart axis labels are on by default, so a chart that previously
+  filled its whole area now gives a few columns to the y-axis gutter.
+  `Chart::x_axis` and `Chart::y_axis` with `Axis::hidden` restore the old
+  geometry exactly; the x labels reuse the margin row the plot already reserved
+  and cost no plot height. Aligning both renderers on one cell grid also removed
+  the graphics path's internal margins, so a graphics plot now covers the same
+  data cells its portable counterpart does.
+
+### Fixed
+
+- **Charts**: graphics-mode plots are transparent where nothing is drawn rather
+  than filled with the theme background, so cell-drawn text — value labels, a
+  donut's centre text — is no longer hidden by the image composited over it.
+- **Charts**: automatic y domains reach the zero baseline whenever a chart
+  carries a bar or area series. These marks encode their value in the filled
+  span, so a domain starting at the data minimum drew a bar of 1 beside a bar
+  of 5 as a sliver beside a full column — a ratio the data never contained.
+  Line, step, and scatter series are read as positions and keep the tighter
+  domain that resolves their variation; `Chart::y_domain` still overrides both.
 
 ## [0.9.0] - 2026-08-15
 
