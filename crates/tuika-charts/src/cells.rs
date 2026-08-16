@@ -306,17 +306,15 @@ pub(super) fn render_center(body: Rect, surface: &mut Surface, chart: &Chart, ct
 /// columns read as one wide bar. Dropping the far column keeps the gap the
 /// grouping intended, at the cost of a cell of width no reader can miss.
 fn half_open(x0: i32, x1: i32, y0: i32, y1: i32, horizontal: bool) -> ((i32, i32), (i32, i32)) {
-    let (mut lox, mut hix) = (x0.min(x1), x0.max(x1));
-    let (mut loy, mut hiy) = (y0.min(y1), y0.max(y1));
+    let (lox, mut hix) = (x0.min(x1), x0.max(x1));
+    let (loy, mut hiy) = (y0.min(y1), y0.max(y1));
+    // Shrink across the category axis only: the value direction carries the
+    // reading, and taking a cell off it would understate the bar.
     if horizontal {
-        if hiy > loy {
-            hiy -= 1;
-        }
-    } else if hix > lox {
-        hix -= 1;
+        hiy = hiy.max(loy + 1) - 1;
+    } else {
+        hix = hix.max(lox + 1) - 1;
     }
-    let _ = &mut lox;
-    let _ = &mut loy;
     ((lox, loy), (hix, hiy))
 }
 
