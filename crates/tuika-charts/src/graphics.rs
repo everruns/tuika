@@ -214,7 +214,6 @@ pub(super) fn render_radar_pixels(
                 at(layout.point(index, values.len(), (*value / 100.0).clamp(0.0, 1.0)))
             })
             .collect();
-        pixel_polygon_alpha(&mut rgba, width, height, &data, color, 52);
         pixel_closed_polyline(&mut rgba, width, height, &data, color);
         if mark.markers {
             for point in data {
@@ -223,39 +222,6 @@ pub(super) fn render_radar_pixels(
         }
     }
     ImageData::from_rgba(width, height, rgba)
-}
-
-fn pixel_polygon_alpha(
-    rgba: &mut [u8],
-    width: u32,
-    height: u32,
-    points: &[(i32, i32)],
-    color: (u8, u8, u8),
-    alpha: u8,
-) {
-    if points.len() < 3 {
-        return;
-    }
-    let min_y = points.iter().map(|point| point.1).min().unwrap_or(0);
-    let max_y = points.iter().map(|point| point.1).max().unwrap_or(-1);
-    for y in min_y..=max_y {
-        let mut xs = Vec::new();
-        for index in 0..points.len() {
-            let (x1, y1) = points[index];
-            let (x2, y2) = points[(index + 1) % points.len()];
-            if (y1 <= y && y < y2) || (y2 <= y && y < y1) {
-                xs.push(
-                    x1 + ((y - y1) as f64 * (x2 - x1) as f64 / (y2 - y1) as f64).round() as i32,
-                );
-            }
-        }
-        xs.sort_unstable();
-        for pair in xs.chunks_exact(2) {
-            for x in pair[0]..=pair[1] {
-                set_pixel_alpha(rgba, width, height, x, y, color, alpha);
-            }
-        }
-    }
 }
 
 fn pixel_closed_polyline(
@@ -432,20 +398,4 @@ fn set_pixel(rgba: &mut [u8], width: u32, height: u32, x: i32, y: i32, color: (u
     }
     let offset = ((y as u32 * width + x as u32) * 4) as usize;
     rgba[offset..offset + 4].copy_from_slice(&[color.0, color.1, color.2, 255]);
-}
-
-fn set_pixel_alpha(
-    rgba: &mut [u8],
-    width: u32,
-    height: u32,
-    x: i32,
-    y: i32,
-    color: (u8, u8, u8),
-    alpha: u8,
-) {
-    if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
-        return;
-    }
-    let offset = ((y as u32 * width + x as u32) * 4) as usize;
-    rgba[offset..offset + 4].copy_from_slice(&[color.0, color.1, color.2, alpha]);
 }
