@@ -25,11 +25,12 @@
 //! flows through this same path — there is no separate touch event to model.
 
 use ratatui_core::buffer::Buffer;
-use ratatui_core::layout::Rect;
+use ratatui_core::layout::{Position, Rect};
 use ratatui_core::style::Style;
 use std::time::{Duration, Instant};
 
 use crate::event::{Mouse, MouseButton, MouseKind};
+use crate::view::SelectionSource;
 use crate::{Clock, SystemClock};
 
 /// A normalized text selection in reading order: `start` is at or before `end`
@@ -238,6 +239,29 @@ pub fn word_at(buffer: &Buffer, area: Rect, column: u16, row: u16) -> Option<Sel
 /// row, joined with `\n`. Trailing blanks on each row are trimmed. Wide glyphs
 /// come back once (their trailing spacer cell is empty in the buffer).
 pub fn selected_text(buffer: &Buffer, area: Rect, sel: SelectionRange) -> String {
+    selected_text_from_sources(buffer, area, sel, &[])
+}
+
+pub(crate) fn selected_text_from_sources(
+    buffer: &Buffer,
+    area: Rect,
+    sel: SelectionRange,
+    sources: &[SelectionSource],
+) -> String {
+    if let Some(source) = sources.iter().rev().find(|source| {
+        source
+            .area
+            .contains(Position::new(sel.start.0, sel.start.1))
+            && source.area.contains(Position::new(sel.end.0, sel.end.1))
+            && source_matches_selection(buffer, area, sel, &source.text)
+    }) && let Some(text) = extract_source_selection(buffer, area, sel, &source.text)
+    {
+        return text;
+    }
+    selected_grid_text(buffer, area, sel)
+}
+
+fn selected_grid_text(buffer: &Buffer, area: Rect, sel: SelectionRange) -> String {
     let mut out = String::new();
     let mut first = true;
     for row in sel.start.1..=sel.end.1 {
@@ -255,6 +279,35 @@ pub fn selected_text(buffer: &Buffer, area: Rect, sel: SelectionRange) -> String
         out.push_str(line.trim_end_matches(' '));
     }
     out
+}
+
+fn source_matches_selection(
+    buffer: &Buffer,
+    area: Rect,
+    sel: SelectionRange,
+    source: &str,
+) -> bool {
+    selected_grid_text(buffer, area, sel)
+        .lines()
+        .filter(|line| !line.is_empty())
+        .all(|line| source.contains(line.trim()))
+}
+
+fn extract_source_selection(
+    buffer: &Buffer,
+    area: Rect,
+    sel: SelectionRange,
+    source: &str,
+) -> Option<String> {
+    let selected = selected_grid_text(buffer, area, sel);
+    let first = selected.lines().next()?.trim_start();
+    let last = selected.lines().last()?.trim_end();
+    if first.is_empty() || last.is_empty() {
+        return None;
+    }
+    let start = source.find(first)?;
+    let end = source[start..].find(last)? + start + last.len();
+    Some(source[start..end].to_string())
 }
 
 /// Paint `style` over the selected cells of `buffer` (patching, so glyphs and
@@ -495,6 +548,109 @@ mod tests {
     }
     fn up(col: u16, row: u16) -> Mouse {
         Mouse::at(MouseKind::Up(MouseButton::Left), col, row)
+    }
+
+    fn buffer_with_rows(rows: &[&str]) -> Buffer {
+        let width = rows
+            .iter()
+            .map(|row| row.chars().count())
+            .max()
+            .unwrap_or(0) as u16;
+        let area = Rect::new(0, 0, width, rows.len() as u16);
+        let mut buffer = Buffer::empty(area);
+        for (y, row) in rows.iter().enumerate() {
+            buffer.set_string(0, y as u16, *row, Style::default());
+        }
+        buffer
+    }
+
+    #[test]
+    fn source_aware_copy_omits_soft_wraps() {
+        let buffer = buffer_with_rows(&["hello", "world"]);
+        let selection = SelectionRange::between((0, 0), (4, 1));
+
+        assert_eq!(
+            selected_text_from_sources(
+                &buffer,
+                buffer.area,
+                selection,
+                &[SelectionSource {
+                    area: buffer.area,
+                    text: "helloworld".to_string()
+                }],
+            ),
+            "helloworld",
+        );
+    }
+
+    #[test]
+    fn source_aware_copy_preserves_explicit_newlines() {
+        let buffer = buffer_with_rows(&["hello", "world"]);
+        let selection = SelectionRange::between((0, 0), (4, 1));
+
+        assert_eq!(
+            selected_text_from_sources(
+                &buffer,
+                buffer.area,
+                selection,
+                &[SelectionSource {
+                    area: buffer.area,
+                    text: "hello\nworld".to_string()
+                }],
+            ),
+            "hello\nworld",
+        );
+    }
+
+    #[test]
+    fn source_aware_copy_handles_unicode_and_clipped_endpoints() {
+        let buffer = buffer_with_rows(&["pha α", "β omega"]);
+        let selection = SelectionRange::between((0, 0), (0, 1));
+
+        assert_eq!(
+            selected_text_from_sources(
+                &buffer,
+                buffer.area,
+                selection,
+                &[SelectionSource {
+                    area: buffer.area,
+                    text: "alpha αβ omega".to_string()
+                }],
+            ),
+            "pha αβ",
+        );
+    }
+
+    #[test]
+    fn source_area_disambiguates_identical_rendered_text() {
+        let buffer = buffer_with_rows(&["hello", "world", "hello", "world"]);
+        let selection = SelectionRange::between((0, 2), (4, 3));
+        let sources = [
+            SelectionSource {
+                area: Rect::new(0, 0, 5, 2),
+                text: "hello\nworld".to_string(),
+            },
+            SelectionSource {
+                area: Rect::new(0, 2, 5, 2),
+                text: "helloworld".to_string(),
+            },
+        ];
+
+        assert_eq!(
+            selected_text_from_sources(&buffer, buffer.area, selection, &sources),
+            "helloworld",
+        );
+    }
+
+    #[test]
+    fn copy_falls_back_to_visual_rows_without_source_metadata() {
+        let buffer = buffer_with_rows(&["hello", "world"]);
+        let selection = SelectionRange::between((0, 0), (4, 1));
+
+        assert_eq!(
+            selected_text(&buffer, buffer.area, selection),
+            "hello\nworld"
+        );
     }
 
     #[test]
