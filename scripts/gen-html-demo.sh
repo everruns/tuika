@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Record the tuika-html examples beside their sources: the markdown seam
+# Record the tuika-html examples beside their sources: the markdown boundary
 # (`html_markdown`) and the standalone `Html` component (`html_view`).
 #
 # Requirements: vhs (https://github.com/charmbracelet/vhs), which needs ttyd
@@ -57,7 +57,7 @@ EOF
   echo "Wrote ${output} ($(du -h "${output}" | cut -f1))."
 }
 
-# The seam: HTML blocks inside a markdown document.
+# The boundary: HTML blocks inside a markdown document.
 record html_markdown 1000 "crates/tuika-html/examples/html_markdown/html.png"
 # The component: a whole HTML fragment as the screen.
 record html_view 1560 "crates/tuika-html/examples/html_view/html_view.png"

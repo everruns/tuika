@@ -68,7 +68,7 @@ Actions:
 - confirm `ratatui` is still only a **dev**-dependency; under `[dependencies]` it
   means the umbrella crept back in
 - treat a `ratatui-core` major bump as an interoperability event, not a routine
-  upgrade: it changes the `Buffer` type on the public seam, so hosts must move in
+  upgrade: it changes the `Buffer` type on the public boundary, so hosts must move in
   lockstep. It is a breaking release for tuika
 - check `pulldown-cmark`, `textwrap`, `unicode-*` minors; verify
   `pulldown-cmark` still builds with default features off
@@ -146,7 +146,7 @@ On a deep pass, also scan for and collapse over-abstraction:
 
 - **Single-use abstractions** — traits with one impl, a wrapper type that only
   forwards, a generic with one instantiation, a builder for a two-field struct.
-  Inline them unless the seam is load-bearing (a real second impl, a public
+  Inline them unless the boundary is load-bearing (a real second impl, a public
   extension point, a test double that earns its keep).
 - **Premature generalization** — code shaped for hypothetical futures instead of
   current needs. Delete the unused flexibility; the git history keeps it.

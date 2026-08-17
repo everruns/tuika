@@ -2,7 +2,7 @@
 //! [`tuika::components::Markdown`].
 //!
 //! [`MermaidRenderer`] adapts mmdflux's Unicode text output to tuika's generic
-//! [`MarkdownBlockRenderer`] seam. It
+//! [`MarkdownBlockRenderer`] boundary. It
 //! handles `mermaid` fences and returns `None` for every other language or for
 //! Mermaid input mmdflux cannot render, preserving tuika's ordinary code-block
 //! fallback.

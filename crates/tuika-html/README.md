@@ -9,7 +9,7 @@ crate exists separately.
 
 ## In Markdown
 
-`HtmlRenderer` implements tuika's `MarkdownBlockRenderer` seam. One value
+`HtmlRenderer` implements tuika's `MarkdownBlockRenderer` boundary. One value
 handles raw `<details>` / `<table>` / `<div>` blocks and ` ```html ` fences,
 using the same active stylesheet for both.
 
@@ -24,7 +24,7 @@ let document = Markdown::new("<details><summary>Notes</summary>Body</details>")
 ```
 
 Below, the `<details>`, the `<ul>` inside it, and the `<table>` are all raw HTML
-in a markdown document — laid out by the seam, beside markdown the renderer
+in a markdown document — laid out by the boundary, beside markdown the renderer
 never sees:
 
 <img src="examples/html_markdown/html.png" width="880" alt="HTML blocks rendered inside tuika Markdown: a details summary with a bullet list, a box-drawn table, and a quoted line with Unicode subscript and superscript">
