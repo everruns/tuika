@@ -1,4 +1,4 @@
-//! The image seam: resolving `![alt](url)` to pixels, and sizing it in cells.
+//! The image boundary: resolving `![alt](url)` to pixels, and sizing it in cells.
 //!
 //! Markdown carries only a URL, and decoding it is the host's job (see
 //! [`ImageResolver`]), so this module owns the boundary between the two: what a

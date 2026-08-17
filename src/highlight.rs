@@ -1,4 +1,4 @@
-//! The [`Highlighter`] seam — how a host plugs syntax highlighting into
+//! The [`Highlighter`] boundary — how a host plugs syntax highlighting into
 //! [`CodeBlock`](crate::components::CodeBlock) and
 //! [`Markdown`](crate::components::Markdown) without tuika taking on any grammar
 //! dependency.

@@ -165,7 +165,7 @@ Four places, so you can guess where something is:
 
 | Path | Holds |
 | --- | --- |
-| `tuika::` | the framework spine — `View`, `view_fn`, `Element`, `ScopedElement`, `RenderCtx`, layout, events, `Theme`, `Surface`, the host seam |
+| `tuika::` | the framework spine — `View`, `view_fn`, `Element`, `ScopedElement`, `RenderCtx`, layout, events, `Theme`, `Surface`, the host boundary |
 | `tuika::components` | every widget: `Flex`, `Boxed`, `Text`, `Scroll`, `Markdown`, `Table`, … |
 | `tuika::term` | everything out-of-band: `clipboard` (OSC 52), `hyperlink` (OSC 8), `progress` (OSC 9;4), `pointer` (OSC 22), `image`, `capabilities`, `palette` (the terminal's own colors) |
 | `tuika::prelude` | the spine and the components in one glob import |
@@ -442,7 +442,7 @@ before the last stable block boundary, so long transcripts don't re-tokenize and
 settled code blocks aren't re-highlighted every frame. Its `links()` metadata
 keeps OSC 8 targets aligned with the cached lines through streaming and resize.
 
-Highlighting is a seam, not a dependency: `tuika` owns the *presentation* of code
+Highlighting is a boundary, not a dependency: `tuika` owns the *presentation* of code
 (framing, background, language label, wrapping) via `CodeBlock`, and takes token
 colors from any `Highlighter` you supply — keeping the toolkit free of grammar
 crates. The companion crate
@@ -451,7 +451,7 @@ ready-made tree-sitter `Highlighter`.
 
 Structured blocks can replace their source with a different, width-aware
 presentation through `MarkdownBlockRenderer`. The
-[`tuika-mermaid`](crates/tuika-mermaid/) companion uses that seam with mmdflux:
+[`tuika-mermaid`](crates/tuika-mermaid/) companion uses that boundary with mmdflux:
 a `mermaid` fence becomes a Unicode cell diagram inside the surrounding
 Markdown, with no browser, SVG, or image protocol. Unsupported or invalid input
 falls back to the ordinary code block.
@@ -479,7 +479,7 @@ Images use the same host-extension pattern: supply an `ImageResolver` and
 Markdown in the wild carries HTML. The presentational inline tags — `<b>`,
 `<em>`, `<code>`, `<kbd>`, `<mark>`, `<a>`, `<br>`, `<sub>`/`<sup>` — render in
 tuika itself, each through the same `StyleSheet` role as the markdown it
-mirrors. Block-level HTML is a seam, for the same reason highlighting is: an
+mirrors. Block-level HTML is a boundary, for the same reason highlighting is: an
 HTML parser is a dependency tuika will not carry. Attach a
 `MarkdownBlockRenderer` and `<details>`, `<table>`, and `<div>` lay out too. The
 same ordered renderer chain handles fenced diagrams and block HTML with one
@@ -761,7 +761,7 @@ closure form over an owned `Element` tree. The
 that directly borrows a `String` from its application.
 
 `Runner::with_clock` replaces the default `SystemClock` when a replayable host
-or deterministic test owns monotonic time. The same `Clock` seam drives
+or deterministic test owns monotonic time. The same `Clock` boundary drives
 `SelectionState::handle_with_clock`, so double-click timing never has to depend
 on wall-clock sleeps. Frame animation, keymap timeouts, and toast expiry remain
 explicitly host-driven and therefore need no internal clock.
@@ -779,7 +779,7 @@ network or disk I/O — and lets its update closure `.await`. It ties
 single event loop. Its update closure returns the same
 `UpdateResult::{Clean, Consumed, Dirty, Exit}` as `Runner`, so awaited work only
 rebuilds and repaints when it actually changes visible state. `AsyncApplication`
-is its `Application` twin — the same borrowed-view seam, with an awaiting
+is its `Application` twin — the same borrowed-view boundary, with an awaiting
 `update` — and `&mut app` is a `FrameSource` for it just as it is for `Runner`.
 
 `run_with_messages` adds a typed host stream beside terminal events and ticks.
@@ -831,7 +831,7 @@ none show the alt text, so the same view tree renders everywhere.
 <img src="https://raw.githubusercontent.com/everruns/tuika/v0.9.0/docs/demos/image.svg" width="880" alt="Two terminal windows side by side: on a Kitty/Ghostty/WezTerm/Konsole terminal an Image view renders a red/green gradient in place; on every other terminal the same view shows a dimmed italic '[image: a red/green gradient]' placeholder.">
 
 Decoding stays in the host — a heavy dependency, kept out like the highlighter
-seam — so you hand in raw RGBA via `ImageData::from_rgba` and `tuika` owns the
+boundary — so you hand in raw RGBA via `ImageData::from_rgba` and `tuika` owns the
 protocol encoding (base64, PNG, and Sixel encoders are inline, so no image-codec
 dependency). `Runner` detects the terminal protocol, collects placements, and
 emits pixels after each cell frame.
@@ -851,7 +851,7 @@ emit and clear the layer after flushing the cell frame.
 
 Markdown `![alt](url)` renders too, in both the one-shot `Markdown` view and the
 streaming `MarkdownState`: attach a host `ImageResolver` (URL → `ImageData`, the
-same seam as the highlighter) and resolved images become real pixels — a
+same boundary as the highlighter) and resolved images become real pixels — a
 link-styled placeholder for the rest, never a dropped URL.
 
 To check support across every terminal feature in one place — `graphics`,
@@ -972,7 +972,7 @@ something on tuika? Open a PR adding it here.
   `ratatui` dependency, not by tuika) and compose through
   [`Surface::render_ratatui`](https://docs.rs/tuika/latest/tuika/surface/struct.Surface.html#method.render_ratatui)
   and [`RatatuiView`](https://docs.rs/tuika/latest/tuika/interop/struct.RatatuiView.html),
-  whose seam is a raw `ratatui-core` `Buffer`.
+  whose boundary is a raw `ratatui-core` `Buffer`.
 
 ## Extending
 
@@ -1006,7 +1006,7 @@ The separately published companion crates live in this repository:
 - [`tuika-mermaid`](crates/tuika-mermaid/) renders Mermaid fences as Unicode
   terminal diagrams through mmdflux.
 - [`tuika-html`](crates/tuika-html/) lays out block-level HTML with html5ever —
-  inside Markdown through the `MarkdownBlockRenderer` seam, or standalone
+  inside Markdown through the `MarkdownBlockRenderer` boundary, or standalone
   through its own [`Html`](https://github.com/everruns/tuika/blob/v0.9.0/docs/components/markdown-code.md#html) component.
 
 All four keep specialized rendering and heavier parsers or grammars out of

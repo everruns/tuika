@@ -95,7 +95,7 @@ let several panes in one screen share focus and the mouse.
 
 ![tree list demo](https://raw.githubusercontent.com/everruns/tuika/v0.9.0/docs/demos/tree_list.gif)
 
-- **Runner**: one `FrameSource` seam and one `Signal` replace ten `run*` methods
+- **Runner**: one `FrameSource` boundary and one `Signal` replace ten `run*` methods
   across the two runtimes; the synchronous loop is now drivable from a
   caller-owned terminal, so a whole application can be tested with no tty.
 
@@ -115,7 +115,7 @@ let several panes in one screen share focus and the mouse.
   loop could not be exercised at all, and only its pieces (`RunnerCore`, the
   clock, selection) had coverage. Seven end-to-end tests now cover the initial
   frame, event-driven state, clean updates neither rebuilding nor repainting,
-  the borrowed application seam, redraw requests, deferred resize repaints, and
+  the borrowed application boundary, redraw requests, deferred resize repaints, and
   split-footer publishing.
 - `SelectViewportState` couples index selection to a persistent top row for
   `SelectList` and `Table`. Its resolved `VirtualWindow` is shared with mouse
@@ -130,11 +130,11 @@ let several panes in one screen share focus and the mouse.
 - `AsyncRunner::run_with_messages` delivers a typed application stream beside
   terminal events and ticks, with deterministic completion/error/redraw/exit
   behavior and no shared mutable state or polling.
-- `AsyncApplication` is the borrowed-view application seam for the async runner,
+- `AsyncApplication` is the borrowed-view application boundary for the async runner,
   the counterpart to `Application`: previously a frame could borrow application
   state only on the synchronous runner, so a Tokio host had to clone into an
   owned tree or share through `Rc<RefCell<_>>`.
-- `FrameSource` / `AsyncFrameSource` is the single seam every run method now
+- `FrameSource` / `AsyncFrameSource` is the single boundary every run method now
   takes, with exactly two implementors: `&mut app` for an `Application`, and
   `from_fn(&mut state, view, update)` (`async_from_fn` for the async runner) for
   the closure form. `no_messages()` is the empty application-message stream.
@@ -185,7 +185,7 @@ let several panes in one screen share focus and the mouse.
 
 ### Changed
 
-**Breaking: the runner's `run*` surface is one seam plus two axes.** The methods
+**Breaking: the runner's `run*` surface is one boundary plus two axes.** The methods
 were a cross product of frame source, runtime, terminal ownership, and extra
 input, encoded as names — ten of them on `AsyncRunner` — with arbitrary holes in
 the product. The frame source is now a `FrameSource` argument rather than a
@@ -299,7 +299,7 @@ filtering, and streaming updates.
 ## [0.7.0] - 2026-07-31
 
 Released alongside `tuika-html` 0.1.0, the new companion crate behind the
-block-HTML seam, plus `tuika-codeformatters` 0.4.0 and `tuika-mermaid` 0.2.0.
+block-HTML boundary, plus `tuika-codeformatters` 0.4.0 and `tuika-mermaid` 0.2.0.
 The existing companions adopt tuika 0.7's breaking view-measurement API and
 update their tuika dependency requirement in the same release.
 
@@ -312,7 +312,7 @@ coherent framework for complex terminal applications without retained UI state.
 ![primitives demo](https://raw.githubusercontent.com/everruns/tuika/v0.7.0/docs/demos/primitives.gif)
 
 **Rich HTML in Markdown.** Presentational inline HTML now shares Markdown's
-styles, while the new parser-free `HtmlBlockRenderer` seam lets `tuika-html`
+styles, while the new parser-free `HtmlBlockRenderer` boundary lets `tuika-html`
 render styled block HTML without adding a parser to tuika core.
 
 ![markdown HTML demo](https://raw.githubusercontent.com/everruns/tuika/v0.7.0/docs/demos/markdown_html.png)
@@ -334,7 +334,7 @@ render styled block HTML without adding a parser to tuika core.
 - `render_once` / `write_once` for ANSI-styled ordinary output, and `view!`
   `when(...)` / `for(... in ...)` composition.
 
-- `Clock` and `SystemClock` provide one monotonic time seam.
+- `Clock` and `SystemClock` provide one monotonic time boundary.
   `SelectionState::handle_with_clock` makes double-click gestures deterministic,
   and `Runner::with_clock` lets replayable synchronous hosts own tick time;
   existing `handle` and `Runner::new` behavior remains system-clock backed.
@@ -353,7 +353,7 @@ render styled block HTML without adding a parser to tuika core.
   `OverlaySpec::resolve_target` resolves it directly and
   `SceneOverlay::target` follows a `RectProbe` from the scene root in the same
   frame. Screen-anchored placement remains unchanged.
-- `StyleRole` and `StyleResolver` form an open semantic styling seam for hosts
+- `StyleRole` and `StyleResolver` form an open semantic styling boundary for hosts
   and companion crates. `RenderCtx::style` resolves built-in or namespaced
   application roles, resolver bundles partially overlay stylesheet defaults,
   and resolver revisions invalidate measurement caches. `paint_with_context`
@@ -371,7 +371,7 @@ render styled block HTML without adding a parser to tuika core.
   parser: this is a fixed tag whitelist, so anything outside it — block-level
   HTML, `<script>`, unlisted attributes — is dropped as before, and never echoed
   as literal markup.
-- **One structured markdown block seam.** `MarkdownBlockRenderer` receives a
+- **One structured markdown block boundary.** `MarkdownBlockRenderer` receives a
   non-exhaustive `MarkdownBlock` descriptor (`Fenced` or `Html`) and a shared
   `MarkdownBlockContext` containing width, theme, and the active stylesheet.
   `Markdown::block_renderer` and `MarkdownState::with_block_renderer` append to
@@ -484,7 +484,7 @@ render styled block HTML without adding a parser to tuika core.
   from the component gallery, the markdown guide, and `Markdown`'s rustdoc.
 - `tuika-html` gains an example and a recording for the `Html` *component*
   (`cargo run -p tuika-html --example html_view`); the existing example covers
-  the markdown seam. `<sub>`/`<sup>` now transliterate there too, so one
+  the markdown boundary. `<sub>`/`<sup>` now transliterate there too, so one
   document cannot render `H₂O` through markdown and `H2O` through the crate,
   and `<dd>` hangs directly under its `<dt>` instead of a blank line below.
 - `Table` now windows rows to its assigned render height by default.
@@ -571,7 +571,7 @@ preference:
 
 | Path | Holds |
 | --- | --- |
-| `tuika::` | the framework spine — `View`, `Element`, `RenderCtx`, layout, events, `Theme`, `Surface`, the host seam |
+| `tuika::` | the framework spine — `View`, `Element`, `RenderCtx`, layout, events, `Theme`, `Surface`, the host boundary |
 | `tuika::components` | every widget |
 | `tuika::term` | everything out-of-band: `clipboard`, `hyperlink`, `progress`, `pointer`, `image`, `capabilities`, `palette` |
 | `tuika::prelude` | the spine and the components in one glob import |
@@ -635,7 +635,7 @@ without tuika taking on a diagram engine.
 
 ![mermaid demo](https://raw.githubusercontent.com/everruns/tuika/v0.5.0/crates/tuika-mermaid/examples/mermaid_markdown/mermaid.gif)
 
-- **New**: `components::markdown::FencedBlockRenderer` — the seam, plus
+- **New**: `components::markdown::FencedBlockRenderer` — the boundary, plus
   `Markdown::block_renderer`, `MarkdownState::with_block_renderer`, and
   `markdown::{to_lines_with_renderer, to_linked_lines_with_renderer}`.
 - **New crate**: [`tuika-mermaid`](https://crates.io/crates/tuika-mermaid) —
@@ -644,7 +644,7 @@ without tuika taking on a diagram engine.
 
 **Long transcripts scroll by item, not by line.** `ItemScroll` scrolls a list of
 laid-out elements — the shape a chat log or an agent transcript actually has —
-and the text input grew the seams a composer needs.
+and the text input grew the boundaries a composer needs.
 
 - **New**: `components::ItemScroll` — item-granular scrolling with `windowed`
   construction, `gap`, `scrollbar`, and `measure_height`.
@@ -678,7 +678,7 @@ carry.
   in the module list.
   - Before: `tuika::async_runner::{AsyncRunner, Signal}`
   - After: `tuika::runner::{Runner, RunnerConfig, AsyncRunner, Signal}`
-- **Ratatui interop is named for the seam, not for its only type.**
+- **Ratatui interop is named for the boundary, not for its only type.**
   - Before: `tuika::ratatui_view::RatatuiView`
   - After: `tuika::interop::RatatuiView`
 
@@ -688,7 +688,7 @@ carry.
   - Before: `osc52`, `write_clipboard`, `osc8`, `osc8_with`, `encode_pointer_shape`, `write_pointer_shape`
   - After: `term::clipboard::{encode, write}`, `term::hyperlink::{encode, encode_with}`, `term::pointer::{encode, write}`
 - **`tuika::highlight` was a module and a function at once.** The module is the
-  `Highlighter` seam; the function paints a selection.
+  `Highlighter` boundary; the function paints a selection.
   - Before: `tuika::highlight(buffer, area, range, style)`
   - After: `tuika::mouse::paint_selection(buffer, area, range, style)`
 - **Hand-prefixed names get their module back.** The prefixes existed only to
@@ -767,7 +767,7 @@ styling extras) are no longer flattened to `tuika::`. Reach them through
 * test: pin the public module layout from outside the crate (`tests/public_api.rs`)
 * docs: add `knowledge/specs/api-surface.md` and a crate-layout section to the README
 * chore(knowledge): split out process concepts and enforce upkeep (#5)
-* feat(components): add `ItemScroll` and the composer token seams, plus the `codex` example
+* feat(components): add `ItemScroll` and the composer token boundaries, plus the `codex` example
 * docs: record the showcases at gallery pixel density and point yolop at its product page
 * fix(docs): stop the demo recordings clipping their own scenes
 * docs: add a showcases page with yolop and LLMSim demos (#3)

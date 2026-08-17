@@ -38,7 +38,7 @@
 //! | `flatten` | pass two — `MdItem`s to width-fitted `Line`s: wrapping, indentation, hyperlink runs |
 //! | `table` | table layout, called from `flatten`; big enough to drown the rest of pass two |
 //! | `stream` | [`MarkdownState`] and the settled-prefix cache that makes streaming O(delta) |
-//! | `image` | the [`ImageResolver`] seam and cell sizing for block images |
+//! | `image` | the [`ImageResolver`] boundary and cell sizing for block images |
 //! | `view` | the [`Markdown`] view over either entry point |
 //!
 //! The submodules are private: `components::markdown` is the one path in, and

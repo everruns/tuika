@@ -24,7 +24,7 @@ fn inline_view_is_available_from_the_framework_surface() {
 }
 
 #[test]
-fn semantic_style_resolver_is_a_public_host_seam() {
+fn semantic_style_resolver_is_a_public_host_boundary() {
     const APP_STATUS: StyleRole = StyleRole::new("test.app-status");
 
     struct Styles;
@@ -416,7 +416,7 @@ fn the_former_root_collisions_resolve() {
     use ratatui_core::style::{Color, Style};
     use tuika::mouse::{SelectionRange, paint_selection};
 
-    // `tuika::highlight` is the Highlighter seam, and nothing else.
+    // `tuika::highlight` is the Highlighter boundary, and nothing else.
     let _: &dyn tuika::highlight::Highlighter = &PlainHighlighter;
 
     // Painting a selection is a mouse concern, and says so.

@@ -39,7 +39,7 @@ use demo_scenes::*;
 ///
 /// The examples deliberately avoid a grammar dependency (that would drag
 /// tree-sitter into tuika's dev/MSRV builds); this shows how little it takes to
-/// satisfy the [`Highlighter`] seam. For production-grade highlighting across
+/// satisfy the [`Highlighter`] boundary. For production-grade highlighting across
 /// many languages, use the `tuika-codeformatters` crate.
 struct DemoHighlighter;
 

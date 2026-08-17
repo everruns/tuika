@@ -30,7 +30,7 @@ changelog with a before/after migration snippet. A patch release may not.
 **Every `pub` item is public API.** Removing one, renaming one, or changing a
 signature is breaking — including in `tuika::testing`, which hosts use to test
 their own views. A `ratatui-core` major bump is also breaking, because the
-`Buffer` on the interoperability seam is part of the contract.
+`Buffer` on the interoperability boundary is part of the contract.
 
 ## Release Targets
 

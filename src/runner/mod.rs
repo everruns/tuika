@@ -23,7 +23,7 @@
 //!
 //! # Choosing a `run` method
 //!
-//! There is one loop and one seam, so the surface is small. Every run method
+//! There is one loop and one boundary, so the surface is small. Every run method
 //! takes a [`FrameSource`] — `&mut app` for an [`Application`], or [`from_fn`]
 //! for the closure form — and the remaining names say only where the terminal
 //! and the input come from:
@@ -237,7 +237,7 @@ pub enum UpdateResult {
 
 /// A data-driven terminal application: what [`Runner::run`] drives.
 ///
-/// [`AsyncApplication`] is the same seam for a host whose `update` awaits;
+/// [`AsyncApplication`] is the same boundary for a host whose `update` awaits;
 /// the split exists because only the runtime differs, not the contract.
 ///
 /// The runner mutably borrows the application only while delivering a
@@ -261,10 +261,10 @@ pub trait Application<M = Infallible> {
 
 /// What a run loop pulls frames and update decisions from.
 ///
-/// This is the runner's single seam, and the reason there is no separate `run`
+/// This is the runner's single boundary, and the reason there is no separate `run`
 /// method per frame source. Two things implement it:
 ///
-/// - `&mut A` where `A: Application` — the borrowed-view seam. Its `view(&self)`
+/// - `&mut A` where `A: Application` — the borrowed-view boundary. Its `view(&self)`
 ///   may return a tree that borrows the application for the frame.
 /// - [`from_fn`] — a `state` value beside `view`/`update` closures, for a host
 ///   that would rather not name a type.
@@ -303,7 +303,7 @@ pub struct FromFn<'state, S, V, U> {
 
 /// Build a [`FrameSource`] from `state` and closures over it.
 ///
-/// The closure form of the seam. State is a separate argument rather than a
+/// The closure form of the boundary. State is a separate argument rather than a
 /// capture because one closure needs `&state` while the other needs
 /// `&mut state`, and a single closure cannot hold both.
 ///
@@ -1195,7 +1195,7 @@ mod tests {
 
     // ---- End-to-end loop coverage, via `run_driven_by`. ----
     //
-    // Before this seam existed the synchronous loop had no test at all: every
+    // Before this boundary existed the synchronous loop had no test at all: every
     // entry point reached crossterm and a real terminal, so only its pieces
     // (`RunnerCore`, the clock, `RunnerSelection`) could be exercised. These
     // drive the whole thing over a `TestBackend`.
@@ -1329,7 +1329,7 @@ mod tests {
         assert_eq!(views.get(), 1, "only the initial frame was built");
     }
 
-    /// The borrowed seam over the synchronous loop: no clone into an owned tree.
+    /// The borrowed boundary over the synchronous loop: no clone into an owned tree.
     struct Notes {
         title: String,
         hits: Vec<char>,

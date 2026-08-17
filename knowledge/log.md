@@ -79,7 +79,7 @@
 - **A run loop that cannot be driven without a terminal cannot be tested**
   - The synchronous loop had no end-to-end coverage for as long as every entry
     point reached crossterm; only its extracted pieces were testable. Giving it
-    the same caller-owned-terminal seam the async runner already had made the
+    the same caller-owned-terminal boundary the async runner already had made the
     loop itself assertable, and the tests followed immediately.
   - Input is a trait (`EventSource`) rather than a stream on this side, because
     a blocking loop consumes a timeout instead of selecting. An implementation
@@ -87,7 +87,7 @@
 
 ## 2026-08-14
 
-- **One seam, named axes only for what the names must carry**
+- **One boundary, named axes only for what the names must carry**
   - `FrameSource` makes the frame source an argument, and a message type
     parameter on `Signal` makes the message stream a type rather than a method
     name. The `run*` surface collapses to terminal ownership plus the presence
@@ -96,14 +96,14 @@
     callers: existing matches stay exhaustive, so the generalization is a
     compile-time no-op unless a host actually wants messages.
 
-- **The application seam is a runner axis, not a synchronous privilege**
-  - `AsyncApplication` gives the async runner the borrowed-view seam the sync
+- **The application boundary is a runner axis, not a synchronous privilege**
+  - `AsyncApplication` gives the async runner the borrowed-view boundary the sync
     runner already had, and carries its signal type as a parameter so a
-    message-consuming application is the same seam with a different signal
+    message-consuming application is the same boundary with a different signal
     rather than a third trait.
-  - Both frame sources are kept deliberately: the application seam is the more
+  - Both frame sources are kept deliberately: the application boundary is the more
     general in what a frame returns and states render purity in its receiver,
-    while the closure seam's `FnMut` view is the more permissive in what it
+    while the closure boundary's `FnMut` view is the more permissive in what it
     captures. Neither is legacy.
 
 - **A redraw request must reach a parked loop**
@@ -150,7 +150,7 @@
     recognising the shape up front and degrading them to the code block.
   - The shape-recognition guard was scar tissue tied to one upstream release
     window and left with it. The `catch_unwind` around the layout engine did
-    not: it is an unconditional property of the adapter seam, owed to the frame
+    not: it is an unconditional property of the adapter boundary, owed to the frame
     whether or not a reachable panic is known.
   - The regression test inverts with the fix — the same inputs now assert every
     label line lands inside the diamond, so a re-broken upstream is caught by
@@ -508,21 +508,21 @@
   already isolated, so the crate stays a markdown renderer.
 - The markdown non-goal was narrowed rather than deleted. Block-level HTML and
   document layout (DOM, CSS) stay out of core; a host that wants them supplies
-  the parser behind a seam, as `FencedBlockRenderer` already allows for a
+  the parser behind a boundary, as `FencedBlockRenderer` already allows for a
   fenced `html` block.
 - Inline-HTML scopes close at every block end. That is both the sane reading of
   an unclosed tag and what keeps the settled-prefix cache honest — a scope
   outliving a block boundary broke the streamed-equals-one-shot invariant in
   *styles* while the text still matched, which the streaming test now covers.
 
-- **Block HTML renders through a seam, with tuika-html behind it**
+- **Block HTML renders through a boundary, with tuika-html behind it**
 
 - The inline whitelist left `<details>`, `<table>`, and `<div>` blocks dropped,
   which is the majority of the HTML that actually appears in READMEs.
 - `HtmlBlockRenderer` follows `FencedBlockRenderer`'s shape but also carries the
   `StyleSheet`, so an implementation resolves the same roles the surrounding
   markdown does rather than inventing colors. `Renderers` bundles both block
-  seams so the free functions did not grow a second renderer argument each.
+  boundaries so the free functions did not grow a second renderer argument each.
 - `tuika-html` is the implementation: html5ever for the tree, tuika's own
   wrapping and stylesheet for the presentation, plus a standalone `Html` view.
   It is a fourth published crate rather than an optional feature, for the same
@@ -531,7 +531,7 @@
   is half of what the crate does, and a plain-text dump discards all of it. The
   recording is a screenshot, since the scene is settled.
 - **Documentation placement is a rule, not a habit.** HTML landed correctly and
-  was documented by accretion: the block-seam recording sat as an unlabeled hero
+  was documented by accretion: the block-boundary recording sat as an unlabeled hero
   above the crate README's first section, the `Html` component was missing from
   the gallery entirely, and the root README grew code samples and screenshots
   that belong in a guide. Every individual edit looked reasonable; the shape was
@@ -743,7 +743,7 @@
 
 - The component gallery is one entry per component, but markdown's user-facing
   surface is much larger than one entry: streaming, GFM table fitting, the
-  highlighter seam, link policy, and images. The table renderer in particular
+  highlighter boundary, link policy, and images. The table renderer in particular
   had no recording at all, so the feature was documented in prose and ASCII art
   while every other component had a demo.
 - Added `docs/markdown.md` and recorded a `markdown_table` scene. Recorded the
@@ -812,7 +812,7 @@
 
 - **Codegen shifts the instruction-count gate**
 
-- Landing `ItemScroll` and the composer token seams turned the `iai` gate red on
+- Landing `ItemScroll` and the composer token boundaries turned the `iai` gate red on
   `main`: seven of nine benchmarks up 3.7–5.5%, including the markdown ones,
   whose measured path (`markdown.rs`, `text.rs`, `style.rs`, `surface.rs`) was
   byte-identical to the parent commit.
@@ -827,13 +827,13 @@
 
 ## 2026-07-24
 
-- **Element viewports and composer token seams**
+- **Element viewports and composer token boundaries**
 
 - Building a coding-agent TUI as an example (`examples/codex/`) surfaced two
   places where the toolkit forced a host to hand-draw: a transcript could only
   hold pre-wrapped lines, and a composer could only paint one uniform style with
   no notion of the `@`/`/` tokens every such app needs.
-- Closed both as *seams*, not features: `ItemScroll` (a viewport over
+- Closed both as *boundaries*, not features: `ItemScroll` (a viewport over
   `Element`s, scrolled by row) and `Trigger`/`Token`/`TextSpan` (tuika delimits
   tokens and paints host-computed ranges; the meaning of a trigger character
   stays with the application). See [architecture.md](specs/architecture.md).
@@ -849,7 +849,7 @@
   responsive forms, and a closure-backed drawing view. Persistent input and
   control state remains host-owned; the additions are frame descriptions over
   the existing `View`, `Surface`, `OverlaySpec`, `FocusRegistry`, and
-  `ScrollState` seams.
+  `ScrollState` boundaries.
 - Added semantic success/warning/danger/info styles without expanding the
   public `Theme` struct. The roles derive from each theme's existing syntax
   colors, preserving source compatibility for downstream struct literals.

@@ -85,7 +85,7 @@ impl SliderState {
         self.value = value.clamp(self.min, self.max);
     }
 
-    /// Set the value from a `0.0..=1.0` position within the range — the seam a
+    /// Set the value from a `0.0..=1.0` position within the range — the boundary a
     /// host uses to map a click/drag on the track to a value.
     pub fn set_ratio(&mut self, ratio: f32) {
         let r = ratio.clamp(0.0, 1.0);

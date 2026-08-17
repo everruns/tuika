@@ -1,7 +1,7 @@
 ---
 type: Architecture Specification
 title: Rendering Architecture
-description: Defines tuika's view/state/layout/host model and the seams that keep it host-agnostic.
+description: Defines tuika's view/state/layout/host model and the boundaries that keep it host-agnostic.
 ---
 
 # Rendering Architecture
@@ -99,7 +99,7 @@ rather than beside it.
   `OverlaySpec` while rendering. This removes borrowed compositor plumbing
   without adding identity, lifecycle, or hidden persistent state.
 - **Scoped element trees borrow for one frame.** `Element` remains the owned,
-  `'static` box used by retained host seams, while `ScopedElement<'frame>` may
+  `'static` box used by retained host boundaries, while `ScopedElement<'frame>` may
   hold a borrowed view anywhere in the base component tree. Composition
   containers are generic over their child view type and default to `Element`,
   preserving the ordinary owned path without parallel scoped components.
@@ -122,10 +122,10 @@ rather than beside it.
   counterpart `AsyncApplication`) receives signals through `&mut self` and
   builds a `ScopedElement<'_>` through `&self`, so a frame can borrow
   application data without shared interior mutability. The compatible closure
-  seam renders an owned `Element` from `&State` and updates through
-  `&mut State`. Both seams are kept: the application seam is more general in
+  boundary renders an owned `Element` from `&State` and updates through
+  `&mut State`. Both boundaries are kept: the application boundary is more general in
   what a frame may *return* (`Element` is `ScopedElement<'static>`) and states
-  render purity in its receiver, while the closure seam's `FnMut` view is more
+  render purity in its receiver, while the closure boundary's `FnMut` view is more
   permissive in what it may *capture*. Repaint is an explicit dirty result or an
   external redraw request; terminal resize is the exception because layout
   must be repainted even when application state is unchanged. Rendering stays
@@ -148,7 +148,7 @@ rather than beside it.
   an in-memory backend — the same hermetic principle the view layer already had,
   extended to the run loop. The synchronous side gets its input through an
   `EventSource` because it blocks on a timeout rather than selecting on a
-  stream; that trait is the seam a scripted or custom input implements.
+  stream; that trait is the boundary a scripted or custom input implements.
 - **The frame source is an argument, not a method name.** `FrameSource` has two
   implementors — `&mut app` for an `Application`, and `from_fn` over a state
   value and closures — so a run method never has to name which one it takes.
@@ -176,14 +176,14 @@ max-content availability. Its default adapts to the original `measure`, so old
 views remain source-compatible; the non-exhaustive request and availability
 types can gain future measurement inputs without another trait-wide break.
 
-## Why the `ratatui-core` seam, not the umbrella
+## Why the `ratatui-core` boundary, not the umbrella
 
 tuika renders none of ratatui's own widgets, so it depends on `ratatui-core`
 (plus `ratatui-crossterm` for the backend) directly. This drops
 `ratatui-widgets`, `ratatui-macros`, and their transitive weight from every
 downstream build that does not use them.
 
-It costs nothing in interoperability: the interop seam is a raw
+It costs nothing in interoperability: the interop boundary is a raw
 `&mut Buffer` from that same `ratatui-core`. A host bringing the `ratatui`
 umbrella resolves to one shared `ratatui-core`, so `Surface::render_ratatui` and
 `RatatuiView` accept any real ratatui widget without conversion. The
@@ -283,7 +283,7 @@ math prevents CJK and multi-scalar emoji from drifting apart.
 
 Time-sensitive component state never owns an unreplaceable wall clock. Mouse
 double-click detection and the synchronous runner consume the root `Clock`
-seam, defaulting to `SystemClock`; animation frames, toast expiry, and keymap
+boundary, defaulting to `SystemClock`; animation frames, toast expiry, and keymap
 timeouts remain values or ticks explicitly advanced by the host. The async
 runner uses Tokio time, whose paused-time facility is its deterministic clock.
 
@@ -295,7 +295,7 @@ completion source, the popup, the styling, whether confirming runs a command or
 inserts a path — is the application's, and `TextInput::highlights` paints ranges
 the host computed rather than semantics tuika inferred. A toolkit that shipped
 "mentions" and "slash commands" as features would be encoding one host's product
-decisions; declaring the lexical rule and returning the spans is the seam.
+decisions; declaring the lexical rule and returning the spans is the boundary.
 
 `Viewport` follows the same host-state rule as `Scroll`: offsets live in
 `ScrollState`, while the view owns only an ephemeral child and declared content

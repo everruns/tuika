@@ -128,7 +128,7 @@ completion popup opening — therefore reserves the tallest state it needs and
 lays out inside it, which is what `codex --split-footer` does.
 
 Runtime resizing is a real capability (opentui exposes `footerHeight` as a
-setter) and a plausible follow-up, but it needs a seam for recreating the
+setter) and a plausible follow-up, but it needs a boundary for recreating the
 backend that does not exist on ratatui's `Terminal` today (there is no
 `into_backend`). Reserving the maximum is the honest interim: it costs rows, not
 correctness.

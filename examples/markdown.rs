@@ -42,7 +42,7 @@ use tuika::prelude::*;
 use tuika::term::hyperlink::{HyperlinkBackend, LinkPolicy, apply_buffer_links};
 
 /// A tiny self-contained Rust highlighter — enough to satisfy the
-/// [`Highlighter`] seam without a grammar dependency. Real hosts use the
+/// [`Highlighter`] boundary without a grammar dependency. Real hosts use the
 /// `tuika-codeformatters` crate (tree-sitter, many languages).
 struct DemoHighlighter;
 

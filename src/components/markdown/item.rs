@@ -33,7 +33,7 @@ pub(super) enum MdItem {
     /// A raw block-level HTML run, kept verbatim for an
     /// [`MarkdownBlockRenderer`](super::MarkdownBlockRenderer) to lay out at flatten
     /// time. With no renderer attached it renders as nothing, which is what
-    /// markdown did with all HTML before the seam existed.
+    /// markdown did with all HTML before the boundary existed.
     Html { source: String, indent: u16 },
     /// A resolved block image: reserves rows at flatten time and is painted by an
     /// [`Image`](crate::components::Image) overlay in the view (see [`ImageResolver`]).

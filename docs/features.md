@@ -421,7 +421,7 @@ let _image = Image::new(data, 20, 10)      // 20×10 cells on screen
     .alt("a 2×2 swatch");                  // shown where graphics aren't supported
 ```
 
-Custom hosts keep the explicit seam: install `ImageSupport` and an `ImageLayer`
+Custom hosts keep the explicit boundary: install `ImageSupport` and an `ImageLayer`
 with `RenderCtx::with_image_graphics`, call `paint_with_context`, then emit and
 clear the layer after flushing the cell frame.
 
@@ -455,7 +455,7 @@ on a Sixel terminal usually sets `ImageSupport::Sixel` explicitly. See the
 Markdown `![alt](url)` renders too, in both the one-shot `Markdown` view and the
 streaming `MarkdownState`. A host `ImageResolver` decodes each URL to `ImageData`
 (markdown carries only the URL, never pixels, exactly like the code `Highlighter`
-seam); a resolved image reserves a block and is painted with the same `Image`
+boundary); a resolved image reserves a block and is painted with the same `Image`
 machinery — real pixels where supported, alt text otherwise. The view's
 `.images(resolver, support, layer)` overlays them for you; a host driving
 `MarkdownState::lines` reads `MarkdownState::images()` and paints each

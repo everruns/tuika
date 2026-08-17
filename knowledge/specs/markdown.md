@@ -1,7 +1,7 @@
 ---
 type: Product Specification
 title: Markdown rendering
-description: Defines tuika's CommonMark rendering, its streaming form, and the highlighter seam that keeps grammars out of the crate.
+description: Defines tuika's CommonMark rendering, its streaming form, and the highlighter boundary that keeps grammars out of the crate.
 ---
 
 # Markdown rendering
@@ -50,7 +50,7 @@ every width change a full re-parse.
 
 The module's files follow the passes rather than the vocabulary, so a change has
 one obvious home: the intermediate form, the parse pass, the flatten pass, table
-layout, the streaming cache, the image seam, and the view.
+layout, the streaming cache, the image boundary, and the view.
 
 ### The settled-prefix cache
 
@@ -74,7 +74,7 @@ in particular — must therefore be threaded *through* the cache: fixed rows for
 settled blocks, re-derived each frame for the in-flight tail. A frame-local
 computation that only looks at the tail would silently lose the settled part.
 
-### Highlighting is a seam, not a dependency
+### Highlighting is a boundary, not a dependency
 
 tuika owns the presentation of code — frame, a background that fills the
 available width, language label, optional line-number gutter, wrapping — and
@@ -88,7 +88,7 @@ means a host that renders no code pays nothing, and a host that renders code can
 choose its own highlighter. `tuika-codeformatters` is the batteries-included
 answer, published separately for exactly that reason.
 
-### Structured blocks share one parsing seam
+### Structured blocks share one parsing boundary
 
 Syntax highlighting must reconstruct the original source line-for-line, so it
 cannot express a fence whose presentation has a different shape than its source.
@@ -164,7 +164,7 @@ text matched*.
 (`4ᵗh`) depends on which characters a word happens to use, which is a worse
 result than leaving the text alone.
 
-### Block HTML reuses the structured-block seam
+### Block HTML reuses the structured-block boundary
 
 The presentational inline tags need no parser. Block HTML does — a tree builder
 that recovers implied end tags, inserts the `<tbody>` nobody wrote, and survives
@@ -173,7 +173,7 @@ HTML is therefore the second `MarkdownBlock` variant, not a second trait. Its
 renderer receives the raw run through the same context as a fence, including
 the active stylesheet: headings and links resolve the same roles as the
 surrounding markdown. With no renderer attached the block is dropped, which is
-what markdown did with all HTML before the seam existed, so attaching one is
+what markdown did with all HTML before the boundary existed, so attaching one is
 purely additive.
 
 `tuika-html` is that implementation, and it is also where the line inside this
@@ -214,7 +214,7 @@ host that restyles headings restyles them in markdown too. See
 
 - No HTML *document* rendering: no DOM, no CSS, no block-level HTML layout.
   Block HTML (`<div>`, `<details>`, `<table>`) is dropped in core; a host that
-  wants it supplies the parser behind `MarkdownBlockRenderer`, the same seam a
+  wants it supplies the parser behind `MarkdownBlockRenderer`, the same boundary a
   ` ```html ` fence uses.
 - No raw-HTML passthrough: unrecognized markup is never echoed as literal text.
 - No markdown *authoring* or round-tripping — rendering only.
@@ -225,7 +225,7 @@ host that restyles headings restyles them in markdown too. See
 
 - [`docs/markdown.md`](../../docs/markdown.md) — the guide. Markdown carries more
   user-facing surface than one gallery entry holds (streaming, table fitting,
-  the highlighter seam, link policy, images), so it gets a page of its own and
+  the highlighter boundary, link policy, images), so it gets a page of its own and
   [`docs/components/markdown-code.md`](../../docs/components/markdown-code.md)
   keeps only the gallery entry and points here.
 - [`docs/components/markdown-code.md`](../../docs/components/markdown-code.md)

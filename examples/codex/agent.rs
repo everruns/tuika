@@ -456,7 +456,7 @@ fn explain_script() -> Vec<Step> {
              };\n\
              ```\n\n\
              Nothing in it knows about the application embedding it — highlighting, image \
-             decoding, and data fetching are all seams the host fills.\n",
+             decoding, and data fetching are all boundaries the host fills.\n",
         ),
     ]
 }

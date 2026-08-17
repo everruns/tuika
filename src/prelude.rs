@@ -6,7 +6,7 @@
 //!
 //! This is the framework spine re-exported from the crate root, plus every
 //! component and the handful of per-module types an application reaches for
-//! constantly: focus, keymap, animation, live values, the highlighter seam, and
+//! constantly: focus, keymap, animation, live values, the highlighter boundary, and
 //! the ratatui interop wrapper.
 //!
 //! What is *not* here is as deliberate as what is. Terminal escapes

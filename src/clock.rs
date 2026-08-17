@@ -6,7 +6,7 @@ use std::time::Instant;
 ///
 /// Returned instants must share one monotonic epoch and must not move backward.
 /// Components use elapsed durations only; wall-clock dates and time zones are
-/// intentionally outside this seam.
+/// intentionally outside this boundary.
 pub trait Clock {
     /// Read the current monotonic instant.
     fn now(&self) -> Instant;

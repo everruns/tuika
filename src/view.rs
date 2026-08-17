@@ -1,4 +1,4 @@
-//! The `View` trait — the extensibility seam for components.
+//! The `View` trait — the extensibility boundary for components.
 //!
 //! Design note (why not a React-style reconciler): `tuika` rebuilds the view
 //! tree from application state every frame, which is cheap because ratatui
@@ -289,7 +289,7 @@ pub trait View {
 /// contains frame-borrowed views.
 pub type ScopedElement<'view> = Box<dyn View + 'view>;
 
-/// Boxed owned view used by retained values and cross-thread host seams.
+/// Boxed owned view used by retained values and cross-thread host boundaries.
 pub type Element = ScopedElement<'static>;
 
 impl View for Box<dyn View + '_> {

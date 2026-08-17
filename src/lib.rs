@@ -38,7 +38,7 @@
 //! # Finding things
 //!
 //! The crate root re-exports the **framework**: the view model, layout,
-//! events, styling, and the host seam — the types you compose *with*. The
+//! events, styling, and the host boundary — the types you compose *with*. The
 //! widgets themselves live in [`components`]. Owned [`Element`] trees use
 //! [`Scene`]; [`ScopedElement`] trees may borrow application state at any depth
 //! and use [`ScopedScene`] without cloning it. Everything that talks to the

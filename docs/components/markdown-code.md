@@ -23,7 +23,7 @@ highlighting, links, and images.
 
 The presentational inline HTML tags render too — `<b>`, `<em>`, `<code>`,
 `<kbd>`, `<mark>`, `<a>`, `<br>`, `<sub>`/`<sup>` — each resolving the same
-`StyleSheet` role as the markdown it mirrors. Block-level HTML is a seam; see
+`StyleSheet` role as the markdown it mirrors. Block-level HTML is a boundary; see
 [Inline HTML](../markdown.md#inline-html).
 
 <img src="../demos/markdown_html.png" width="880" alt="Inline HTML in markdown: strong, emphasis, struck and underlined text, a highlighted run, keyboard keys, a link, Unicode subscript and superscript, and a line broken by a br tag">
