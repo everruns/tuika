@@ -10,6 +10,8 @@
 //! `View` for its render, and, if interactive, a small state struct with an
 //! event handler. No trait-object tree to reconcile.
 
+use std::cell::RefCell;
+
 use ratatui_core::layout::Rect;
 
 use super::geometry::Size;
@@ -127,7 +129,32 @@ fn resolve_axis(known: Option<u16>, available: AvailableSpace, measured: u16) ->
 use super::surface::Surface;
 use crate::term::image::{ImageLayer, ImageSupport};
 
+/// Original text rendered in a frame, used to preserve source line breaks when copying.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SelectionSource {
+    pub(crate) area: Rect,
+    pub(crate) text: String,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct SelectionSources(RefCell<Vec<SelectionSource>>);
+
+impl SelectionSources {
+    pub(crate) fn clear(&self) {
+        self.0.borrow_mut().clear();
+    }
+
+    pub(crate) fn push(&self, area: Rect, text: String) {
+        self.0.borrow_mut().push(SelectionSource { area, text });
+    }
+
+    pub(crate) fn snapshot(&self) -> Vec<SelectionSource> {
+        self.0.borrow().clone()
+    }
+}
+
 /// Context threaded to every [`View::measure`] and [`View::render`] call.
+#[derive(Clone)]
 pub struct RenderCtx<'a> {
     /// The active theme supplying colors for this frame.
     pub theme: &'a Theme,
@@ -142,6 +169,7 @@ pub struct RenderCtx<'a> {
     style_resolver: Option<&'a dyn StyleResolver>,
     /// Graphics protocol and per-frame placement collector supplied by a host.
     image_graphics: Option<(ImageSupport, &'a ImageLayer)>,
+    selection_sources: Option<&'a SelectionSources>,
     /// Whether the focused component of the frame is this one. Containers pass
     /// this down unchanged; focus-aware leaves use it to highlight borders.
     pub focused: bool,
@@ -155,6 +183,7 @@ impl<'a> RenderCtx<'a> {
             sheet: StyleSheet::from_theme(theme),
             style_resolver: None,
             image_graphics: None,
+            selection_sources: None,
             focused: false,
         }
     }
@@ -180,6 +209,17 @@ impl<'a> RenderCtx<'a> {
     pub fn with_image_graphics(mut self, support: ImageSupport, layer: &'a ImageLayer) -> Self {
         self.image_graphics = Some((support, layer));
         self
+    }
+
+    pub(crate) fn with_selection_sources(mut self, sources: &'a SelectionSources) -> Self {
+        self.selection_sources = Some(sources);
+        self
+    }
+
+    pub(crate) fn record_selection_source(&self, area: Rect, source: String) {
+        if let Some(sources) = self.selection_sources {
+            sources.push(area, source);
+        }
     }
 
     /// Graphics protocol and placement layer supplied by the current host.
@@ -212,6 +252,7 @@ impl<'a> RenderCtx<'a> {
             sheet: self.sheet,
             style_resolver: self.style_resolver,
             image_graphics: self.image_graphics,
+            selection_sources: self.selection_sources,
             focused,
         }
     }

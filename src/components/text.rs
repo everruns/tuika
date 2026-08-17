@@ -239,6 +239,7 @@ impl View for Paragraph {
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
+        ctx.record_selection_source(area, self.text.to_string());
         let mut buffer_links = Vec::new();
         let link_style = ctx.sheet.resolve(Role::Link).apply(self.style);
         for (row, line) in self

@@ -98,14 +98,16 @@ use ratatui_core::layout::Rect;
 use ratatui_core::terminal::{Terminal, TerminalOptions};
 use ratatui_crossterm::CrosstermBackend;
 
+use crate::host::paint_with_context_and_sources;
 use crate::live::RedrawHandle;
-use crate::mouse::{SelectionState, paint_selection, selected_text};
+use crate::mouse::{SelectionState, paint_selection, selected_text_from_sources};
 use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
 use crate::term::clipboard;
 use crate::term::image::{ImageLayer, ImageSupport};
+use crate::view::SelectionSources;
 use crate::{
     Clock, Element, Event, RenderCtx, ScopedElement, SystemClock, TerminalSession, Theme, View,
-    paint_with_context, translate_event,
+    translate_event,
 };
 
 /// Receives a frame's root view for painting.
@@ -908,13 +910,26 @@ where
     F: FrameSource,
 {
     let mut copied = None;
+    let sources = SelectionSources::default();
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
         let ctx = graphics.map_or_else(|| RenderCtx::new(theme), |g| g.render_context(theme));
         frames.frame(frame, &mut |root| {
-            paint_with_context(terminal_frame.buffer_mut(), area, &ctx, root, &[]);
+            paint_with_context_and_sources(
+                terminal_frame.buffer_mut(),
+                area,
+                &ctx,
+                root,
+                &[],
+                &sources,
+            );
         });
-        copied = selection.finish_frame(terminal_frame.buffer_mut(), area, theme);
+        copied = selection.finish_frame(
+            terminal_frame.buffer_mut(),
+            area,
+            theme,
+            &sources.snapshot(),
+        );
     })?;
     Ok(copied)
 }
@@ -982,7 +997,13 @@ impl RunnerSelection {
         changed
     }
 
-    fn finish_frame(&mut self, buffer: &mut Buffer, area: Rect, theme: &Theme) -> Option<String> {
+    fn finish_frame(
+        &mut self,
+        buffer: &mut Buffer,
+        area: Rect,
+        theme: &Theme,
+        sources: &[crate::view::SelectionSource],
+    ) -> Option<String> {
         if !self.enabled {
             return None;
         }
@@ -995,7 +1016,7 @@ impl RunnerSelection {
         };
         let copied = self
             .pending_copy
-            .then(|| selected_text(buffer, area, range));
+            .then(|| selected_text_from_sources(buffer, area, range, sources));
         self.pending_copy = false;
         paint_selection(buffer, area, range, theme.selection_style());
         copied
@@ -1101,7 +1122,7 @@ mod tests {
         assert!(selection.handle_event(&Event::Mouse(drag), UpdateResult::Clean, &clock));
         assert!(selection.handle_event(&Event::Mouse(up), UpdateResult::Clean, &clock));
 
-        let copied = selection.finish_frame(&mut buffer, area, &Theme::default());
+        let copied = selection.finish_frame(&mut buffer, area, &Theme::default(), &[]);
         assert_eq!(copied.as_deref(), Some("hello"));
         for column in 0..=4 {
             assert_eq!(buffer[(column, 0)].bg, Theme::default().selection_bg);
