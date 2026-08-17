@@ -216,8 +216,10 @@ pub(super) fn render_radar_pixels(
             .collect();
         pixel_polygon_alpha(&mut rgba, width, height, &data, color, 52);
         pixel_closed_polyline(&mut rgba, width, height, &data, color);
-        for point in data {
-            pixel_marker(&mut rgba, width, height, point, color);
+        if mark.markers {
+            for point in data {
+                pixel_marker(&mut rgba, width, height, point, color);
+            }
         }
     }
     ImageData::from_rgba(width, height, rgba)

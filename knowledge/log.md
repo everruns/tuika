@@ -25,7 +25,8 @@
   - The polar grammar carries only shapes both renderers preserve: a donut ring
     for part-to-whole data and a radar web for independent `0..=100` readings.
     Radar uses a fine Braille web and outline in cells and the same shared
-    geometry with translucent fill in graphics; labels remain cells in both.
+    geometry with translucent fill in graphics; optional markers and labels
+    retain the same meaning in both.
     Filled pie wedges still fail that parity bar and remain excluded.
   - Graphics images are transparent where nothing is drawn. The terminal
     composites them over the cell grid, so an opaque background would hide the

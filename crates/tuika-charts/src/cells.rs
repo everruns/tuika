@@ -83,7 +83,7 @@ pub(super) fn render_cells(
                 }
             }
             Geometry::Radar { values, labels } => {
-                render_radar_cells(plot, surface, values, labels, style, ctx);
+                render_radar_cells(plot, surface, values, labels, mark.markers, style, ctx);
             }
             Geometry::Arcs(_) => {}
         }
@@ -104,6 +104,7 @@ pub(super) fn render_radar_cells(
     surface: &mut Surface,
     values: &[f64],
     labels: &[String],
+    markers: bool,
     style: Style,
     ctx: &RenderCtx,
 ) {
@@ -146,15 +147,17 @@ pub(super) fn render_radar_cells(
     let mut outline = BrailleGrid::new(u32::from(plot.width), u32::from(plot.height));
     draw_braille_polyline(&mut outline, &closed(&data));
     outline.render(surface, plot, style);
-    for &(x, y) in &data {
-        set_plot(
-            surface,
-            plot,
-            x / 2,
-            y / 4,
-            '◆',
-            Style::default().fg(style.fg.unwrap_or(ctx.theme.accent)),
-        );
+    if markers {
+        for &(x, y) in &data {
+            set_plot(
+                surface,
+                plot,
+                x / 2,
+                y / 4,
+                '•',
+                Style::default().fg(style.fg.unwrap_or(ctx.theme.accent)),
+            );
+        }
     }
 
     render_radar_labels_with_layout(plot, surface, labels, &layout, ctx);
@@ -181,12 +184,18 @@ fn render_radar_labels_with_layout(
 ) {
     for (index, label) in labels.iter().enumerate() {
         if let Some((x, y)) = layout.label_position(index, labels.len(), label) {
-            surface.set_string(
-                plot.x + x,
-                plot.y + y,
-                label,
-                Style::default().fg(ctx.theme.text),
-            );
+            for (offset, line) in label.split('\n').enumerate() {
+                surface.set_string(
+                    plot.x + x,
+                    plot.y + y + offset as u16,
+                    line,
+                    if offset == 0 {
+                        Style::default().fg(ctx.theme.text)
+                    } else {
+                        Style::default().fg(ctx.theme.muted)
+                    },
+                );
+            }
         }
     }
 }

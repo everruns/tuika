@@ -65,10 +65,10 @@ and one mechanism serves a keyboard cursor, a replay, or a fixed annotation.
 The polar grammar is deliberately narrow. A donut is a ring with optional
 centre text; its slices are named by the legend. A radar is a three-ring web of
 categorical spokes with values normalized to `0..=100`. Its portable renderer
-uses fine Braille subcells for the web and data outline plus whole-cell vertices,
-while graphics adds a translucent fill behind the same outline. Spoke labels
-remain cells in both modes and the two paths share one cell-space layout, so a
-capability change cannot move the values away from their labels.
+uses fine Braille subcells for the web and data outline, with optional sample
+markers, while graphics adds a translucent fill behind the same outline. Spoke
+labels remain cells in both modes and the two paths share one cell-space layout,
+so a capability change cannot move the values away from their labels.
 
 Graphics images are transparent where nothing is drawn rather than filled with
 the theme background, because the terminal composites them over the cell grid:

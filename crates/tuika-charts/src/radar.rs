@@ -15,12 +15,17 @@ impl RadarLayout {
         }
         let label_margin = labels
             .iter()
-            .map(|label| usize::from(tuika::width::str_cols(label)))
+            .map(|label| usize::from(label_size(label).0))
             .max()
             .unwrap_or(0)
             .saturating_add(2)
             .min(usize::from(cols / 3)) as u16;
-        let radius_y = f64::from(rows.saturating_sub(4)) / 2.0;
+        let label_rows = labels
+            .iter()
+            .map(|label| label_size(label).1)
+            .max()
+            .unwrap_or(1);
+        let radius_y = f64::from(rows.saturating_sub((label_rows + 1).saturating_mul(2))) / 2.0;
         // Most terminal cells are about twice as tall as they are wide. This
         // cap keeps the web visually round without hard-coding pixel metrics.
         let radius_x = (f64::from(cols.saturating_sub(label_margin.saturating_mul(2))) / 2.0)
@@ -59,7 +64,9 @@ impl RadarLayout {
     ) -> Option<(u16, u16)> {
         let angle = self.angle(index, count);
         let (anchor_x, anchor_y) = self.point(index, count, 1.08);
-        let width = i32::from(tuika::width::str_cols(label));
+        let (width, height) = label_size(label);
+        let width = i32::from(width);
+        let height = i32::from(height);
         let x = if angle.cos() < -0.2 {
             anchor_x.round() as i32 - width - 1
         } else if angle.cos() > 0.2 {
@@ -68,17 +75,33 @@ impl RadarLayout {
             anchor_x.round() as i32 - width / 2
         };
         let y = if angle.sin() < -0.2 {
-            anchor_y.floor() as i32
+            anchor_y.floor() as i32 - height + 1
         } else if angle.sin() > 0.2 {
             anchor_y.ceil() as i32
         } else {
-            anchor_y.round() as i32
+            anchor_y.round() as i32 - (height - 1) / 2
         };
-        (x >= 0 && y >= 0 && x + width <= i32::from(self.cols) && y < i32::from(self.rows))
-            .then_some((x as u16, y as u16))
+        (x >= 0
+            && y >= 0
+            && x + width <= i32::from(self.cols)
+            && y + height <= i32::from(self.rows))
+        .then_some((x as u16, y as u16))
     }
 
     fn angle(&self, index: usize, count: usize) -> f64 {
         -std::f64::consts::FRAC_PI_2 + std::f64::consts::TAU * index as f64 / count as f64
     }
+}
+
+fn label_size(label: &str) -> (u16, u16) {
+    let mut lines = label.split('\n').peekable();
+    if lines.peek().is_none() {
+        return (0, 1);
+    }
+    lines.fold((0, 0), |(width, height), line| {
+        (
+            width.max(tuika::width::str_cols(line)),
+            height.saturating_add(1),
+        )
+    })
 }

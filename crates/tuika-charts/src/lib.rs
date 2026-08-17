@@ -275,6 +275,7 @@ impl View for Chart {
                         surface,
                         values,
                         labels,
+                        mark.markers,
                         Style::default().fg(mark.color),
                         ctx,
                     );
@@ -1571,8 +1572,18 @@ mod grammar_tests {
         assert!(grid.contains("Strength"));
         assert!(grid.contains("Stamina"));
         assert!(grid.chars().any(is_braille));
-        assert!(grid.contains('◆'));
+        assert!(!grid.contains('•'));
         assert!(!grid.contains("No chart data"));
+    }
+
+    #[test]
+    fn radar_markers_are_opt_in() {
+        let chart = Chart::new()
+            .x_axis(Axis::new().categories(["A", "B", "C"]))
+            .series(Series::radar("profile", at([80.0, 65.0, 90.0])).markers());
+        let (buffer, area) = render_to(&chart, 48, 16);
+
+        assert!(grid_of(&buffer, area).contains('•'));
     }
 
     #[test]
