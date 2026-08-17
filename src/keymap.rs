@@ -4,7 +4,7 @@
 //! This is `tuika`'s answer to the same problem [OpenTUI's keymap][opentui]
 //! solves for the browser/terminal: decouple *what keys do* from the widget
 //! that reacts, so an application can declare its shortcuts once, gate them by
-//! mode, discover them for help UIs, and dispatch through a single seam. It
+//! mode, discover them for help UIs, and dispatch through a single boundary. It
 //! follows OpenTUI's **register → dispatch → query** shape, adapted to idiomatic
 //! Rust and to `tuika`'s own [`Key`] events (so it needs no terminal and stays
 //! unit-testable).

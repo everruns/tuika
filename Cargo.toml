@@ -125,7 +125,7 @@ scrolling-regions = [
 # — and with them the `time`/`lru`/`line-clipping` transitive weight — from
 # tuika's build. Downstream users keep every ratatui widget: they bring their own
 # `ratatui` and render it through `Surface::render_ratatui`/`RatatuiView`, whose
-# seam is a raw `&mut Buffer` from this same `ratatui-core` (Cargo unifies the
+# boundary is a raw `&mut Buffer` from this same `ratatui-core` (Cargo unifies the
 # version). `underline-color` matches the umbrella default so cell rendering is
 # byte-identical; `std` is required for the terminal I/O loop.
 ratatui-core = { version = "0.1", features = ["std", "underline-color"] }
@@ -159,7 +159,7 @@ vt100 = "0.16"
 # corpora and paint into a `Buffer` directly, and the doc examples demonstrate
 # wrapping real ratatui *widgets* through `RatatuiView`/`Surface::render_ratatui`.
 # Its `ratatui-core` matches the version the library depends on, so the `Buffer`
-# type is shared across the interop seam.
+# type is shared across the interop boundary.
 ratatui = "0.30.2"
 # Benchmark harness. default-features off drops the plotters/rayon HTML-report
 # stack (heavy, and an MSRV liability) while keeping `cargo bench` working;

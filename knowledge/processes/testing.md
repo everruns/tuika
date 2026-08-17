@@ -142,7 +142,7 @@ results across every published workspace member.
 benchmark never calls.** rustc partitions a crate into codegen units, so a new
 module changes which functions share a unit and therefore which ones get inlined;
 a hot path whose source did not change can move several percent. Adding
-`ItemScroll` and the composer token seams moved the *markdown* benches — whose
+`ItemScroll` and the composer token boundaries moved the *markdown* benches — whose
 whole measured path was byte-identical — by 3–5%. Before blessing that, confirm
 it is what it looks like: measure the parent commit (it should reproduce the
 committed baseline exactly), then re-add one file at a time until the counts

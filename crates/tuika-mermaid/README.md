@@ -3,7 +3,7 @@
 Terminal-native Mermaid diagrams inside
 [`tuika`](https://crates.io/crates/tuika) Markdown. The crate adapts
 [`mmdflux`](https://crates.io/crates/mmdflux) to tuika's generic
-`MarkdownBlockRenderer` seam; diagrams are Unicode cells, not images, and
+`MarkdownBlockRenderer` boundary; diagrams are Unicode cells, not images, and
 require no browser or JavaScript runtime.
 
 ```rust

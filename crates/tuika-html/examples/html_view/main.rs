@@ -4,7 +4,7 @@
 //! cargo run -p tuika-html --example html_view # a real terminal (q quits)
 //! ```
 //!
-//! The companion example, `html_markdown`, shows the *seam* — HTML blocks
+//! The companion example, `html_markdown`, shows the *boundary* — HTML blocks
 //! inside a markdown document. This one shows the **component**: no markdown
 //! anywhere, `Html` placed in a layout exactly like `Markdown` would be, fitting
 //! its content to whatever width the pane gives it.

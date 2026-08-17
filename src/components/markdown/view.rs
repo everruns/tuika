@@ -37,7 +37,7 @@ use super::parse::parse_with;
 ///
 /// ![markdown inline HTML demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/markdown_html.png)
 ///
-/// Block-level HTML is a seam handled by [`block_renderer`](Self::block_renderer).
+/// Block-level HTML is a boundary handled by [`block_renderer`](Self::block_renderer).
 ///
 /// GFM tables are laid out to the render width, cells keeping their inline
 /// styles, emoji, and links:

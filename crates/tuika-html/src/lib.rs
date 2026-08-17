@@ -3,7 +3,7 @@
 //! Two ways in, one engine behind both:
 //!
 //! - [`HtmlRenderer`] plugs into markdown through tuika's
-//!   [`MarkdownBlockRenderer`] seam. One implementation handles raw `<details>`,
+//!   [`MarkdownBlockRenderer`] boundary. One implementation handles raw `<details>`,
 //!   `<table>`, and `<div>` blocks as well as ` ```html ` fences.
 //! - [`Html`] is a `View`, the standalone viewer: hand it a fragment, place it
 //!   in a layout, and it paints like [`Markdown`](tuika::components::Markdown)
@@ -99,7 +99,7 @@ impl Default for Limits {
     }
 }
 
-/// Renders HTML for tuika's structured markdown block seam.
+/// Renders HTML for tuika's structured markdown block boundary.
 ///
 /// One value serves both raw block HTML and ` ```html ` fences. Attach it with
 /// [`Markdown::block_renderer`](tuika::components::Markdown::block_renderer).

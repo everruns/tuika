@@ -78,7 +78,7 @@ encoding, cell reservation, fallback), never decoding.
 ### The cell-reservation + out-of-band-emit model
 
 An image cannot be written through `Surface` — `Surface` only writes cells. So
-the model splits placement from emission, using the seam `RectProbe` already
+the model splits placement from emission, using the boundary `RectProbe` already
 established for reading a view's painted rect back out:
 
 1. The `Image` view reserves a `cols × rows` cell footprint via `measure`, so

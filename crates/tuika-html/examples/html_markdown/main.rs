@@ -1,4 +1,4 @@
-//! Markdown with raw HTML blocks in it, rendered through the seam.
+//! Markdown with raw HTML blocks in it, rendered through the boundary.
 //!
 //! ```bash
 //! cargo run -p tuika-html --example html_markdown # a real terminal (q quits)

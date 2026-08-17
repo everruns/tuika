@@ -7,7 +7,7 @@ edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Terminal-native HTML rendering for tuika: a Markdown block seam and a standalone Html view."
+description = "Terminal-native HTML rendering for tuika: a Markdown block boundary and a standalone Html view."
 homepage.workspace = true
 repository.workspace = true
 # The README embeds `examples/html_markdown/html.png` by *relative* path, so the
@@ -19,7 +19,7 @@ categories = ["command-line-interface", "text-processing"]
 
 [dependencies]
 # This requirement tracks the *published* tuika, so it stays at the in-tree
-# version and is bumped by the release that carries the seam this crate
+# version and is bumped by the release that carries the boundary this crate
 # implements — `MarkdownBlockRenderer` does not exist before 0.7.0, so
 # tuika-html cannot be published until then. `publish_order.py` publishes tuika
 # first, and

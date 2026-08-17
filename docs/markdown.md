@@ -114,10 +114,10 @@ digits and `+ - = ( )`. `4<sup>th</sup>` renders `4th` rather than half-shifted.
 
 ## Block HTML
 
-`<div>`, `<details>`, `<table>` — block-level HTML is a *seam* rather than a
+`<div>`, `<details>`, `<table>` — block-level HTML is a *boundary* rather than a
 feature, for the same reason syntax highlighting is: an HTML parser is a
 dependency tuika will not carry. Without a renderer attached the block is
-dropped, exactly as before the seam existed, so adding one is purely additive.
+dropped, exactly as before the boundary existed, so adding one is purely additive.
 
 <img src="../crates/tuika-html/examples/html_markdown/html.png" width="880" alt="HTML blocks rendered inside tuika Markdown: a details summary with a bullet list, a box-drawn table, and a quoted line with Unicode subscript and superscript">
 
@@ -140,7 +140,7 @@ A streaming host attaches it once with
 `MarkdownState::with_block_renderer(Box::new(HtmlRenderer::new()))`; a settled
 block is then laid out once per width, like a fenced block.
 
-Implementing the seam yourself means `MarkdownBlockRenderer`: it receives a
+Implementing the boundary yourself means `MarkdownBlockRenderer`: it receives a
 structured `MarkdownBlock` (`Fenced` or `Html`) and one `MarkdownBlockContext`
 with the available width, theme, and active `StyleSheet`. Returning `None`
 passes the block to the next registered renderer; if none handle it, a fence
@@ -334,7 +334,7 @@ opts `mailto:` back in where a host wants it.
 ## Images
 
 `![alt](url)` renders as a real image where the terminal has a graphics protocol.
-Markdown carries only the URL, so — exactly like the highlighter seam — the host
+Markdown carries only the URL, so — exactly like the highlighter boundary — the host
 supplies the decode through an `ImageResolver`; a resolved image reserves a block
 in the layout, an unresolved one stays an inline, link-styled placeholder rather
 than dropping the URL.

@@ -1,6 +1,6 @@
 //! Terminal host: screen-mode lifecycle, event translation, compositor.
 //!
-//! This is the seam between `tuika` and a real terminal. [`TerminalSession`]
+//! This is the boundary between `tuika` and a real terminal. [`TerminalSession`]
 //! owns the complete lifecycle for either [`ScreenMode`] — the alternate screen
 //! or a split footer on the main screen (see [`screen`](crate::screen)) —
 //! including enhanced keyboard reporting; [`AltScreen`] is the narrower guard
@@ -430,7 +430,7 @@ pub fn paint_with_sheet(
 
 /// Composite a frame with a fully configured render context.
 ///
-/// This is the host seam for an application that installs a
+/// This is the host boundary for an application that installs a
 /// [`StyleResolver`](crate::StyleResolver) in addition to a theme and
 /// stylesheet. Simpler hosts can keep using [`paint`] or [`paint_with_sheet`].
 pub fn paint_with_context(

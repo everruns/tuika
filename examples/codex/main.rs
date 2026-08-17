@@ -10,7 +10,7 @@
 //! `Working (12s • Esc to interrupt)` row, and a context meter in the footer —
 //! because that shape is the hardest thing to assemble from single components,
 //! and building it is what surfaced the gaps `ItemScroll` and the composer
-//! token seams now fill.
+//! token boundaries now fill.
 //!
 //! Everything behind the interface is fake: `agent.rs` replays a scripted turn
 //! chosen from the prompt's keywords, revealing it frame by frame, so there is

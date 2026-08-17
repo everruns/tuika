@@ -145,7 +145,7 @@ tuika's own suite covers more:
 - `docs/layout.md` — the public layout guide: wrapping, flex-item sizing,
   Flow/Grid selection, measurement requests, and migration notes.
 - `docs/markdown.md` — the markdown guide: streaming, GFM tables, the
-  highlighter seam, link policy, and images in one page. It reuses the gallery's
+  highlighter boundary, link policy, and images in one page. It reuses the gallery's
   `DEMOS` recordings, so it is inside the `demo -- check` reference invariant.
 - `docs/demos/*.{gif,png}` — the committed demo recordings referenced by the
   component family pages and, via `raw.githubusercontent.com` URLs, inline on the
@@ -177,7 +177,7 @@ tuika's own suite covers more:
   fork under `target/` with its Ghostty renderer and requires Go 1.26,
   pkg-config, and Zig 0.15.2 in addition to VHS's normal dependencies.
 
-  `tuika-html` has two, one per example — the markdown seam
+  `tuika-html` has two, one per example — the markdown boundary
   (`examples/html_markdown/html.png`) and the standalone `Html` component
   (`examples/html_view/html_view.png`) — both regenerated with
   `scripts/gen-html-demo.sh`. It is a *screenshot* rather than a GIF because the
@@ -537,4 +537,4 @@ tuika was extracted from [yolop](https://github.com/everruns/yolop), whose
 full-screen renderer is built on it, and yolop remains its largest consumer — but
 it depends on tuika from crates.io like any other host and gets no special
 treatment. A change that only makes sense for one host does not belong here;
-give the host a seam (a trait, a state type, a callback) instead.
+give the host a boundary (a trait, a state type, a callback) instead.

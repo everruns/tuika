@@ -107,7 +107,7 @@ The small dependency set is a designed property, not an accident
   alerts); duplicate transitive versions reviewed (`cargo tree --duplicates`) and
   either fixed or noted as unfixable.
 - A major-version bump of `ratatui-core` is an interoperability event, not a
-  routine upgrade: it changes the `Buffer` type on the public seam, so hosts must
+  routine upgrade: it changes the `Buffer` type on the public boundary, so hosts must
   move in lockstep. Treat it as a breaking release.
 
 ## Release Readiness Standard
@@ -149,7 +149,7 @@ removing that complexity as real work. The bias is toward deletion.
 Maintenance should look for and collapse:
 
 - single-use abstractions (one-impl traits, forwarding wrappers,
-  single-instantiation generics, builders for trivial structs) — unless the seam
+  single-instantiation generics, builders for trivial structs) — unless the boundary
   is load-bearing
 - premature generalization shaped for hypothetical futures, not current callers
 - indirection with no payoff: helpers that only rename a stdlib call, modules

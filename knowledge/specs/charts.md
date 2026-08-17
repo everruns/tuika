@@ -30,7 +30,7 @@ edge.
 
 A chart selects smooth RGBA rasterization when its `RenderCtx` provides terminal
 graphics support and an `ImageLayer`. The real-terminal `Runner` detects and
-supplies both automatically; custom hosts retain the explicit context seam. It
+supplies both automatically; custom hosts retain the explicit context boundary. It
 uses core's image machinery for placement and Kitty/iTerm2/Sixel lifecycle.
 Otherwise it draws the same model into terminal cells with Unicode axes and
 marks. The portable renderer uses

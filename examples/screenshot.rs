@@ -534,7 +534,7 @@ fn block_of(sym: &str) -> Option<Block> {
 /// Emit one cell's background rect (if any) and glyph (if visible) into `out`.
 fn emit_cell(out: &mut String, p: &Paint, cx: f32, cy: f32) {
     if let Some(bg) = &p.bg {
-        // Slight overdraw removes hairline seams between adjacent filled cells.
+        // Slight overdraw removes hairline gaps between adjacent filled cells.
         out.push_str(&format!(
             "<rect x=\"{cx:.2}\" y=\"{cy:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" fill=\"{bg}\" shape-rendering=\"crispEdges\"/>",
             w = CELL_W + 0.6,

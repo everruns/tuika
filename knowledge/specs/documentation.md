@@ -104,15 +104,15 @@ self-evident. A recording placed above the first section, or on a page whose
 subject it only partly covers, reads as chrome and is skipped — a demo nobody
 connects to a feature is as good as absent.
 
-The same rule decides which page: the seam's demo goes where the seam is
+The same rule decides which page: the boundary's demo goes where the boundary is
 documented, the component's where the component is.
 
 ### rustdoc carries an example and a demo
 
-Every public component and every host-facing seam documents itself twice over:
+Every public component and every host-facing boundary documents itself twice over:
 
 - **An example that compiles** — a doctest, so it cannot rot silently. For a
-  seam, the example shows an *implementation*, not only how to attach one; the
+  boundary, the example shows an *implementation*, not only how to attach one; the
   reader's question is what their `impl` has to do.
 - **The demo**, embedded by absolute `raw.githubusercontent.com` URL so it
   resolves on docs.rs, plus the command that runs the example it came from.
@@ -175,7 +175,7 @@ Generated demos follow the rule that the *scene registry is the source of truth*
   The `tuika-mermaid` and `tuika-html` recordings follow this rule and ship with
   their companion crates so each crates.io README can show what it documents.
   A crate with more than one entry point records more than one scene —
-  `tuika-html` has a demo for the markdown seam and another for its standalone
+  `tuika-html` has a demo for the markdown boundary and another for its standalone
   component, because one recording cannot answer both questions.
 - `tuika-codeformatters` follows the same example-driven rule for its language
   gallery; `scripts/gen-language-demo.sh` records the real `languages` example.

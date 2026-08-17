@@ -6,7 +6,7 @@
 //! error correction, block interleaving, and penalty-scored data masking. A
 //! payload too large for version 4 returns `None`; a host that needs bigger codes
 //! can encode with its own library and hand the module matrix to
-//! [`QrCode::from_matrix`] — the same present-a-matrix seam as
+//! [`QrCode::from_matrix`] — the same present-a-matrix boundary as
 //! [`Image`](crate::components::Image).
 //!
 //! Rendering packs two module rows into each terminal row with the `▀` half-block

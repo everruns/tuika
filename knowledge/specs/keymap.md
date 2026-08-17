@@ -17,7 +17,7 @@ imperative branch and remembering its ordering relative to every modal guard.
 Key routing is a toolkit concern in the same way layout, overlays, and focus
 are — the problem [OpenTUI's keymap](https://opentui.com/docs/keymap/overview/)
 solves for the browser and terminal. tuika owns a declarative binding engine so
-any host declares its shortcuts once and dispatches through a single seam.
+any host declares its shortcuts once and dispatches through a single boundary.
 
 ## What
 

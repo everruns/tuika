@@ -478,7 +478,7 @@ impl AsyncRunner {
     /// Run against a caller-owned terminal and input streams, with no terminal
     /// lifecycle of the runner's own.
     ///
-    /// This is the loop itself, and what [`run`](Self::run) builds on. The seam
+    /// This is the loop itself, and what [`run`](Self::run) builds on. The boundary
     /// tests drive it against a
     /// [`TestBackend`](ratatui_core::backend::TestBackend) with scripted
     /// streams; hosts that already own their terminal and event source (or want
@@ -1596,7 +1596,7 @@ mod tests {
     }
 
     /// An application whose frame borrows its own data, used to prove the
-    /// borrowed seam reaches the async loop unchanged.
+    /// borrowed boundary reaches the async loop unchanged.
     struct Notes {
         title: String,
         hits: Vec<char>,
@@ -1641,7 +1641,7 @@ mod tests {
         }
     }
 
-    // The async runner drives the same `Application`-shaped seam the sync runner
+    // The async runner drives the same `Application`-shaped boundary the sync runner
     // does: events mutate through `&mut self`, and the frame borrows `&self`
     // without cloning into an owned tree.
     #[tokio::test]
@@ -1680,7 +1680,7 @@ mod tests {
         );
     }
 
-    /// The message-carrying twin of `Notes`: the same seam with a different
+    /// The message-carrying twin of `Notes`: the same boundary with a different
     /// signal type rather than a different trait.
     struct Feed {
         items: Vec<u8>,
@@ -1704,7 +1704,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_application_receives_messages_through_the_same_seam() {
+    async fn an_application_receives_messages_through_the_same_channel() {
         let runner = AsyncRunner::new(RunnerConfig {
             tick_rate: Duration::from_secs(3600),
             ..RunnerConfig::default()

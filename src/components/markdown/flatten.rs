@@ -137,7 +137,7 @@ pub(super) fn flatten_linked_into<R: MarkdownBlockRenderer + ?Sized>(
                 }
             }
             // No renderer means the block is dropped — markdown's behavior for
-            // all HTML before the seam existed.
+            // all HTML before the boundary existed.
             MdItem::Html { source, indent } => {
                 let avail = width.saturating_sub(*indent).max(1);
                 if let Some(rendered) = renderers.render(

@@ -49,7 +49,7 @@ The claim is earned by scope and by adoption evidence, never by overstatement:
    `unicode-width`, and `pulldown-cmark`. Anything heavier belongs behind a
    trait the host implements.
 4. **Interoperable, not exclusive.** Existing ratatui widgets compose through a
-   raw-`Buffer` seam; adopting tuika never means giving up ratatui.
+   raw-`Buffer` boundary; adopting tuika never means giving up ratatui.
 5. **Testable without a terminal.** Rendering is observable as cells in memory,
    so behavior is asserted hermetically.
 
@@ -70,13 +70,13 @@ a trait the host implements:
 The companion crates exist because of this rule: `tuika-codeformatters`
 supplies tree-sitter grammars behind `Highlighter`, `tuika-mermaid` supplies
 mmdflux parsing and layout behind `MarkdownBlockRenderer`, and `tuika-html`
-supplies html5ever behind the same structured-block seam. They are separately published
+supplies html5ever behind the same structured-block boundary. They are separately published
 rather than optional tuika features so the core dependency tree cannot grow by
 accident.
 
 `tuika-html` also shows where the line falls *inside* one capability: the
 presentational inline tags need no parser, so they are in the crate, while
-block-level HTML needs a tree builder and is therefore a seam. The test is the
+block-level HTML needs a tree builder and is therefore a boundary. The test is the
 dependency, not the topic.
 
 ## Non-goals

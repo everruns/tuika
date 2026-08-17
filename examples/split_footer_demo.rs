@@ -491,7 +491,7 @@ fn emit_row(
 fn emit_run(out: &mut String, run: &[Paint], cx: f32, cy: f32) {
     let p = &run[0];
     if let Some(bg) = &p.bg {
-        // Slight overdraw removes hairline seams between adjacent filled cells.
+        // Slight overdraw removes hairline gaps between adjacent filled cells.
         out.push_str(&format!(
             "<rect x=\"{cx:.1}\" y=\"{cy:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" \
 fill=\"{bg}\" shape-rendering=\"crispEdges\"/>",
@@ -531,7 +531,7 @@ textLength=\"{len:.1}\" lengthAdjust=\"spacingAndGlyphs\" xml:space=\"preserve\"
 #[allow(dead_code)]
 fn emit_cell(out: &mut String, p: &Paint, cx: f32, cy: f32) {
     if let Some(bg) = &p.bg {
-        // Slight overdraw removes hairline seams between adjacent filled cells.
+        // Slight overdraw removes hairline gaps between adjacent filled cells.
         out.push_str(&format!(
             "<rect x=\"{cx:.2}\" y=\"{cy:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" \
 fill=\"{bg}\" shape-rendering=\"crispEdges\"/>",
