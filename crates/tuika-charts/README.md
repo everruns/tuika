@@ -155,7 +155,10 @@ for domains, fallback behavior, and the intentionally portable grammar.
 ## Radar charts
 
 Radar series interpret each point's `y` value as a percentage (`0..=100`) and
-use x-axis categories as spoke labels:
+use x-axis categories as spoke labels. The series color carries through the
+polygon and axis names. When the assigned body is too small for a legible web,
+the chart skips image placement and renders a compact colored label/value list
+instead:
 
 ```rust
 let chart = Chart::new()

@@ -67,8 +67,11 @@ centre text; its slices are named by the legend. A radar is a three-ring web of
 categorical spokes with values normalized to `0..=100`. Its portable renderer
 uses fine Braille subcells for the web and data outline, with optional sample
 markers, while graphics adds a translucent fill behind the same outline. Spoke
-labels remain cells in both modes and the two paths share one cell-space layout,
-so a capability change cannot move the values away from their labels.
+names use the series color and remain cells in both modes. Below the web's
+minimum readable body, the chart suppresses image placement and lists each
+colored spoke name beside its percentage instead. The two full renderers share
+one cell-space layout, so a capability change cannot move the values away from
+their labels.
 
 Graphics images are transparent where nothing is drawn rather than filled with
 the theme background, because the terminal composites them over the cell grid:

@@ -31,7 +31,8 @@ pub enum SeriesKind {
     /// Project values onto categorical axes around a shared center.
     ///
     /// The point order defines the axes and each point's `y` coordinate is
-    /// treated as a percentage in the range `0..=100`; `x` is ignored.
+    /// treated as a percentage in the range `0..=100`; `x` is ignored. Areas
+    /// too small for a readable web show the colored axis labels and values.
     Radar,
     /// Draw independent point markers without connecting them.
     Scatter,
@@ -75,7 +76,8 @@ impl Series {
     }
 
     /// Construct a radar series. Point order defines the axes and each point's
-    /// `y` coordinate is its value; `x` is ignored.
+    /// `y` coordinate is its value; `x` is ignored. The series color applies to
+    /// the outline and axis names in both web and compact text modes.
     pub fn radar(name: impl Into<String>, points: impl IntoIterator<Item = Point>) -> Self {
         Self::new(name, SeriesKind::Radar, points)
     }

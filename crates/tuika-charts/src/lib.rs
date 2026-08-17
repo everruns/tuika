@@ -4,9 +4,10 @@
 //! a graphics protocol it rasterizes smooth lines and filled bars into an image;
 //! everywhere else it renders the same axes, series, domains, and legend with
 //! terminal cells, using dense 2×2 quadrant glyphs for connected geometry and
-//! Braille subcells for scatter points. [`tuika::Runner`] supplies terminal
-//! graphics automatically; custom hosts can provide
-//! [`tuika::term::image::ImageSupport`] and an
+//! Braille subcells for scatter points. Radar charts degrade once more to a
+//! colored label/value summary when their body is too small for a legible web.
+//! [`tuika::Runner`] supplies terminal graphics automatically; custom hosts can
+//! provide [`tuika::term::image::ImageSupport`] and an
 //! [`tuika::term::image::ImageLayer`] through [`tuika::RenderCtx`].
 
 use ratatui_core::layout::Rect;
@@ -260,10 +261,16 @@ impl View for Chart {
                         .support(support)
                         .in_layer(layer)
                         .render(body, &mut surface.child(body), ctx);
-                    if let Some(plan::Geometry::Radar { labels, .. }) =
-                        plan.marks.first().map(|mark| &mark.geometry)
+                    if let Some(mark) = plan.marks.first()
+                        && let plan::Geometry::Radar { labels, .. } = &mark.geometry
                     {
-                        cells::render_radar_labels(body, surface, labels, ctx);
+                        cells::render_radar_labels(
+                            body,
+                            surface,
+                            labels,
+                            Style::default().fg(mark.color),
+                            ctx,
+                        );
                     }
                     return;
                 }
@@ -1584,6 +1591,66 @@ mod grammar_tests {
         let (buffer, area) = render_to(&chart, 48, 16);
 
         assert!(grid_of(&buffer, area).contains('•'));
+    }
+
+    #[test]
+    fn a_small_radar_degrades_to_colored_text() {
+        let color = Color::Rgb(32, 196, 224);
+        let chart = Chart::new()
+            .legend(false)
+            .x_axis(Axis::new().categories(["Reasoning", "Speed", "Memory"]))
+            .series(Series::radar("profile", at([80.0, 65.0, 90.0])).color(color));
+        let (buffer, area) = render_to(&chart, 28, 8);
+        let grid = grid_of(&buffer, area);
+
+        for text in ["Reasoning", "80%", "Speed", "65%", "Memory", "90%"] {
+            assert!(grid.contains(text), "missing {text} in\n{grid}");
+        }
+        assert!(
+            !grid.chars().any(is_braille),
+            "compact mode is text-only:\n{grid}"
+        );
+        assert_eq!(buffer[(0, 0)].fg, color, "axis labels use the series color");
+    }
+
+    #[test]
+    fn a_small_radar_skips_the_image_layer() {
+        let theme = Theme::default();
+        let layer = ImageLayer::new();
+        let ctx = RenderCtx::new(&theme).with_image_graphics(ImageSupport::Kitty, &layer);
+        let chart = Chart::new()
+            .legend(false)
+            .x_axis(Axis::new().categories(["Reasoning", "Speed", "Memory"]))
+            .series(Series::radar("profile", at([80.0, 65.0, 90.0])));
+        let area = Rect::new(0, 0, 28, 8);
+        let buffer = tuika::testing::render_with_context(&chart, area.width, area.height, &ctx);
+        let grid = grid_of(&buffer, area);
+
+        assert_eq!(layer.len(), 0, "compact mode must not place an image");
+        assert!(
+            grid.contains("Reasoning"),
+            "compact labels remain visible:\n{grid}"
+        );
+        assert!(
+            grid.contains("80%"),
+            "compact values remain visible:\n{grid}"
+        );
+    }
+
+    #[test]
+    fn radar_axis_names_use_the_series_color() {
+        let color = Color::Rgb(32, 196, 224);
+        let chart = Chart::new()
+            .legend(false)
+            .x_axis(Axis::new().categories(["Reasoning", "Speed", "Memory"]))
+            .series(Series::radar("profile", at([80.0, 65.0, 90.0])).color(color));
+        let (buffer, area) = render_to(&chart, 48, 16);
+        let reasoning = (0..area.height)
+            .flat_map(|y| (0..area.width).map(move |x| (x, y)))
+            .find(|&(x, y)| buffer[(x, y)].symbol() == "R")
+            .expect("Reasoning label");
+
+        assert_eq!(buffer[reasoning].fg, color);
     }
 
     #[test]

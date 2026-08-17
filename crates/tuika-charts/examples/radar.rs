@@ -136,14 +136,17 @@ impl Application for RadarApp {
         let chart = Chart::new()
             .x_axis(Axis::new().categories(labels))
             .y_axis(Axis::hidden())
-            .series(Series::radar(
-                profile.name,
-                profile
-                    .values
-                    .iter()
-                    .enumerate()
-                    .map(|(index, value)| Point::new(index as f64, *value)),
-            ))
+            .series(
+                Series::radar(
+                    profile.name,
+                    profile
+                        .values
+                        .iter()
+                        .enumerate()
+                        .map(|(index, value)| Point::new(index as f64, *value)),
+                )
+                .color(theme.accent),
+            )
             .legend(false);
 
         let mut model_lines = vec![
@@ -242,7 +245,7 @@ impl Application for RadarApp {
                                     grow(1) {
                                         col(gap = 1) {
                                             fixed(4) { node(summary) }
-                                            fixed(15) { node(chart) }
+                                            fixed(14) { node(chart) }
                                             grow(1) { node(rationale) }
                                         }
                                     }

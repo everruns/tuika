@@ -112,6 +112,7 @@ pub(super) fn render_radar_cells(
         return;
     }
     let Some(layout) = RadarLayout::new(plot.width, plot.height, labels) else {
+        render_radar_summary(plot, surface, values, labels, style, ctx);
         return;
     };
     let subcell = |point: (f64, f64)| {
@@ -160,19 +161,20 @@ pub(super) fn render_radar_cells(
         }
     }
 
-    render_radar_labels_with_layout(plot, surface, labels, &layout, ctx);
+    render_radar_labels_with_layout(plot, surface, labels, &layout, style, ctx);
 }
 
 pub(super) fn render_radar_labels(
     plot: Rect,
     surface: &mut Surface,
     labels: &[String],
+    style: Style,
     ctx: &RenderCtx,
 ) {
     let Some(layout) = RadarLayout::new(plot.width, plot.height, labels) else {
         return;
     };
-    render_radar_labels_with_layout(plot, surface, labels, &layout, ctx);
+    render_radar_labels_with_layout(plot, surface, labels, &layout, style, ctx);
 }
 
 fn render_radar_labels_with_layout(
@@ -180,6 +182,7 @@ fn render_radar_labels_with_layout(
     surface: &mut Surface,
     labels: &[String],
     layout: &RadarLayout,
+    style: Style,
     ctx: &RenderCtx,
 ) {
     for (index, label) in labels.iter().enumerate() {
@@ -190,13 +193,43 @@ fn render_radar_labels_with_layout(
                     plot.y + y + offset as u16,
                     line,
                     if offset == 0 {
-                        Style::default().fg(ctx.theme.text)
+                        style
                     } else {
                         Style::default().fg(ctx.theme.muted)
                     },
                 );
             }
         }
+    }
+}
+
+fn render_radar_summary(
+    plot: Rect,
+    surface: &mut Surface,
+    values: &[f64],
+    labels: &[String],
+    style: Style,
+    ctx: &RenderCtx,
+) {
+    for (row, (label, value)) in labels.iter().zip(values).enumerate() {
+        let Ok(row) = u16::try_from(row) else {
+            break;
+        };
+        if row >= plot.height {
+            break;
+        }
+        let y = plot.y + row;
+        let label = label.lines().next().unwrap_or(label);
+        surface.set_string(plot.x, y, label, style);
+
+        let value = format!("{}%", trim_number(*value));
+        let value_width = tuika::width::str_cols(&value).min(plot.width);
+        surface.set_string(
+            plot.right().saturating_sub(value_width),
+            y,
+            &value,
+            Style::default().fg(ctx.theme.muted),
+        );
     }
 }
 

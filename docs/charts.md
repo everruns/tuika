@@ -141,7 +141,9 @@ cells. Slices are named by the legend rather than by radial labels.
 
 A radar series maps ordered x-axis categories to spokes and interprets each
 point's y value as a percentage. The cell path uses a fine Braille web and
-outline; graphics adds translucent fill without moving the cell-drawn labels.
+colored outline; graphics adds translucent fill without moving the colored,
+cell-drawn labels. If the assigned body cannot hold a readable web, both paths
+degrade to a compact label/value list and no image is placed.
 
 | Cells | Graphics |
 | --- | --- |

@@ -1,5 +1,8 @@
 //! Shared radar geometry for the cell and pixel renderers.
 
+const MIN_WEB_COLS: u16 = 32;
+const MIN_WEB_ROWS: u16 = 12;
+
 /// A radar web laid out in terminal-cell coordinates.
 pub(crate) struct RadarLayout {
     cols: u16,
@@ -10,7 +13,7 @@ pub(crate) struct RadarLayout {
 
 impl RadarLayout {
     pub(crate) fn new(cols: u16, rows: u16, labels: &[String]) -> Option<Self> {
-        if cols < 20 || rows < 9 {
+        if cols < MIN_WEB_COLS || rows < MIN_WEB_ROWS {
             return None;
         }
         let label_margin = labels
