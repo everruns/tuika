@@ -11,7 +11,13 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
-## Unreleased
+## [Unreleased]
+
+## [0.10.0] - 2026-08-17
+
+Released alongside `tuika-charts` 0.1.1, `tuika-codeformatters` 0.4.3,
+`tuika-html` 0.1.3, and `tuika-mermaid` 0.3.1. Their tuika dependency
+requirements now track 0.10.
 
 ### Added
 
@@ -779,3 +785,5 @@ styling extras) are no longer flattened to `tuika::`. Reach them through
 * test: add a PTY smoke test and guard the published crate contents
 
 [0.6.0]: https://github.com/everruns/tuika/releases/tag/v0.6.0
+[Unreleased]: https://github.com/everruns/tuika/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/everruns/tuika/compare/v0.9.0...v0.10.0
