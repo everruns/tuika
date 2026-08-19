@@ -2,6 +2,25 @@
 
 ## 2026-08-19
 
+- **A host pays for a tuika feature only if something references it**
+  - Binary size for a library is not the crate's size; it is what a host binary
+    links. Measured on real hosts, the linker already makes most of tuika
+    pay-for-use: the markdown stack and `pulldown-cmark` cost a non-markdown
+    host nothing, and `textwrap`'s `smawk` / `unicode-linebreak` tables never
+    reach the binary at all. Two of the three most plausible size levers
+    measured at exactly zero, so the measurement, not the intuition, decides.
+  - What defeats dead-code elimination is a reference on the always-linked path.
+    `ImageLayer::emit` runs every frame in every `Runner` host and matched on
+    `ImageSupport`, which anchored the Kitty, iTerm2, and Sixel encoders plus
+    the PNG writer into binaries that place no image. Resolving the encoder in
+    `record` — reachable only from the `Image` view — and carrying it as a
+    function pointer moved all four behind actual use.
+  - Generalized as [Binary Size Discipline](processes/maintenance.md#binary-size-discipline):
+    prefer resolving a capability where it is *used* over matching on it in a
+    per-frame function, and treat a cargo feature as the last resort. Build
+    levers (`opt-level="z"`, `panic="abort"`, `lto`) belong to the host's
+    profile, not to tuika.
+
 - **Delivering an event is toolkit policy, not host glue**
   - The registry knowing who owns input, and the owner's state receiving the
     event, were separated by host code written per surface *and per event kind*.

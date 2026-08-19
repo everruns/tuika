@@ -110,6 +110,51 @@ The small dependency set is a designed property, not an accident
   routine upgrade: it changes the `Buffer` type on the public boundary, so hosts must
   move in lockstep. Treat it as a breaking release.
 
+## Binary Size Discipline
+
+tuika is a library, so its size cost is not a number it owns — it is what a
+*host binary* pays for linking it. That reframes the goal: the target is not a
+smaller `.rlib` but **pay-for-use**, so a host that never renders markdown,
+places no image, or draws no chart carries none of that code.
+
+The linker already delivers most of this. Dead-code elimination works at symbol
+granularity, so a feature a host does not reach is dropped even though it is
+compiled into the crate — measurements on a real host confirm the markdown
+stack, `pulldown-cmark` included, costs a non-markdown host nothing, and
+`textwrap`'s `smawk` / `unicode-linebreak` tables likewise never reach the
+binary. **The corollary is what maintenance must watch:** DCE only reaches what
+nothing references. A feature stops being pay-for-use the moment code on the
+*unconditional* path names it — most easily by a `match` in a per-frame
+function, which anchors every arm into every binary.
+
+So the rule is about the shape of the reference, not the size of the code:
+
+- **Runtime dispatch on the always-linked path anchors every arm.** Prefer
+  resolving the choice where the feature is *used* and carrying the result
+  forward — a function pointer stored at record time, a trait object the host
+  supplies — over matching on a capability enum inside the per-frame emitter.
+  `ImageLayer::emit` is the worked example: it once matched `ImageSupport` and
+  so linked the Kitty, iTerm2, and Sixel encoders plus the PNG writer into every
+  binary; storing the encoder chosen in `record` (whose only caller is the
+  `Image` view) made all four pay-for-use.
+- **A cargo feature is the last resort, not the first.** It splits the build
+  matrix and the support burden. Reach for one only when the cost is genuinely
+  unconditional and no reference-graph change can make it optional.
+- **Verify before believing.** "This must be costing hosts" is a hypothesis; the
+  reference graph decides. Two of the three most plausible size levers here
+  measured at exactly zero. Measure first, change second.
+
+Build-level levers — `opt-level="z"`, `panic="abort"`, `lto="fat"`,
+`codegen-units=1` — belong to the host's profile, not to tuika. They are worth
+knowing (each is worth roughly 7-10% of a shipped binary) so a host asking about
+size can be pointed at its own `[profile.release]`, but tuika neither sets nor
+recommends them for anyone else's build.
+
+Binary size is **not** a CI gate. It is a periodic maintenance check and a
+review question for changes that add an unconditional code path, in the spirit
+of [Dependency Discipline](#dependency-discipline): the point is to notice the
+regression, not to defend a byte count.
+
 ## Release Readiness Standard
 
 Before tagging a release:
