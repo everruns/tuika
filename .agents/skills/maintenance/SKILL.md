@@ -203,12 +203,30 @@ crossterm = "0.29"
 [workspace]
 ```
 
-Use **two** probes, because they answer different questions:
+Use **two** probes for the root crate, because they answer different questions:
 
 - a *minimal* one (`examples/hello.rs` as `main.rs`) — the floor every
   `Runner` host pays, and where a feature that escaped DCE shows up
 - a *realistic* one (`examples/codex/` copied in) — where a full application's
   cost actually sits
+
+Then **one probe per companion crate** — `tuika-charts`, `tuika-codeformatters`,
+`tuika-html`, `tuika-mermaid` — each calling that crate's entry point once.
+This is not optional and not an afterthought: the companions carry the heavy
+dependencies by design, so they are where the megabytes are. Measuring only the
+root crate misses the question almost entirely. Current expected order of
+magnitude, for a host using each:
+
+| crate | host binary |
+|---|---:|
+| `tuika` alone | ~925 KiB |
+| `tuika-charts` | ~730 KiB |
+| `tuika-html` | ~1.7 MiB |
+| `tuika-mermaid` | ~5.5 MiB |
+| `tuika-codeformatters` (default) | ~24 MiB |
+| `tuika-codeformatters` (`rust`, `python`) | ~4.8 MiB |
+
+A member that grew a lot against these is the finding.
 
 Then:
 
@@ -229,6 +247,14 @@ nm -C target/release/sizeprobe | grep -E 'encode_sixel|png_rgba'
 nm -S -C target/release/sizeprobe | grep ' [tT] .*tuika' \
   | python3 -c 'import sys;print(sum(int(l.split()[1],16) for l in sys.stdin))'
 size -A target/release/sizeprobe | grep -E '^\.text|^\.rodata'
+```
+
+When a crate gains per-item cargo features, check the reduced builds too — the
+empty configuration is the one that rots:
+
+```bash
+cargo clippy -p <crate> --all-targets --no-default-features -- -D warnings
+cargo test  -p <crate> --no-default-features --features <one>
 ```
 
 Findings worth acting on:

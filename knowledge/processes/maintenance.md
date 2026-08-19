@@ -144,6 +144,47 @@ So the rule is about the shape of the reference, not the size of the code:
   reference graph decides. Two of the three most plausible size levers here
   measured at exactly zero. Measure first, change second.
 
+### Every published member, not just the root
+
+The root crate is the *smallest* part of this question. tuika core costs a
+minimal host ~64 KiB; the companion crates exist precisely because they carry
+the heavy dependencies, so that is where the megabytes are. Measured per crate,
+for a host that uses each one:
+
+| crate | host binary | dominated by |
+|---|---:|---|
+| `tuika` alone | 925 KiB | — |
+| `tuika-charts` | 730 KiB | nothing heavy; it depends only on tuika |
+| `tuika-html` | 1.7 MiB | html5ever's tree builder |
+| `tuika-mermaid` | 5.5 MiB | mmdflux's layout engine (`.text`, not data) |
+| `tuika-codeformatters` | 24.0 MiB | fourteen tree-sitter parse tables |
+
+The first four are the cost of the thing the crate exists to do, and the
+boundary is already drawn correctly — that weight is in a companion crate rather
+than in tuika, which is the whole point of
+[the dependency rule](../specs/goal.md). `tuika-mermaid` already takes mmdflux
+with `default-features = false`; there is nothing left to trim.
+
+`tuika-codeformatters` was the outlier, and it is the case that justifies the
+last-resort lever. Grammars are selected by a **runtime** language string, so
+unlike graphics protocols there is no use site to move the choice to:
+`build_configuration` must name every grammar, which anchored ~21 MiB of parse
+tables into any binary that highlighted anything at all — C# ~5 MiB, Scala
+~3.9 MiB, TypeScript ~2.9 MiB, and so on down to HTML at ~19 KiB. One cargo
+feature per grammar, **all on by default**, leaves existing dependants
+unchanged while letting a host that knows its languages drop the rest: a
+Rust-and-Python host goes from 24.0 MiB to 4.8 MiB.
+
+Two properties make that acceptable rather than a support burden, and both are
+worth preserving in any similar split:
+
+- **Default-on**, so no existing dependant changes behavior by upgrading.
+- **A disabled grammar is indistinguishable from an unsupported one** — it
+  returns `None` and the block renders plain. No new failure mode, and the empty
+  configuration still builds, lints, and tests clean.
+
+### Build levers belong to the host
+
 Build-level levers — `opt-level="z"`, `panic="abort"`, `lto="fat"`,
 `codegen-units=1` — belong to the host's profile, not to tuika. They are worth
 knowing (each is worth roughly 7-10% of a shipped binary) so a host asking about

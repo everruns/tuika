@@ -15,6 +15,15 @@
     the PNG writer into binaries that place no image. Resolving the encoder in
     `record` — reachable only from the `Image` view — and carrying it as a
     function pointer moved all four behind actual use.
+  - The root crate turned out to be the *smallest* part of the question. Probing
+    every published member showed tuika core costs a minimal host ~64 KiB while
+    `tuika-codeformatters` cost 24 MiB — fourteen tree-sitter parse tables, all
+    of them linked because grammars are chosen by a runtime language string, so
+    `build_configuration` must name every one. That is the case with no use site
+    to move the choice to, and therefore the case that justifies the last-resort
+    lever: one cargo feature per grammar, all default-on, taking a
+    Rust-and-Python host from 24.0 MiB to 4.8 MiB. A disabled grammar is
+    indistinguishable from an unsupported one, so no new failure mode appears.
   - Generalized as [Binary Size Discipline](processes/maintenance.md#binary-size-discipline):
     prefer resolving a capability where it is *used* over matching on it in a
     per-frame function, and treat a cargo feature as the last resort. Build
