@@ -91,6 +91,10 @@ established for reading a view's painted rect back out:
 3. **After** `terminal.draw()` returns, `Runner` calls `ImageLayer::emit`, which
    writes each image's graphics escape positioned at its cell origin, then
    clears the layer. A custom host performs those same two calls itself.
+   The protocol encoder is resolved in step 2 and carried on the placement, not
+   matched on in `emit`: `emit` runs in every host, so choosing there would link
+   all three encoders into binaries that place no image. See
+   [Binary Size Discipline](../processes/maintenance.md#binary-size-discipline).
 
 Emission happens after the frame because the graphics escape paints pixels the
 cell buffer knows nothing about; doing it inside the paint pass would fight
