@@ -173,8 +173,43 @@ impl ImageSupport {
 struct Placement {
     rect: Rect,
     data: ImageData,
-    support: ImageSupport,
+    /// The protocol encoder chosen when this placement was recorded.
+    ///
+    /// Holding the encoder here rather than matching on [`ImageSupport`] inside
+    /// [`ImageLayer::emit`] is what keeps graphics encoding **pay-for-use**:
+    /// `emit` runs on every frame of every host, so naming the three encoders
+    /// there anchored all of them — Kitty, iTerm2, Sixel, and the PNG writer
+    /// behind iTerm2 — into any binary that links tuika at all. Reaching them
+    /// only through `record`, whose sole caller is
+    /// [`Image`](crate::components::Image)'s `render`, lets the linker drop the
+    /// whole set for a host that places no images.
+    encode: Encoder,
     kitty_image_number: Option<u32>,
+}
+
+/// A protocol encoder: writes one recorded placement's graphics escape.
+///
+/// `&mut dyn Write` rather than a generic sink, because a function pointer
+/// cannot be generic — and the indirection costs nothing measurable next to
+/// transmitting the pixels themselves.
+type Encoder = fn(&mut dyn Write, &Placement) -> io::Result<()>;
+
+fn place_kitty(mut out: &mut dyn Write, p: &Placement) -> io::Result<()> {
+    write_kitty(
+        &mut out,
+        &p.data,
+        p.rect.width,
+        p.rect.height,
+        p.kitty_image_number,
+    )
+}
+
+fn place_iterm2(mut out: &mut dyn Write, p: &Placement) -> io::Result<()> {
+    write_iterm2(&mut out, &p.data, p.rect.width, p.rect.height)
+}
+
+fn place_sixel(out: &mut dyn Write, p: &Placement) -> io::Result<()> {
+    out.write_all(encode_sixel(&p.data, p.rect.width, p.rect.height).as_bytes())
 }
 
 #[derive(Debug, Default)]
@@ -218,10 +253,16 @@ impl ImageLayer {
         if rect.width == 0 || rect.height == 0 {
             return;
         }
+        // `None` shouldn't record, but Kitty is the safe default encoding.
+        let encode: Encoder = match support {
+            ImageSupport::ITerm2 => place_iterm2,
+            ImageSupport::Sixel => place_sixel,
+            _ => place_kitty,
+        };
         self.0.borrow_mut().placements.push(Placement {
             rect,
             data,
-            support,
+            encode,
             kitty_image_number: (support == ImageSupport::Kitty).then(next_kitty_image_number),
         });
     }
@@ -262,22 +303,7 @@ impl ImageLayer {
             // CUP is 1-based; the reserved rect is 0-based screen coordinates.
             let (row, col) = (p.rect.y + 1, p.rect.x + 1);
             write!(out, "\x1b[{row};{col}H")?;
-            match p.support {
-                ImageSupport::ITerm2 => {
-                    write_iterm2(out, &p.data, p.rect.width, p.rect.height)?;
-                }
-                ImageSupport::Sixel => {
-                    out.write_all(encode_sixel(&p.data, p.rect.width, p.rect.height).as_bytes())?;
-                }
-                // None shouldn't record, but Kitty is the safe default encoding.
-                _ => write_kitty(
-                    out,
-                    &p.data,
-                    p.rect.width,
-                    p.rect.height,
-                    p.kitty_image_number,
-                )?,
-            }
+            (p.encode)(out, p)?;
         }
         // Cell redraws do not erase Kitty placements. Retire the previous
         // frame only after its replacements are visible, avoiding both stale

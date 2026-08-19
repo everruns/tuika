@@ -26,6 +26,7 @@ This skill is outcome-oriented. Choose the smallest set of actions that closes t
 - code simplification / removing over-abstraction and dead code
 - security hygiene review
 - performance review of recently changed code
+- binary-size review: what a host pays for linking tuika
 - AGENTS / skills hygiene
 
 ## Required Outcomes
@@ -170,6 +171,106 @@ the release schedule rather than slipping it into a cleanup PR. When a
 simplification is too large to land inline, defer it to a GitHub issue naming the
 abstraction and why it no longer pays its way.
 
+### Binary Size
+
+What a host binary pays for linking tuika. The standard is **pay-for-use**, not
+a byte target: a host that renders no markdown, places no image, and draws no
+chart should carry none of that code. See
+[Binary Size Discipline](../../../knowledge/processes/maintenance.md#binary-size-discipline)
+for why the reference graph, not the code size, is what decides this.
+
+Analyze with [`cargo-bsize`](https://github.com/Boshen/cargo-bsize)
+(`cargo install cargo-bsize`). It needs a **binary** target, and tuika is a
+library whose examples are not `[[bin]]`s, so point it at a throwaway host crate
+outside the repo that depends on tuika by path:
+
+```toml
+# /tmp/sizeprobe/Cargo.toml
+[package]
+name = "sizeprobe"
+version = "0.0.0"
+edition = "2024"
+
+[[bin]]
+name = "sizeprobe"
+path = "src/main.rs"
+
+[dependencies]
+tuika = { path = "/path/to/tuika" }
+ratatui = "0.30"
+crossterm = "0.29"
+
+[workspace]
+```
+
+Use **two** probes for the root crate, because they answer different questions:
+
+- a *minimal* one (`examples/hello.rs` as `main.rs`) — the floor every
+  `Runner` host pays, and where a feature that escaped DCE shows up
+- a *realistic* one (`examples/codex/` copied in) — where a full application's
+  cost actually sits
+
+Then **one probe per companion crate** — `tuika-charts`, `tuika-codeformatters`,
+`tuika-html`, `tuika-mermaid` — each calling that crate's entry point once.
+This is not optional and not an afterthought: the companions carry the heavy
+dependencies by design, so they are where the megabytes are. Measuring only the
+root crate misses the question almost entirely. Current expected order of
+magnitude, for a host using each:
+
+| crate | host binary |
+|---|---:|
+| `tuika` alone | ~925 KiB |
+| `tuika-charts` | ~730 KiB |
+| `tuika-html` | ~1.7 MiB |
+| `tuika-mermaid` | ~5.5 MiB |
+| `tuika-codeformatters` (default) | ~24 MiB |
+| `tuika-codeformatters` (`rust`, `python`) | ~4.8 MiB |
+
+A member that grew a lot against these is the finding.
+
+Then:
+
+```bash
+cargo bsize --limit 25                  # the report
+cargo bsize --what-if --levers all      # measure the build levers (slow)
+cargo bsize --baseline path/to/old.bin  # what grew since
+```
+
+Read the report for the pay-for-use question specifically: **Reference graph →
+Removing a function frees**, and any per-frame function that `match`es on a
+capability enum. Confirm a suspected win rather than assuming it:
+
+```bash
+# is the feature actually linked into a host that never uses it?
+nm -C target/release/sizeprobe | grep -E 'encode_sixel|png_rgba'
+# tuika's own code in that host, before and after
+nm -S -C target/release/sizeprobe | grep ' [tT] .*tuika' \
+  | python3 -c 'import sys;print(sum(int(l.split()[1],16) for l in sys.stdin))'
+size -A target/release/sizeprobe | grep -E '^\.text|^\.rodata'
+```
+
+When a crate gains per-item cargo features, check the reduced builds too — the
+empty configuration is the one that rots:
+
+```bash
+cargo clippy -p <crate> --all-targets --no-default-features -- -D warnings
+cargo test  -p <crate> --no-default-features --features <one>
+```
+
+Findings worth acting on:
+
+- an unconditional path that names an optional feature's code (fix the
+  reference, not the code size)
+- a dependency that reaches the binary despite being unused
+- a growth against a prior baseline that no change explains
+
+Findings **not** worth acting on:
+
+- absolute size, or tuika's share of it — hosts differ enormously
+- build-profile levers; those belong to the host's `[profile.release]`, and
+  `--what-if` numbers are for advising a host, not for changing tuika
+- a saving too small to survive codegen noise (compare `.text`, and re-measure)
+
 ### Security And Threat Posture
 
 tuika does no network or filesystem I/O, spawns no processes, and holds no
@@ -207,6 +308,7 @@ content does to it.
 - `cargo publish --dry-run -p tuika`
 - `cargo search ratatui-core --limit 1`
 - `cargo tree --duplicates`
+- `cargo bsize --limit 25` (against a probe host crate; see [Binary Size](#binary-size))
 - `cargo outdated` (when available)
 - `cargo audit` (when available)
 

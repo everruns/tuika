@@ -52,6 +52,25 @@ PHP, Zig, Scala, and SQL (with common aliases: `rs`, `py`, `ts`, `js`, `rb`,
 `c#`, …). Unknown languages — or source that fails to parse — return `None`, and
 the caller renders the block as plain, theme-colored code.
 
+### Choosing grammars
+
+Every grammar is on by default, and each has a cargo feature. A grammar is a
+multi-megabyte parse table, so a binary that highlights everything carries
+~21 MiB of them — C# alone is ~5 MiB. A host that knows its languages keeps only
+those:
+
+```toml
+[dependencies]
+tuika-codeformatters = { version = "0.4", default-features = false, features = ["rust", "python"] }
+```
+
+Feature names match the language keys above, lowercased and without punctuation:
+`rust`, `python`, `typescript` (covers TSX/JSX too), `go`, `java`, `ruby`,
+`css`, `html`, `csharp`, `php`, `zig`, `scala`, `sql`.
+
+A language whose feature is off behaves exactly like one this crate never
+supported: it returns `None` and the caller renders plain code.
+
 ## Compatibility
 
 `ratatui` and `tuika` are part of this crate's public interface, so pin the same

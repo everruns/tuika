@@ -13,6 +13,41 @@ described in the release process begins with the entry below.
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **`tuika-codeformatters`**: every tree-sitter grammar now sits behind its own
+  cargo feature. All fourteen are **on by default**, so a dependant taking the
+  crate normally is unaffected. A dependant that already passes
+  `default-features = false` now gets no grammars until it names them:
+
+  ```toml
+  tuika-codeformatters = { version = "0.4", default-features = false, features = ["rust", "python"] }
+  ```
+
+  Feature names are the language keys lowercased without punctuation — `rust`,
+  `python`, `typescript` (covers TSX/JSX), `go`, `java`, `ruby`, `css`, `html`,
+  `csharp`, `php`, `zig`, `scala`, `sql`. A language whose feature is off
+  behaves exactly like one the crate never supported: `highlight` returns
+  `None` and the caller renders plain code.
+
+### Changed
+
+- **`tuika-codeformatters` binary size**: grammars are selected by a runtime
+  language string, so the config builder named all fourteen and anchored every
+  parse table into any binary that highlighted anything — roughly 21 MiB of
+  read-only data, C# alone about 5 MiB. Selecting grammars by feature lets a
+  host drop the ones it does not use: measured on a probe binary highlighting a
+  single snippet, the default build is ~24.0 MiB and a `rust` + `python` build
+  ~4.8 MiB. Highlighting output under default features is unchanged.
+- **Graphics protocol encoders are now pay-for-use.** `ImageLayer::emit` runs
+  after every frame in every `Runner` host and chose its encoder by matching on
+  `ImageSupport`, which linked the Kitty, iTerm2, and Sixel encoders plus the
+  PNG writer into every binary that used tuika at all. The encoder is now
+  resolved where an image is recorded — reachable only from the `Image` view —
+  so a host that places no images no longer carries any of them: about 8.4 KiB
+  less tuika code in a minimal host. The emitted bytes are unchanged for all
+  three protocols, and no public API changed.
+
 ### Added
 
 - **Input routing**: the new `routing` module (`Router`, `Delivery`,
