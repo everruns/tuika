@@ -2,7 +2,7 @@
 title: Terminal features
 description: Images, hyperlinks, clipboard, native progress, terminal palettes, mouse input, and screen modes in tuika.
 sidebar:
-  order: 8
+  order: 9
 ---
 
 # Terminal features

@@ -34,6 +34,8 @@
 //! - **Scene composition** is owned with [`Scene`], or borrows a host-state view
 //!   for one frame with [`ScopedScene`]; both use the same ordered overlay and
 //!   focus semantics.
+//! - **Input routing** ([`routing`]) delivers an event to whichever surface owns
+//!   input this frame, every event kind through one registration.
 //!
 //! # Finding things
 //!
@@ -98,6 +100,7 @@ mod output;
 pub mod overlay;
 pub mod prelude;
 pub mod probe;
+pub mod routing;
 pub mod runner;
 pub mod scene;
 pub mod screen;
@@ -139,6 +142,7 @@ pub use layout::{
 };
 pub use output::{OneShotOptions, render_once, write_once};
 pub use overlay::{Overlay, OverlaySpec, TargetAlign, TargetPlacement, TargetSide};
+pub use routing::{Delivery, InputTarget, RouteStage, Router};
 #[cfg(feature = "async")]
 #[allow(deprecated)]
 pub use runner::AsyncSignal;

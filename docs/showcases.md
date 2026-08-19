@@ -2,7 +2,7 @@
 title: Showcases
 description: See applications and full terminal interfaces built with tuika, including yolop, LLMSim, and the Codex UI replica.
 sidebar:
-  order: 10
+  order: 11
 ---
 
 # Showcases

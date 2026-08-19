@@ -47,6 +47,7 @@ the reason for a decision is cheapest to write down while it is still at hand.
 - [Images](specs/images.md) — terminal graphics protocols over reserved cells.
 - [Adaptive charts](specs/charts.md) — portable chart grammar and graphics/cell rendering parity in `tuika-charts`.
 - [Keymap](specs/keymap.md) — declarative key-binding dispatch.
+- [Input routing](specs/input-routing.md) — which surface receives an event, and why delivery is a toolkit concern.
 - [Styling](specs/styling.md) — themes as tokens, stylesheets as rules.
 - [Screen modes](specs/screen-modes.md) — the alternate screen, and a split footer over live scrollback.
 - [Out-of-band escapes](specs/out-of-band.md) — hyperlinks, clipboard, and native progress.

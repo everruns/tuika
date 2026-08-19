@@ -2,7 +2,7 @@
 title: Styling
 description: Style tuika by semantic role with themes, stylesheets, reusable bundles, and host-level policy.
 sidebar:
-  order: 6
+  order: 7
 ---
 
 # Styling

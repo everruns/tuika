@@ -41,16 +41,16 @@ pub use crate::ui::{Color, Line, Modifier, Rect, Span, Style};
 // `$crate::…` paths, so a glob-importing host needs neither in scope by name.
 pub use crate::view;
 pub use crate::{
-    Align, AlignContent, Application, AvailableSpace, Backdrop, Clock, Dimension, Direction,
-    DockEdge, DockLayout, DockPlacement, DockSpec, DockState, Element, Event, EventFlow,
-    EventSource, FlexItemStyle, FlexWrap, FrameSource, InputOutcome, Justify, Key, KeyCode,
-    LayoutStyle, MeasureRequest, Mouse, MouseButton, MouseCapture, MouseKind, OneShotOptions,
-    Overlay, OverlaySpec, Padding, RenderCtx, Runner, RunnerAction, RunnerConfig, RunnerCore,
-    Scene, SceneOverlay, ScopedElement, ScopedScene, ScreenMode, Scrollback, SemanticRole, Signal,
-    Size, StyleSheet, Surface, SystemClock, TargetAlign, TargetPlacement, TargetSide,
-    TerminalSession, TerminalSessionConfig, Theme, UpdateResult, View, element, from_fn, paint,
-    paint_scene, paint_with_context, paint_with_sheet, render_once, translate_event, view_fn,
-    write_once,
+    Align, AlignContent, Application, AvailableSpace, Backdrop, Clock, Delivery, Dimension,
+    Direction, DockEdge, DockLayout, DockPlacement, DockSpec, DockState, Element, Event, EventFlow,
+    EventSource, FlexItemStyle, FlexWrap, FrameSource, InputOutcome, InputTarget, Justify, Key,
+    KeyCode, LayoutStyle, MeasureRequest, Mouse, MouseButton, MouseCapture, MouseKind,
+    OneShotOptions, Overlay, OverlaySpec, Padding, RenderCtx, RouteStage, Router, Runner,
+    RunnerAction, RunnerConfig, RunnerCore, Scene, SceneOverlay, ScopedElement, ScopedScene,
+    ScreenMode, Scrollback, SemanticRole, Signal, Size, StyleSheet, Surface, SystemClock,
+    TargetAlign, TargetPlacement, TargetSide, TerminalSession, TerminalSessionConfig, Theme,
+    UpdateResult, View, element, from_fn, paint, paint_scene, paint_with_context, paint_with_sheet,
+    render_once, translate_event, view_fn, write_once,
 };
 
 #[cfg(feature = "async")]

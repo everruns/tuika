@@ -2,7 +2,7 @@
 title: Charts
 description: Define one terminal chart that adapts from portable Unicode cells to smooth terminal graphics.
 sidebar:
-  order: 9
+  order: 10
 ---
 
 # Charts

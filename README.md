@@ -14,7 +14,8 @@
 [Website](https://tuika.dev) · [Rust API](https://docs.rs/tuika) · [Getting started](https://github.com/everruns/tuika/blob/v0.10.0/docs/getting-started.md) · [Components](https://github.com/everruns/tuika/blob/v0.10.0/docs/components.md) · [Layout](https://github.com/everruns/tuika/blob/v0.10.0/docs/layout.md) ·
 [Markdown](https://github.com/everruns/tuika/blob/v0.10.0/docs/markdown.md) · [Charts](https://github.com/everruns/tuika/blob/v0.10.0/docs/charts.md) ·
 [Terminal features](https://github.com/everruns/tuika/blob/v0.10.0/docs/features.md) ·
-[Keymap](https://github.com/everruns/tuika/blob/v0.10.0/docs/keymap.md) · [Styling](https://github.com/everruns/tuika/blob/v0.10.0/docs/styling.md) ·
+[Keymap](https://github.com/everruns/tuika/blob/v0.10.0/docs/keymap.md) · [Input routing](https://github.com/everruns/tuika/blob/v0.10.0/docs/routing.md) ·
+[Styling](https://github.com/everruns/tuika/blob/v0.10.0/docs/styling.md) ·
 [Themes](https://github.com/everruns/tuika/blob/v0.10.0/docs/themes.md) \
 [Showcases](https://github.com/everruns/tuika/blob/v0.10.0/docs/showcases.md) · [Examples](#runnable-examples) ·
 [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) ·
@@ -148,6 +149,13 @@ with tuika's surfaces (see [Compatibility](#compatibility)).
   matching; Shift stays explicit for non-character keys such as `Shift+Enter`.
   Host-agnostic, so it unit-tests without a terminal. See the
   [keymap guide](https://github.com/everruns/tuika/blob/v0.10.0/docs/keymap.md).
+- **Input routing** ([`routing`](https://github.com/everruns/tuika/blob/v0.10.0/docs/routing.md)) delivers an event to the
+  surface that owns input this frame — every event kind through one
+  registration, so a paste cannot take a different path from a key. `Router`
+  reads the focus registry an overlay-bearing `Scene` already synchronized, and
+  reports through `Delivery` which surface received what, including the case
+  where nothing did. See the
+  [routing guide](https://github.com/everruns/tuika/blob/v0.10.0/docs/routing.md).
 - **Motion** (`anim`, `components::{Spinner, ProgressBar, Loader}`,
   `term::progress::TerminalProgress`) animates from a host-supplied frame counter and
   can drive the terminal's own OSC 9;4 progress indicator. `anim::Timeline` adds
