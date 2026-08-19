@@ -22,6 +22,12 @@ pub enum Flow {
     Quit,
 }
 
+/// What a global chord asked for, applied once the route is finished.
+enum Interrupt {
+    Requested,
+    Quit,
+}
+
 /// The slash commands the composer completes, in the order Codex lists them.
 pub const COMMANDS: &[(&str, &str)] = &[
     (
@@ -143,6 +149,8 @@ pub struct App {
     pub cells: Vec<Cell>,
     pub composer: TextInputState,
     pub scroll: ScrollState,
+    /// Which surface owns input this frame; the router reads it.
+    focus: FocusRegistry,
     pub agent: Agent,
     pub popup: Option<Popup>,
     pub approval: Option<Approval>,
@@ -178,6 +186,7 @@ impl App {
             cells: vec![banner],
             composer: TextInputState::new(),
             scroll: ScrollState::new(),
+            focus: FocusRegistry::new(),
             agent: Agent::new(),
             popup: None,
             approval: None,
@@ -250,8 +259,12 @@ impl App {
             .collect()
     }
 
-    /// Route one translated event. The order here *is* the focus model: modal
-    /// surfaces first, then the picker, then the composer.
+    /// Route one translated event.
+    ///
+    /// The order is declared once, for **every** event kind, by [`Router`]: the
+    /// interrupt chords, then the two surfaces that receive regardless of focus
+    /// (the transcript scrolls, the picker claims its own keys), then whichever
+    /// surface owns input this frame.
     pub fn handle(&mut self, event: &Event) -> Flow {
         let flow = self.route(event);
         if self.quit_requested {
@@ -260,42 +273,84 @@ impl App {
         flow
     }
 
+    /// Declare this frame's surfaces and which one owns input.
+    ///
+    /// A host whose modal is a real overlay gets this from
+    /// [`Scene::sync_focus`]; these modes are inline rows, so the app states
+    /// them itself. Either way it is one declaration, not a rule re-derived per
+    /// event kind.
+    fn sync_focus(&mut self) {
+        self.focus.begin_frame();
+        self.focus.register("composer");
+        // Only the approval prompt is *exclusive*. The picker takes precedence
+        // over the composer without owning it, so it routes as a declared
+        // exception below rather than as this frame's owner.
+        match self.approval.is_some() {
+            true => self.focus.set_owner("approval"),
+            false => self.focus.clear_owner(),
+        }
+    }
+
     fn route(&mut self, event: &Event) -> Flow {
-        if self.scrolling(event) {
-            let _ = self.scroll.handle(event, self.content_h, self.viewport_h);
-            return Flow::Continue;
-        }
-        let Event::Key(key) = event else {
-            return Flow::Continue;
-        };
+        self.sync_focus();
 
-        if key.ctrl && key.code == KeyCode::Char('c') {
-            return self.interrupt_or_quit();
-        }
-        if key.ctrl && key.code == KeyCode::Char('d') && self.composer.is_empty() {
-            return Flow::Quit;
-        }
-        if self.approval.is_some() {
-            self.handle_approval(event, *key);
-            return Flow::Continue;
-        }
-        if self.popup.is_some() && self.handle_popup(event, *key) {
-            return Flow::Continue;
-        }
-        if key.plain() && key.code == KeyCode::Esc {
-            if self.agent.interrupt() {
-                self.cells.push(interrupted_notice());
-                self.follow();
+        let mut interrupt = None;
+        let mut router = Router::new(&self.focus, event);
+        // Interrupt and quit outrank whatever owns input.
+        router.pre_fn(|event| {
+            let Event::Key(key) = event else {
+                return InputOutcome::Ignored;
+            };
+            if key.ctrl && key.code == KeyCode::Char('c') {
+                interrupt = Some(Interrupt::Requested);
+                return InputOutcome::Cancelled;
             }
-            return Flow::Continue;
+            if key.ctrl && key.code == KeyCode::Char('d') && self.composer.is_empty() {
+                interrupt = Some(Interrupt::Quit);
+                return InputOutcome::Cancelled;
+            }
+            InputOutcome::Ignored
+        });
+        // The transcript pages and scrolls whether or not it holds focus, and
+        // the picker claims its navigation keys before the composer types them.
+        router.always_fn("transcript", |event| {
+            self.scroll.handle(event, self.content_h, self.viewport_h)
+        });
+        router.always_fn("popup", |event| self.handle_popup(event));
+        router.target_fn("approval", |event| self.handle_approval(event));
+        router.target_fn("composer", |event| self.handle_composer(event));
+        router.finish();
+
+        // Stages decide; the host applies afterwards, so a stage closure never
+        // needs a borrow of the whole application while the route is running.
+        match interrupt {
+            Some(Interrupt::Requested) => self.interrupt_or_quit(),
+            Some(Interrupt::Quit) => Flow::Quit,
+            None => Flow::Continue,
         }
-        // `Up` on an empty composer recalls the previous prompt, as in Codex.
-        if key.plain() && key.code == KeyCode::Up && self.composer.is_empty() {
-            self.recall();
-            return Flow::Continue;
+    }
+
+    /// The composer's own keys: interrupt, prompt recall, then editing.
+    fn handle_composer(&mut self, event: &Event) -> InputOutcome {
+        if let Event::Key(key) = event
+            && key.plain()
+        {
+            if key.code == KeyCode::Esc {
+                if self.agent.interrupt() {
+                    self.cells.push(interrupted_notice());
+                    self.follow();
+                }
+                return InputOutcome::Cancelled;
+            }
+            // `Up` on an empty composer recalls the previous prompt, as in Codex.
+            if key.code == KeyCode::Up && self.composer.is_empty() {
+                self.recall();
+                return InputOutcome::Changed;
+            }
         }
 
-        match self.composer.handle(event) {
+        let outcome = self.composer.handle(event);
+        match outcome {
             InputOutcome::Submitted => {
                 let text = self.composer.text().trim().to_string();
                 self.composer.clear();
@@ -307,16 +362,7 @@ impl App {
             }
             _ => self.sync_popup(),
         }
-        Flow::Continue
-    }
-
-    /// Events that belong to the transcript rather than to any focused surface.
-    fn scrolling(&self, event: &Event) -> bool {
-        match event {
-            Event::Mouse(m) => matches!(m.kind, MouseKind::ScrollUp | MouseKind::ScrollDown),
-            Event::Key(k) => k.plain() && matches!(k.code, KeyCode::PageUp | KeyCode::PageDown),
-            _ => false,
-        }
+        outcome
     }
 
     fn interrupt_or_quit(&mut self) -> Flow {
@@ -332,22 +378,33 @@ impl App {
         Flow::Quit
     }
 
-    fn handle_approval(&mut self, event: &Event, key: Key) {
+    fn handle_approval(&mut self, event: &Event) -> InputOutcome {
         let Some(approval) = &mut self.approval else {
-            return;
+            return InputOutcome::Ignored;
         };
         // Codex accepts the digit shortcuts as well as the caret.
-        let picked = match key.code {
-            KeyCode::Char('1') if key.plain() => Some(0),
-            KeyCode::Char('2') if key.plain() => Some(1),
-            KeyCode::Char('3') if key.plain() => Some(2),
-            _ => match approval.state.handle(event, 3) {
+        let digit = match event {
+            Event::Key(key) if key.plain() => match key.code {
+                KeyCode::Char('1') => Some(0),
+                KeyCode::Char('2') => Some(1),
+                KeyCode::Char('3') => Some(2),
+                _ => None,
+            },
+            _ => None,
+        };
+        let picked = match digit {
+            Some(index) => Some(index),
+            None => match approval.state.handle(event, 3) {
                 InputOutcome::Submitted => approval.state.selected(),
                 InputOutcome::Cancelled => Some(2),
+                // A modal answers for everything it is shown for: nothing
+                // behind it may act on the same event.
                 _ => None,
             },
         };
-        let Some(index) = picked else { return };
+        let Some(index) = picked else {
+            return InputOutcome::Consumed;
+        };
         let decision = match index {
             0 => Decision::Once,
             1 => Decision::Session,
@@ -356,20 +413,29 @@ impl App {
         self.approval = None;
         self.agent.approve(decision, &mut self.cells);
         self.follow();
+        InputOutcome::Submitted
     }
 
-    /// Returns true when the popup consumed the event.
-    fn handle_popup(&mut self, event: &Event, key: Key) -> bool {
+    /// The picker's keys. Anything it does not recognize keeps flowing, so
+    /// typing continues to filter the list in the composer behind it.
+    fn handle_popup(&mut self, event: &Event) -> InputOutcome {
+        // A declared exception still yields to an exclusive owner.
+        if self.approval.is_some() {
+            return InputOutcome::Ignored;
+        }
         let items = self.popup_items();
         let Some(popup) = self.popup.as_mut() else {
-            return false;
+            return InputOutcome::Ignored;
         };
         let is_token = matches!(popup, Popup::Token { .. });
         let state = match popup {
             Popup::Token { state, .. } | Popup::Model(state) | Popup::Approvals(state) => state,
         };
         // Tab completes the highlighted row in place, without running it.
-        if key.plain() && key.code == KeyCode::Tab {
+        if let Event::Key(key) = event
+            && key.plain()
+            && key.code == KeyCode::Tab
+        {
             let completion = state
                 .selected()
                 .and_then(|selected| items.get(selected))
@@ -377,7 +443,7 @@ impl App {
             if is_token && let Some(label) = completion {
                 self.complete(&label);
             }
-            return true;
+            return InputOutcome::Changed;
         }
         match state.handle(event, items.len()) {
             InputOutcome::Submitted => {
@@ -388,13 +454,13 @@ impl App {
                 if let (Some(label), Some(kind)) = (label, self.popup.take()) {
                     self.confirm_popup(kind, &label);
                 }
-                true
+                InputOutcome::Submitted
             }
             InputOutcome::Cancelled => {
                 self.popup = None;
-                true
+                InputOutcome::Cancelled
             }
-            outcome => outcome.consumed(),
+            outcome => outcome,
         }
     }
 

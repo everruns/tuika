@@ -498,3 +498,27 @@ fn the_non_prelude_surface_keeps_its_module_path() {
     let _: fn() -> std::io::Result<tuika::host::AltScreen> =
         tuika::host::AltScreen::enter_with_mouse_capture;
 }
+
+/// Routing is host surface: the prelude alone must be enough to declare a
+/// frame's ownership and deliver an event to the surface that owns it.
+#[test]
+fn the_prelude_routes_an_event_to_the_owning_surface() {
+    let mut composer = SingleLineInputState::new();
+    let mut prompt = SingleLineInputState::new();
+
+    let mut focus = FocusRegistry::new();
+    focus.begin_frame();
+    focus.register("composer");
+    focus.set_owner("prompt");
+
+    let event = Event::Paste("pasted".into());
+    let mut router = Router::new(&focus, &event);
+    router.target("prompt", &mut prompt);
+    router.target("composer", &mut composer);
+    let delivery: Delivery<'_> = router.finish();
+
+    assert_eq!(delivery.stage, RouteStage::Target);
+    assert!(delivery.reached("prompt"));
+    assert_eq!(prompt.text(), "pasted");
+    assert!(composer.text().is_empty());
+}

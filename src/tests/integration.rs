@@ -241,3 +241,63 @@ fn a_split_footer_composes_components_over_published_markdown() {
         "the published answer is the user's to keep: {after:?}"
     );
 }
+
+/// The path an overlay's input ownership actually takes: a scene declares the
+/// owner, the registry records it, and the router hands the event to that
+/// surface — for a paste as much as for a key.
+///
+/// This is the incident that motivated routing: a masked prompt was open, and a
+/// paste landed in the composer behind it because pastes travelled a different
+/// path from keys. Here both kinds reach the prompt, and the composer stays
+/// empty.
+#[test]
+fn an_overlay_that_owns_input_receives_pastes_and_keys_alike() {
+    use crate::components::{Dialog, SingleLineInputState};
+    use crate::event::{Event, Key, KeyCode};
+    use crate::focus::FocusRegistry;
+    use crate::routing::{RouteStage, Router};
+    use crate::scene::ScopedScene;
+
+    let mut composer = SingleLineInputState::new();
+    let mut prompt = SingleLineInputState::new();
+
+    // One frame: the base tree plus a dialog that claims input ownership.
+    let root = Text::raw("transcript");
+    let scene = ScopedScene::new(&root)
+        .dialog(Dialog::new("Token", element(Text::raw("paste it"))).focus_owner("prompt"));
+    let mut focus = FocusRegistry::new();
+    focus.begin_frame();
+    focus.register("composer");
+    scene.sync_focus(&mut focus);
+
+    for event in [
+        Event::Paste("sk-secret".to_string()),
+        Event::Key(Key {
+            code: KeyCode::Char('v'),
+            ctrl: true,
+            alt: false,
+            shift: false,
+        }),
+        Event::Key(Key::new(KeyCode::Char('s'))),
+    ] {
+        let mut router = Router::new(&focus, &event);
+        router.target("prompt", &mut prompt);
+        router.target("composer", &mut composer);
+        let delivery = router.finish();
+
+        assert_eq!(delivery.target, Some("prompt"), "{event:?}");
+        assert_eq!(delivery.stage, RouteStage::Target, "{event:?}");
+        assert!(composer.text().is_empty(), "{event:?}");
+    }
+
+    assert_eq!(prompt.text(), "sk-secrets");
+
+    // Closing the overlay hands input back to the base ring.
+    focus.clear_owner();
+    let typed = Event::Key(Key::new(KeyCode::Char('h')));
+    let mut router = Router::new(&focus, &typed);
+    router.target("prompt", &mut prompt);
+    router.target("composer", &mut composer);
+    assert!(router.finish().reached("composer"));
+    assert_eq!(composer.text(), "h");
+}

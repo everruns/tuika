@@ -1,5 +1,20 @@
 # Knowledge Log
 
+## 2026-08-19
+
+- **Delivering an event is toolkit policy, not host glue**
+  - The registry knowing who owns input, and the owner's state receiving the
+    event, were separated by host code written per surface *and per event kind*.
+    Two paths for two kinds is how a paste reached the composer behind an open
+    prompt while the key path honored the overlay.
+  - Routing therefore joins layout, focus, and painting: one registration per
+    surface covers every `Event` variant, and reaching a surface that does not
+    own input is a named exception rather than an omitted check.
+  - The router reads the focus registry instead of holding it, so stage closures
+    can still take `&mut` on the host. An API that forced `Rc<RefCell<_>>` on
+    host state would not have been adopted, and an unadopted route is the same
+    hole under a new name.
+
 ## 2026-08-16
 
 - **A chart's geometry is resolved once, before either renderer runs**

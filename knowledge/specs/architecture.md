@@ -275,6 +275,12 @@ or routes focus. A focused id absent from that ring falls back immediately to
 its first registration; the next frame boundary commits that fallback, so a
 temporarily removed id cannot steal focus if it later returns.
 
+Focus ownership only *decides* the input target; delivering the event to that
+target is [input routing](input-routing.md), which is toolkit-owned for the same
+reason. A host that re-derives delivery per event kind eventually derives it
+differently for one of them, which is how a paste reaches the surface behind an
+open modal.
+
 Text-input positions exposed to hosts remain char indices, matching token and
 highlight spans. Editing nevertheless moves and deletes by grapheme boundary,
 and soft-wrap plus cursor placement use grapheme display width in terminal

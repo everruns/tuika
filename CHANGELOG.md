@@ -13,6 +13,20 @@ described in the release process begins with the entry below.
 
 ## [Unreleased]
 
+### Added
+
+- **Input routing**: the new `routing` module (`Router`, `Delivery`,
+  `RouteStage`, `InputTarget`, all re-exported from the crate root and the
+  prelude) delivers an event to the surface that owns input this frame. A host
+  registers each surface once and every `Event` kind follows the same route, so
+  a paste can no longer take a different path from a key and land behind an open
+  overlay. `Router` reads the `FocusRegistry` an overlay-bearing `Scene` already
+  synchronized — and does not hold it, so a stage closure may take `&mut` on the
+  host — resolves stages in a fixed order (global chord, declared exceptions,
+  the active surface, last-chance global), and reports through `Delivery` which
+  surface received what, including the case where nothing did. See the
+  [routing guide](docs/routing.md).
+
 ## [0.10.0] - 2026-08-17
 
 Released alongside `tuika-charts` 0.1.1, `tuika-codeformatters` 0.4.3,

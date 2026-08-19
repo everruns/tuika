@@ -2,7 +2,7 @@
 title: Themes
 description: Use tuika's bundled terminal palettes, inherit terminal colors, or define a complete custom theme.
 sidebar:
-  order: 7
+  order: 8
 ---
 
 # Themes
