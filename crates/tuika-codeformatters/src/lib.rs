@@ -21,6 +21,22 @@
 //! JavaScript, TSX/JSX, Go, Java, Ruby, CSS, HTML, C#, PHP, Zig, Scala, and SQL.
 //! Anything else — or source that fails to parse — returns [`None`], and the
 //! caller renders it as plain code.
+//!
+//! # Choosing grammars
+//!
+//! Each grammar has a cargo feature and **all are on by default**. A grammar is
+//! a multi-megabyte parse table in `.rodata`, so bundling all fourteen costs
+//! ~21 MiB in any binary that highlights anything. A host that knows its
+//! languages keeps only those:
+//!
+//! ```toml
+//! tuika-codeformatters = { version = "0.4", default-features = false, features = ["rust", "python"] }
+//! ```
+//!
+//! Feature names are the language keys lowercased without punctuation: `rust`,
+//! `python`, `typescript` (covers TSX/JSX), `go`, `java`, `ruby`, `css`,
+//! `html`, `csharp`, `php`, `zig`, `scala`, `sql`. A language whose feature is
+//! off behaves exactly like one this crate never supported.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -93,81 +109,133 @@ fn style_for_name(name: &str, code: &CodeTheme) -> Style {
 /// grammar key, or `None` when we don't highlight that language.
 fn canonical_language(lang: &str) -> Option<&'static str> {
     let lang = lang.trim().to_ascii_lowercase();
-    let key = match lang.as_str() {
-        "rust" | "rs" => "rust",
-        "python" | "py" => "python",
+    // Each arm is gated on its grammar's feature, so a disabled language falls
+    // through to `None` and its block renders plain — the same outcome as a
+    // language this crate never supported.
+    match lang.as_str() {
+        #[cfg(feature = "rust")]
+        "rust" | "rs" => Some("rust"),
+        #[cfg(feature = "python")]
+        "python" | "py" => Some("python"),
         // The TypeScript grammar is a superset that parses plain JS cleanly.
-        "typescript" | "ts" | "javascript" | "js" | "mjs" | "cjs" => "typescript",
-        "tsx" | "jsx" => "tsx",
-        "go" | "golang" => "go",
-        "java" => "java",
-        "ruby" | "rb" => "ruby",
-        "css" => "css",
-        "html" | "htm" => "html",
-        "c#" | "cs" | "csharp" | "c_sharp" => "csharp",
-        "php" => "php",
-        "zig" => "zig",
-        "scala" => "scala",
-        "sql" => "sql",
-        _ => return None,
-    };
-    Some(key)
+        #[cfg(feature = "typescript")]
+        "typescript" | "ts" | "javascript" | "js" | "mjs" | "cjs" => Some("typescript"),
+        #[cfg(feature = "typescript")]
+        "tsx" | "jsx" => Some("tsx"),
+        #[cfg(feature = "go")]
+        "go" | "golang" => Some("go"),
+        #[cfg(feature = "java")]
+        "java" => Some("java"),
+        #[cfg(feature = "ruby")]
+        "ruby" | "rb" => Some("ruby"),
+        #[cfg(feature = "css")]
+        "css" => Some("css"),
+        #[cfg(feature = "html")]
+        "html" | "htm" => Some("html"),
+        #[cfg(feature = "csharp")]
+        "c#" | "cs" | "csharp" | "c_sharp" => Some("csharp"),
+        #[cfg(feature = "php")]
+        "php" => Some("php"),
+        #[cfg(feature = "zig")]
+        "zig" => Some("zig"),
+        #[cfg(feature = "scala")]
+        "scala" => Some("scala"),
+        #[cfg(feature = "sql")]
+        "sql" => Some("sql"),
+        _ => None,
+    }
 }
 
+// With every grammar feature off this crate still builds and still implements
+// `Highlighter` — it simply highlights nothing, exactly like tuika's own
+// `NoHighlighter`. The match then reduces to its fallback, so the tail below is
+// genuinely dead in that configuration.
+#[cfg_attr(
+    not(any(
+        feature = "csharp",
+        feature = "css",
+        feature = "go",
+        feature = "html",
+        feature = "java",
+        feature = "php",
+        feature = "python",
+        feature = "ruby",
+        feature = "rust",
+        feature = "scala",
+        feature = "sql",
+        feature = "typescript",
+        feature = "zig"
+    )),
+    allow(unreachable_code, unused_variables)
+)]
 fn build_configuration(key: &str) -> Option<HighlightConfiguration> {
     let (language, query): (tree_sitter::Language, &str) = match key {
+        #[cfg(feature = "rust")]
         "rust" => (
             tree_sitter_rust::LANGUAGE.into(),
             tree_sitter_rust::HIGHLIGHTS_QUERY,
         ),
+        #[cfg(feature = "python")]
         "python" => (
             tree_sitter_python::LANGUAGE.into(),
             tree_sitter_python::HIGHLIGHTS_QUERY,
         ),
+        #[cfg(feature = "typescript")]
         "typescript" => (
             tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             tree_sitter_typescript::HIGHLIGHTS_QUERY,
         ),
+        #[cfg(feature = "typescript")]
         "tsx" => (
             tree_sitter_typescript::LANGUAGE_TSX.into(),
             tree_sitter_typescript::HIGHLIGHTS_QUERY,
         ),
+        #[cfg(feature = "go")]
         "go" => (
             tree_sitter_go::LANGUAGE.into(),
             tree_sitter_go::HIGHLIGHTS_QUERY,
         ),
+        #[cfg(feature = "java")]
         "java" => (
             tree_sitter_java::LANGUAGE.into(),
             tree_sitter_java::HIGHLIGHTS_QUERY,
         ),
+        #[cfg(feature = "ruby")]
         "ruby" => (
             tree_sitter_ruby::LANGUAGE.into(),
             tree_sitter_ruby::HIGHLIGHTS_QUERY,
         ),
+        #[cfg(feature = "css")]
         "css" => (
             tree_sitter_css::LANGUAGE.into(),
             tree_sitter_css::HIGHLIGHTS_QUERY,
         ),
+        #[cfg(feature = "html")]
         "html" => (
             tree_sitter_html::LANGUAGE.into(),
             tree_sitter_html::HIGHLIGHTS_QUERY,
         ),
+        #[cfg(feature = "csharp")]
         "csharp" => (
             tree_sitter_c_sharp::LANGUAGE.into(),
             tree_sitter_c_sharp::HIGHLIGHTS_QUERY,
         ),
+        #[cfg(feature = "php")]
         "php" => (
             tree_sitter_php::LANGUAGE_PHP.into(),
             tree_sitter_php::HIGHLIGHTS_QUERY,
         ),
+        #[cfg(feature = "zig")]
         "zig" => (
             tree_sitter_zig::LANGUAGE.into(),
             tree_sitter_zig::HIGHLIGHTS_QUERY,
         ),
+        #[cfg(feature = "scala")]
         "scala" => (
             tree_sitter_scala::LANGUAGE.into(),
             tree_sitter_scala::HIGHLIGHTS_QUERY,
         ),
+        #[cfg(feature = "sql")]
         "sql" => (
             tree_sitter_sequel::LANGUAGE.into(),
             tree_sitter_sequel::HIGHLIGHTS_QUERY,
@@ -295,6 +363,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "rust")]
     fn highlights_rust_keywords_distinctly() {
         let theme = Theme::default();
         let hl = TreeSitterHighlighter::new();
@@ -314,6 +383,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "rust")]
     fn follows_the_host_theme() {
         // A different palette restyles the same token.
         let mut theme = Theme::default();
@@ -329,14 +399,38 @@ mod tests {
         assert_eq!(fn_span.style.fg, Some(ratatui::style::Color::Indexed(200)));
     }
 
+    // Aliases are per-grammar, so each assertion is gated on the feature that
+    // supplies it — a reduced build must still be able to run its own suite.
     #[test]
-    fn aliases_resolve_and_js_uses_typescript_grammar() {
+    #[cfg(feature = "typescript")]
+    fn js_alias_uses_the_typescript_grammar() {
         let theme = Theme::default();
         let hl = TreeSitterHighlighter::new();
-        assert_eq!(canonical_language("py"), Some("python"));
         assert_eq!(canonical_language("js"), Some("typescript"));
-        assert_eq!(canonical_language("c#"), Some("csharp"));
         assert!(hl.highlight("js", &["const x = 1;"], &theme).is_some());
+    }
+
+    #[test]
+    #[cfg(feature = "python")]
+    fn py_alias_resolves() {
+        assert_eq!(canonical_language("py"), Some("python"));
+    }
+
+    #[test]
+    #[cfg(feature = "csharp")]
+    fn csharp_aliases_resolve() {
+        assert_eq!(canonical_language("c#"), Some("csharp"));
+    }
+
+    /// A grammar compiled out is indistinguishable from one never supported:
+    /// the fence falls back to plain text rather than failing.
+    #[test]
+    #[cfg(not(feature = "zig"))]
+    fn a_disabled_grammar_falls_back_to_plain() {
+        let theme = Theme::default();
+        let hl = TreeSitterHighlighter::new();
+        assert_eq!(canonical_language("zig"), None);
+        assert!(hl.highlight("zig", &["const x = 1;"], &theme).is_none());
     }
 
     #[test]
@@ -348,6 +442,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "python")]
     fn blank_lines_inside_a_block_are_preserved() {
         let theme = Theme::default();
         let hl = TreeSitterHighlighter::new();

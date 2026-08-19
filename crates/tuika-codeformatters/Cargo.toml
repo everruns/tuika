@@ -27,24 +27,74 @@ exclude = ["docs/*.gif", "benches/*.json"]
 [lib]
 bench = false
 
+# One feature per grammar, **all on by default** — adding a grammar to a host is
+# the common case, and an existing dependant must not change behavior by
+# upgrading. What the split buys is the opposite direction: a grammar is a
+# multi-megabyte parse table in `.rodata`, and `build_configuration` names every
+# one of them, so nothing the linker can see makes an unused grammar droppable.
+# Bundling all fourteen costs ~21 MiB of read-only data in any binary that
+# highlights *anything*; C# alone is ~5 MiB and Scala ~3.9 MiB.
+#
+# A host that knows its languages turns the rest off:
+#
+#     tuika-codeformatters = { version = "0.4", default-features = false, \
+#                              features = ["rust", "python"] }
+#
+# This is the last-resort lever in
+# `knowledge/processes/maintenance.md#binary-size-discipline` — reached for here
+# because the language is a *runtime* string, so there is no use site to move
+# the choice to, the way `ImageLayer::record` does for graphics protocols.
+#
+# `typescript` covers both TypeScript and TSX: one crate ships both grammars.
+[features]
+default = [
+    "csharp",
+    "css",
+    "go",
+    "html",
+    "java",
+    "php",
+    "python",
+    "ruby",
+    "rust",
+    "scala",
+    "sql",
+    "typescript",
+    "zig",
+]
+
+csharp = ["dep:tree-sitter-c-sharp"]
+css = ["dep:tree-sitter-css"]
+go = ["dep:tree-sitter-go"]
+html = ["dep:tree-sitter-html"]
+java = ["dep:tree-sitter-java"]
+php = ["dep:tree-sitter-php"]
+python = ["dep:tree-sitter-python"]
+ruby = ["dep:tree-sitter-ruby"]
+rust = ["dep:tree-sitter-rust"]
+scala = ["dep:tree-sitter-scala"]
+sql = ["dep:tree-sitter-sequel"]
+typescript = ["dep:tree-sitter-typescript"]
+zig = ["dep:tree-sitter-zig"]
+
 [dependencies]
 tuika = { version = "0.10.0", path = "../.." }
 ratatui = "0.30.2"
 tree-sitter = "0.26"
 tree-sitter-highlight = "0.26"
-tree-sitter-c-sharp = "0.23"
-tree-sitter-css = "0.25"
-tree-sitter-go = "0.25"
-tree-sitter-html = "0.23"
-tree-sitter-java = "0.23"
-tree-sitter-php = "0.24"
-tree-sitter-python = "0.25"
-tree-sitter-ruby = "0.23"
-tree-sitter-rust = "0.24"
-tree-sitter-scala = "0.26"
-tree-sitter-sequel = "0.3"
-tree-sitter-typescript = "0.23"
-tree-sitter-zig = "1"
+tree-sitter-c-sharp = { version = "0.23", optional = true }
+tree-sitter-css = { version = "0.25", optional = true }
+tree-sitter-go = { version = "0.25", optional = true }
+tree-sitter-html = { version = "0.23", optional = true }
+tree-sitter-java = { version = "0.23", optional = true }
+tree-sitter-php = { version = "0.24", optional = true }
+tree-sitter-python = { version = "0.25", optional = true }
+tree-sitter-ruby = { version = "0.23", optional = true }
+tree-sitter-rust = { version = "0.24", optional = true }
+tree-sitter-scala = { version = "0.26", optional = true }
+tree-sitter-sequel = { version = "0.3", optional = true }
+tree-sitter-typescript = { version = "0.23", optional = true }
+tree-sitter-zig = { version = "1", optional = true }
 
 [dev-dependencies]
 # The runnable examples drive a full-screen loop; tuika owns the rendering,
