@@ -60,14 +60,31 @@ unterminated code fence or a list that may still gain items stays in the
 re-parsed tail. Everything before the boundary is retained as computed lines and
 is never re-tokenized or re-highlighted.
 
+Two constructs decide whether a blank line is a boundary at all, and both are
+easy to get subtly wrong because the mistake only shows under *some* chunk
+boundaries:
+
+- **An open code fence.** CommonMark closes a fence only on a bare run of at
+  least as many of the same delimiter, so a fence line carrying an info string
+  inside an already-open block is code content, not a closer. Treating it as one
+  settles a boundary the one-shot parse puts *inside* the block, and the rest of
+  the document then renders as markdown in the stream and as code on a re-render.
+- **An open list.** A list continues across a blank line, so a blank between
+  items is a boundary only once a following *top-level* block proves the list
+  ended — and never on the strength of an in-flight partial line, since `1` is
+  not yet the marker `1.` the next delta makes it. Settling early parses the
+  rest in isolation, which restarts the numbering.
+
 The boundary is also only a boundary once the line that carries it is
 *terminated*. A stream arrives token by token, so the buffer routinely ends
 mid-line — and a nested item's indent, or an indented block's, is a
 whitespace-only line until its content lands. Committing there splits a list
 between two independently parsed segments, and the cache makes that permanent:
 the halves become unrelated top-level blocks for the rest of the transcript. The
-invariant that catches this class is that a streamed render must equal the
-one-shot render of the same source, delta size notwithstanding.
+invariant that catches this whole class is that a streamed render must equal the
+one-shot render of the same source, delta size notwithstanding — asserted as a
+fuzz differential over generated markdown, chunk sizes, and widths (see
+[Testing](../processes/testing.md)), which is how both rules above were found.
 
 Anything positional that the host reads back per frame — block-image placements
 in particular — must therefore be threaded *through* the cache: fixed rows for

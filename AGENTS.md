@@ -106,6 +106,14 @@ tuika's own suite covers more:
   tiny/degenerate screens where scroll and overlay resolution interact.
 - **Property tests** (`src/tests/proptests.rs`, `proptest`) — solver and overlay
   invariants for *any* input (children stay in bounds, flex fills exactly).
+- **Fuzz** (`src/tests/fuzz.rs`) — adversarial text (wide CJK, ZWJ emoji,
+  combining marks, control bytes) and arbitrary event streams through the wrap
+  solver, composed trees, the stateful components, and the parsers that read
+  untrusted bytes; plus differential properties (streamed markdown vs one-shot,
+  styled wrap vs plain). Raise the case count when hunting: `PROPTEST_CASES=5000`.
+- **Black-box sweep** (`tests/robustness.rs`) — every component × adversarial
+  corpus × degenerate size through the published API only, asserting no panic,
+  no paint outside the component's rect, and no control byte in a cell.
 - **Golden snapshots** (`src/tests/snapshots.rs`) — whole screens diffed against
   checked-in glyph grids; refresh with `UPDATE_SNAPSHOTS=1`. The grids are
   LF-only (`.gitattributes`), so a CRLF checkout cannot fail them.

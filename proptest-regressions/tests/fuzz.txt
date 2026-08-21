@@ -1,0 +1,11 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 3a0ca8c9df0ae0a682bc965620e44fa673663f89c093c9408fdb1362c698b2a2 # shrinks to text = "日本語", width = 1
+cc 6d3b5c71e8f7b996679217cb142a1978b89ab136059ca4385962c7dfe75f86ba # shrinks to events = [Key(Key { code: Up, ctrl: false, alt: false, shift: false }), Key(Key { code: Backspace, ctrl: false, alt: false, shift: false }), Key(Key { code: Up, ctrl: false, alt: false, shift: false }), Key(Key { code: Up, ctrl: false, alt: false, shift: false }), Key(Key { code: Up, ctrl: false, alt: false, shift: false }), Key(Key { code: Up, ctrl: false, alt: false, shift: false }), Key(Key { code: Up, ctrl: false, alt: false, shift: false }), Key(Key { code: Up, ctrl: false, alt: false, shift: false }), Key(Key { code: Up, ctrl: false, alt: false, shift: false }), Key(Key { code: Up, ctrl: false, alt: false, shift: false }), Key(Key { code: Backspace, ctrl: false, alt: false, shift: false }), Key(Key { code: Up, ctrl: false, alt: false, shift: false }), Key(Key { code: Up, ctrl: false, alt: false, shift: false }), Key(Key { code: Up, ctrl: false, alt: false, shift: false }), Key(Key { code: BackTab, ctrl: false, alt: false, shift: false }), Key(Key { code: Up, ctrl: false, alt: false, shift: false }), Key(Key { code: Up, ctrl: false, alt: false, shift: false })], counts = [5, 1]
+cc 718f2c2e96b5590847afea2ff5c4cb6c62bb2fbfdec7f1ca6be712e14af7012e # shrinks to events = [Key(Key { code: Up, ctrl: false, alt: false, shift: false })], len = 0
+cc e87eb4d7657d0976954172d6822b4578dad8e5c02063afdb453a58b68aa8a43c # shrinks to source = "1. item\nfn main() {}\nfn main() {}\n\n1. item\n", chunk = 1, width = 8
+cc 75610c8f3cefd6c34eeaeaa56a57c0645bd529f1831d636d182d556b25a29480 # shrinks to source = "1. item\n| a | b |\n1. item\n1. item\n\n1. item\n", chunk = 1, width = 8

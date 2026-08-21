@@ -196,9 +196,34 @@ pub fn apply_buffer_links(
     links: &[BufferLink],
     policy: LinkPolicy,
 ) {
+    let area = Rect {
+        x: origin.x,
+        y: origin.y,
+        width: buf.area.right().saturating_sub(origin.x),
+        height: buf.area.bottom().saturating_sub(origin.y),
+    };
+    apply_buffer_links_in(buf, area, links, policy);
+}
+
+/// [`apply_buffer_links`] confined to `area` instead of the whole buffer.
+///
+/// A component laid out into a sub-rect must clip its own link markers: a run
+/// that ran past the rows or columns it was given would otherwise stamp an OSC 8
+/// escape onto a *neighbour's* cell, which the neighbour then repaints around —
+/// an escape orphaned in the middle of the screen. Placements are relative to
+/// `area`'s top-left, and anything outside it (or outside the buffer) is
+/// dropped rather than clamped, since a clamped link would point at the wrong
+/// glyph.
+pub fn apply_buffer_links_in(
+    buf: &mut Buffer,
+    area: Rect,
+    links: &[BufferLink],
+    policy: LinkPolicy,
+) {
     if !policy.links_any() {
         return;
     }
+    let clip = area.intersection(buf.area);
     for link in links {
         let Some(url) = sanitize_url(&link.url, policy) else {
             continue;
@@ -206,10 +231,19 @@ pub fn apply_buffer_links(
         if link.end_col <= link.start_col {
             continue;
         }
-        let y = origin.y.saturating_add(link.line);
-        let xs = origin.x.saturating_add(link.start_col);
-        let xe = origin.x.saturating_add(link.end_col.saturating_sub(1));
-        if y >= buf.area.bottom() || xs >= buf.area.right() || xe >= buf.area.right() || xe < xs {
+        let y = area.y.saturating_add(link.line);
+        let xs = area.x.saturating_add(link.start_col);
+        let xe = area.x.saturating_add(link.end_col.saturating_sub(1));
+        // Both bounds, both axes: an `area` that starts above or left of the
+        // buffer (a caller compositing into a sub-buffer) would otherwise index
+        // a cell the buffer does not hold.
+        if y < clip.top()
+            || y >= clip.bottom()
+            || xs < clip.left()
+            || xs >= clip.right()
+            || xe >= clip.right()
+            || xe < xs
+        {
             continue;
         }
         wrap_cell_osc8(&mut buf[(xs, y)], &url, true);
@@ -698,6 +732,63 @@ mod tests {
         let mut out: Vec<u8> = Vec::new();
         write_line(&mut out, line).expect("write");
         String::from_utf8(out).expect("utf8")
+    }
+
+    #[test]
+    fn buffer_links_are_clipped_to_the_area_they_were_painted_in() {
+        // A component laid out into a sub-rect must not stamp its link markers
+        // on a neighbour: a run whose row or column ran past the rect is
+        // dropped, not written one row down. Found by the black-box robustness
+        // sweep, where `Markdown` in an inset rect linked a cell below itself.
+        let mut buf = Buffer::empty(Rect::new(0, 0, 8, 4));
+        let area = Rect::new(1, 1, 4, 2);
+        let links = [
+            BufferLink {
+                line: 0,
+                start_col: 0,
+                end_col: 2,
+                url: "https://in.dev".into(),
+            },
+            BufferLink {
+                line: 2,
+                start_col: 0,
+                end_col: 2,
+                url: "https://below.dev".into(),
+            },
+            BufferLink {
+                line: 0,
+                start_col: 4,
+                end_col: 6,
+                url: "https://right.dev".into(),
+            },
+        ];
+        apply_buffer_links_in(&mut buf, area, &links, LinkPolicy::WEB);
+
+        assert!(
+            buf[(1, 1)].symbol().contains("https://in.dev"),
+            "the in-rect link is embedded"
+        );
+        for (x, y) in [(1, 3), (5, 1)] {
+            assert_eq!(
+                buf[(x, y)],
+                Cell::default(),
+                "cell ({x}, {y}) is outside {area:?} and must stay untouched"
+            );
+        }
+
+        // An area that starts outside the buffer entirely places nothing.
+        let mut detached = Buffer::empty(Rect::new(4, 4, 2, 2));
+        apply_buffer_links_in(
+            &mut detached,
+            Rect::new(0, 0, 8, 8),
+            &links,
+            LinkPolicy::WEB,
+        );
+        for y in 4..6 {
+            for x in 4..6 {
+                assert_eq!(detached[(x, y)], Cell::default());
+            }
+        }
     }
 
     #[test]

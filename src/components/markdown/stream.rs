@@ -17,27 +17,109 @@ use super::image::{ImageResolver, MarkdownImage};
 use super::item::MdItem;
 use super::parse::parse_with;
 
+/// Whether `trimmed` (a line with its indentation removed) starts a list item.
+///
+/// Bullet (`-`, `*`, `+`) or ordered (`1.`, `1)`) markers only — a thematic
+/// break (`---`) or emphasis (`*text*`) is not one, which is what the
+/// delimiter-must-be-followed-by-a-space rule rules out.
+fn is_list_marker(trimmed: &str) -> bool {
+    let mut chars = trimmed.chars();
+    match chars.next() {
+        Some('-' | '*' | '+') => matches!(chars.next(), None | Some(' ')),
+        Some(digit) if digit.is_ascii_digit() => {
+            let mut rest = trimmed
+                .trim_start_matches(|c: char| c.is_ascii_digit())
+                .chars();
+            matches!(rest.next(), Some('.' | ')')) && matches!(rest.next(), None | Some(' '))
+        }
+        _ => false,
+    }
+}
+
+/// The delimiter and run length of a fence opened by `trimmed`, if it opens one.
+fn fence_opener(trimmed: &str) -> Option<(char, usize)> {
+    let delimiter = trimmed.chars().next().filter(|c| matches!(c, '`' | '~'))?;
+    let run = trimmed.chars().take_while(|c| *c == delimiter).count();
+    (run >= 3).then_some((delimiter, run))
+}
+
 /// Byte offset of the last *stable block boundary* in `source[from..]`, in
-/// absolute bytes: the position just past the last blank line that sits outside
-/// an open code fence. Blocks before it are complete and safe to cache; the tail
-/// after it is still in flight.
+/// absolute bytes: the position just past the last blank line that ends a block
+/// outright. Blocks before it are complete and safe to cache; the tail after it
+/// is still in flight.
+///
+/// Two constructs make a blank line *not* a block boundary, and both were found
+/// by the streaming/one-shot fuzz differential:
+///
+/// - **An open code fence.** Everything up to the closing fence is one block, so
+///   a blank inside it settles nothing. CommonMark closes a fence only on a bare
+///   run of at least as many of the *same* delimiter, so `` ```rust `` inside an
+///   open block is code content, not a closer.
+/// - **An open list.** A blank line between items keeps one list going, so
+///   settling there would parse the rest in isolation and restart the numbering
+///   — a streamed `1. … 2. …` would render as `1. … 1. …`. The blank becomes a
+///   boundary only once a following top-level block proves the list ended.
 fn stable_boundary(source: &str, from: usize) -> usize {
-    let mut fence_open = false;
+    let mut fence: Option<(char, usize)> = None;
     let mut boundary = from;
     let mut pos = from;
+    // Whether the prefix is inside a list, and the blank line that will become a
+    // boundary if a top-level block turns out to follow it.
+    let mut in_list = false;
+    let mut pending_blank: Option<usize> = None;
     for line in source[from..].split_inclusive('\n') {
         let trimmed = line.trim();
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            fence_open = !fence_open;
-        } else if trimmed.is_empty() && !fence_open && line.ends_with('\n') {
+        let end = pos + line.len();
+        pos = end;
+
+        if let Some((delimiter, opened)) = fence {
+            let run = trimmed.chars().take_while(|c| *c == delimiter).count();
+            if run >= opened && trimmed.len() == run {
+                fence = None;
+            }
+            continue;
+        }
+
+        if trimmed.is_empty() {
             // Only a *terminated* blank line settles the prefix. A trailing line
             // with no newline yet is still in flight, and mid-stream it is often
             // whitespace-only for a few deltas — the indent of a nested list item
             // or an indented block — so treating it as blank would cut the list
             // in half and cache the halves as separate blocks.
-            boundary = pos + line.len();
+            if line.ends_with('\n') {
+                if in_list {
+                    pending_blank = Some(end);
+                } else {
+                    boundary = end;
+                }
+            }
+            continue;
         }
-        pos += line.len();
+
+        let indented = line.starts_with("  ") || line.starts_with('\t');
+        if is_list_marker(trimmed) {
+            in_list = true;
+            pending_blank = None;
+        } else if in_list && (indented || pending_blank.is_none()) {
+            // An indented continuation, or a lazy one with no blank in between:
+            // either way the list item is still open.
+            pending_blank = None;
+        } else if line.ends_with('\n') {
+            // A top-level block. It ends any open list, which makes the blank
+            // line before it a real boundary.
+            //
+            // Only a *terminated* line may do this: mid-stream the last line is
+            // a prefix of itself, and "1" is not yet the list marker "1." that
+            // the next delta makes it. Settling on the partial line would cache
+            // a boundary the finished document does not have.
+            if let Some(blank) = pending_blank.take() {
+                boundary = blank;
+            }
+            in_list = false;
+        }
+        if let Some(opener) = fence_opener(trimmed) {
+            fence = Some(opener);
+        }
     }
     boundary
 }
@@ -666,6 +748,80 @@ mod tests {
         // Once the fence closes, the trailing blank becomes a boundary.
         let closed = "```\ncode\n```\n\nafter";
         assert!(stable_boundary(closed, 0) > 0);
+    }
+
+    #[test]
+    fn a_fence_line_with_an_info_string_does_not_close_a_fence() {
+        // CommonMark closes a fence only on a bare run of the same delimiter, so
+        // a "```rust" *inside* an open block is code content. Toggling on it
+        // settled a boundary the one-shot parse puts inside the block, and every
+        // paragraph after it then rendered as markdown in a streamed transcript
+        // but as code in a re-render. Found by the streaming/one-shot fuzz
+        // differential.
+        assert_eq!(stable_boundary("```\n```rust\ncode\n\nmore", 0), 0);
+        // A shorter run cannot close a longer fence, either.
+        assert_eq!(stable_boundary("````\n```\ncode\n\nmore", 0), 0);
+        // A longer run closes a shorter fence, and the blank after it settles.
+        assert!(stable_boundary("```\ncode\n`````\n\nafter", 0) > 0);
+        // Tildes and backticks do not close each other.
+        assert_eq!(stable_boundary("~~~\n```\ncode\n\nmore", 0), 0);
+    }
+
+    #[test]
+    fn a_blank_line_between_list_items_does_not_settle_the_prefix() {
+        // A list continues across a blank line, so settling there parses the
+        // rest in isolation and restarts the numbering. Found by the
+        // streaming/one-shot fuzz differential, where a streamed "1. … 2. …"
+        // rendered as "1. … 1. …".
+        assert_eq!(stable_boundary("1. one\n\n2. two\n", 0), 0);
+        assert_eq!(stable_boundary("- one\nlazy continuation\n\n- two\n", 0), 0);
+        // A top-level block after the blank proves the list ended there.
+        let ended = "- one\n\nparagraph\n";
+        assert_eq!(stable_boundary(ended, 0), "- one\n\n".len());
+        // An indented continuation keeps the item open.
+        assert_eq!(stable_boundary("- one\n\n  still the item\n", 0), 0);
+    }
+
+    #[test]
+    fn an_in_flight_line_does_not_end_a_list() {
+        // Mid-stream the last line is a prefix of itself: "1" before "1." makes
+        // it a marker. Settling the blank before it would cache a boundary the
+        // finished document does not have, and the rest of the list would then
+        // be parsed in isolation.
+        let settled = "1. one\n\n";
+        assert_eq!(stable_boundary(&format!("{settled}1"), 0), 0);
+        assert_eq!(stable_boundary(&format!("{settled}1. two\n"), 0), 0);
+        // A *terminated* top-level line still ends the list at that blank.
+        assert_eq!(
+            stable_boundary(&format!("{settled}paragraph\n"), 0),
+            settled.len()
+        );
+    }
+
+    #[test]
+    fn streaming_a_list_across_a_blank_line_keeps_its_numbering() {
+        let theme = Theme::default();
+        let sheet = StyleSheet::from_theme(&theme);
+        let doc = "1. first\n\n2. second\n\n3. third\n";
+        let mut state = MarkdownState::new();
+        for delta in doc.split_inclusive('\n') {
+            state.push_str(delta);
+            let _ = state.lines(40, &theme, &sheet, CodeHighlighter::Plain);
+        }
+        let streamed: Vec<String> = state
+            .lines(40, &theme, &sheet, CodeHighlighter::Plain)
+            .iter()
+            .map(text)
+            .collect();
+        let one_shot: Vec<String> = to_lines(doc, 40, &theme, &sheet, CodeHighlighter::Plain)
+            .iter()
+            .map(text)
+            .collect();
+        assert_eq!(streamed, one_shot);
+        assert!(
+            streamed.iter().any(|line| line.contains("2.")),
+            "the second item keeps its number: {streamed:?}"
+        );
     }
 
     #[test]
