@@ -87,6 +87,18 @@ inserts the gap as blank rows instead, scrolling existing output up so the
 footer sits on the last rows — and re-pins after a resize, which is why
 `pin_footer` runs before every frame rather than once at startup.
 
+### Every geometry the loop uses is learned before it is used
+
+Both the pin and a published block are written at the geometry the `Terminal`
+last observed, not at the terminal's current size — `pin_footer` inserts rows
+that wide, and `Scrollback::flush` renders each block that wide. So the loop
+calls `Terminal::autoresize` before *both*: before the first pin (a window
+dragged between the terminal being constructed and the first frame is otherwise
+never observed) and before draining the queue (a block published in response to
+a resize — the most ordinary publishing moment there is — would otherwise be
+committed at the previous width). The synchronous and async loops share this
+order, and `tests/stress_ui.rs` pins it for both.
+
 ### Two ways to publish, because a queue cannot carry frame state
 
 `Scrollback` queues a *builder* (`FnOnce(u16) -> Element + Send`), not a built

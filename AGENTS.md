@@ -114,6 +114,12 @@ tuika's own suite covers more:
   CI runs the default count per PR and a deep run nightly
   (`.github/workflows/nightly-fuzz.yml`); commit any new `proptest-regressions/`
   seed with the fix.
+- **Session stress** (`tests/stress_ui.rs`) — a whole session rather than one
+  component: every `ScreenMode` driven through `Runner`/`AsyncRunner` over an
+  in-memory screen that resizes *between* frames, mode changes mid-session,
+  adversarial scrollback publishing, and shell/overlay/dock composition at
+  degenerate sizes. Seeded and replayable; raise the event count when hunting
+  with `TUIKA_STRESS_EVENTS=8000`.
 - **Black-box sweep** (`tests/robustness.rs`) — every component × adversarial
   corpus × degenerate size through the published API only, asserting no panic,
   no paint outside the component's rect, and no control byte in a cell.

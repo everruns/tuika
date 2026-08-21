@@ -117,7 +117,23 @@ described in the release process begins with the entry below.
   component's own rect, and no control byte in a cell. Both fixes below came out
   of them. Test-only — no API change.
 
+- **Session stress suite** (`tests/stress_ui.rs`): every screen mode driven
+  through `Runner` and `AsyncRunner` over an in-memory screen that resizes
+  between frames, plus mode changes mid-session, adversarial scrollback
+  publishing, and shell/overlay/dock composition at degenerate sizes. The
+  split-footer fix below came out of it. Test-only — no API change.
+
 ### Fixed
+
+- **A split footer is pinned and published at the terminal's current size.**
+  Both runners write the footer's reserved rows, and render each queued
+  scrollback block, at the geometry the `Terminal` last observed — and neither
+  observed a resize before the loop's first frame or before draining the
+  publish queue. Two consequences, both on the ordinary path: a window resized
+  between the terminal being constructed and the first frame pinned the footer
+  at the old size, and a block published in response to a resize (a host
+  logging the new dimensions, a status line reflowing) was committed to the
+  scrollback at the previous width. Both loops now learn the size first.
 
 - **A component no longer stamps hyperlink markers outside its own rect.**
   `Paragraph` and `Markdown` embed OSC 8 runs into the cells of a linked label

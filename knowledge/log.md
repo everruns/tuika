@@ -2,6 +2,22 @@
 
 ## 2026-08-21
 
+- **A session is a test subject the component sweep cannot reach**
+  - `tests/stress_ui.rs` drives whole sessions — every `ScreenMode`, both
+    runners, shell chrome and overlays — over an in-memory screen that changes
+    size *inside* a size query, the moment a real window drag lands. It is
+    recorded as its own layer in [Testing](processes/testing.md).
+  - It found two orderings in the split-footer loop that no fixed-buffer test
+    could: the first pin and the scrollback flush both ran before the terminal
+    had observed a resize, so rows were inserted, and blocks rendered, at a
+    width that no longer existed. Publishing a line *about* a resize is the most
+    ordinary case of the second. Both runners now learn the size first; see
+    [Screen modes](specs/screen-modes.md).
+  - The lesson worth keeping is about the harness rather than the bugs: a test
+    backend that only resizes between runs cannot express the window a real
+    resize opens. Making the resize land inside `Backend::size` is what turned
+    an invisible ordering into a reproducible failure.
+
 - **Fuzzing is where the streaming markdown cache's rules actually came from**
   - A wrap-solver panic at max-content width prompted a dedicated fuzz layer
     (`src/tests/fuzz.rs`) and a black-box sweep of every component against
