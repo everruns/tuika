@@ -104,6 +104,46 @@ described in the release process begins with the entry below.
   surface received what, including the case where nothing did. See the
   [routing guide](docs/routing.md).
 
+- **`term::hyperlink::apply_buffer_links_in`**: the area-clipped counterpart to
+  `apply_buffer_links`, for a component embedding OSC 8 runs into a sub-rect of
+  a shared buffer. `apply_buffer_links` is unchanged and still clips to the
+  whole buffer.
+
+- **Fuzz and black-box robustness suites** (`src/tests/fuzz.rs`,
+  `tests/robustness.rs`): adversarial text and event streams through the wrap
+  solver, composed view trees, the stateful components, and the parsers that
+  read untrusted terminal replies; plus a sweep of every component against every
+  corpus at every degenerate size, asserting no panic, no paint outside the
+  component's own rect, and no control byte in a cell. Both fixes below came out
+  of them. Test-only — no API change.
+
+### Fixed
+
+- **A component no longer stamps hyperlink markers outside its own rect.**
+  `Paragraph` and `Markdown` embed OSC 8 runs into the cells of a linked label
+  after painting, and the placement was clipped to the *buffer* rather than to
+  the rect the component was laid out in. A markdown block whose links ran past
+  the rows or columns it was given wrote an escape onto a neighbouring
+  component's cell — visible as a stray link, or an orphaned escape once the
+  neighbour repainted. Placements outside the area are now dropped.
+
+- **Streamed markdown renders identically to a one-shot render.** The settled
+  prefix is cached at the last blank line that ends a block, and two constructs
+  were mistaken for one:
+  - A fence line carrying an info string (`` ```rust `` inside an already-open
+    block) was treated as a closer, so a later blank line settled a boundary
+    *inside* a code block; everything after it rendered as markdown while a
+    re-render of the same source rendered it as code.
+  - A blank line between list items settled the prefix, so the rest of the list
+    was parsed in isolation and its numbering restarted — a streamed
+    `1. … 2. … 3. …` rendered as `1. … 1. … 1. …`. A blank line inside a list is
+    a boundary only once a following top-level block proves the list ended, and
+    never on the strength of an in-flight partial line (`1` before it becomes
+    `1.`).
+
+  Both were found by a new streaming/one-shot fuzz differential, and both
+  depended on where the stream's chunk boundaries happened to fall.
+
 ## [0.10.0] - 2026-08-17
 
 Released alongside `tuika-charts` 0.1.1, `tuika-codeformatters` 0.4.3,

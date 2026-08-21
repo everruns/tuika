@@ -24,7 +24,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::geometry::Size;
 use crate::style::Role;
 use crate::surface::Surface;
-use crate::term::hyperlink::{BufferLink, LinkPolicy, apply_buffer_links, find_links};
+use crate::term::hyperlink::{BufferLink, LinkPolicy, apply_buffer_links_in, find_links};
 use crate::view::{RenderCtx, View};
 use crate::width::{grapheme_cols, str_cols};
 
@@ -269,15 +269,7 @@ impl View for Paragraph {
             }
             surface.set_string(col, y, &line.text[byte..], self.style);
         }
-        apply_buffer_links(
-            surface.buffer_mut(),
-            ratatui_core::layout::Position {
-                x: area.x,
-                y: area.y,
-            },
-            &buffer_links,
-            self.link_policy,
-        );
+        apply_buffer_links_in(surface.buffer_mut(), area, &buffer_links, self.link_policy);
     }
 }
 

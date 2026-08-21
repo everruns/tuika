@@ -9,6 +9,7 @@
 //! Nothing here ships in the library. Public test helpers for *consumers* are a
 //! different thing and live in [`crate::testing`].
 
+mod fuzz;
 mod integration;
 mod proptests;
 mod snapshots;

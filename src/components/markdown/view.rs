@@ -12,7 +12,7 @@ use crate::geometry::Size;
 use crate::highlight::{CodeHighlighter, Highlighter};
 use crate::style::{StyleSheet, Theme};
 use crate::surface::Surface;
-use crate::term::hyperlink::{BufferLink, LinkPolicy, apply_buffer_links};
+use crate::term::hyperlink::{BufferLink, LinkPolicy, apply_buffer_links_in};
 use crate::term::image::{ImageLayer, ImageSupport};
 use crate::view::{RenderCtx, View};
 
@@ -179,15 +179,7 @@ impl View for Markdown<'_> {
         }
         // Embed OSC 8 for labeled links (and bare URLs) so Ctrl+click / Ghostty
         // open the destination even when the visible text is not the URL.
-        apply_buffer_links(
-            surface.buffer_mut(),
-            ratatui_core::layout::Position {
-                x: area.x,
-                y: area.y,
-            },
-            &links,
-            self.link_policy,
-        );
+        apply_buffer_links_in(surface.buffer_mut(), area, &links, self.link_policy);
         // Overlay each block image on the rows it reserved, reusing the standalone
         // `Image` component for pixel emission and the alt fallback alike.
         for img in images {

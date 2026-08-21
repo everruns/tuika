@@ -1,0 +1,75 @@
+name: Nightly Fuzz
+
+# Deep randomized runs of the suites that hunt for panics and cross-path
+# divergence (see knowledge/processes/testing.md § Why fuzzing is a layer).
+#
+# Every PR runs these at proptest's default case count, which is tuned to keep
+# the suite fast. That is enough to catch a regression on a known counterexample
+# (the regression files are committed and replayed first) but not enough to
+# *find* a new one: the streaming-markdown divergences fixed alongside the suite
+# needed thousands of cases to surface. This job buys those cases nightly,
+# where minutes are free.
+#
+# A failure prints the shrunk counterexample and appends its seed to a
+# `proptest-regressions/` file; copy that line into the repository so every
+# later run replays it, then fix the component.
+
+on:
+  schedule:
+    # 05:00 UTC daily, an hour before the terminal matrix.
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: "proptest cases per property"
+        required: false
+        default: "20000"
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  fuzz:
+    name: deep fuzz (${{ github.event.inputs.cases || '20000' }} cases)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: 1.94.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      # Debug assertions are the point: release builds wrap on integer overflow
+      # instead of panicking, which is exactly the class this hunts for.
+      - name: Fuzz and property suites
+        env:
+          PROPTEST_CASES: ${{ github.event.inputs.cases || '20000' }}
+        run: cargo test --locked --all-features --lib -- tests::fuzz tests::proptests
+
+      - name: Black-box robustness sweep
+        run: cargo test --locked --all-features --test robustness
+
+      # A new counterexample is written here; keep it even when the job fails so
+      # the seed can be committed without reproducing the run locally first.
+      - name: Upload any new regression seeds
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: proptest-regressions
+          path: proptest-regressions/
+          if-no-files-found: ignore

@@ -2,6 +2,26 @@
 
 ## 2026-08-21
 
+- **Fuzzing is where the streaming markdown cache's rules actually came from**
+  - A wrap-solver panic at max-content width prompted a dedicated fuzz layer
+    (`src/tests/fuzz.rs`) and a black-box sweep of every component against
+    adversarial corpora at degenerate sizes (`tests/robustness.rs`). Both are
+    recorded in [Testing](processes/testing.md).
+  - The panic-hunting found no further panics. What it found instead were three
+    correctness bugs no example-based test could have reached, because each
+    depended on a *combination*: an OSC 8 link marker written outside the
+    component's own rect (clipped to the buffer instead of the area), and two
+    streaming markdown boundaries that diverged from a one-shot render depending
+    on where the chunk boundaries fell — a fence line with an info string read as
+    a closer, and a blank line between list items settling the prefix and
+    restarting the numbering.
+  - The general lesson worth keeping: a *differential* property (two paths that
+    claim to agree) is worth more than any number of "does not panic" assertions
+    on a component whose whole contract is that streaming looks like not
+    streaming. The markdown spec had already written down the intended rule
+    ("a list that may still gain items stays in the re-parsed tail"); only the
+    differential proved the implementation did not follow it.
+
 - **A dependency whose job tuika can do in a page of code belongs in tuika**
   - Auditing the dependency set for removals turned up three crates whose job
     was small *for tuika* even though the crates themselves are not: `textwrap`

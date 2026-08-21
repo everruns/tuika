@@ -30,6 +30,8 @@ terminal encoder, not the component, and belongs in the PTY layer.
 | Unit | each module's `#[cfg(test)] mod tests` | layout math, component rendering, interactive state, keymap dispatch, compositor, easing, OSC encoders, palette slots |
 | Cross-module | `src/tests/integration.rs` | behavior spanning several modules with no single owner: composed trees, degenerate screens where scroll and overlay interact |
 | Property | `src/tests/proptests.rs` | solver and overlay invariants for *any* input — children stay in bounds, flex fills exactly |
+| Fuzz | `src/tests/fuzz.rs` | adversarial text and event streams through the wrap solver, composed trees, stateful components, and the parsers that read untrusted bytes |
+| Black-box sweep | `tests/robustness.rs` | every component × adversarial corpus × degenerate size, through the published API only |
 | Golden snapshot | `src/tests/snapshots.rs` | whole screens diffed against checked-in glyph grids |
 | Size sweep | unit | no panic and no out-of-clip writes from `0×0` upward |
 | PTY smoke | `tests/pty_smoke.rs` | the terminal-facing protocol in both screen modes: alt-screen and cursor/mouse lifecycle pairs, runner selection through OSC 52, OSC 9;4, OSC 8, truecolor and Braille cells through a reference terminal parser, resize survival, clean exit; and for a split footer, that it stays off the alternate screen, pins to the bottom, publishes above itself, and releases its rows |
@@ -51,6 +53,50 @@ hosts test their views and full state/update/view applications with the same
 signals, theme, and stylesheet contexts used in production. The harness owns
 no terminal or runtime; a dirty update returns an in-memory frame. Changes to
 this surface are API changes.
+
+## Why fuzzing is a layer, not a mood
+
+A property test asks whether a solver's *answer* is right. The fuzz layer asks
+whether a component survives input it was never designed for, because that is
+the failure mode a user experiences as a crash rather than a wrong pixel: text a
+host pasted, a screen dragged to one column, a terminal reply from a mangled
+`ssh` session, a list that shrank while someone was scrolling it.
+
+Three kinds of assertion carry it, and none of them require knowing what the
+right output is:
+
+- **It must not panic.** Untrusted text and degenerate geometry degrade, never
+  crash the host. This is the class the wrap solver's column-counter overflow at
+  `AvailableSpace::MaxContent` belonged to.
+- **It must stay inside its rect.** Views are rendered into an inset area of a
+  larger buffer, so a write past the rect lands on a margin the test owns rather
+  than on a neighbour that would have repainted it.
+- **Two paths that claim to agree must agree.** Differential properties are
+  where the subtle bugs live: streamed markdown against a one-shot render, the
+  styled wrap against the plain one, a re-wrap after a resize against a fresh
+  state. Both of the streaming/one-shot divergences fixed alongside this layer
+  were invisible to every example-based test, because they depended on *where
+  the chunk boundaries fell*.
+
+Fuzzing stays deterministic: proptest seeds from its committed regression files,
+the black-box sweep enumerates fixed combinations, and the storms use a seeded
+PRNG. A failure is replayable from the seed printed with it, and case counts can
+be raised locally (`PROPTEST_CASES=…`) when hunting.
+
+PR runs use proptest's default case count, which keeps the suite fast enough to
+run on every change and is enough to *replay* a known counterexample — the
+regression files are committed and replayed first. It is not enough to *find* a
+new one: both streaming divergences needed thousands of cases to surface. The
+depth is bought nightly instead, by `.github/workflows/nightly-fuzz.yml`, which
+re-runs the fuzz, property, and black-box suites at a much higher case count and
+uploads any new regression seed as an artifact. Commit that seed with the fix,
+so the cheap PR run guards it from then on.
+
+A counterexample is a bug report about the *component*, not about the test. The
+fix belongs beside the code with a focused regression test; narrowing the
+property is a last resort, and when it happens the reason belongs in the
+property's own comment (a stale index a host reconciles with `clamp`, a
+2-column grapheme that cannot fit a 1-column row).
 
 ## Why a PTY layer exists at all
 
