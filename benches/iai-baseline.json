@@ -2,14 +2,14 @@
   "_comment": "iai-callgrind instruction-count baseline. Deterministic and machine-independent for a fixed toolchain + libc. Regenerate with `python3 benches/check_iai.py --update` and commit alongside the code change that shifted the counts.",
   "tolerance_pct": 2.0,
   "benchmarks": {
-    "frame_full.large": 81473338,
-    "frame_windowed.large": 888796,
-    "one_shot.large": 6451206,
-    "one_shot.small": 267214,
+    "frame_full.large": 81456467,
+    "frame_windowed.large": 871925,
+    "one_shot.large": 6451179,
+    "one_shot.small": 267187,
     "paging.large": 252164,
-    "reflow.mixed": 12337073,
-    "render.large": 869279,
-    "render.small": 869213,
-    "streaming.mixed": 12610354
+    "reflow.mixed": 12404884,
+    "render.large": 852408,
+    "render.small": 852342,
+    "streaming.mixed": 12663222
   }
 }
