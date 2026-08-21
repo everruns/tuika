@@ -97,9 +97,17 @@ The small dependency set is a designed property, not an accident
 - **No new runtime dependency without an explicit justification in the PR.** The
   default answer for a heavy concern is a trait the host implements, or a
   separately published companion crate.
-- The `ratatui-core` / `ratatui-crossterm` / `crossterm` versions must stay
-  mutually consistent, and `crossterm` must match what `ratatui-crossterm` pins
-  so Cargo dedups it. A split here silently doubles the backend.
+- The `ratatui-core` and `crossterm` versions must stay mutually consistent
+  with what a host's `ratatui` umbrella resolves to. A split here silently
+  doubles the backend, and splits the `Buffer` type on the interop boundary.
+- **A dependency tuika could own in a page of code is one it should own.** The
+  test is not whether a crate is small but whether its job is small *for tuika*:
+  a crate reached from two call sites, or one supplying a single trait impl over
+  a dependency tuika already has, is carrying transitive weight for work the
+  crate can do itself. Owning it must not mean re-implementing a domain — a
+  Unicode table, a CommonMark parser, a spec-compliant tree builder stays
+  delegated, however tempting — and must come with a test that pins the
+  behavior being replaced, ideally differential against the crate removed.
 - `ratatui` stays a dev-dependency only. If it appears under `[dependencies]`,
   the umbrella has crept back in.
 - Feature flags stay off by default when they add a runtime (`async` adds Tokio).
@@ -120,9 +128,8 @@ places no image, or draws no chart carries none of that code.
 The linker already delivers most of this. Dead-code elimination works at symbol
 granularity, so a feature a host does not reach is dropped even though it is
 compiled into the crate — measurements on a real host confirm the markdown
-stack, `pulldown-cmark` included, costs a non-markdown host nothing, and
-`textwrap`'s `smawk` / `unicode-linebreak` tables likewise never reach the
-binary. **The corollary is what maintenance must watch:** DCE only reaches what
+stack, `pulldown-cmark` included, costs a non-markdown host nothing.
+**The corollary is what maintenance must watch:** DCE only reaches what
 nothing references. A feature stops being pay-for-use the moment code on the
 *unconditional* path names it — most easily by a `match` in a per-frame
 function, which anchors every arm into every binary.

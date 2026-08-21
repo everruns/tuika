@@ -1,5 +1,51 @@
 # Knowledge Log
 
+## 2026-08-21
+
+- **A dependency whose job tuika can do in a page of code belongs in tuika**
+  - Auditing the dependency set for removals turned up three crates whose job
+    was small *for tuika* even though the crates themselves are not: `textwrap`
+    (two call sites), `ratatui-crossterm` (one `Backend` impl), and
+    `tokio-stream` (three adapters). Removing all three took the default
+    consumer graph from 66 crates to 55, and the `async` graph from 71 to 59,
+    with no public API change.
+  - The test that separates a removable dependency from a load-bearing one is
+    not size. `unicode-width` and `unicode-segmentation` look like the obvious
+    targets and are the worst possible ones: they are Unicode tables tracking a
+    moving standard, and `ratatui-core` depends on both anyway, so dropping them
+    from the manifest would remove nothing from any graph. `pulldown-cmark` is
+    32k lines because CommonMark is 32k lines' worth of specification. What
+    made the three above removable was that tuika already owned the surrounding
+    layer: two in-house wrapping engines beside `textwrap`, a complete
+    `Backend` impl (`HyperlinkBackend`) wrapping `ratatui-crossterm`, and a
+    `Stream` trait already in the graph via `crossterm/event-stream`.
+  - Two of the removals were also correctness work, which is the usual sign the
+    boundary was in the wrong place. `Paragraph` wrapped with textwrap's
+    per-`char` width model and then *measured* the result with tuika's
+    grapheme-aware `str_cols`, so a ZWJ emoji wrapped early; routing it through
+    the same solver as `Wrap` makes wrap and measurement agree by construction,
+    and lets a link's source byte range be carried onto the wrapped row instead
+    of recovered by searching the row's text back through the source. The
+    visible cost is a deliberate behavior change: greedy first-fit instead of
+    textwrap's optimal-fit, whitespace runs collapsed, and no break inside a
+    URL.
+  - Owning terminal-protocol code is only safe with a test that pins what was
+    replaced. tuika's `Backend` is held byte-for-byte identical to
+    `ratatui-crossterm`'s by a differential unit test that draws one corpus
+    through both — `ratatui` is already a dev-dependency, so the crate being
+    removed stays available to prove the removal. Generalized into
+    [Dependency Discipline](processes/maintenance.md#dependency-discipline).
+  - Consolidating two wrap implementations into one solver surfaced a panic
+    neither had been audited for: `Availability::MaxContent` measures at
+    `u16::MAX` columns, and prose long enough to fill a row at that width
+    overflowed the column counter. Untrusted text must degrade, not panic
+    (TM-PARSE) — the arithmetic is saturating now. The lesson is about method:
+    merging two copies of a routine is when its edge cases finally get read.
+  - Cargo's one-way feature unification survives the removal as the one residue:
+    `scrolling-regions` still declares an *optional* `ratatui-crossterm` purely
+    to forward the flag, because turning it on adds two required `Backend`
+    methods and would otherwise break a host's own copy of that crate.
+
 ## 2026-08-19
 
 - **A host pays for a tuika feature only if something references it**

@@ -14,6 +14,8 @@
 //! every row it reflows to. [`Paragraph`] takes a single alignment for the whole
 //! block via [`Paragraph::alignment`].
 
+use std::ops::Range;
+
 use ratatui_core::layout::{Alignment, Rect};
 use ratatui_core::style::Style;
 use ratatui_core::text::{Line, Span};
@@ -183,43 +185,39 @@ impl Paragraph {
             .split('\n')
             .flat_map(|para| {
                 let links = find_links(para, link_policy);
-                let wrapped = textwrap::wrap(para, width as usize);
-                let mut cursor = 0usize;
-                wrapped.into_iter().map(move |line| {
-                    let text = line.into_owned();
+                wrap_str(para, width).into_iter().map(move |row| {
                     if links.is_empty() {
                         return ParagraphLine {
-                            text,
+                            text: row.text,
                             links: Vec::new(),
                         };
                     }
-                    // textwrap removes boundary whitespace. Searching forward
-                    // maps even repeated words to their source occurrence.
-                    let Some(relative) = para[cursor..].find(text.as_str()) else {
-                        // If the wrapping implementation ever synthesizes text,
-                        // keep rendering but stop inferring source metadata.
-                        cursor = para.len();
-                        return ParagraphLine {
-                            text,
-                            links: Vec::new(),
-                        };
-                    };
-                    let start = cursor + relative;
-                    let end = start.saturating_add(text.len()).min(para.len());
-                    cursor = end;
-                    let links = links
-                        .iter()
-                        .filter_map(|&(link_start, link_end)| {
-                            let visible_start = link_start.max(start);
-                            let visible_end = link_end.min(end);
-                            (visible_start < visible_end).then(|| ParagraphLink {
-                                start: visible_start - start,
-                                end: visible_end - start,
+                    // Each word is copied verbatim, so a source link range
+                    // intersected with a word's range maps onto the row by a
+                    // constant shift — no searching the row's text back through
+                    // the source, and repeated words cannot alias.
+                    let mut out = Vec::new();
+                    for (row_start, src) in &row.words {
+                        for &(link_start, link_end) in &links {
+                            let start = link_start.max(src.start);
+                            let end = link_end.min(src.end);
+                            if start >= end {
+                                continue;
+                            }
+                            out.push(ParagraphLink {
+                                start: row_start + (start - src.start),
+                                end: row_start + (end - src.start),
                                 url: para[link_start..link_end].to_string(),
-                            })
-                        })
-                        .collect();
-                    ParagraphLine { text, links }
+                            });
+                        }
+                    }
+                    // A URL hard-broken across rows contributes one piece per
+                    // word; render walks them in order, so keep them sorted.
+                    out.sort_by_key(|link| link.start);
+                    ParagraphLine {
+                        text: row.text,
+                        links: out,
+                    }
                 })
             })
             .collect()
@@ -323,69 +321,18 @@ fn wrap_one(line: &Line<'static>, width: u16, out: &mut Vec<Line<'static>>) {
         })
         .collect();
     let before = out.len();
-    let mut cur: Vec<(&str, Style)> = Vec::new();
-    let mut cur_w = 0u16;
-    let mut i = 0;
-    let n = cells.len();
-    while i < n {
-        // Collapse a run of whitespace into a single break opportunity.
-        if is_break(cells[i].0) {
-            i += 1;
-            continue;
-        }
-        // Gather one word (a maximal run of non-whitespace).
-        let start = i;
-        let mut word_w = 0u16;
-        while i < n && !is_break(cells[i].0) {
-            word_w = word_w.saturating_add(grapheme_cols(cells[i].0));
-            i += 1;
-        }
-        let word = &cells[start..i];
-        let sep = u16::from(!cur.is_empty());
-        if word_w <= width && cur_w + sep + word_w <= width {
-            // Fits on the current line (with a joining space if needed). The
-            // space inherits the preceding cell's style so a background run
-            // stays continuous across the join.
-            if sep == 1 {
-                let prev = cur.last().map(|c| c.1).unwrap_or_default();
+    let metrics: Vec<CellMetrics> = cells.iter().map(|&(g, _)| CellMetrics::of(g)).collect();
+    for row in wrap_cells(&metrics, width) {
+        let mut cur: Vec<(&str, Style)> = Vec::new();
+        for word in row {
+            // The joining space inherits the preceding cell's style so a
+            // background run stays continuous across the join.
+            if let Some(&(_, prev)) = cur.last() {
                 cur.push((" ", prev));
-                cur_w += 1;
             }
-            cur.extend_from_slice(word);
-            cur_w += word_w;
-        } else if word_w <= width {
-            // Doesn't fit; break to a new line, then place the word.
-            if !cur.is_empty() {
-                out.push(coalesce(&cur));
-                cur.clear();
-            }
-            cur.extend_from_slice(word);
-            cur_w = word_w;
-        } else {
-            // Word wider than the line: hard-break it across lines.
-            if !cur.is_empty() {
-                out.push(coalesce(&cur));
-                cur.clear();
-                cur_w = 0;
-            }
-            for &(g, st) in word {
-                let w = grapheme_cols(g);
-                if cur_w + w > width && !cur.is_empty() {
-                    out.push(coalesce(&cur));
-                    cur.clear();
-                    cur_w = 0;
-                }
-                cur.push((g, st));
-                cur_w += w;
-            }
+            cur.extend_from_slice(&cells[word]);
         }
-    }
-    if !cur.is_empty() {
         out.push(coalesce(&cur));
-    }
-    // Preserve a blank (empty or all-whitespace) input line as one blank row.
-    if out.len() == before {
-        out.push(Line::default());
     }
     // Carry the source line's alignment onto every row it reflowed to, so a
     // centered/right-aligned line stays aligned after wrapping.
@@ -394,6 +341,148 @@ fn wrap_one(line: &Line<'static>, width: u16, out: &mut Vec<Line<'static>>) {
             produced.alignment = Some(align);
         }
     }
+}
+
+/// What the wrap solver needs to know about one grapheme cell: how many columns
+/// it advances, and whether it is a break opportunity.
+#[derive(Clone, Copy)]
+struct CellMetrics {
+    cols: u16,
+    is_break: bool,
+}
+
+impl CellMetrics {
+    fn of(cluster: &str) -> Self {
+        Self {
+            cols: grapheme_cols(cluster),
+            is_break: is_break(cluster),
+        }
+    }
+}
+
+/// The wrap solver, shared by every prose path in tuika.
+///
+/// Greedy and word-oriented over grapheme cells: runs of whitespace collapse to
+/// a single break opportunity, and a word wider than `width` is hard-broken so
+/// no row exceeds it. Each output row is the list of cell-index ranges of the
+/// words on it — callers decide how to join them, which is the only thing
+/// [`wrap_lines`] (a styled space) and [`wrap_str`] (a plain one) disagree
+/// about. Blank (empty or all-whitespace) input yields exactly one empty row, so
+/// a blank source line survives as a blank output line rather than vanishing.
+///
+/// Breaking only at whitespace is deliberate. A Unicode line-break table would
+/// also offer `/` and `-`, which reads better for prose but splits a bare URL
+/// after its scheme — and [`Paragraph`] turns bare URLs into OSC 8 hyperlinks,
+/// so keeping one contiguous is worth more than the ragged edge it costs.
+fn wrap_cells(cells: &[CellMetrics], width: u16) -> Vec<Vec<Range<usize>>> {
+    let mut rows: Vec<Vec<Range<usize>>> = Vec::new();
+    let mut cur: Vec<Range<usize>> = Vec::new();
+    let mut cur_w = 0u16;
+    let mut i = 0;
+    let n = cells.len();
+    while i < n {
+        // Collapse a run of whitespace into a single break opportunity.
+        if cells[i].is_break {
+            i += 1;
+            continue;
+        }
+        // Gather one word (a maximal run of non-whitespace).
+        let start = i;
+        let mut word_w = 0u16;
+        while i < n && !cells[i].is_break {
+            word_w = word_w.saturating_add(cells[i].cols);
+            i += 1;
+        }
+        let sep = u16::from(!cur.is_empty());
+        // Saturating throughout: `width` is `u16::MAX` for a max-content
+        // measurement, so a paragraph long enough to fill a row at that width
+        // would otherwise overflow the column counter and panic. Saturating
+        // keeps the row "still fits", which is the right answer when the caller
+        // asked how wide the text wants to be.
+        if word_w <= width && cur_w.saturating_add(sep).saturating_add(word_w) <= width {
+            // Fits on the current row, with a joining space if it is not first.
+            cur.push(start..i);
+            cur_w = cur_w.saturating_add(sep).saturating_add(word_w);
+        } else if word_w <= width {
+            // Doesn't fit; break to a new row, then place the word.
+            if !cur.is_empty() {
+                rows.push(std::mem::take(&mut cur));
+            }
+            cur.push(start..i);
+            cur_w = word_w;
+        } else {
+            // Word wider than the row: hard-break it across rows. Each piece is
+            // its own word, so no joining space is inserted between them.
+            if !cur.is_empty() {
+                rows.push(std::mem::take(&mut cur));
+                cur_w = 0;
+            }
+            let mut piece = start;
+            for (cell, metrics) in cells.iter().enumerate().take(i).skip(start) {
+                let w = metrics.cols;
+                if cur_w.saturating_add(w) > width && cell > piece {
+                    cur.push(piece..cell);
+                    rows.push(std::mem::take(&mut cur));
+                    piece = cell;
+                    cur_w = 0;
+                }
+                cur_w = cur_w.saturating_add(w);
+            }
+            cur.push(piece..i);
+        }
+    }
+    if !cur.is_empty() {
+        rows.push(cur);
+    }
+    // Preserve a blank (empty or all-whitespace) input line as one blank row.
+    if rows.is_empty() {
+        rows.push(Vec::new());
+    }
+    rows
+}
+
+/// One row of [`wrap_str`]: the wrapped text, plus where each of its pieces came
+/// from in the source.
+pub(crate) struct WrappedRow {
+    /// The row's text, words joined by a single space.
+    pub text: String,
+    /// `(row byte offset, source byte range)` per word, in order. Each word is
+    /// copied verbatim, so the byte at `row_offset + k` is the source byte at
+    /// `src.start + k` — which is what lets a caller carry source metadata (a
+    /// link range, a search hit) onto the wrapped row exactly.
+    pub words: Vec<(usize, Range<usize>)>,
+}
+
+/// Word-wrap plain `text` to `width` columns.
+///
+/// The plain-string counterpart to [`wrap_lines`], on the same solver and so
+/// with the same rules — including tuika's grapheme-aware column widths, which
+/// is what keeps a paragraph's wrap and its measurement from disagreeing about a
+/// ZWJ emoji or a wide glyph. `text` must not contain a newline; callers split
+/// on `\n` first, so a hard break stays a hard break.
+pub(crate) fn wrap_str(text: &str, width: u16) -> Vec<WrappedRow> {
+    let cells: Vec<(usize, &str)> = text.grapheme_indices(true).collect();
+    let metrics: Vec<CellMetrics> = cells.iter().map(|&(_, g)| CellMetrics::of(g)).collect();
+    wrap_cells(&metrics, width)
+        .into_iter()
+        .map(|row| {
+            let mut out = WrappedRow {
+                text: String::new(),
+                words: Vec::new(),
+            };
+            for word in row {
+                if !out.text.is_empty() {
+                    out.text.push(' ');
+                }
+                let (last_offset, last) = cells[word.end - 1];
+                let start = cells[word.start].0;
+                let end = last_offset + last.len();
+                out.words.push((out.text.len(), start..end));
+                out.text.push_str(&text[start..end]);
+            }
+            out
+        })
+        .collect()
 }
 
 /// Merge a run of styled grapheme cells into a [`Line`], coalescing adjacent
@@ -596,6 +685,116 @@ mod tests {
             crate::testing::render_sizes(&paragraph, sizes, &Theme::default()).len(),
             105
         );
+    }
+
+    #[test]
+    fn paragraph_measures_the_width_it_wrapped_to() {
+        // `wrap_str` and `measure` must count columns the same way. A ZWJ family
+        // is one double-width cell to tuika but six scalars wide to a per-`char`
+        // width model, so a wrapper that disagreed would break early and report
+        // a height taller than the text needs.
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+        let text = format!("{family} {family} {family}");
+        let theme = Theme::default();
+        let p = Paragraph::new(text, Style::default());
+        // Three 2-column clusters plus two joining spaces = 8 columns.
+        let size = p.measure(Size::new(8, 4), &RenderCtx::new(&theme));
+        assert_eq!(size, Size::new(8, 1), "all three should fit on one row");
+        let size = p.measure(Size::new(5, 4), &RenderCtx::new(&theme));
+        assert_eq!(size, Size::new(5, 2), "two rows: 2+1+2 columns, then 2");
+    }
+
+    #[test]
+    fn paragraph_breaks_only_at_whitespace_and_collapses_runs() {
+        // `Paragraph` now wraps on the same solver as `Wrap`, so it agrees with
+        // it on two things textwrap decided differently: a run of whitespace is
+        // one break opportunity (not copied through verbatim), and `/` is not
+        // one — which is what keeps a linkified URL contiguous instead of split
+        // after its scheme.
+        let rows = wrap_str("see  https://a.dev  now", 13);
+        assert_eq!(rows[0].text, "see");
+        assert_eq!(rows[1].text, "https://a.dev");
+        assert_eq!(rows[2].text, "now");
+        let buf = crate::testing::render(
+            &Paragraph::new("see  https://a.dev  now", Style::default()),
+            13,
+            3,
+            &Theme::default(),
+        );
+        assert_eq!(
+            link_at(&buf, Rect::new(0, 0, 13, 3), 0, 1).as_deref(),
+            Some("https://a.dev"),
+            "the whole URL stays on one row and resolves as one link"
+        );
+    }
+
+    #[test]
+    fn paragraph_links_each_repeated_url_on_its_own_row() {
+        let buf = crate::testing::render(
+            &Paragraph::new("go https://a.dev go https://b.dev", Style::default()),
+            16,
+            2,
+            &Theme::default(),
+        );
+        let area = Rect::new(0, 0, 16, 2);
+        assert_eq!(link_at(&buf, area, 4, 0).as_deref(), Some("https://a.dev"));
+        assert_eq!(link_at(&buf, area, 4, 1).as_deref(), Some("https://b.dev"));
+    }
+
+    #[test]
+    fn wrap_str_maps_every_word_back_to_its_source_bytes() {
+        let src = "alpha  beta gamma";
+        let rows = wrap_str(src, 11);
+        assert_eq!(rows.len(), 2);
+        // Repeated whitespace collapses in the output text...
+        assert_eq!(rows[0].text, "alpha beta");
+        assert_eq!(rows[1].text, "gamma");
+        // ...but each word still points at the bytes it was copied from.
+        for row in &rows {
+            for (row_start, src_range) in &row.words {
+                let word = &row.text[*row_start..row_start + src_range.len()];
+                assert_eq!(word, &src[src_range.clone()]);
+            }
+        }
+    }
+
+    #[test]
+    fn wrap_str_keeps_a_blank_line_blank() {
+        // One empty row per blank source line is what lets a caller splitting on
+        // '\n' preserve a deliberate gap between paragraphs.
+        assert_eq!(wrap_str("", 10).len(), 1);
+        assert_eq!(wrap_str("", 10)[0].text, "");
+        assert_eq!(wrap_str("   ", 10).len(), 1);
+        assert_eq!(wrap_str("   ", 10)[0].text, "");
+    }
+
+    #[test]
+    fn wrapping_at_max_content_width_does_not_overflow_the_column_counter() {
+        // `Availability::MaxContent` measures at `u16::MAX`, so prose long
+        // enough to exceed 65_535 columns on one row — a pasted log line, a
+        // generated markdown paragraph — reaches the wrap solver's column
+        // arithmetic at its limit. Untrusted text must degrade, never panic.
+        let long = vec!["aaaaaaaa"; 9000].join(" ");
+        let rows = wrap_str(&long, u16::MAX);
+        assert_eq!(rows.len(), 1, "everything fits at max-content width");
+        let one_word_per_gap = long.split(' ').count();
+        assert_eq!(rows[0].words.len(), one_word_per_gap);
+
+        // The styled path shares the solver, so it is covered by the same fix.
+        let out = wrap_lines(&[Line::from(long)], u16::MAX);
+        assert_eq!(out.len(), 1);
+    }
+
+    #[test]
+    fn wrap_str_hard_breaks_an_overlong_word_without_exceeding_the_width() {
+        let rows = wrap_str("short supercalifragilistic", 8);
+        assert!(
+            rows.iter().all(|r| str_cols(&r.text) <= 8),
+            "no row may exceed the width: {:?}",
+            rows.iter().map(|r| &r.text).collect::<Vec<_>>()
+        );
+        let joined: String = rows.iter().map(|r| r.text.replace(' ', "")).collect();
+        assert_eq!(joined, "shortsupercalifragilistic");
     }
 
     #[test]

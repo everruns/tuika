@@ -91,10 +91,10 @@ You write views; tuika owns the rest:
   [UI is unit-tested](#testing-your-ui) against an in-memory buffer with no
   terminal at all.
 - **Small enough to adopt without a second thought** — a self-contained crate
-  depending only on `ratatui-core` (plus `ratatui-crossterm` for the backend),
-  `crossterm`, `textwrap`, `unicode-segmentation`, `unicode-width`, and
-  `pulldown-cmark`. Anything heavy — grammars, diagram layout, image decoding —
-  lives behind a trait in a companion crate or your host.
+  depending only on `ratatui-core`, `crossterm`, `unicode-segmentation`,
+  `unicode-width`, and `pulldown-cmark`. Anything heavy — grammars, diagram
+  layout, image decoding — lives behind a trait in a companion crate or your
+  host.
 
 It is host-agnostic: it knows nothing about the application embedding it, and no
 type, feature, or default exists to serve one host. tuika renders none of
@@ -972,8 +972,7 @@ something on tuika? Open a PR adding it here.
 - Tuika 0.x follows Cargo semver: minor releases may make deliberate breaking
   API changes; patch releases do not.
 - Ratatui and Crossterm are part of Tuika's public interoperability surface.
-  Tuika builds against `ratatui-core` (and `ratatui-crossterm`) directly, not
-  the `ratatui` umbrella; the umbrella re-exports that same `ratatui-core`, so a
+  Tuika builds against `ratatui-core` directly, not the `ratatui` umbrella; the umbrella re-exports that same `ratatui-core`, so a
   matching `ratatui` minor line in your application resolves to one shared
   `ratatui-core` and Cargo deduplicates the core types. Widgets such as
   `Block`/`Paragraph`/`Table` live in `ratatui-widgets` (pulled in by your

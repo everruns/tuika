@@ -4,6 +4,7 @@
 use ratatui_core::layout::Rect;
 use ratatui_core::text::Line;
 
+use crate::components::text::wrap_str;
 use crate::event::{Event, InputOutcome, KeyCode};
 use crate::geometry::Size;
 use crate::surface::Surface;
@@ -622,14 +623,9 @@ impl DialogCopy {
         }
         self.text
             .split('\n')
-            .flat_map(|line| {
-                let wrapped = textwrap::wrap(line, usize::from(width));
-                if wrapped.is_empty() {
-                    vec![String::new()]
-                } else {
-                    wrapped.into_iter().map(|line| line.into_owned()).collect()
-                }
-            })
+            // `wrap_str` already yields one empty row for a blank line, so a
+            // deliberate blank between paragraphs survives.
+            .flat_map(|line| wrap_str(line, width).into_iter().map(|row| row.text))
             .collect()
     }
 }

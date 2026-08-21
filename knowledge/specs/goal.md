@@ -45,9 +45,11 @@ The claim is earned by scope and by adoption evidence, never by overstatement:
 2. **Composable over configurable.** Behavior is reached by composing views, not
    by accumulating knobs on a component.
 3. **Dependency-light.** The published crate depends only on `ratatui-core`,
-   `ratatui-crossterm`, `crossterm`, `textwrap`, `unicode-segmentation`,
-   `unicode-width`, and `pulldown-cmark`. Anything heavier belongs behind a
-   trait the host implements.
+   `crossterm`, `unicode-segmentation`, `unicode-width`, and `pulldown-cmark`.
+   Anything heavier belongs behind a trait the host implements — and a
+   dependency tuika could *own* in a page of code, rather than delegate, is one
+   it should: see
+   [Dependency Discipline](../processes/maintenance.md#dependency-discipline).
 4. **Interoperable, not exclusive.** Existing ratatui widgets compose through a
    raw-`Buffer` boundary; adopting tuika never means giving up ratatui.
 5. **Testable without a terminal.** Rendering is observable as cells in memory,

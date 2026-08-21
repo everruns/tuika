@@ -62,17 +62,24 @@ This skill is outcome-oriented. Choose the smallest set of actions that closes t
 The small dependency set is a designed property, not an accident. Defend it.
 
 Actions:
-- check for newer `ratatui-core` / `ratatui-crossterm` / `crossterm` releases
-  (`cargo search ratatui-core --limit 1`). These three must stay mutually
-  consistent, and `crossterm` must match what `ratatui-crossterm` pins, or Cargo
-  builds two backends
+- check for newer `ratatui-core` / `crossterm` releases
+  (`cargo search ratatui-core --limit 1`). These must stay consistent with what
+  a host's `ratatui` umbrella resolves to, or Cargo builds two backends and
+  splits the `Buffer` type on the interop boundary
+- when `ratatui-core` moves, re-run the differential backend test
+  (`cargo test --all-features term::backend`): tuika's own `Backend` is held
+  byte-identical to `ratatui-crossterm`'s, and a `Backend` trait change or a
+  new SGR path is exactly what would drift it
 - confirm `ratatui` is still only a **dev**-dependency; under `[dependencies]` it
   means the umbrella crept back in
 - treat a `ratatui-core` major bump as an interoperability event, not a routine
   upgrade: it changes the `Buffer` type on the public boundary, so hosts must move in
   lockstep. It is a breaking release for tuika
-- check `pulldown-cmark`, `textwrap`, `unicode-*` minors; verify
-  `pulldown-cmark` still builds with default features off
+- check `pulldown-cmark` and `unicode-*` minors; verify `pulldown-cmark` still
+  builds with default features off
+- ask of each remaining dependency whether tuika could own its job in a page of
+  code (see maintenance.md § Dependency Discipline) — but leave the Unicode
+  tables, the CommonMark parser, and the grammars where they are
 - for `tuika-codeformatters`, check the tree-sitter grammar crates and
   `tree-sitter-highlight` together — a grammar pinned to an older `tree-sitter`
   duplicates the parser runtime

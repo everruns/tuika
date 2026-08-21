@@ -77,6 +77,8 @@
 
 #[cfg(feature = "async")]
 mod asynchronous;
+#[cfg(feature = "async")]
+mod stream;
 
 #[cfg(feature = "async")]
 #[allow(deprecated)]
@@ -91,12 +93,12 @@ use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::term::backend::CrosstermBackend;
 use crossterm::event;
 use ratatui_core::backend::Backend;
 use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 use ratatui_core::terminal::{Terminal, TerminalOptions};
-use ratatui_crossterm::CrosstermBackend;
 
 use crate::host::paint_with_context_and_sources;
 use crate::live::RedrawHandle;
@@ -365,7 +367,7 @@ where
 /// [`Runner::run`] uses the real terminal; [`Runner::run_driven_by`] takes one
 /// of these instead, which is what lets a host — or a test — drive the loop
 /// without a tty. The asynchronous runner takes a
-/// [`Stream`](tokio_stream::Stream) for the same reason.
+/// [`Stream`](futures_core::Stream) for the same reason.
 ///
 /// An implementation must **consume the timeout** when it has nothing to
 /// deliver: the loop uses this call as its only sleep, so returning `Ok(None)`

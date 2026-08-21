@@ -68,8 +68,8 @@ Scope is deliberately phased:
 
 ### Decoding stays in the host
 
-tuika depends only on ratatui, crossterm, textwrap, unicode-\*, and
-pulldown-cmark, and adds nothing heavy. Image *decoding* (PNG/JPEG → RGBA) is a
+tuika depends only on ratatui-core, crossterm, unicode-\*, and pulldown-cmark,
+and adds nothing heavy. Image *decoding* (PNG/JPEG → RGBA) is a
 heavy dependency, so it stays in the host exactly like syntax highlighting does:
 the host hands tuika an `ImageData` of raw RGBA plus pixel dimensions, the way
 it hands markdown a `Highlighter`. tuika owns *presentation* (protocol

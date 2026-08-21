@@ -24,6 +24,7 @@
 use std::io::{self, Write};
 use std::num::NonZeroU16;
 
+use super::backend::CrosstermBackend;
 use crossterm::queue;
 use crossterm::style::{
     Attribute, Color as CtColor, Print, ResetColor, SetAttribute, SetBackgroundColor,
@@ -34,7 +35,6 @@ use ratatui_core::buffer::{Buffer, Cell, CellDiffOption};
 use ratatui_core::layout::{Position, Rect, Size};
 use ratatui_core::style::{Color, Modifier};
 use ratatui_core::text::{Line, Span};
-use ratatui_crossterm::CrosstermBackend;
 
 /// String terminator for an OSC sequence: `ESC \`.
 const ST: &str = "\x1b\\";
@@ -488,7 +488,7 @@ fn apply_style(out: &mut impl Write, span: &Span<'_>) -> io::Result<()> {
 /// Map a ratatui color to the crossterm equivalent. `Rgb`/`Indexed` (what the
 /// host's transcript actually uses) map exactly; the named ANSI colors map to
 /// their crossterm counterparts.
-fn to_ct_color(color: Color) -> CtColor {
+pub(crate) fn to_ct_color(color: Color) -> CtColor {
     match color {
         Color::Reset => CtColor::Reset,
         Color::Black => CtColor::Black,
@@ -512,11 +512,11 @@ fn to_ct_color(color: Color) -> CtColor {
     }
 }
 
-/// A ratatui [`Backend`] that wraps [`CrosstermBackend`] and makes `http(s)`
-/// URLs in rendered output real OSC 8 hyperlinks.
+/// A ratatui [`Backend`] that makes `http(s)` URLs in rendered output real
+/// OSC 8 hyperlinks.
 ///
 /// This is the only place OSC 8 can be emitted while staying inside ratatui's
-/// model: every method delegates to the inner [`CrosstermBackend`] — so cursor,
+/// model: every method delegates to tuika's crossterm backend — so cursor,
 /// scroll-region, and `insert_before` bookkeeping stay consistent — except
 /// [`draw`](Backend::draw), which scans each contiguous run of cells for URLs
 /// and wraps just those cells in the OSC 8 sequence. Non-URL text is forwarded
@@ -551,8 +551,8 @@ impl<W: Write> HyperlinkBackend<W> {
     }
 
     /// Emit one maximal contiguous run of cells, wrapping any URL sub-runs in
-    /// OSC 8. Reuses the inner backend's `draw` for all SGR/cursor logic so we
-    /// never reimplement styling.
+    /// OSC 8. Reuses the inner backend's `draw` for all SGR/cursor logic so
+    /// styling is never written twice.
     fn emit_run(&mut self, run: &[(u16, u16, &Cell)]) -> io::Result<()> {
         // Reconstruct the run's visible text (OSC 8 wrappers stripped so an
         // already-linked markdown label is not mistaken for a bare URL) and

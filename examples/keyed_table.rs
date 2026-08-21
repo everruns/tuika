@@ -8,8 +8,8 @@ use std::io;
 use std::time::Duration;
 
 use crossterm::event;
+use ratatui::backend::CrosstermBackend;
 use ratatui_core::terminal::Terminal;
-use ratatui_crossterm::CrosstermBackend;
 use tuika::prelude::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
