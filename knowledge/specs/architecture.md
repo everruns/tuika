@@ -179,9 +179,21 @@ types can gain future measurement inputs without another trait-wide break.
 ## Why the `ratatui-core` boundary, not the umbrella
 
 tuika renders none of ratatui's own widgets, so it depends on `ratatui-core`
-(plus `ratatui-crossterm` for the backend) directly. This drops
-`ratatui-widgets`, `ratatui-macros`, and their transitive weight from every
-downstream build that does not use them.
+directly. This drops `ratatui-widgets`, `ratatui-macros`, and their transitive
+weight from every downstream build that does not use them.
+
+It does not take `ratatui-crossterm` either. That crate supplies exactly one
+thing tuika needs — a `Backend` that writes through crossterm — and tuika
+already implemented the whole trait once, in `HyperlinkBackend`, to wrap it.
+Owning the cell-drawing loop as well collapses those two layers into one and
+drops the crate's eight-crate `instability`/`darling` proc-macro tree. The
+emitted byte stream is held byte-identical to `ratatui-crossterm`'s by a
+differential unit test that draws the same cells through both, so the choice
+stays an implementation detail rather than a compatibility claim. tuika keeps an
+*optional* dependency on it under the `scrolling-regions` feature only, to
+forward that flag: enabling `ratatui-core/scrolling-regions` adds two required
+`Backend` methods, and Cargo unifies features one way, so a host's own
+`ratatui-crossterm` would otherwise fail to compile.
 
 It costs nothing in interoperability: the interop boundary is a raw
 `&mut Buffer` from that same `ratatui-core`. A host bringing the `ratatui`

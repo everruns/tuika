@@ -96,7 +96,7 @@ bench = false
 # The async runner (`AsyncRunner`). Off by default so sync-only hosts don't pull
 # in a Tokio runtime. Enabling it adds Tokio (timer + `select!` macro), a
 # `StreamExt` for polling the event stream, and crossterm's async `EventStream`.
-async = ["dep:tokio", "dep:tokio-stream", "crossterm/event-stream"]
+async = ["dep:tokio", "dep:futures-core", "crossterm/event-stream"]
 
 # Mirror of ratatui's `scrolling-regions`, which changes how content is inserted
 # above an inline viewport: DECSTBM region scrolling instead of the portable
@@ -111,8 +111,16 @@ async = ["dep:tokio", "dep:tokio-stream", "crossterm/event-stream"]
 # published output *becomes* scrollback. The portable path costs a viewport
 # repaint per published block and keeps it; the `codex` PTY tests pin the
 # difference. See `knowledge/specs/screen-modes.md`.
+# Turning this on flips a `ratatui-core` feature that adds two required methods
+# to `Backend`. Cargo unifies features one way only, so any *other*
+# `ratatui-crossterm` in the graph — a host's own `ratatui`, most likely — would
+# then fail to compile its `CrosstermBackend` unless its matching feature is on
+# too. tuika no longer depends on that crate (see `term/backend.rs`), so the
+# optional dep below exists purely to forward the flag and keep the graph
+# consistent; it is absent from every build that leaves this feature off.
 scrolling-regions = [
     "ratatui-core/scrolling-regions",
+    "dep:ratatui-crossterm",
     "ratatui-crossterm/scrolling-regions",
 ]
 
@@ -129,17 +137,20 @@ scrolling-regions = [
 # version). `underline-color` matches the umbrella default so cell rendering is
 # byte-identical; `std` is required for the terminal I/O loop.
 ratatui-core = { version = "0.1", features = ["std", "underline-color"] }
-# `CrosstermBackend` (+ `ClearType`/`WindowSize` impls) — the only piece tuika
-# needs that is not in `ratatui-core`. Default features pin the crossterm 0.29
-# backend, matching the direct `crossterm` dep below so Cargo dedups it.
-ratatui-crossterm = "0.1"
 crossterm = "0.29"
+# Not used in any code path: pulled in only by `scrolling-regions`, to forward
+# that feature. See the feature's comment above.
+ratatui-crossterm = { version = "0.1", optional = true }
 # Async runner only (feature = "async"). `time` for the tick interval, `macros`
 # for `tokio::select!`; the host application brings its own runtime, so no `rt`.
 tokio = { version = "1", features = ["time", "macros"], optional = true }
-# `StreamExt::{next, filter_map}` for driving the crossterm `EventStream`.
-tokio-stream = { version = "0.1", optional = true }
-textwrap = "0.16"
+# The `Stream` trait for the runner's event/message bounds. Not a new crate:
+# `async` turns on `crossterm/event-stream`, which already pulls `futures-core`
+# in. The three adapters the runner needs (`next`, `filter_map`, `empty`) are
+# ~80 lines in `runner/stream.rs`, which is what lets `tokio-stream` be a
+# dev-dependency instead of a consumer one — and costs hosts nothing, since
+# `tokio_stream::Stream` *is* this trait.
+futures-core = { version = "0.3", optional = true }
 unicode-segmentation = "1"
 unicode-width = "0.2"
 # CommonMark parsing for the streaming `Markdown` component. `default-features
@@ -175,6 +186,9 @@ iai-callgrind = "0.16.1"
 # event stream; `test-util` gives paused-clock control so ticks are deterministic
 # instead of wall-clock-timed. Reachable only when `--features async` is on.
 tokio = { version = "1", features = ["rt", "macros", "sync", "time", "test-util"] }
+# Dev-only, and deliberately so: the doc example and the mpsc test drive the
+# runner through `tokio_stream::wrappers::ReceiverStream`, which proves a host's
+# `tokio-stream` still satisfies the `futures-core` bounds the runner declares.
 tokio-stream = { version = "0.1", features = ["sync"] }
 
 [[bench]]

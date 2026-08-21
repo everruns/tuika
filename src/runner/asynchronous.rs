@@ -61,12 +61,12 @@ use std::convert::Infallible;
 use std::io;
 use std::time::Duration;
 
+use super::stream::{self, Stream};
+use crate::term::backend::CrosstermBackend;
 use crossterm::event::EventStream;
 use ratatui_core::backend::Backend;
 use ratatui_core::terminal::{Terminal, TerminalOptions};
-use ratatui_crossterm::CrosstermBackend;
 use tokio::time::{Instant as TokioInstant, MissedTickBehavior, interval, sleep_until};
-use tokio_stream::{Stream, StreamExt};
 
 use super::{
     FrameGraphics, FrameGraphicsCleanup, PaintRoot, RESIZE_FRAME_INTERVAL, RunnerAction,
@@ -329,7 +329,9 @@ impl AsyncRunner {
     ///
     /// # Mechanics
     ///
-    /// The producer sends through any Tokio [`Stream`], so no shared mutable
+    /// The producer sends through any [`Stream`](futures_core::Stream) — a
+    /// `tokio_stream` wrapper, a `futures` channel, anything implementing the
+    /// trait — so no shared mutable
     /// state, synthetic terminal events, or short polling interval is needed.
     /// The frame source is the one [`run`](Self::run) takes, at `M` instead of
     /// the default [`Infallible`]. A completed message stream disables only
@@ -391,7 +393,7 @@ impl AsyncRunner {
             },
         )?;
         let _graphics_cleanup = FrameGraphicsCleanup(&graphics);
-        let events = EventStream::new().filter_map(|result| match result {
+        let events = stream::filter_map(EventStream::new(), |result| match result {
             Ok(raw) => translate_event(raw).map(Ok),
             Err(error) => Some(Err(error)),
         });
@@ -452,7 +454,7 @@ impl AsyncRunner {
                 viewport: mode.viewport(),
             },
         )?;
-        let events = EventStream::new().filter_map(|result| match result {
+        let events = stream::filter_map(EventStream::new(), |result| match result {
             Ok(raw) => translate_event(raw).map(Ok),
             Err(error) => Some(Err(error)),
         });
@@ -632,7 +634,7 @@ impl AsyncRunner {
                 _ = sleep_until(deadline), if redraw_at.is_some() => Wake::Redraw,
                 () = self.redraw.requested() => Wake::Requested,
                 _ = ticker.tick() => Wake::Tick,
-                item = events.next(), if !events_done => match item {
+                item = stream::next(&mut events), if !events_done => match item {
                     Some(Ok(event)) => Wake::Event(event),
                     Some(Err(error)) => return Err(error),
                     None => {
@@ -640,7 +642,7 @@ impl AsyncRunner {
                         continue;
                     }
                 },
-                item = messages.next(), if !messages_done => match item {
+                item = stream::next(&mut messages), if !messages_done => match item {
                     Some(Ok(message)) => Wake::Message(message),
                     Some(Err(error)) => return Err(error),
                     None => {
@@ -772,7 +774,7 @@ where
 /// The message type is [`Infallible`], so [`Signal::Message`] is uninhabited and
 /// an `update` that handles only ticks and events stays exhaustive.
 pub fn no_messages<Er>() -> impl Stream<Item = Result<Infallible, Er>> + Unpin {
-    tokio_stream::empty()
+    stream::empty()
 }
 
 #[cfg(test)]
@@ -839,7 +841,7 @@ mod tests {
         });
         let mut terminal = terminal(24, 1);
         let mut count = 0u64;
-        let events = tokio_stream::iter([
+        let events = stream::iter([
             key(KeyCode::Char('a')),
             key(KeyCode::Char('a')),
             key(KeyCode::Char('q')),
@@ -886,7 +888,7 @@ mod tests {
         let mut terminal = terminal(16, 1);
         let mut state = 0u8;
         let views = std::cell::Cell::new(0usize);
-        let events = tokio_stream::iter([key(KeyCode::Char('a')), key(KeyCode::Esc)]);
+        let events = stream::iter([key(KeyCode::Char('a')), key(KeyCode::Esc)]);
 
         runner
             .run_driven_by(
@@ -926,7 +928,7 @@ mod tests {
         });
         let mut terminal = terminal(11, 1);
         let mut mouse_events = 0usize;
-        let events = tokio_stream::iter([
+        let events = stream::iter([
             mouse(MouseKind::Down(MouseButton::Left), 0, 0),
             mouse(MouseKind::Drag(MouseButton::Left), 4, 0),
             key(KeyCode::Esc),
@@ -978,7 +980,7 @@ mod tests {
         });
         let mut terminal = terminal(11, 1);
         let mut state = ();
-        let events = tokio_stream::iter([
+        let events = stream::iter([
             mouse(MouseKind::Down(MouseButton::Left), 0, 0),
             mouse(MouseKind::Drag(MouseButton::Left), 4, 0),
             key(KeyCode::Esc),
@@ -1020,7 +1022,7 @@ mod tests {
         });
         let mut terminal = terminal(12, 1);
         let mut scrolled = false;
-        let events = tokio_stream::iter([mouse(MouseKind::ScrollDown, 0, 0), key(KeyCode::Esc)]);
+        let events = stream::iter([mouse(MouseKind::ScrollDown, 0, 0), key(KeyCode::Esc)]);
 
         runner
             .run_driven_by(
@@ -1063,7 +1065,7 @@ mod tests {
         let mut terminal = terminal(16, 1);
         let mut state = ();
         let views = std::cell::Cell::new(0usize);
-        let events = tokio_stream::iter((0..3).map(|_| {
+        let events = stream::iter((0..3).map(|_| {
             Ok(Event::Resize {
                 width: 16,
                 height: 1,
@@ -1105,7 +1107,7 @@ mod tests {
         let runner = AsyncRunner::new(RunnerConfig::default());
         let mut terminal = terminal(16, 1);
         let mut state = "hello";
-        let events = tokio_stream::iter([key(KeyCode::Esc)]);
+        let events = stream::iter([key(KeyCode::Esc)]);
 
         runner
             .run_driven_by(
@@ -1137,7 +1139,7 @@ mod tests {
         });
         let mut terminal = terminal(20, 1);
         let mut ticks = 0u64;
-        let events = tokio_stream::iter(Vec::<Result<Event, Infallible>>::new());
+        let events = stream::iter(Vec::<Result<Event, Infallible>>::new());
 
         runner
             .run_driven_by(
@@ -1200,7 +1202,7 @@ mod tests {
             },
         )
         .expect("inline terminal");
-        let events = tokio_stream::iter([key(KeyCode::Char('a')), key(KeyCode::Char('q'))]);
+        let events = stream::iter([key(KeyCode::Char('a')), key(KeyCode::Char('q'))]);
         let mut state = ();
 
         runner
@@ -1296,7 +1298,7 @@ mod tests {
                         }
                     },
                 ),
-                tokio_stream::iter(Vec::<Result<Event, Infallible>>::new()),
+                stream::iter(Vec::<Result<Event, Infallible>>::new()),
                 no_messages(),
             )
             .await
@@ -1327,7 +1329,7 @@ mod tests {
         let scrollback = runner.scrollback();
         scrollback.write(|_width| element(Text::raw("dropped")));
         let mut terminal = terminal(16, 2);
-        let events = tokio_stream::iter([key(KeyCode::Char('a')), key(KeyCode::Esc)]);
+        let events = stream::iter([key(KeyCode::Char('a')), key(KeyCode::Esc)]);
         let mut state = ();
 
         runner
@@ -1362,8 +1364,8 @@ mod tests {
     // given rect and never touches the terminal.
     #[tokio::test]
     async fn stream_error_propagates() {
+        use crate::term::backend::CrosstermBackend;
         use ratatui_core::layout::Rect;
-        use ratatui_crossterm::CrosstermBackend;
 
         let runner = AsyncRunner::new(RunnerConfig {
             tick_rate: Duration::from_secs(3600),
@@ -1377,7 +1379,7 @@ mod tests {
         )
         .expect("test terminal");
         let mut state = ();
-        let events = tokio_stream::iter([Err::<Event, io::Error>(io::Error::other("boom"))]);
+        let events = stream::iter([Err::<Event, io::Error>(io::Error::other("boom"))]);
 
         let result = runner
             .run_driven_by(
@@ -1421,8 +1423,8 @@ mod tests {
         });
         let mut terminal = terminal(24, 1);
         let mut count = 0u64;
-        let events = tokio_stream::iter([key(KeyCode::Char('a'))]);
-        let messages = tokio_stream::iter([Ok::<_, Infallible>(Message::Add(7))]);
+        let events = stream::iter([key(KeyCode::Char('a'))]);
+        let messages = stream::iter([Ok::<_, Infallible>(Message::Add(7))]);
 
         runner
             .run_driven_by(
@@ -1491,8 +1493,8 @@ mod tests {
                         _ => UpdateResult::Clean,
                     },
                 ),
-                tokio_stream::empty::<Result<Event, Infallible>>(),
-                tokio_stream::empty::<Result<(), Infallible>>(),
+                stream::empty::<Result<Event, Infallible>>(),
+                stream::empty::<Result<(), Infallible>>(),
             )
             .await
             .unwrap();
@@ -1516,7 +1518,7 @@ mod tests {
         let mut terminal = terminal(16, 1);
         let views = std::cell::Cell::new(0usize);
         let mut state = 0u8;
-        let messages = tokio_stream::iter([
+        let messages = stream::iter([
             Ok::<_, Infallible>(Message::Clean),
             Ok(Message::Dirty),
             Ok(Message::Exit),
@@ -1548,7 +1550,7 @@ mod tests {
                         _ => UpdateResult::Clean,
                     },
                 ),
-                tokio_stream::empty::<Result<Event, Infallible>>(),
+                stream::empty::<Result<Event, Infallible>>(),
                 messages,
             )
             .await
@@ -1573,7 +1575,7 @@ mod tests {
         )
         .expect("test terminal");
         let mut state = ();
-        let messages = tokio_stream::iter([Err::<(), io::Error>(io::Error::other("message boom"))]);
+        let messages = stream::iter([Err::<(), io::Error>(io::Error::other("message boom"))]);
 
         let result = runner
             .run_driven_by(
@@ -1584,7 +1586,7 @@ mod tests {
                     |_state, _| element(Text::raw("x")),
                     async |_state, _signal| UpdateResult::Clean,
                 ),
-                tokio_stream::empty::<Result<Event, io::Error>>(),
+                stream::empty::<Result<Event, io::Error>>(),
                 messages,
             )
             .await;
@@ -1655,7 +1657,7 @@ mod tests {
             title: "n".into(),
             hits: Vec::new(),
         };
-        let events = tokio_stream::iter([
+        let events = stream::iter([
             key(KeyCode::Char('a')),
             key(KeyCode::Char('b')),
             key(KeyCode::Esc),
@@ -1711,14 +1713,14 @@ mod tests {
         });
         let mut terminal = terminal(12, 1);
         let mut app = Feed { items: Vec::new() };
-        let messages = tokio_stream::iter([Ok::<u8, Infallible>(7), Ok(9), Ok(0)]);
+        let messages = stream::iter([Ok::<u8, Infallible>(7), Ok(9), Ok(0)]);
 
         runner
             .run_driven_by(
                 &mut terminal,
                 &Theme::default(),
                 &mut app,
-                tokio_stream::empty::<Result<Event, Infallible>>(),
+                stream::empty::<Result<Event, Infallible>>(),
                 messages,
             )
             .await

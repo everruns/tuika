@@ -10,11 +10,12 @@
 //! mode (alternate screen or a split footer over live terminal scrollback),
 //! and a set of components (text, boxes, scroll, select, spinner, progress) —
 //! while letting ratatui keep ownership of the cell buffer and its diff against
-//! the terminal. It builds against `ratatui-core` (and `ratatui-crossterm` for
-//! the backend) directly rather than the `ratatui` umbrella — it renders none of
-//! ratatui's own widgets — so `ratatui-widgets` and `ratatui-macros` stay out of
-//! its dependency tree. It otherwise depends only on `crossterm`, `textwrap`,
-//! `unicode-segmentation`, and `unicode-width`.
+//! the terminal. It builds against `ratatui-core` directly rather than the
+//! `ratatui` umbrella — it renders none of ratatui's own widgets — so
+//! `ratatui-widgets` and `ratatui-macros` stay out of its dependency tree, and
+//! it writes to the terminal through its own crossterm backend rather than
+//! `ratatui-crossterm`. It otherwise depends only on `crossterm`,
+//! `unicode-segmentation`, `unicode-width`, and `pulldown-cmark`.
 //!
 //! It was extracted from the [yolop](https://github.com/everruns/yolop) coding
 //! agent, whose full-screen renderer is built on it, but it knows nothing about

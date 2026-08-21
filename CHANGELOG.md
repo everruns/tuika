@@ -30,6 +30,25 @@ described in the release process begins with the entry below.
   behaves exactly like one the crate never supported: `highlight` returns
   `None` and the caller renders plain code.
 
+- **`Paragraph` and dialog copy wrap differently.** Both now use tuika's own
+  wrap solver — the one `Wrap`/`wrap_lines` has always used — instead of
+  `textwrap`. Three visible differences, all of them making `Paragraph` agree
+  with the rest of the toolkit:
+  - Line breaks are chosen **greedily** (first-fit) rather than by textwrap's
+    optimal-fit minimum-raggedness pass, so a paragraph's rows may break at
+    different words than in 0.10.
+  - A run of whitespace between two words is one break opportunity and renders
+    as a single space, instead of being copied through verbatim.
+  - Breaks happen only at whitespace. textwrap also broke at Unicode line-break
+    opportunities such as `/`, which could split a linkified URL after its
+    scheme; a URL now stays on one row unless it is wider than the row.
+
+  Widths are counted in tuika's grapheme-aware display columns, which fixes a
+  latent bug: `Paragraph` wrapped with textwrap's per-`char` width model and
+  then measured the result with `str_cols`, so text containing a ZWJ emoji
+  (a family, a flag, a skin-tone sequence) wrapped earlier than its own
+  measurement said it needed to.
+
 ### Changed
 
 - **`tuika-codeformatters` binary size**: grammars are selected by a runtime
@@ -47,6 +66,29 @@ described in the release process begins with the entry below.
   so a host that places no images no longer carries any of them: about 8.4 KiB
   less tuika code in a minimal host. The emitted bytes are unchanged for all
   three protocols, and no public API changed.
+
+- **Dependencies: 66 crates to 55.** Three runtime dependencies were removed by
+  taking work tuika was already half-doing:
+  - `textwrap` (with `smawk` and `unicode-linebreak`) — replaced by the wrap
+    solver `Wrap` already used. See **Breaking Changes** for the visible
+    difference.
+  - `ratatui-crossterm` (with the `instability`/`darling` proc-macro tree behind
+    it) — tuika now writes to the terminal through its own crossterm `Backend`.
+    It already implemented that whole trait once, in `HyperlinkBackend`, to wrap
+    the one being removed. The emitted byte stream is held **byte-for-byte
+    identical** by a differential test that draws the same cells through both
+    backends. The crate remains an *optional* dependency of the
+    `scrolling-regions` feature, which forwards its matching flag so a host's
+    own copy still compiles.
+  - `tokio-stream` (under `async`) — replaced by `futures-core`, which the
+    build already contained: `async` enables `crossterm/event-stream`, and that
+    pulls it in. `tokio_stream::Stream` *is* `futures_core::Stream`, so a host
+    passing a `ReceiverStream` is unaffected; `tokio-stream` stays a
+    dev-dependency and the doc example still uses it. The `async` graph goes
+    from 71 crates to 59.
+
+  No public API changed, and no rendered output changed outside the wrapping
+  differences above.
 
 ### Added
 

@@ -3,8 +3,9 @@
 //! [`Markdown`](crate::components::Markdown) without tuika taking on any grammar
 //! dependency.
 //!
-//! tuika deliberately depends only on `ratatui`, `crossterm`, `textwrap`, and
-//! the `unicode-*` crates; a real highlighter (tree-sitter, syntect, …) pulls in
+//! tuika deliberately depends only on `ratatui-core`, `crossterm`, the
+//! `unicode-*` crates, and `pulldown-cmark`; a real highlighter (tree-sitter,
+//! syntect, …) pulls in
 //! far more. So the toolkit owns only this trait and the *presentation* of code
 //! (framing, background, language label, wrapping), while the host supplies the
 //! token colors. The companion crate `tuika-codeformatters` ships a tree-sitter
