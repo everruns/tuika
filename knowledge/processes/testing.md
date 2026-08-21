@@ -83,6 +83,15 @@ the black-box sweep enumerates fixed combinations, and the storms use a seeded
 PRNG. A failure is replayable from the seed printed with it, and case counts can
 be raised locally (`PROPTEST_CASES=…`) when hunting.
 
+PR runs use proptest's default case count, which keeps the suite fast enough to
+run on every change and is enough to *replay* a known counterexample — the
+regression files are committed and replayed first. It is not enough to *find* a
+new one: both streaming divergences needed thousands of cases to surface. The
+depth is bought nightly instead, by `.github/workflows/nightly-fuzz.yml`, which
+re-runs the fuzz, property, and black-box suites at a much higher case count and
+uploads any new regression seed as an artifact. Commit that seed with the fix,
+so the cheap PR run guards it from then on.
+
 A counterexample is a bug report about the *component*, not about the test. The
 fix belongs beside the code with a focused regression test; narrowing the
 property is a last resort, and when it happens the reason belongs in the

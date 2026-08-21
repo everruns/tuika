@@ -111,6 +111,9 @@ tuika's own suite covers more:
   solver, composed trees, the stateful components, and the parsers that read
   untrusted bytes; plus differential properties (streamed markdown vs one-shot,
   styled wrap vs plain). Raise the case count when hunting: `PROPTEST_CASES=5000`.
+  CI runs the default count per PR and a deep run nightly
+  (`.github/workflows/nightly-fuzz.yml`); commit any new `proptest-regressions/`
+  seed with the fix.
 - **Black-box sweep** (`tests/robustness.rs`) — every component × adversarial
   corpus × degenerate size through the published API only, asserting no panic,
   no paint outside the component's rect, and no control byte in a cell.
