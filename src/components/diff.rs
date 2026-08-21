@@ -9,8 +9,8 @@
 //! The diff itself ([`rows`]) is a pure function, so classification is
 //! testable without rendering.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::{Color, Modifier, Style};
+use crate::geometry::Rect;
+use crate::style::{Color, Modifier, Style};
 
 use crate::geometry::Size;
 use crate::style::StyleRole;

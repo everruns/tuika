@@ -21,11 +21,11 @@ use std::io;
 use std::time::Duration;
 
 use crossterm::event::{self, Event as CtEvent, KeyCode as CtKeyCode, KeyEventKind};
-use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier};
-use ratatui::text::{Line, Span};
-use ratatui::{Terminal, TerminalOptions, Viewport};
+use tuika::term::terminal::{Terminal, TerminalOptions, Viewport};
+use tuika::ui::Buffer;
+use tuika::ui::Rect;
+use tuika::ui::{Color, Modifier};
+use tuika::ui::{Line, Span};
 
 use tuika::prelude::*;
 
@@ -155,7 +155,7 @@ fn render_frame(frame: u64, theme: &Theme, sheet: StyleSheet, label: &str) -> Bu
 fn run_interactive(theme: &Theme, held: Option<&str>) -> io::Result<()> {
     let _session = tuika::TerminalSession::enter()?;
     let mut terminal = Terminal::with_options(
-        ratatui::backend::CrosstermBackend::new(io::stdout()),
+        tuika::term::backend::CrosstermBackend::new(io::stdout()),
         TerminalOptions {
             viewport: Viewport::Fullscreen,
         },
@@ -189,7 +189,7 @@ fn run_interactive(theme: &Theme, held: Option<&str>) -> io::Result<()> {
 /// The composite scene: a header naming the active sheet, a panel holding the
 /// markdown block, and a side panel with live motion (so the capture breathes).
 fn scene(frame: u64, theme: &Theme, label: &str) -> Element {
-    let bg = ratatui::style::Style::default().bg(theme.background);
+    let bg = tuika::ui::Style::default().bg(theme.background);
     view! {
         col(padding = Padding::all(1), gap = 0, background = bg) {
             fixed(1) { node(header(theme, label)) }

@@ -10,9 +10,9 @@ use std::io;
 use std::time::Duration;
 
 use crossterm::event;
-use ratatui::backend::CrosstermBackend;
-use ratatui::text::{Line, Span};
-use ratatui::{Terminal, TerminalOptions, Viewport};
+use tuika::term::backend::CrosstermBackend;
+use tuika::term::terminal::{Terminal, TerminalOptions, Viewport};
+use tuika::ui::{Line, Span};
 
 use tuika::prelude::*;
 use tuika_codeformatters::TreeSitterHighlighter;

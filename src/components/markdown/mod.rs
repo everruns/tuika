@@ -44,7 +44,7 @@
 //! The submodules are private: `components::markdown` is the one path in, and
 //! `to_lines`, `MarkdownState`, and `Markdown` are what it exposes.
 
-use ratatui_core::text::Line;
+use crate::text::Line;
 
 use crate::highlight::CodeHighlighter;
 use crate::style::{StyleSheet, Theme};
@@ -329,10 +329,10 @@ mod tests {
     use crate::style::StyleBundle;
     use crate::style::{StyleSheet, Theme};
     use crate::term::hyperlink::LinkPolicy;
-    use ratatui_core::text::Span;
+    use crate::text::Span;
 
-    use ratatui_core::layout::Rect;
-    use ratatui_core::style::Modifier;
+    use crate::geometry::Rect;
+    use crate::style::Modifier;
 
     #[test]
     fn heading_is_bold_and_themed() {
@@ -594,7 +594,7 @@ mod tests {
             (language == "diagram").then(|| {
                 vec![Line::from(Span::styled(
                     format!("rendered at {}: {source}", context.width),
-                    ratatui_core::style::Style::default().fg(context.theme.accent),
+                    crate::style::Style::default().fg(context.theme.accent),
                 ))]
             })
         }
@@ -642,7 +642,7 @@ mod tests {
 
     #[test]
     fn fenced_block_renderer_receives_the_active_stylesheet() {
-        use ratatui_core::style::Color;
+        use crate::style::Color;
 
         struct StyledFence;
         impl MarkdownBlockRenderer for StyledFence {
@@ -748,10 +748,10 @@ mod tests {
         // Reproduction of the Ghostty Ctrl+click failure: `[label](url)` was
         // only styled — the destination was dropped — so OSC 8 / ctrl_click had
         // nothing to open under the pointer.
+        use crate::buffer::Buffer;
+        use crate::geometry::Position;
         use crate::term::hyperlink::{apply_buffer_links, ctrl_click_url};
         use crate::{Mouse, MouseButton, MouseKind};
-        use ratatui_core::buffer::Buffer;
-        use ratatui_core::layout::Position;
 
         let theme = Theme::default();
         let (lines, links) = to_linked_lines(
@@ -807,7 +807,7 @@ mod tests {
 
     #[test]
     fn custom_sheet_restyles_both_links_and_bare_urls() {
-        use ratatui_core::style::Color;
+        use crate::style::Color;
         let theme = Theme::default();
         // One central rule remaps the link role: green + bold, no underline.
         let sheet = StyleSheet {
@@ -842,7 +842,7 @@ mod tests {
 
     #[test]
     fn custom_sheet_restyles_headings() {
-        use ratatui_core::style::Color;
+        use crate::style::Color;
         let theme = Theme::default();
         let sheet = StyleSheet {
             heading: StyleBundle::new().fg(Color::Magenta).italic(),
@@ -919,7 +919,7 @@ mod tests {
     fn inline_html_follows_a_restyled_role() {
         // The point of routing tags through the stylesheet: a host that restyles
         // `strong` restyles `<b>` with it, without knowing HTML exists.
-        use ratatui_core::style::Color;
+        use crate::style::Color;
         let theme = Theme::default();
         let sheet = StyleSheet {
             strong: StyleBundle::new().fg(Color::Green),
@@ -1006,7 +1006,7 @@ mod tests {
             (!text.is_empty()).then(|| {
                 vec![Line::from(Span::styled(
                     format!("[{}] {text}", context.width),
-                    ratatui_core::style::Style::default().fg(context.theme.accent),
+                    crate::style::Style::default().fg(context.theme.accent),
                 ))]
             })
         }

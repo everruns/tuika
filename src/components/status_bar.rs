@@ -2,9 +2,9 @@
 //! surface-colored background. Used for the full-screen renderer's model /
 //! mode / token line, mirroring yolop's inline status chrome.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
-use ratatui_core::text::Span;
+use crate::geometry::Rect;
+use crate::style::Style;
+use crate::text::Span;
 
 use crate::geometry::Size;
 use crate::surface::Surface;
@@ -105,8 +105,8 @@ mod tests {
     use super::*;
     use crate::Surface;
     use crate::tests::support::{buffer, rainbow_theme};
+    use crate::text::Span;
     use crate::view::{RenderCtx, View};
-    use ratatui_core::text::Span;
 
     #[test]
     fn status_bar_background_is_theme_surface() {

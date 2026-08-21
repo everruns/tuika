@@ -7,8 +7,8 @@
 
 use std::collections::HashMap;
 
-use ratatui_core::style::Color;
 use tuika::RenderCtx;
+use tuika::ui::Color;
 
 use crate::model::{Domain, PlotModel, Point};
 use crate::{Chart, SeriesKind, chart_color};

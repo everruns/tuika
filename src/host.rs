@@ -14,6 +14,9 @@
 use std::io::{self, Write};
 use std::process::{Command as ProcessCommand, Stdio};
 
+use crate::buffer::Buffer;
+use crate::geometry::Rect;
+use crate::style::Style;
 use crossterm::cursor::{Hide, Show};
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, Event as CtEvent, KeyCode as CtKeyCode, KeyEventKind,
@@ -25,9 +28,6 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
     is_raw_mode_enabled,
 };
-use ratatui_core::buffer::Buffer;
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
 
 use super::event::{Event, Key, KeyCode, Mouse, MouseButton, MouseKind};
 use super::overlay::Overlay;
@@ -546,14 +546,14 @@ fn button(b: CtMouseButton) -> MouseButton {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::buffer::Buffer;
     use crate::components::{Boxed, Flex, ProgressBar, Scroll, ScrollState, StatusBar, Text};
     use crate::event::{Event, MouseButton, MouseKind};
+    use crate::geometry::Rect;
     use crate::style::Theme;
     use crate::tests::support::{buffer, rainbow_theme, row};
+    use crate::text::{Line, Span};
     use crate::view::{Element, element};
-    use ratatui_core::buffer::Buffer;
-    use ratatui_core::layout::Rect;
-    use ratatui_core::text::{Line, Span};
 
     #[test]
     fn session_mouse_policy_can_override_screen_mode_defaults() {

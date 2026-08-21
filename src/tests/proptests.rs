@@ -9,11 +9,12 @@
 //! footer height, and publishing history, the footer must end up on the last
 //! rows with its own content intact.
 
+use crate::geometry::{Position, Rect};
+use crate::term::terminal::{Terminal, TerminalOptions};
+use crate::term::testbackend::TestBackend;
+use crate::term::traits::Backend;
+use crate::text::Line;
 use proptest::prelude::*;
-use ratatui_core::backend::{Backend, TestBackend};
-use ratatui_core::layout::{Position, Rect};
-use ratatui_core::terminal::{Terminal, TerminalOptions};
-use ratatui_core::text::Line;
 
 use crate::components::{Grid, Text};
 use crate::geometry::{Axis, Padding, Size};

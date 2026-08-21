@@ -15,8 +15,8 @@ use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::{Modifier, Style};
+use crate::geometry::Rect;
+use crate::style::{Modifier, Style};
 
 use crate::geometry::Size;
 use crate::surface::Surface;

@@ -8,7 +8,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use ratatui_core::layout::Rect;
+use tuika::ui::Rect;
 use tuika::{RenderCtx, Surface};
 
 use crate::Chart;

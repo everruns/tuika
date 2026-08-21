@@ -5,8 +5,8 @@
 //! meaningful. Tables are wide enough a concern to live in
 //! [`table`](super::table).
 
-use ratatui_core::style::Style;
-use ratatui_core::text::{Line, Span};
+use crate::style::Style;
+use crate::text::{Line, Span};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::style::{StyleSheet, Theme};

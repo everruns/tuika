@@ -4,7 +4,7 @@
 //! [`ImageResolver`]), so this module owns the boundary between the two: what a
 //! resolved image costs in cells, and where it lands once the frame is painted.
 
-use ratatui_core::layout::Rect;
+use crate::geometry::Rect;
 
 use crate::term::image::ImageData;
 
@@ -78,11 +78,11 @@ mod tests {
     use super::super::{Markdown, to_lines};
     use super::*;
 
+    use crate::geometry::Rect;
     use crate::highlight::CodeHighlighter;
+    use crate::style::Modifier;
     use crate::style::{StyleSheet, Theme};
     use crate::term::image::{ImageData, ImageLayer, ImageSupport};
-    use ratatui_core::layout::Rect;
-    use ratatui_core::style::Modifier;
 
     #[test]
     fn image_renders_alt_as_a_marked_placeholder() {

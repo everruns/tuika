@@ -185,11 +185,11 @@ macro_rules! view {
 #[cfg(test)]
 mod tests {
     use crate::components::{Boxed, Flex, Spacer, Text};
+    use crate::geometry::Rect;
+    use crate::style::Style;
     use crate::tests::support::render_el;
     use crate::view::{Element, RenderCtx, View, element};
     use crate::{Size, Surface};
-    use ratatui_core::layout::Rect;
-    use ratatui_core::style::Style;
 
     #[test]
     fn view_macro_matches_builder() {
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn view_macro_forwards_border_color() {
-        use ratatui_core::style::Color;
+        use crate::style::Color;
         // `border_color =` folds to `Boxed::border_color`, rendering identically
         // to the builder form.
         let built: Element =

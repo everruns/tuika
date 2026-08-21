@@ -74,6 +74,45 @@
 
 ## 2026-08-21
 
+- **tuika owns the cell grid; ratatui is now optional interop**
+  - The `ratatui-core` dependency was removed. tuika owns `Rect`/`Position`,
+    `Color`/`Modifier`/`Style`, `Line`/`Span`, `Buffer`/`Cell`, the `Backend`
+    trait, `TestBackend`, and the `Terminal` render loop including the inline
+    viewport. The default graph went from 55 crates to 32, and the cold
+    dependency build from ~32s to ~6s. See
+    [architecture.md](specs/architecture.md#why-tuika-owns-the-cell-grid).
+  - The trigger was not size but **version coupling**: every `View` signature
+    named a `ratatui-core` type, so a major bump there was a breaking release
+    for tuika, all four companion crates, and every host simultaneously. The
+    maintenance process already recorded that as "an interoperability event, not
+    a routine upgrade" — owning the vocabulary removes the event.
+  - Roughly half the removed weight was for code tuika never called: `kasuari`
+    (a Cassowary solver), `lru`, and a second `hashbrown` exist for
+    `ratatui_core::layout::Layout`, which tuika replaced with its own flex
+    solver on day one.
+  - **Interop survived the removal**, behind an off-by-default `ratatui`
+    feature, because `Surface::render_ratatui` was *already* a scratch-buffer
+    round trip — cells were copied in and back out to enforce the clip. Only the
+    conversion in the middle is new. The general escape hatch split off as
+    `Surface::render_scratch`, which needs no feature.
+  - **The instruction-count gate earned its keep.** The first working version
+    regressed the render benchmarks by 72%, because `Cell` held a `String` and
+    so heap-allocated per cell; ratatui used `compact_str` for exactly this
+    reason. Storing short clusters inline fixed it and ended ~7% *faster* than
+    the old baseline. A second ~10% came from not re-validating UTF-8 on every
+    symbol read — the one place in this change where `unsafe` was worth it, with
+    the invariant documented and a `debug_assert!` behind it.
+  - The residual +2% on the markdown benchmarks is deliberate: `Span::width` now
+    counts grapheme-aware display columns, so it agrees with what `Surface`
+    actually paints. That is the same class of bug the `textwrap` removal fixed
+    for `Paragraph`.
+  - **The positioning claim changed and had to be rewritten, not quietly
+    dropped.** `goal.md` said "additive, never a replacement… with ratatui still
+    underneath". That is no longer true. The replacement wording is deliberately
+    non-adversarial: tuika is an alternative in dependency terms, ratatui is why
+    the ecosystem exists, and its widgets still compose. A maintainer changing
+    this again should change it in `goal.md`, the README lede, and the
+    Compatibility section together — they are one claim in three places.
 - **A session is a test subject the component sweep cannot reach**
   - `tests/stress_ui.rs` drives whole sessions — every `ScreenMode`, both
     runners, shell chrome and overlays — over an in-memory screen that changes

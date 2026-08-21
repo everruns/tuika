@@ -1,7 +1,7 @@
 //! Public helpers for hermetic view and resize tests.
 
-use ratatui_core::buffer::Buffer;
-use ratatui_core::layout::Rect;
+use crate::buffer::Buffer;
+use crate::geometry::Rect;
 
 use crate::{
     Application, Element, Event, RenderCtx, Signal, StyleSheet, Theme, UpdateResult, View, paint,

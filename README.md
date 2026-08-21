@@ -60,12 +60,12 @@
 
 </details>
 
-`ratatui` gives you a cell buffer and widgets to draw into it; everything above
-that — layout, overlays, focus, input, the terminal lifecycle — has been left to
-each application to build for itself. tuika is that missing layer, and wants to
-be the standing answer to "what do I build a Rust TUI *application* on?": start
-with `cargo add tuika`, describe your screen, and get a real app instead of a
-render loop.
+Rust has excellent terminal *rendering*. What it has mostly left to each
+application is everything above that — layout, overlays, focus, input, the
+terminal lifecycle. tuika is that missing layer, and wants to be the standing
+answer to "what do I build a Rust TUI *application* on?": start with
+`cargo add tuika`, describe your screen, and get a real app instead of a render
+loop.
 
 You write views; tuika owns the rest:
 
@@ -81,29 +81,29 @@ You write views; tuika owns the rest:
   [charts](https://github.com/everruns/tuika/blob/v0.11.1/docs/charts.md), mermaid diagrams,
   [mouse selection and clipboard](#mouse-selection-and-clipboard), and
   [native OSC 9;4 progress](#native-terminal-progress).
-- **No lock-in** — it is additive to ratatui, not a replacement: wrap any
-  ratatui widget in [`RatatuiView`](#ratatui-interoperability) and it composes
-  like a built-in, and your own types implement the same `View` trait the
+- **No lock-in** — already have ratatui widgets? Turn on the `ratatui` feature,
+  wrap any of them in [`RatatuiView`](#ratatui-interoperability), and they
+  compose like built-ins. Your own types implement the same `View` trait the
   built-ins do (see [Extending](#extending)).
 - **Boring where it counts** — no reconciler, no retained tree, no runtime, no
-  macro DSL you are forced into. Views are rebuilt each frame and `ratatui`
-  diffs the buffer. Rendering is deterministic, so
+  macro DSL you are forced into. Views are rebuilt each frame and tuika diffs the
+  cell buffer. Rendering is deterministic, so
   [UI is unit-tested](#testing-your-ui) against an in-memory buffer with no
   terminal at all.
 - **Small enough to adopt without a second thought** — a self-contained crate
-  depending only on `ratatui-core`, `crossterm`, `unicode-segmentation`,
-  `unicode-width`, and `pulldown-cmark`. Anything heavy — grammars, diagram
-  layout, image decoding — lives behind a trait in a companion crate or your
-  host.
+  depending only on `crossterm`, `unicode-segmentation`, `unicode-width`, and
+  `pulldown-cmark`: 32 crates in the default graph, of which `crossterm` is 27.
+  Anything heavy — grammars, diagram layout, image decoding — lives behind a
+  trait in a companion crate or your host.
 
 It is host-agnostic: it knows nothing about the application embedding it, and no
-type, feature, or default exists to serve one host. tuika renders none of
-ratatui's own widgets, so it builds against `ratatui-core` directly rather than
-the `ratatui` umbrella — keeping `ratatui-widgets`, `ratatui-macros`, and their
-transitive weight out of its dependency tree. Your application still uses any
-ratatui widget it likes (see [Compatibility](#compatibility)). (The optional
-`async` feature adds Tokio for [`AsyncRunner`](#screen-modes-lifecycle-and-runner);
-it is off by default.)
+type, feature, or default exists to serve one host. tuika owns its stack down to
+the escape sequences — cell grid, backend, and terminal loop included — and has
+no runtime dependency on ratatui. That is a statement about dependencies, not a
+rivalry: ratatui is why a Rust TUI ecosystem exists, and every widget written for
+it still composes here through the optional `ratatui` feature (see
+[Compatibility](#compatibility)). (The optional `async` feature adds Tokio for
+[`AsyncRunner`](#screen-modes-lifecycle-and-runner); it is off by default.)
 
 See what that buys in practice: the [showcases](https://github.com/everruns/tuika/blob/v0.11.1/docs/showcases.md) are
 recordings of real applications running on tuika (also listed under
@@ -116,17 +116,25 @@ coding-agent UI built with nothing else.
 cargo add tuika
 ```
 
-`ratatui` and `crossterm` are part of `tuika`'s public interoperability
-surface, so add `ratatui` to your own crate and pin a compatible minor version.
-tuika depends on `ratatui-core`, which the `ratatui` umbrella re-exports, so
-Cargo unifies the shared `Buffer`/`Rect`/`Style` types and your widgets compose
-with tuika's surfaces (see [Compatibility](#compatibility)).
+That is the whole install for most applications — `Rect`, `Color`, `Style`,
+`Line`, `Span`, and the rest come from `tuika::ui` (or the prelude).
+
+To render existing **ratatui widgets** inside tuika, turn the feature on and add
+`ratatui` to your own crate:
+
+```toml
+tuika = { version = "0.12", features = ["ratatui"] }
+ratatui = "0.30"
+```
+
+See [Compatibility](#compatibility). `crossterm` remains part of tuika's public
+surface for terminal events either way.
 
 ## Model
 
 - **Views** (`view::View`) are rebuilt from application state every frame. This
-  is cheap because `ratatui` diffs the resulting cell buffer, so there is no
-  reconciler.
+  is cheap because tuika diffs the resulting cell buffer against the last one, so
+  there is no reconciler.
 - **State** that must survive across frames — scroll offset, selection index,
   focus, dock visibility — lives in host-persisted `*State` structs (the
   `StatefulWidget` idiom), not in the view tree.
@@ -307,7 +315,7 @@ let scene = Scene::new(root).overlay(
 );
 ```
 
-Custom views can import `Rect`, `Color`, `Style`, `Modifier`, `Line`, and `Span` from `tuika::ui` or the prelude without adding `ratatui-core` directly.
+Custom views import `Rect`, `Color`, `Style`, `Modifier`, `Line`, and `Span` from `tuika::ui` or the prelude — these are tuika's own types, so a view takes no rendering dependency beyond tuika itself.
 
 `Element` is an owned, boxed view. `ScopedElement<'_>` is its frame-borrowed
 counterpart: `element(view)` chooses the lifetime from `view`, and containers
@@ -609,9 +617,14 @@ all-owned tree to `Element`. Use `RatatuiView` for Ratatui widgets. The
 
 ## Ratatui interoperability
 
-Tuika deliberately does not duplicate Ratatui's widget catalog. Wrap existing
-widgets in `RatatuiView`; they render into an isolated buffer and only the
-assigned clip is composited into the frame:
+Tuika deliberately does not duplicate Ratatui's widget catalog. Enable the
+`ratatui` feature and wrap existing widgets in `RatatuiView`; they render into an
+isolated buffer and only the assigned clip is composited into the frame:
+
+```toml
+tuika = { version = "0.12", features = ["ratatui"] }
+ratatui = "0.30"
+```
 
 ```rust
 use ratatui::widgets::{Sparkline, Widget};
@@ -628,6 +641,12 @@ can capture host-owned synchronized state and call `StatefulWidget::render`
 inside the same closure. `Surface::render_ratatui` is the lower-level escape
 hatch for custom views that need several widgets. Neither API exposes the
 frame's mutable buffer.
+
+Because Tuika owns its own cell type, the boundary is a conversion over the
+rendered area rather than a shared buffer — so Tuika and Ratatui version
+independently, and a widget costs one cell copy in and out of the area it
+actually draws. A view that only needs a private scratch buffer, with no Ratatui
+involved, should use `Surface::render_scratch`, which needs no feature.
 
 ## Responsive and live views
 
@@ -897,7 +916,7 @@ Hosts with their own loop use the `mouse` module to build the same affordances:
 - **Text selection.** `SelectionState` turns a left-button `Down → Drag → Up`
   gesture into a `SelectionRange` (a plain click selects nothing; a new press
   clears the old selection). `selected_text(buffer, area, range)` reads the text
-  back out of the rendered `ratatui::Buffer` — linear/stream selection like a
+  back out of the rendered `Buffer` — linear/stream selection like a
   terminal's own, wide glyphs intact — and `mouse::paint_selection(buffer, area, range,
   style)` paints it in. A same-cell double click selects a word;
   `handle_with_clock` accepts a virtual monotonic `Clock`, while `handle` uses
@@ -933,7 +952,7 @@ path — there is no separate touch event to handle.
 
 Rendering is deterministic, so UI built on tuika can be tested without a real
 terminal or `TestBackend` setup. The [`testing`](https://docs.rs/tuika/latest/tuika/testing/index.html)
-module draws a `View` into an in-memory ratatui `Buffer` and reads it back:
+module draws a `View` into an in-memory `Buffer` and reads it back:
 
 - `render(view, width, height, &theme) -> Buffer` — draw once at a fixed size.
 - `render_with_sheet(view, width, height, &theme, sheet) -> Buffer` — the same
@@ -975,15 +994,16 @@ something on tuika? Open a PR adding it here.
   checked in CI.
 - Tuika 0.x follows Cargo semver: minor releases may make deliberate breaking
   API changes; patch releases do not.
-- Ratatui and Crossterm are part of Tuika's public interoperability surface.
-  Tuika builds against `ratatui-core` directly, not the `ratatui` umbrella; the umbrella re-exports that same `ratatui-core`, so a
-  matching `ratatui` minor line in your application resolves to one shared
-  `ratatui-core` and Cargo deduplicates the core types. Widgets such as
-  `Block`/`Paragraph`/`Table` live in `ratatui-widgets` (pulled in by your
-  `ratatui` dependency, not by tuika) and compose through
-  [`Surface::render_ratatui`](https://docs.rs/tuika/latest/tuika/surface/struct.Surface.html#method.render_ratatui)
-  and [`RatatuiView`](https://docs.rs/tuika/latest/tuika/interop/struct.RatatuiView.html),
-  whose boundary is a raw `ratatui-core` `Buffer`.
+- Crossterm is part of Tuika's public surface, for terminal events.
+- Ratatui is **not** a dependency of Tuika. Its widgets remain usable through the
+  optional `ratatui` feature: enable it, add `ratatui` to your own crate, and
+  wrap widgets in
+  [`RatatuiView`](https://docs.rs/tuika/latest/tuika/interop/struct.RatatuiView.html)
+  or
+  [`Surface::render_ratatui`](https://docs.rs/tuika/latest/tuika/surface/struct.Surface.html#method.render_ratatui).
+  The boundary is a cell-by-cell conversion over the rendered area rather than a
+  shared buffer, so the two crates' versions are independent — a `ratatui` major
+  bump is no longer a Tuika breaking change.
 
 ## Extending
 
@@ -994,8 +1014,9 @@ the built-ins get that yours don't:
   on your own type and splice it anywhere with `node(your_view)`, or hand it to
   any container — they accept any `impl View`. The built-in components are on
   equal footing with yours; nothing special-cases them.
-- **Existing Ratatui widgets.** Wrap one in `RatatuiView` rather than
-  reimplementing it — see [Ratatui interoperability](#ratatui-interoperability).
+- **Existing Ratatui widgets.** Enable the `ratatui` feature and wrap one in
+  `RatatuiView` rather than reimplementing it — see
+  [Ratatui interoperability](#ratatui-interoperability).
 
 The [`view!`](#declarative-dsl-view) DSL reaches your components through the same
 `node(...)` escape hatch, so they compose exactly like the built-ins.

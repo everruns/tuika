@@ -2,9 +2,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
-use ratatui_core::text::Line;
+use crate::geometry::Rect;
+use crate::style::Style;
+use crate::text::Line;
 
 use crate::event::{Event, InputOutcome, KeyCode, MouseButton, MouseKind};
 use crate::geometry::Size;

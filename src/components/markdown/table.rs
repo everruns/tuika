@@ -4,8 +4,8 @@
 //! fitting columns to a width, drawing box rules, and degrading to a plain
 //! layout when the table cannot fit is a third of that pass on its own.
 
+use crate::style::Style;
 use pulldown_cmark::Alignment;
-use ratatui_core::style::Style;
 
 use crate::style::Theme;
 use crate::term::hyperlink::BufferLink;
@@ -213,9 +213,9 @@ mod tests {
 
     use crate::highlight::CodeHighlighter;
     use crate::style::{StyleSheet, Theme};
-    use ratatui_core::text::Span;
+    use crate::text::Span;
 
-    use ratatui_core::style::Modifier;
+    use crate::style::Modifier;
 
     #[test]
     fn table_renders_boxed_with_headers() {

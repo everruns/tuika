@@ -20,8 +20,8 @@
 //! tuika owns none of the *content* — the host draws into the buffer each frame,
 //! exactly as it owns image decoding and syntax highlighting.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::{Color, Style};
+use crate::geometry::Rect;
+use crate::style::{Color, Style};
 
 use crate::geometry::Size;
 use crate::surface::Surface;
@@ -33,6 +33,16 @@ pub type Rgba = [u8; 4];
 
 /// A fully transparent pixel.
 pub const TRANSPARENT: Rgba = [0, 0, 0, 0];
+
+/// The sixteen quadrant block glyphs, indexed by a four-bit occupancy mask.
+///
+/// Bit 0 is the top-left quadrant, 1 top-right, 2 bottom-left, 3 bottom-right,
+/// so `QUADRANTS[0b0101]` is the left half `▌`. Packing four sub-cells into one
+/// glyph doubles the effective resolution of a cell grid in both axes, which is
+/// what lets a chart or canvas render without any graphics protocol.
+pub const QUADRANTS: [char; 16] = [
+    ' ', '▘', '▝', '▀', '▖', '▌', '▞', '▛', '▗', '▚', '▐', '▜', '▄', '▙', '▟', '█',
+];
 
 /// Source-over alpha composite of `src` onto `dst`.
 fn over(src: Rgba, dst: Rgba) -> Rgba {

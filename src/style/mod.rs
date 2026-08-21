@@ -1,15 +1,17 @@
 //! Styling and theming.
 //!
-//! `tuika` reuses ratatui's [`Style`], [`Color`], and [`Modifier`] rather than
-//! reinventing cell attributes, but components never hard-code colors: they
-//! pull from a [`Theme`] passed through the render context. Swapping the theme
+//! [`Style`], [`Color`], and [`Modifier`] are tuika's own cell attributes (see
+//! the `attrs` submodule), but components never hard-code colors: they pull
+//! from a [`Theme`] passed through the render context. Swapping the theme
 //! restyles every component at once, and downstream libraries can ship their
 //! own palette without touching component code.
 
-use ratatui_core::style::{Color, Modifier, Style};
-use ratatui_core::text::{Line, Span};
+mod attrs;
+
+pub use attrs::{Color, Modifier, Style};
 
 use crate::geometry::Padding;
+use crate::text::{Line, Span};
 
 /// Line-drawing style for bordered components.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -526,7 +528,7 @@ pub trait StyleResolver {
 ///
 /// ```
 /// use tuika::style::{StyleBundle, StyleSheet, Theme};
-/// use ratatui_core::style::Color;
+/// use tuika::ui::Color;
 ///
 /// let theme = Theme::default();
 /// let sheet = StyleSheet {
@@ -833,8 +835,8 @@ impl Gradient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::Modifier;
     use crate::tests::support::rainbow_theme;
-    use ratatui_core::style::Modifier;
 
     #[test]
     fn theme_helper_styles_map_to_slots() {
@@ -869,7 +871,7 @@ mod tests {
 
     #[test]
     fn default_theme_is_the_toolkit_identity_not_a_host_brand() {
-        use ratatui_core::style::Color;
+        use crate::style::Color;
         // tuika's own look is warm red-on-dark. It is deliberately a neutral toolkit
         // identity, not any host's brand — a host with its own palette builds its own
         // `Theme` (e.g. yolop's `fullscreen::yolop_theme`) instead of inheriting this.
@@ -882,7 +884,7 @@ mod tests {
 
     #[test]
     fn bundle_apply_overrides_color_but_only_adds_modifiers() {
-        use ratatui_core::style::Color;
+        use crate::style::Color;
         // A modifier-only bundle keeps the base's color and adds its modifier.
         let base = Style::default().fg(Color::Red);
         let emphasized = StyleBundle::new().italic().apply(base);
@@ -939,7 +941,7 @@ mod tests {
 
     #[test]
     fn lerp_color_blends_rgb_and_snaps_everything_else() {
-        use ratatui_core::style::Color;
+        use crate::style::Color;
         let a = Color::Rgb(0, 0, 0);
         let b = Color::Rgb(200, 100, 50);
         assert_eq!(lerp_color(a, b, 0.0), a);
@@ -955,7 +957,7 @@ mod tests {
 
     #[test]
     fn gradient_samples_stops_and_clamps_the_ends() {
-        use ratatui_core::style::Color;
+        use crate::style::Color;
         let g = Gradient::new(Color::Rgb(0, 0, 0), Color::Rgb(100, 100, 100));
         assert_eq!(g.sample(-1.0), Color::Rgb(0, 0, 0));
         assert_eq!(g.sample(0.5), Color::Rgb(50, 50, 50));
@@ -991,7 +993,7 @@ mod tests {
 
     #[test]
     fn gradient_line_sweeps_columns_and_merges_equal_runs() {
-        use ratatui_core::style::Color;
+        use crate::style::Color;
         let g = Gradient::new(Color::Rgb(0, 0, 0), Color::Rgb(240, 0, 0));
         let line = g.line("abcd");
         // Four columns sampled at their midpoints: 30, 90, 150, 210 red.
@@ -1029,7 +1031,7 @@ mod tests {
     #[test]
     fn gradient_line_paints_cells_through_text() {
         use crate::components::Text;
-        use ratatui_core::style::Color;
+        use crate::style::Color;
         let g = Gradient::new(Color::Rgb(0, 0, 0), Color::Rgb(240, 0, 0));
         let text = Text::new(vec![g.line("abcd")]);
         let buf = crate::testing::render(&text, 4, 1, &Theme::default());
@@ -1044,7 +1046,7 @@ mod tests {
 
     #[test]
     fn overriding_one_role_leaves_the_rest_at_theme_defaults() {
-        use ratatui_core::style::Color;
+        use crate::style::Color;
         let t = rainbow_theme();
         let sheet = StyleSheet {
             link: StyleBundle::new().fg(Color::Green).bold(),

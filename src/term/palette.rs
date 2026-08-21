@@ -47,7 +47,7 @@
 //! tuika already makes (see
 //! [`Capabilities::query_with_palette`](crate::term::capabilities::Capabilities::query_with_palette)).
 
-use ratatui_core::style::Color;
+use crate::style::Color;
 
 use crate::style::{CodeTheme, Theme};
 

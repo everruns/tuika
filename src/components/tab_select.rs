@@ -7,9 +7,9 @@
 //! [`InputOutcome`] contract so the host can react to a change versus an
 //! activation — the value-select analog of OpenTUI's `TabSelect`.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::{Modifier, Style};
-use ratatui_core::text::Line;
+use crate::geometry::Rect;
+use crate::style::{Modifier, Style};
+use crate::text::Line;
 
 use crate::components::text::line_width;
 use crate::event::{Event, InputOutcome, KeyCode};
@@ -163,7 +163,7 @@ mod tests {
     use crate::event::{Event, Key, KeyCode};
     use crate::style::Theme;
     use crate::tests::support::{rainbow_theme, row};
-    use ratatui_core::text::Line;
+    use crate::text::Line;
 
     fn key(code: KeyCode) -> Event {
         Event::Key(Key::new(code))

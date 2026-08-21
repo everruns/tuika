@@ -7,8 +7,8 @@
 //! into an [`ImageLayer`] and emitted after the frame by
 //! [`term::image`](crate::term::image), which owns the graphics protocols.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::{Modifier, Style};
+use crate::geometry::Rect;
+use crate::style::{Modifier, Style};
 
 use crate::geometry::Size;
 use crate::surface::Surface;

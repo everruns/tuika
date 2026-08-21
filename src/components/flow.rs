@@ -1,6 +1,6 @@
 //! Wrapping content flow built on flex lines.
 
-use ratatui_core::layout::Rect;
+use crate::geometry::Rect;
 
 use crate::geometry::{Padding, Size};
 use crate::layout::{Align, AlignContent, FlexItemStyle, FlexWrap};

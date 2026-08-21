@@ -57,10 +57,10 @@
 //! [`MarkdownBlockRenderer`]: tuika::components::MarkdownBlockRenderer
 //! [`StyleSheet`]: tuika::style::StyleSheet
 
-use ratatui_core::text::Line;
 use tuika::Theme;
 use tuika::components::{MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer};
 use tuika::style::StyleSheet;
+use tuika::ui::Line;
 
 mod block;
 mod dom;
@@ -212,7 +212,7 @@ pub fn to_lines_with_limits(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui_core::style::Modifier;
+    use tuika::ui::Modifier;
 
     /// The plain text of a render, one string per line.
     fn plain(html: &str, width: u16) -> Vec<String> {
@@ -230,7 +230,7 @@ mod tests {
             .collect()
     }
 
-    fn styled(html: &str, needle: &str) -> ratatui_core::style::Style {
+    fn styled(html: &str, needle: &str) -> tuika::ui::Style {
         let theme = Theme::default();
         to_lines(html, 60, &theme, &StyleSheet::from_theme(&theme))
             .iter()
@@ -422,7 +422,7 @@ mod tests {
 
     #[test]
     fn styling_follows_the_stylesheet() {
-        use ratatui_core::style::Color;
+        use tuika::ui::Color;
         let theme = Theme::default();
         let sheet = StyleSheet {
             strong: tuika::style::StyleBundle::new().fg(Color::Green),

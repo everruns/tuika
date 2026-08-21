@@ -4,8 +4,8 @@
 //! bar shows 160 distinct levels. Indeterminate bars slide a bright segment
 //! across a dim track, driven by the host frame counter (see [`crate::anim`]).
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
+use crate::geometry::Rect;
+use crate::style::Style;
 
 use crate::anim;
 use crate::geometry::Size;
@@ -28,8 +28,8 @@ pub struct ProgressBar {
     show_percent: bool,
     label: Option<String>,
     label_style: Option<Style>,
-    filled: Option<ratatui_core::style::Color>,
-    track: Option<ratatui_core::style::Color>,
+    filled: Option<crate::style::Color>,
+    track: Option<crate::style::Color>,
 }
 
 impl ProgressBar {
@@ -84,11 +84,7 @@ impl ProgressBar {
     }
 
     /// Override the filled and track colors (default to theme accent and dim).
-    pub fn colors(
-        mut self,
-        filled: ratatui_core::style::Color,
-        track: ratatui_core::style::Color,
-    ) -> Self {
+    pub fn colors(mut self, filled: crate::style::Color, track: crate::style::Color) -> Self {
         self.filled = Some(filled);
         self.track = Some(track);
         self
@@ -219,10 +215,10 @@ impl View for ProgressBar {
 mod tests {
     use super::*;
     use crate::Surface;
+    use crate::style::Color;
     use crate::style::Theme;
     use crate::tests::support::{buffer, rainbow_theme, row};
     use crate::view::{RenderCtx, View};
-    use ratatui_core::style::Color;
 
     #[test]
     fn progress_bar_determinate_fills_by_fraction() {
@@ -271,7 +267,7 @@ mod tests {
         let theme = Theme::default();
         let style = Style::default()
             .fg(Color::Cyan)
-            .add_modifier(ratatui_core::style::Modifier::ITALIC);
+            .add_modifier(crate::style::Modifier::ITALIC);
         let bar = ProgressBar::determinate(0.5)
             .colors(Color::Green, Color::Black)
             .label("0:42")
@@ -284,7 +280,7 @@ mod tests {
             assert!(
                 buf[(x, 0)]
                     .modifier
-                    .contains(ratatui_core::style::Modifier::ITALIC),
+                    .contains(crate::style::Modifier::ITALIC),
                 "caption italic at {x}"
             );
         }

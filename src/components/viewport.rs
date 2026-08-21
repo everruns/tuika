@@ -1,7 +1,7 @@
 //! A two-dimensional viewport over any Tuika view.
 
-use ratatui_core::buffer::{Buffer, Cell};
-use ratatui_core::layout::Rect;
+use crate::buffer::{Buffer, Cell};
+use crate::geometry::Rect;
 
 use crate::geometry::Size;
 use crate::surface::Surface;
@@ -13,7 +13,7 @@ use super::{ScrollState, Scrollbar, VirtualWindow};
 /// A clipped, vertically scrollable and horizontally pannable child view.
 ///
 /// Unlike [`Scroll`](super::Scroll), which is optimized for owned
-/// [`Line`](ratatui_core::text::Line) rows, `Viewport` accepts any child view.
+/// [`Line`](crate::text::Line) rows, `Viewport` accepts any child view.
 /// The host supplies the child's full cell extent and persists offsets in
 /// [`ScrollState`].
 ///
@@ -189,8 +189,8 @@ mod tests {
     use super::*;
     use crate::components::Text;
     use crate::testing::{grid, render};
+    use crate::text::Line;
     use crate::{Theme, element};
-    use ratatui_core::text::Line;
 
     #[test]
     fn viewport_clamps_offsets_and_crops_arbitrary_child() {

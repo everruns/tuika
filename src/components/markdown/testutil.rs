@@ -4,7 +4,7 @@
 //! against the same rendered output, so the two render helpers and the stub
 //! image resolver live here rather than being copied four times.
 
-use ratatui_core::text::Line;
+use crate::text::Line;
 
 use crate::highlight::CodeHighlighter;
 use crate::style::{StyleSheet, Theme};
