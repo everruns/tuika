@@ -15,8 +15,8 @@
 //! `set_cursor_position`. Hosts can configure whether Enter or Shift+Enter
 //! submits via [`TextInputMode`]; the other chord inserts a newline.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
+use crate::geometry::Rect;
+use crate::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::event::{Event, KeyCode};
@@ -1163,7 +1163,7 @@ impl TextInput {
     /// match into one directly. Where spans overlap, the last one wins.
     ///
     /// ```
-    /// use ratatui_core::style::{Color, Style};
+    /// use tuika::ui::{Color, Style};
     /// use tuika::prelude::*;
     ///
     /// let state = TextInputState::from_text("ship @docs/readme.md");
@@ -1251,12 +1251,12 @@ impl View for TextInput {
 mod tests {
     use super::*;
     use crate::event::{Event, Key, KeyCode};
+    use crate::geometry::Rect;
+    use crate::style::Color;
     use crate::style::Theme;
     use crate::surface::Surface;
     use crate::tests::support::{buffer, render_el, render_view_rows};
     use crate::view::{RenderCtx, element};
-    use ratatui_core::layout::Rect;
-    use ratatui_core::style::Color;
 
     #[test]
     fn single_line_normalizes_setter_and_paste_newlines() {

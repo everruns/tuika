@@ -5,9 +5,9 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use ratatui_core::buffer::Buffer;
-use ratatui_core::layout::Rect;
 use tuika::term::image::{ImageLayer, ImageSupport};
+use tuika::ui::Buffer;
+use tuika::ui::Rect;
 use tuika::{RenderCtx, Surface, Theme, View};
 use tuika_charts::{Chart, Point, Series};
 

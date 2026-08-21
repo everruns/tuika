@@ -5,9 +5,9 @@
 //! cannot — because the two sit side by side in one document and a table should
 //! not change character depending on which syntax wrote it.
 
-use ratatui_core::style::Style;
-use ratatui_core::text::{Line, Span};
 use tuika::components::text::wrap_lines;
+use tuika::ui::Style;
+use tuika::ui::{Line, Span};
 use tuika::width::str_cols;
 
 use markup5ever_rcdom::Handle;

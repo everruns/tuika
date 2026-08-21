@@ -42,7 +42,7 @@
 //! `run_driven_by` is the loop with nothing around it: no session, no terminal
 //! construction, no stdout-facing work. Both runners build their other entry
 //! points on it, and a test can drive a whole application through it over a
-//! [`TestBackend`](ratatui_core::backend::TestBackend) — with
+//! [`TestBackend`](crate::term::testbackend::TestBackend) — with
 //! [`scripted_events`] on the synchronous side — so the loop is testable
 //! without a tty.
 //!
@@ -93,12 +93,12 @@ use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::buffer::Buffer;
+use crate::geometry::Rect;
 use crate::term::backend::CrosstermBackend;
+use crate::term::terminal::{Terminal, TerminalOptions};
+use crate::term::traits::Backend;
 use crossterm::event;
-use ratatui_core::backend::Backend;
-use ratatui_core::buffer::Buffer;
-use ratatui_core::layout::Rect;
-use ratatui_core::terminal::{Terminal, TerminalOptions};
 
 use crate::host::paint_with_context_and_selection;
 use crate::live::RedrawHandle;
@@ -375,7 +375,7 @@ where
 /// finite script.
 /// `Er` is the run's error type, shared with the backend: for the real terminal
 /// that is [`io::Error`], but leaving it generic lets an infallible backend
-/// ([`TestBackend`](ratatui_core::backend::TestBackend), whose error is
+/// ([`TestBackend`](crate::term::testbackend::TestBackend), whose error is
 /// [`Infallible`]) pair with an infallible source.
 pub trait EventSource<Er = io::Error> {
     /// Wait up to `timeout` for the next event.
@@ -423,8 +423,8 @@ pub struct ScriptedEvents<I> {
 /// ```
 /// use tuika::prelude::*;
 /// use tuika::runner::scripted_events;
-/// use ratatui::backend::TestBackend;
-/// use ratatui::Terminal;
+/// use tuika::term::testbackend::TestBackend;
+/// use tuika::term::terminal::Terminal;
 ///
 /// # fn main() {
 /// let mut terminal = Terminal::new(TestBackend::new(20, 1)).unwrap();
@@ -702,7 +702,7 @@ impl Runner {
     /// [`AsyncRunner::run_driven_by`](crate::AsyncRunner::run_driven_by). A host
     /// that already owns its terminal and input can call it directly, and a test
     /// can drive a whole application over a
-    /// [`TestBackend`](ratatui_core::backend::TestBackend) with
+    /// [`TestBackend`](crate::term::testbackend::TestBackend) with
     /// [`scripted_events`] — no tty, no raw mode, no real clock.
     ///
     /// It enters no [`TerminalSession`], so raw mode, the alternate screen, and
@@ -1110,7 +1110,7 @@ mod tests {
         };
         let data = crate::term::image::ImageData::from_rgba(1, 1, vec![1, 2, 3, 255]).unwrap();
         graphics.layer.record(
-            ratatui_core::layout::Rect::new(2, 3, 4, 5),
+            crate::geometry::Rect::new(2, 3, 4, 5),
             data,
             graphics.support,
         );
@@ -1325,7 +1325,7 @@ mod tests {
     // (`RunnerCore`, the clock, `RunnerSelection`) could be exercised. These
     // drive the whole thing over a `TestBackend`.
 
-    use ratatui_core::backend::TestBackend;
+    use crate::term::testbackend::TestBackend;
 
     use crate::components::Text;
     use crate::event::KeyCode;
@@ -1345,7 +1345,7 @@ mod tests {
             .buffer()
             .content()
             .iter()
-            .map(ratatui_core::buffer::Cell::symbol)
+            .map(crate::buffer::Cell::symbol)
             .collect()
     }
 
@@ -1650,7 +1650,7 @@ mod tests {
 
     #[test]
     fn a_split_footer_publishes_above_the_pinned_footer() {
-        use ratatui_core::layout::Position;
+        use crate::geometry::Position;
 
         let runner = Runner::new(RunnerConfig {
             tick_rate: Duration::from_secs(3600),
@@ -1678,8 +1678,8 @@ mod tests {
                     &mut state,
                     |(), _frame| {
                         element(Text::new(vec![
-                            ratatui_core::text::Line::from("FOOTER"),
-                            ratatui_core::text::Line::from("FOOTER"),
+                            crate::text::Line::from("FOOTER"),
+                            crate::text::Line::from("FOOTER"),
                         ]))
                     },
                     |(), signal| match signal {

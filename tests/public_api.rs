@@ -236,9 +236,9 @@ fn components_are_reachable_flat() {
 /// remain an explicit view-module escape hatch rather than growing the prelude.
 #[test]
 fn scene_and_custom_drawing_follow_the_surface_policy() {
-    use ratatui_core::layout::Rect;
     use tuika::overlay::Extent;
     use tuika::probe::RectProbe;
+    use tuika::ui::Rect;
     use tuika::view::{CanvasView, DrawView};
 
     let canvas: CanvasView<_> = DrawView::new(
@@ -321,11 +321,11 @@ fn component_modules_own_their_constants_and_free_functions() {
             &self,
             block: MarkdownBlock<'_>,
             _context: MarkdownBlockContext<'_>,
-        ) -> Option<Vec<ratatui_core::text::Line<'static>>> {
+        ) -> Option<Vec<tuika::ui::Line<'static>>> {
             let MarkdownBlock::Fenced { language, .. } = block else {
                 return None;
             };
-            (language == "demo").then(|| vec![ratatui_core::text::Line::raw("rendered")])
+            (language == "demo").then(|| vec![tuika::ui::Line::raw("rendered")])
         }
     }
     assert_eq!(
@@ -349,9 +349,8 @@ fn component_modules_own_their_constants_and_free_functions() {
             &self,
             block: MarkdownBlock<'_>,
             _context: MarkdownBlockContext<'_>,
-        ) -> Option<Vec<ratatui_core::text::Line<'static>>> {
-            matches!(block, MarkdownBlock::Html { .. })
-                .then(|| vec![ratatui_core::text::Line::raw("html")])
+        ) -> Option<Vec<tuika::ui::Line<'static>>> {
+            matches!(block, MarkdownBlock::Html { .. }).then(|| vec![tuika::ui::Line::raw("html")])
         }
     }
     let lines = markdown::to_lines_with(
@@ -411,10 +410,10 @@ fn term_groups_the_out_of_band_escapes() {
 /// The paths that used to collide at the crate root now name one thing each.
 #[test]
 fn the_former_root_collisions_resolve() {
-    use ratatui_core::buffer::Buffer;
-    use ratatui_core::layout::Rect;
-    use ratatui_core::style::{Color, Style};
     use tuika::mouse::{SelectionRange, paint_selection};
+    use tuika::ui::Buffer;
+    use tuika::ui::Rect;
+    use tuika::ui::{Color, Style};
 
     // `tuika::highlight` is the Highlighter boundary, and nothing else.
     let _: &dyn tuika::highlight::Highlighter = &PlainHighlighter;
@@ -476,10 +475,10 @@ fn the_screen_mode_is_reachable_from_the_prelude() {
     // The loop-driving pieces stay behind `screen::`.
     let _ = tuika::screen::DEFAULT_FOOTER_HEIGHT;
     let _: fn(
-        &mut ratatui_core::terminal::Terminal<ratatui_core::backend::TestBackend>,
+        &mut tuika::term::terminal::Terminal<tuika::term::testbackend::TestBackend>,
     ) -> Result<(), std::convert::Infallible> = tuika::screen::pin_footer;
     let _: fn(
-        &mut ratatui_core::terminal::Terminal<ratatui_core::backend::TestBackend>,
+        &mut tuika::term::terminal::Terminal<tuika::term::testbackend::TestBackend>,
     ) -> Result<(), std::convert::Infallible> = tuika::screen::close_footer;
 }
 
@@ -491,6 +490,7 @@ fn the_non_prelude_surface_keeps_its_module_path() {
     assert!(tuika::themes::by_name("gruvbox-dark").is_some());
     let _ = tuika::probe::RectProbe::new();
     let _ = tuika::framebuffer::FrameBuffer::new(1, 1);
+    #[cfg(feature = "ratatui")]
     let _ = tuika::interop::RatatuiView::sized(Size::new(1, 1), |_area, _buffer: &mut _| {});
     let _ = tuika::runner::Runner::new(RunnerConfig::default());
     // `AltScreen::enter` touches the real terminal, so only its path is pinned.

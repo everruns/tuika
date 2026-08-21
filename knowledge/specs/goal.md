@@ -8,12 +8,11 @@ description: Defines what tuika is for, the default-framework ambition it is pos
 
 ## Purpose
 
-tuika supplies the pieces `ratatui` deliberately leaves to the application — a
-flexbox-style layout solver, anchored overlays, focus and input ownership, a
-declarative keymap, an alternate-screen host, and a component set — while
-leaving `ratatui` in charge of the cell buffer and its diff against the
-terminal. A host should be able to describe a screen declaratively and get
-correct layout, focus, and terminal lifecycle without writing a reconciler.
+tuika is a complete terminal-UI toolkit: a flexbox-style layout solver, anchored
+overlays, focus and input ownership, a declarative keymap, an alternate-screen
+host, a component set, and the cell grid and terminal loop underneath them. A
+host should be able to describe a screen declaratively and get correct layout,
+focus, and terminal lifecycle without writing a reconciler.
 
 ## Positioning
 
@@ -30,10 +29,12 @@ The claim is earned by scope and by adoption evidence, never by overstatement:
   focus, keymap, theming, terminal lifecycle, screen modes, and a component set
   covering the modern expectations (streaming markdown, images, mouse and
   clipboard, native progress) — is in the box.
-- **Additive, never a replacement.** Positioning above ratatui must not read as
-  competing with it. tuika depends on ratatui's buffer and composes its widgets;
-  "default framework" means the layer applications sit on, with ratatui still
-  underneath.
+- **Complete, but not hostile.** tuika owns its stack down to the bytes and has
+  no runtime dependency on ratatui, so it is an alternative rather than a layer.
+  That is a statement about dependencies, not a claim to be better: ratatui is
+  the reason a Rust TUI ecosystem exists, its widgets remain usable through the
+  optional `ratatui` feature, and public material says so plainly rather than
+  positioning against it.
 - **Evidence over adjectives.** Public claims point at runnable examples and the
   [showcases](../../docs/showcases.md) — real applications on tuika — rather
   than asserting popularity the project does not yet have.
@@ -44,14 +45,15 @@ The claim is earned by scope and by adoption evidence, never by overstatement:
    type, feature, or default exists to serve one host.
 2. **Composable over configurable.** Behavior is reached by composing views, not
    by accumulating knobs on a component.
-3. **Dependency-light.** The published crate depends only on `ratatui-core`,
-   `crossterm`, `unicode-segmentation`, `unicode-width`, and `pulldown-cmark`.
-   Anything heavier belongs behind a trait the host implements — and a
-   dependency tuika could *own* in a page of code, rather than delegate, is one
-   it should: see
+3. **Dependency-light.** The published crate depends only on `crossterm`,
+   `unicode-segmentation`, `unicode-width`, and `pulldown-cmark` — 32 crates in
+   the default graph, of which `crossterm` is 27. Anything heavier belongs behind
+   a trait the host implements — and a dependency tuika could *own* in a page of
+   code, rather than delegate, is one it should: see
    [Dependency Discipline](../processes/maintenance.md#dependency-discipline).
 4. **Interoperable, not exclusive.** Existing ratatui widgets compose through a
-   raw-`Buffer` boundary; adopting tuika never means giving up ratatui.
+   cell-conversion boundary behind the optional `ratatui` feature; adopting tuika
+   never means giving up the widgets already written for it.
 5. **Testable without a terminal.** Rendering is observable as cells in memory,
    so behavior is asserted hermetically.
 
@@ -84,13 +86,14 @@ dependency, not the topic.
 ## Non-goals
 
 - **No reconciler or retained widget tree.** Views are rebuilt each frame;
-  ratatui's buffer diff is the only reconciliation.
+  the cell-buffer diff is the only reconciliation.
 - **No async runtime requirement.** The optional `async` feature adds an
   `AsyncRunner` for hosts already on Tokio; the default build has no runtime.
 - **No data sources.** tuika neither spawns tasks nor performs I/O beyond the
   terminal.
-- **No re-implementation of ratatui widgets.** Where ratatui has a widget, wrap
-  it rather than clone it.
+- **No re-implementation of ratatui widgets.** tuika owns the cell grid, not a
+  widget catalogue. Where ratatui has a widget tuika lacks, wrap it through the
+  `ratatui` feature rather than cloning it.
 - **No configuration format.** Themes, stylesheets, and keymaps are code-defined
   values; parsing a user's config file is the host's job.
 

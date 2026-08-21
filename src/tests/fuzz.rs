@@ -32,10 +32,10 @@
 //! Everything here is deterministic: proptest is seeded from its own regression
 //! file, and the sweeps enumerate fixed combinations.
 
+use crate::geometry::Rect;
+use crate::style::Style;
+use crate::text::{Line, Span};
 use proptest::prelude::*;
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
-use ratatui_core::text::{Line, Span};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::components::text::{wrap_lines, wrap_str};
@@ -182,9 +182,9 @@ proptest! {
     ) {
         let styles = [
             Style::default(),
-            Style::default().fg(ratatui_core::style::Color::Red),
-            Style::default().bg(ratatui_core::style::Color::Blue),
-            Style::default().add_modifier(ratatui_core::style::Modifier::BOLD),
+            Style::default().fg(crate::style::Color::Red),
+            Style::default().bg(crate::style::Color::Blue),
+            Style::default().add_modifier(crate::style::Modifier::BOLD),
         ];
         let line = Line::from(
             parts
@@ -283,12 +283,12 @@ fn assert_inside(view: &dyn View, width: u16, height: u16) -> Result<(), TestCas
     let theme = Theme::default();
     let outer = Rect::new(0, 0, width + MARGIN * 2, height + MARGIN * 2);
     let inner = Rect::new(MARGIN, MARGIN, width, height);
-    let mut buffer = ratatui_core::buffer::Buffer::empty(outer);
+    let mut buffer = crate::buffer::Buffer::empty(outer);
     crate::paint(&mut buffer, inner, &theme, view, &[]);
-    let untouched = ratatui_core::buffer::Cell::default();
+    let untouched = crate::buffer::Cell::default();
     for y in outer.top()..outer.bottom() {
         for x in outer.left()..outer.right() {
-            if inner.contains(ratatui_core::layout::Position::new(x, y)) {
+            if inner.contains(crate::geometry::Position::new(x, y)) {
                 continue;
             }
             prop_assert_eq!(

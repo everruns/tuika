@@ -1,6 +1,6 @@
 //! Responsive labeled-form composition.
 
-use ratatui_core::layout::Rect;
+use crate::geometry::Rect;
 
 use crate::event::{Event, InputOutcome, KeyCode};
 use crate::geometry::Size;

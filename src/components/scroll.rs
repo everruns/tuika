@@ -23,8 +23,8 @@
 //! [`Scroll::wrap`] reflows owned styled lines at the assigned width before
 //! windowing, for prose that must both wrap and scroll.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::text::Line;
+use crate::geometry::Rect;
+use crate::text::Line;
 
 use crate::event::{Event, InputOutcome, KeyCode, MouseKind};
 use crate::geometry::Size;
@@ -423,12 +423,12 @@ mod tests {
     use super::*;
     use crate::Surface;
     use crate::event::{Event, InputOutcome, Key, KeyCode, Mouse, MouseKind};
+    use crate::style::Color;
+    use crate::style::Style;
     use crate::style::Theme;
     use crate::tests::support::{buffer, rainbow_theme, row};
+    use crate::text::{Line, Span};
     use crate::view::{RenderCtx, View};
-    use ratatui_core::style::Color;
-    use ratatui_core::style::Style;
-    use ratatui_core::text::{Line, Span};
 
     #[test]
     fn scroll_sticks_to_bottom_until_scrolled_up() {

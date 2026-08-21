@@ -34,9 +34,9 @@ use std::io;
 use std::time::Duration;
 
 use crossterm::event::{self};
-use ratatui::style::{Modifier, Style};
-use ratatui::text::Span;
-use ratatui::{Terminal, TerminalOptions, Viewport};
+use tuika::term::terminal::{Terminal, TerminalOptions, Viewport};
+use tuika::ui::Span;
+use tuika::ui::{Modifier, Style};
 
 use tuika::prelude::*;
 
@@ -275,7 +275,7 @@ fn main() -> io::Result<()> {
             paint(f.buffer_mut(), area, &theme, root.as_ref(), &[]);
             apply_buffer_links(
                 f.buffer_mut(),
-                ratatui::layout::Position {
+                tuika::ui::Position {
                     x: area.x.saturating_add(1),
                     y: area.y.saturating_add(1),
                 },

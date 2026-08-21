@@ -6,9 +6,9 @@
 //! are deliberately separate: tuika matches tag *strings* it never parses, while
 //! this one walks a real tree and can see attributes and nesting.
 
-use ratatui_core::style::{Modifier, Style};
-use ratatui_core::text::Span;
 use tuika::style::{StyleSheet, Theme};
+use tuika::ui::Span;
+use tuika::ui::{Modifier, Style};
 
 use crate::dom::{self, attr, tag};
 use markup5ever_rcdom::{Handle, NodeData};

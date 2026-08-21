@@ -1,15 +1,17 @@
-//! Clipped drawing surface over a ratatui [`Buffer`].
+//! Clipped drawing surface over the frame [`Buffer`].
 //!
 //! Components paint through a [`Surface`], which owns a mutable borrow of the
 //! frame buffer plus a clip [`Rect`]. Every write is intersected with the clip
 //! region, so a child can never scribble outside the area the layout gave it —
-//! this is what makes scroll viewports and overlays safe to compose. ratatui
-//! still owns the shadow-buffer diff against the terminal, so `tuika` pays
-//! nothing extra for dirty-cell tracking.
+//! this is what makes scroll viewports and overlays safe to compose.
+//!
+//! Nothing here tracks dirty cells: the frame is repainted in full and
+//! [`Buffer::diff`](crate::buffer::Buffer::diff) decides what reaches the
+//! terminal.
 
-use ratatui_core::buffer::Buffer;
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
+use crate::buffer::Buffer;
+use crate::geometry::Rect;
+use crate::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
 
 use super::style::BorderGlyphs;
@@ -54,30 +56,33 @@ impl<'a> Surface<'a> {
         }
     }
 
-    /// Render one or more ratatui widgets without giving them unrestricted
-    /// access to the frame buffer.
+    /// Hand a callback a private scratch [`Buffer`] instead of the frame's own.
     ///
-    /// The callback receives a temporary [`Buffer`] covering `area`. Existing
-    /// cells are copied into it first, so widgets that only patch styles retain
-    /// the surrounding background. After the callback returns, only cells in
-    /// this surface's clip are composited back. A widget that writes outside
-    /// its assigned area therefore cannot overwrite a sibling or an overlay.
+    /// The callback receives a temporary buffer covering `area`, seeded with the
+    /// cells already there — so a painter that only patches styles keeps the
+    /// surrounding background. When it returns, only cells inside this surface's
+    /// clip are composited back, so a callback that writes outside its assigned
+    /// area cannot overwrite a sibling or an overlay.
+    ///
+    /// This is the escape hatch for anything that wants unrestricted buffer
+    /// access without actually getting it — including
+    /// [`render_ratatui`](Self::render_ratatui), which is this plus a type
+    /// conversion.
     ///
     /// # Example
     ///
     /// ```
-    /// use ratatui::widgets::{Sparkline, Widget};
     /// use tuika::Surface;
+    /// use tuika::ui::Style;
     ///
     /// # fn draw(surface: &mut Surface<'_>) {
-    /// let values = [1, 4, 2, 8];
     /// let area = surface.area();
-    /// surface.render_ratatui(area, |area, buffer| {
-    ///     Sparkline::default().data(&values).render(area, buffer);
+    /// surface.render_scratch(area, |area, buffer| {
+    ///     buffer.set_string(area.x, area.y, "scratch", Style::default());
     /// });
     /// # }
     /// ```
-    pub fn render_ratatui(&mut self, area: Rect, render: impl FnOnce(Rect, &mut Buffer)) {
+    pub fn render_scratch(&mut self, area: Rect, render: impl FnOnce(Rect, &mut Buffer)) {
         let render_area = area.intersection(self.buffer.area);
         if render_area.is_empty() {
             return;
@@ -103,6 +108,46 @@ impl<'a> Surface<'a> {
                 }
             }
         }
+    }
+
+    /// Render one or more ratatui widgets without giving them unrestricted
+    /// access to the frame buffer.
+    ///
+    /// Same containment as [`render_scratch`](Self::render_scratch) — the
+    /// callback gets a private buffer, and only the clipped region is
+    /// composited back — with the scratch converted to and from ratatui's
+    /// [`Buffer`](ratatui_core::buffer::Buffer) around the call. tuika no longer
+    /// shares a cell type with ratatui, so the conversion is what keeps every
+    /// existing ratatui widget usable.
+    ///
+    /// Requires the `ratatui` feature.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use ratatui::widgets::{Sparkline, Widget};
+    /// use tuika::Surface;
+    ///
+    /// # fn draw(surface: &mut Surface<'_>) {
+    /// let values = [1, 4, 2, 8];
+    /// let area = surface.area();
+    /// surface.render_ratatui(area, |area, buffer| {
+    ///     Sparkline::default().data(&values).render(area, buffer);
+    /// });
+    /// # }
+    /// ```
+    #[cfg(feature = "ratatui")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "ratatui")))]
+    pub fn render_ratatui(
+        &mut self,
+        area: Rect,
+        render: impl FnOnce(ratatui_core::layout::Rect, &mut ratatui_core::buffer::Buffer),
+    ) {
+        self.render_scratch(area, |area, scratch| {
+            let mut foreign = crate::interop::to_ratatui_buffer(scratch);
+            render(crate::interop::to_ratatui_rect(area), &mut foreign);
+            crate::interop::from_ratatui_buffer(&foreign, scratch);
+        });
     }
 
     fn contains(&self, x: u16, y: u16) -> bool {
@@ -224,23 +269,23 @@ impl<'a> Surface<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::buffer::Buffer;
     use crate::components::{Boxed, Text};
+    use crate::geometry::Rect;
+    use crate::style::Style;
     use crate::style::Theme;
     use crate::tests::support::{buffer, row};
     use crate::view::{RenderCtx, View, element};
-    use ratatui_core::buffer::Buffer;
-    use ratatui_core::layout::Rect;
-    use ratatui_core::style::Style;
 
     #[test]
-    fn ratatui_rendering_preserves_clip_even_if_buffer_expands() {
-        let mut buf = Buffer::filled(Rect::new(0, 0, 12, 3), ratatui_core::buffer::Cell::new("#"));
+    fn scratch_rendering_preserves_clip_even_if_buffer_expands() {
+        let mut buf = Buffer::filled(Rect::new(0, 0, 12, 3), crate::buffer::Cell::new("#"));
         let clip = Rect::new(4, 1, 4, 1);
         {
             let mut surface = Surface::new(&mut buf, clip);
-            surface.render_ratatui(Rect::new(2, 0, 8, 3), |_area, scratch| {
+            surface.render_scratch(Rect::new(2, 0, 8, 3), |_area, scratch| {
                 let expanded =
-                    Buffer::filled(Rect::new(0, 0, 12, 3), ratatui_core::buffer::Cell::new("x"));
+                    Buffer::filled(Rect::new(0, 0, 12, 3), crate::buffer::Cell::new("x"));
                 scratch.merge(&expanded);
             });
         }
@@ -258,16 +303,16 @@ mod tests {
     }
 
     #[test]
-    fn ratatui_rendering_starts_with_existing_cells() {
-        use ratatui_core::style::Color;
+    fn scratch_rendering_starts_with_existing_cells() {
+        use crate::style::Color;
 
-        let mut cell = ratatui_core::buffer::Cell::new(".");
+        let mut cell = crate::buffer::Cell::new(".");
         cell.set_bg(Color::Blue);
         let mut buf = Buffer::filled(Rect::new(0, 0, 4, 1), cell);
         let area = buf.area;
         {
             let mut surface = Surface::new(&mut buf, area);
-            surface.render_ratatui(area, |_area, scratch| {
+            surface.render_scratch(area, |_area, scratch| {
                 scratch[(1, 0)].set_char('x');
             });
         }
@@ -276,21 +321,21 @@ mod tests {
     }
 
     #[test]
-    fn ratatui_rendering_limits_scratch_to_the_frame() {
+    fn scratch_rendering_limits_scratch_to_the_frame() {
         let mut buf = buffer(3, 2);
         let area = buf.area;
         let mut surface = Surface::new(&mut buf, area);
-        surface.render_ratatui(Rect::new(0, 0, u16::MAX, u16::MAX), |actual, _| {
+        surface.render_scratch(Rect::new(0, 0, u16::MAX, u16::MAX), |actual, _| {
             assert_eq!(actual, Rect::new(0, 0, 3, 2));
         });
     }
 
     #[test]
-    fn ratatui_rendering_tolerates_a_callback_that_resizes_its_buffer() {
-        let mut buf = Buffer::filled(Rect::new(0, 0, 4, 1), ratatui_core::buffer::Cell::new("#"));
+    fn scratch_rendering_tolerates_a_callback_that_resizes_its_buffer() {
+        let mut buf = Buffer::filled(Rect::new(0, 0, 4, 1), crate::buffer::Cell::new("#"));
         let area = buf.area;
         let mut surface = Surface::new(&mut buf, area);
-        surface.render_ratatui(area, |_area, scratch| {
+        surface.render_scratch(area, |_area, scratch| {
             scratch.resize(Rect::new(0, 0, 1, 1));
             scratch[(0, 0)].set_char('x');
         });
@@ -302,7 +347,7 @@ mod tests {
         // A ZWJ family (multiple scalars) is a single grapheme: it must occupy one
         // cell and advance the cursor by 2, not scatter one component per cell.
         const FAMILY: &str = "👨\u{200D}👩\u{200D}👧";
-        let mut buf = Buffer::filled(Rect::new(0, 0, 6, 1), ratatui_core::buffer::Cell::new("."));
+        let mut buf = Buffer::filled(Rect::new(0, 0, 6, 1), crate::buffer::Cell::new("."));
         let end = {
             let mut surface = Surface::new(&mut buf, Rect::new(0, 0, 6, 1));
             surface.set_string(0, 0, &format!("{FAMILY}x"), Style::default())
@@ -319,7 +364,7 @@ mod tests {
 
     #[test]
     fn set_string_drops_a_wide_cluster_that_cannot_fit_the_clip() {
-        let mut buf = Buffer::filled(Rect::new(0, 0, 3, 1), ratatui_core::buffer::Cell::new("."));
+        let mut buf = Buffer::filled(Rect::new(0, 0, 3, 1), crate::buffer::Cell::new("."));
         let end = {
             let mut surface = Surface::new(&mut buf, Rect::new(0, 0, 1, 1));
             surface.set_string(0, 0, "界", Style::default())
@@ -332,7 +377,7 @@ mod tests {
     fn set_string_skip_pans_and_carries_across_calls() {
         // "abcdef" drawn with a running skip of 2: "ab" dropped, "cdef" drawn
         // from x=0. A second call keeps consuming from the same skip.
-        let mut buf = Buffer::filled(Rect::new(0, 0, 6, 1), ratatui_core::buffer::Cell::new("."));
+        let mut buf = Buffer::filled(Rect::new(0, 0, 6, 1), crate::buffer::Cell::new("."));
         let mut surface = Surface::new(&mut buf, Rect::new(0, 0, 6, 1));
         let mut skip = 2u16;
         let end = surface.set_string_skip(0, 0, "abcdef", Style::default(), &mut skip);
@@ -343,7 +388,7 @@ mod tests {
 
         // With skip still set, a whole short span is consumed without drawing and
         // the skip carries to the next call.
-        let mut buf2 = Buffer::filled(Rect::new(0, 0, 4, 1), ratatui_core::buffer::Cell::new("."));
+        let mut buf2 = Buffer::filled(Rect::new(0, 0, 4, 1), crate::buffer::Cell::new("."));
         let mut s2 = Surface::new(&mut buf2, Rect::new(0, 0, 4, 1));
         let mut skip = 3u16;
         let x = s2.set_string_skip(0, 0, "ab", Style::default(), &mut skip); // fully skipped
@@ -359,8 +404,7 @@ mod tests {
     fn set_string_skip_zero_matches_set_string() {
         // The flush-left fast path: skip == 0 must be identical to set_string.
         let render = |use_skip: bool| {
-            let mut buf =
-                Buffer::filled(Rect::new(0, 0, 8, 1), ratatui_core::buffer::Cell::new("."));
+            let mut buf = Buffer::filled(Rect::new(0, 0, 8, 1), crate::buffer::Cell::new("."));
             let end = {
                 let mut s = Surface::new(&mut buf, Rect::new(0, 0, 8, 1));
                 if use_skip {

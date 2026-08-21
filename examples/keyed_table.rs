@@ -8,9 +8,9 @@ use std::io;
 use std::time::Duration;
 
 use crossterm::event;
-use ratatui::backend::CrosstermBackend;
-use ratatui_core::terminal::Terminal;
 use tuika::prelude::*;
+use tuika::term::backend::CrosstermBackend;
+use tuika::term::terminal::Terminal;
 
 mod support;
 

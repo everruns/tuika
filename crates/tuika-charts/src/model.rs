@@ -1,4 +1,4 @@
-use ratatui_core::style::Color;
+use tuika::ui::Color;
 
 use crate::Chart;
 use crate::plan::Mark;

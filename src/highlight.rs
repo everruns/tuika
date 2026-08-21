@@ -11,7 +11,7 @@
 //! token colors. The companion crate `tuika-codeformatters` ships a tree-sitter
 //! implementation; hosts can also write their own.
 
-use ratatui_core::text::Span;
+use crate::text::Span;
 
 use crate::style::Theme;
 

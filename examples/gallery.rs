@@ -15,9 +15,9 @@ use std::io;
 use std::time::Duration;
 
 use crossterm::event::{self, Event as CtEvent, KeyCode, KeyEventKind};
-use ratatui::style::Modifier;
-use ratatui::text::{Line, Span};
-use ratatui::{Terminal, TerminalOptions, Viewport};
+use tuika::term::terminal::{Terminal, TerminalOptions, Viewport};
+use tuika::ui::Modifier;
+use tuika::ui::{Line, Span};
 
 use tuika::prelude::*;
 
@@ -37,7 +37,7 @@ fn build(frame: u64, theme: &Theme) -> tuika::Element {
 
     view! {
         col(padding = tuika::Padding::all(1), gap = 1,
-            background = ratatui::style::Style::default().bg(theme.background)) {
+            background = tuika::ui::Style::default().bg(theme.background)) {
             fixed(5) {
                 boxed(title = Line::from(Span::styled(" spinners ", theme.accent_style()))) {
                     col {
@@ -89,7 +89,7 @@ fn build(frame: u64, theme: &Theme) -> tuika::Element {
                     }
                     grow(1) {
                         boxed(title = Line::from(Span::styled(" danger ", theme.accent_style())),
-                              border_color = ratatui::style::Color::Red) {
+                              border_color = tuika::ui::Color::Red) {
                             text("explicit color")
                         }
                     }

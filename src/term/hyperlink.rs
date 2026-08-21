@@ -25,16 +25,16 @@ use std::io::{self, Write};
 use std::num::NonZeroU16;
 
 use super::backend::CrosstermBackend;
+use crate::buffer::{Buffer, Cell, CellDiffOption};
+use crate::geometry::{Position, Rect, Size};
+use crate::style::{Color, Modifier};
+use crate::term::traits::{Backend, ClearType, WindowSize};
+use crate::text::{Line, Span};
 use crossterm::queue;
 use crossterm::style::{
     Attribute, Color as CtColor, Print, ResetColor, SetAttribute, SetBackgroundColor,
     SetForegroundColor,
 };
-use ratatui_core::backend::{Backend, ClearType, WindowSize};
-use ratatui_core::buffer::{Buffer, Cell, CellDiffOption};
-use ratatui_core::layout::{Position, Rect, Size};
-use ratatui_core::style::{Color, Modifier};
-use ratatui_core::text::{Line, Span};
 
 /// String terminator for an OSC sequence: `ESC \`.
 const ST: &str = "\x1b\\";
@@ -844,7 +844,7 @@ mod tests {
     fn write_line_emits_color_and_underline_then_resets() {
         let line = Line::from(Span::styled(
             "https://a.dev",
-            ratatui_core::style::Style::default()
+            crate::style::Style::default()
                 .fg(Color::Rgb(45, 91, 158))
                 .add_modifier(Modifier::UNDERLINED),
         ));
@@ -870,8 +870,10 @@ mod tests {
 
     #[test]
     fn ctrl_click_returns_visible_url_under_pointer() {
+        use crate::buffer::Buffer;
+        use crate::geometry::Rect;
+        use crate::style::Style;
         use crate::{Mouse, MouseButton, MouseKind};
-        use ratatui_core::{buffer::Buffer, layout::Rect, style::Style};
         let area = Rect::new(3, 2, 40, 1);
         let mut buffer = Buffer::empty(Rect::new(0, 0, 50, 5));
         buffer.set_string(
@@ -890,8 +892,10 @@ mod tests {
 
     #[test]
     fn ctrl_click_ignores_plain_clicks_and_non_url_text() {
+        use crate::buffer::Buffer;
+        use crate::geometry::Rect;
+        use crate::style::Style;
         use crate::{Mouse, MouseButton, MouseKind};
-        use ratatui_core::{buffer::Buffer, layout::Rect, style::Style};
         let area = Rect::new(0, 0, 30, 1);
         let mut buffer = Buffer::empty(area);
         buffer.set_string(0, 0, "https://example.com plain", Style::default());
@@ -989,7 +993,7 @@ mod tests {
     /// Render a row of single-char cells through a backend built with `policy`
     /// and return the emitted bytes.
     fn draw_row_with(text: &str, policy: LinkPolicy) -> String {
-        use ratatui_core::buffer::Cell;
+        use crate::buffer::Cell;
         let cells: Vec<(u16, u16, Cell)> = text
             .chars()
             .enumerate()
@@ -1071,8 +1075,8 @@ mod tests {
         // Reproduction: a markdown `[label](url)` paints only the label. Without
         // carrying the destination into the buffer, Ctrl+click / Ghostty OSC 8
         // has nothing to open. apply_buffer_links embeds the target.
+        use crate::style::Style;
         use crate::{Mouse, MouseButton, MouseKind};
-        use ratatui_core::style::Style;
         let area = Rect::new(2, 1, 20, 1);
         let mut buffer = Buffer::empty(Rect::new(0, 0, 30, 4));
         buffer.set_string(area.x, area.y, "see docs here", Style::default());
@@ -1107,7 +1111,7 @@ mod tests {
 
     #[test]
     fn apply_buffer_links_respects_none_policy() {
-        use ratatui_core::style::Style;
+        use crate::style::Style;
         let mut buffer = Buffer::empty(Rect::new(0, 0, 10, 1));
         buffer.set_string(0, 0, "docs", Style::default());
         apply_buffer_links(

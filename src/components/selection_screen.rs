@@ -1,8 +1,8 @@
 //! Responsive full-screen selection flows composed from Tuika primitives.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
-use ratatui_core::text::Line;
+use crate::geometry::Rect;
+use crate::style::Style;
+use crate::text::Line;
 
 use super::select::SelectRows;
 use super::{AppShell, SelectState, VirtualWindow};

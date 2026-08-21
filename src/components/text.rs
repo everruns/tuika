@@ -16,9 +16,10 @@
 
 use std::ops::Range;
 
-use ratatui_core::layout::{Alignment, Rect};
-use ratatui_core::style::Style;
-use ratatui_core::text::{Line, Span};
+use crate::geometry::Rect;
+use crate::style::Style;
+use crate::text::Alignment;
+use crate::text::{Line, Span};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::geometry::Size;
@@ -80,7 +81,7 @@ pub fn line_width(line: &Line) -> u16 {
 ///
 /// ```
 /// use tuika::prelude::*;
-/// use ratatui_core::text::Line;
+/// use tuika::ui::Line;
 /// # use tuika::testing::render;
 /// let view = Text::new(vec![
 ///     Line::from("left"),
@@ -535,26 +536,21 @@ impl View for Wrap {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geometry::Rect;
     use crate::style::Theme;
+    use crate::style::{Color, Modifier, Style};
     use crate::term::hyperlink::ctrl_click_url;
     use crate::tests::support::{buffer, row};
+    use crate::text::{Line, Span};
     use crate::view::{RenderCtx, View};
     use crate::{Mouse, MouseButton, MouseKind, Size, Surface};
-    use ratatui_core::layout::Rect;
-    use ratatui_core::style::{Color, Modifier, Style};
-    use ratatui_core::text::{Line, Span};
 
     /// Concatenated text of a line's spans.
     fn line_text(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
     }
 
-    fn link_at(
-        buffer: &ratatui_core::buffer::Buffer,
-        area: Rect,
-        col: u16,
-        row: u16,
-    ) -> Option<String> {
+    fn link_at(buffer: &crate::buffer::Buffer, area: Rect, col: u16, row: u16) -> Option<String> {
         let mut event = Mouse::at(MouseKind::Up(MouseButton::Left), col, row);
         event.ctrl = true;
         ctrl_click_url(&event, buffer, area)

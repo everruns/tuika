@@ -6,8 +6,8 @@
 //! it here, then replace the token with [`CompletionItem::replacement`] when
 //! handling [`InputOutcome::Submitted`](crate::InputOutcome::Submitted).
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
+use crate::geometry::Rect;
+use crate::style::Style;
 
 use crate::event::{Event, InputOutcome};
 use crate::geometry::{Padding, Size};

@@ -13,7 +13,7 @@
 //! answers with a `Rect`; an [`Overlay`] pairs that resolved rect with the view
 //! to paint into it, and is what [`paint`](crate::host::paint) consumes.
 
-use ratatui_core::layout::Rect;
+use crate::geometry::Rect;
 
 use super::geometry::Size;
 use super::view::View;
@@ -195,7 +195,7 @@ impl Extent {
 ///
 /// ```
 /// use tuika::OverlaySpec;
-/// use ratatui_core::layout::Rect;
+/// use tuika::ui::Rect;
 ///
 /// // A centered dialog at 50% × 40% of a 100 × 40 screen, never smaller than 34 × 7.
 /// let rect = OverlaySpec::centered(50, 40).min_size(34, 7).resolve(Rect::new(0, 0, 100, 40));
@@ -423,7 +423,7 @@ fn align_axis(start: i32, end: i32, extent: i32, align: TargetAlign) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui_core::layout::Rect;
+    use crate::geometry::Rect;
 
     #[test]
     fn overlay_centered_percentage() {

@@ -6,8 +6,8 @@
 //! renders a filled track with a thumb. This is the `StatefulWidget` idiom — the
 //! value survives across frames in the host, the view is rebuilt each frame.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::{Modifier, Style};
+use crate::geometry::Rect;
+use crate::style::{Modifier, Style};
 
 use crate::event::{Event, InputOutcome, KeyCode};
 use crate::geometry::Size;

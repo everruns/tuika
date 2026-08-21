@@ -337,14 +337,14 @@ fn assert_well_behaved(name: &str, corpus: &str, view: &dyn View, theme: &Theme)
     for &(width, height) in SIZES {
         let outer = Rect::new(0, 0, width + MARGIN * 2, height + MARGIN * 2);
         let inner = Rect::new(MARGIN, MARGIN, width, height);
-        let mut buffer = ratatui::buffer::Buffer::empty(outer);
+        let mut buffer = tuika::ui::Buffer::empty(outer);
         paint(&mut buffer, inner, theme, view, &[]);
 
-        let blank = ratatui::buffer::Cell::default();
+        let blank = tuika::ui::Cell::default();
         for y in outer.top()..outer.bottom() {
             for x in outer.left()..outer.right() {
                 let cell = &buffer[(x, y)];
-                if !inner.contains(ratatui::layout::Position::new(x, y)) {
+                if !inner.contains(tuika::ui::Position::new(x, y)) {
                     assert_eq!(
                         cell, &blank,
                         "{name}/{corpus} at {width}x{height} painted ({x}, {y}) outside {inner:?}"

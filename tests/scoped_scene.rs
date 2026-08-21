@@ -1,10 +1,9 @@
 //! Consumer-style coverage for painting a borrowed host root and owned dialog
 //! as one view.
 
-use ratatui_core::buffer::Buffer;
-use ratatui_core::layout::Rect;
 use tuika::prelude::*;
 use tuika::testing::grid;
+use tuika::ui::{Buffer, Rect};
 
 struct Transcript<'data> {
     messages: &'data [String],

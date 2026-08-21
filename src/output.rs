@@ -2,8 +2,8 @@
 
 use std::io::{self, Write};
 
-use ratatui_core::style::{Color, Style};
-use ratatui_core::text::{Line, Span};
+use crate::style::{Color, Style};
+use crate::text::{Line, Span};
 
 use crate::testing;
 use crate::view::{AvailableSpace, MeasureRequest, RenderCtx, View};
@@ -115,11 +115,7 @@ pub fn write_once(
     out.flush()
 }
 
-fn cell_style(
-    foreground: Color,
-    background: Color,
-    modifier: ratatui_core::style::Modifier,
-) -> Style {
+fn cell_style(foreground: Color, background: Color, modifier: crate::style::Modifier) -> Style {
     Style::default()
         .fg(foreground)
         .bg(background)
@@ -130,7 +126,7 @@ fn cell_style(
 mod tests {
     use super::*;
     use crate::components::Text;
-    use ratatui_core::style::{Color, Modifier};
+    use crate::style::{Color, Modifier};
 
     struct FailingWriter;
 
@@ -176,7 +172,7 @@ mod tests {
             .fg(Color::Indexed(201))
             .add_modifier(Modifier::BOLD);
         let view = crate::view::DrawView::new(
-            move |area: ratatui_core::layout::Rect, surface: &mut crate::Surface, _: &RenderCtx| {
+            move |area: crate::geometry::Rect, surface: &mut crate::Surface, _: &RenderCtx| {
                 surface.set_string(area.x, area.y, "styled", style);
             },
         )

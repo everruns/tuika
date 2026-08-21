@@ -21,8 +21,8 @@
 
 use std::io;
 
-use ratatui::style::Color;
 use tuika::Theme;
+use tuika::ui::Color;
 
 #[path = "support/image_app.rs"]
 mod image_app;

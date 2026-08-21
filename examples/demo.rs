@@ -23,10 +23,10 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crossterm::event::{self, Event as CtEvent, KeyCode as CtKeyCode, KeyEventKind};
-use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::{Terminal, TerminalOptions, Viewport as RatatuiViewport};
+use tuika::term::terminal::{Terminal, TerminalOptions, Viewport as TerminalViewport};
+use tuika::ui::Rect;
+use tuika::ui::{Color, Modifier, Style};
+use tuika::ui::{Line, Span};
 
 use tuika::framebuffer::{FrameBuffer, FrameBufferView};
 use tuika::prelude::*;
@@ -1053,9 +1053,9 @@ fn dump(d: &Demo, theme: &Theme) -> io::Result<()> {
 fn run(d: &Demo, theme: &Theme) -> io::Result<()> {
     let _session = tuika::TerminalSession::enter()?;
     let mut terminal = Terminal::with_options(
-        ratatui::backend::CrosstermBackend::new(io::stdout()),
+        tuika::term::backend::CrosstermBackend::new(io::stdout()),
         TerminalOptions {
-            viewport: RatatuiViewport::Fullscreen,
+            viewport: TerminalViewport::Fullscreen,
         },
     )?;
     let mut frame = 0u64;

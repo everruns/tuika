@@ -8,9 +8,9 @@
 
 use std::io;
 
-use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
+use tuika::ui::Rect;
+use tuika::ui::{Line, Span};
+use tuika::ui::{Modifier, Style};
 
 use tuika::prelude::*;
 use tuika::probe::RectProbe;

@@ -1,6 +1,6 @@
 //! Responsive application chrome for tool-style terminal UIs.
 
-use ratatui_core::layout::Rect;
+use crate::geometry::Rect;
 
 use crate::geometry::Size;
 use crate::layout::{Dimension, FlexItemStyle, Item, LayoutStyle, solve};

@@ -17,7 +17,7 @@
 //! # Borrowed application data with an owned dialog
 //!
 //! ```
-//! use ratatui_core::layout::Rect;
+//! use tuika::ui::Rect;
 //! use tuika::prelude::*;
 //!
 //! struct Dashboard<'data> {
@@ -57,7 +57,7 @@
 //! mutating the host state, then build the next frame from a fresh borrow:
 //!
 //! ```
-//! use ratatui_core::layout::Rect;
+//! use tuika::ui::Rect;
 //! use tuika::prelude::*;
 //!
 //! struct Count<'data>(&'data [String]);
@@ -91,8 +91,8 @@
 //! }
 //! ```
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::{Modifier, Style};
+use crate::geometry::Rect;
+use crate::style::{Modifier, Style};
 
 use crate::focus::FocusRegistry;
 use crate::geometry::Size;
@@ -539,7 +539,7 @@ mod tests {
 
     #[test]
     fn dim_backdrop_respects_the_parent_surface_clip() {
-        use ratatui_core::buffer::{Buffer, Cell};
+        use crate::buffer::{Buffer, Cell};
 
         let mut buffer = Buffer::filled(Rect::new(0, 0, 6, 1), Cell::new("#"));
         let scene = Scene::new(element(Text::raw("base"))).overlay(
@@ -560,7 +560,7 @@ mod tests {
 
     #[test]
     fn scoped_dim_backdrop_respects_the_parent_surface_clip() {
-        use ratatui_core::buffer::{Buffer, Cell};
+        use crate::buffer::{Buffer, Cell};
 
         let mut buffer = Buffer::filled(Rect::new(0, 0, 6, 1), Cell::new("#"));
         let root = Text::raw("base");

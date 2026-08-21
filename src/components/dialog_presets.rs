@@ -1,8 +1,8 @@
 //! Stateful dialog presets assembled from [`Dialog`](super::Dialog) and the
 //! ordinary input components.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::text::Line;
+use crate::geometry::Rect;
+use crate::text::Line;
 
 use crate::components::text::wrap_str;
 use crate::event::{Event, InputOutcome, KeyCode};

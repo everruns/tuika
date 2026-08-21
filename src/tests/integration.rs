@@ -5,7 +5,7 @@
 //! no single owner: composing a real tree, and surviving tiny/degenerate
 //! screens where scroll and overlay resolution interact.
 
-use ratatui_core::text::{Line, Span};
+use crate::text::{Line, Span};
 
 use crate::components::{Boxed, Flex, Scroll, ScrollState, StatusBar, Text};
 use crate::overlay::OverlaySpec;
@@ -23,7 +23,7 @@ use crate::view::{RenderCtx, View, element};
 /// point is that the *terminal* resolves them.
 #[test]
 fn an_inherited_theme_reaches_the_painted_cells() {
-    use ratatui_core::style::Color;
+    use crate::style::Color;
 
     use crate::term::palette::TerminalPalette;
     use crate::themes;
@@ -104,7 +104,7 @@ fn an_inherited_theme_reaches_the_painted_cells() {
 
 #[test]
 fn scroll_and_overlay_survive_tiny_screens() {
-    use ratatui_core::layout::Rect;
+    use crate::geometry::Rect;
 
     // A tall scroll region rendered into a 1×1 viewport.
     let lines: Vec<Line<'static>> = (0..50).map(|i| Line::from(format!("l{i}"))).collect();
@@ -159,9 +159,10 @@ fn nested_flex_tree_lays_out_status_and_body() {
 /// it alone.
 #[test]
 fn a_split_footer_composes_components_over_published_markdown() {
-    use ratatui_core::backend::{Backend, TestBackend};
-    use ratatui_core::layout::Position;
-    use ratatui_core::terminal::{Terminal, TerminalOptions};
+    use crate::geometry::Position;
+    use crate::term::terminal::{Terminal, TerminalOptions};
+    use crate::term::testbackend::TestBackend;
+    use crate::term::traits::Backend;
 
     use crate::components::Markdown;
     use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};

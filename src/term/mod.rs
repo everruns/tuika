@@ -32,7 +32,7 @@
 //! host-initiated, run once at startup in raw mode, and share a single fenced
 //! round-trip — see [`capabilities::Capabilities::query_with_palette`].
 
-pub(crate) mod backend;
+pub mod backend;
 pub mod capabilities;
 pub mod clipboard;
 pub mod hyperlink;
@@ -40,3 +40,6 @@ pub mod image;
 pub mod palette;
 pub mod pointer;
 pub mod progress;
+pub mod terminal;
+pub mod testbackend;
+pub mod traits;

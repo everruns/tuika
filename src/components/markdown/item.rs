@@ -4,9 +4,9 @@
 //! apart is what makes streaming affordable: a settled block is parsed once and
 //! only re-flattened when the render width changes.
 
+use crate::style::Style;
+use crate::text::Span;
 use pulldown_cmark::Alignment;
-use ratatui_core::style::Style;
-use ratatui_core::text::Span;
 
 use crate::components::code_block::CodeRow;
 use crate::term::image::ImageData;

@@ -34,7 +34,7 @@ edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "The application framework for Rust terminal UIs — flexbox layout, overlays, focus, keymap, components, and safe ratatui interoperability."
+description = "The application framework for Rust terminal UIs — flexbox layout, overlays, focus, keymap, components, and a dependency-light cell renderer."
 homepage.workspace = true
 documentation = "https://docs.rs/tuika"
 repository.workspace = true
@@ -100,12 +100,11 @@ bench = false
 # `StreamExt` for polling the event stream, and crossterm's async `EventStream`.
 async = ["dep:tokio", "dep:futures-core", "crossterm/event-stream"]
 
-# Mirror of ratatui's `scrolling-regions`, which changes how content is inserted
-# above an inline viewport: DECSTBM region scrolling instead of the portable
-# scroll-and-repaint. Cargo unifies features one way only, so a host that turns
-# the ratatui feature on would otherwise fail to build tuika — `HyperlinkBackend`
-# implements `Backend`, and the feature adds two required methods. Declaring it
-# here is what lets that impl be gated (see `src/term/hyperlink.rs`).
+# Adds DECSTBM region scrolling to `Backend` as an alternative to the portable
+# scroll-and-repaint when inserting content above an inline viewport. Now a
+# feature of tuika's *own* `Backend` trait (see `term/traits.rs`), so it adds two
+# required methods to any host implementation — which is the whole reason it is a
+# feature rather than always-on.
 #
 # It is NOT an optimization to reach for under `ScreenMode::SplitFooter`: rows
 # scrolled out of a DECSTBM region are discarded by the terminal instead of
@@ -113,36 +112,20 @@ async = ["dep:tokio", "dep:futures-core", "crossterm/event-stream"]
 # published output *becomes* scrollback. The portable path costs a viewport
 # repaint per published block and keeps it; the `codex` PTY tests pin the
 # difference. See `knowledge/specs/screen-modes.md`.
-# Turning this on flips a `ratatui-core` feature that adds two required methods
-# to `Backend`. Cargo unifies features one way only, so any *other*
-# `ratatui-crossterm` in the graph — a host's own `ratatui`, most likely — would
-# then fail to compile its `CrosstermBackend` unless its matching feature is on
-# too. tuika no longer depends on that crate (see `term/backend.rs`), so the
-# optional dep below exists purely to forward the flag and keep the graph
-# consistent; it is absent from every build that leaves this feature off.
-scrolling-regions = [
-    "ratatui-core/scrolling-regions",
-    "dep:ratatui-crossterm",
-    "ratatui-crossterm/scrolling-regions",
-]
+
+ratatui = ["dep:ratatui-core"]
+
+scrolling-regions = []
 
 [dependencies]
-# tuika uses only ratatui's cell buffer, style/text/layout primitives, the
-# `Widget`/`StatefulWidget` traits, and the `Terminal`/backend loop — all of
-# which live in `ratatui-core`. It renders none of ratatui's own widgets, so it
-# depends on the sub-crates directly instead of the `ratatui` umbrella. This
-# drops `ratatui-widgets` (Block/Paragraph/Table/Calendar/…) and `ratatui-macros`
-# — and with them the `time`/`lru`/`line-clipping` transitive weight — from
-# tuika's build. Downstream users keep every ratatui widget: they bring their own
-# `ratatui` and render it through `Surface::render_ratatui`/`RatatuiView`, whose
-# boundary is a raw `&mut Buffer` from this same `ratatui-core` (Cargo unifies the
-# version). `underline-color` matches the umbrella default so cell rendering is
-# byte-identical; `std` is required for the terminal I/O loop.
-ratatui-core = { version = "0.1", features = ["std", "underline-color"] }
+# Only for the optional `ratatui` interop feature — tuika owns its own cell
+# grid, layout primitives, backend, and terminal loop, so nothing here is on the
+# default path. See the `ratatui` feature below.
+ratatui-core = { version = "0.1", features = [
+    "std",
+    "underline-color",
+], optional = true }
 crossterm = "0.29"
-# Not used in any code path: pulled in only by `scrolling-regions`, to forward
-# that feature. See the feature's comment above.
-ratatui-crossterm = { version = "0.1", optional = true }
 # Async runner only (feature = "async"). `time` for the tick interval, `macros`
 # for `tokio::select!`; the host application brings its own runtime, so no `rt`.
 tokio = { version = "1", features = ["time", "macros"], optional = true }
@@ -225,3 +208,8 @@ harness = false
 [[example]]
 name = "async_dashboard"
 required-features = ["async"]
+
+# Demonstrates wrapping real ratatui widgets, so it needs the interop feature.
+[[example]]
+name = "ratatui_dashboard"
+required-features = ["ratatui"]

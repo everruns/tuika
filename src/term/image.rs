@@ -40,7 +40,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use ratatui_core::layout::Rect;
+use crate::geometry::Rect;
 
 /// String terminator for an APC sequence: `ESC \`.
 const ST: &str = "\x1b\\";
