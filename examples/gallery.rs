@@ -20,6 +20,8 @@ use ratatui::text::{Line, Span};
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
 use tuika::prelude::*;
+
+mod support;
 use tuika::term::hyperlink::HyperlinkBackend;
 
 fn build(frame: u64, theme: &Theme) -> tuika::Element {
@@ -134,7 +136,8 @@ fn build(frame: u64, theme: &Theme) -> tuika::Element {
 }
 
 fn main() -> io::Result<()> {
-    let capture_mouse = std::env::args().any(|argument| argument == "--mouse");
+    let cli = support::Cli::parse()?;
+    let capture_mouse = cli.args.iter().any(|argument| argument == "--mouse");
     let mode = if capture_mouse {
         ScreenMode::Alternate.with_mouse_capture()
     } else {
@@ -148,7 +151,7 @@ fn main() -> io::Result<()> {
             viewport: Viewport::Fullscreen,
         },
     )?;
-    let theme = Theme::default();
+    let theme = cli.theme;
     let mut progress = tuika::term::progress::TerminalProgress::new();
     progress.indeterminate();
 

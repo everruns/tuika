@@ -7,10 +7,11 @@
 //! component's look changes:
 //!
 //! ```text
-//! cargo run --example screenshot            # writes docs/hero.svg
-//! cargo run --example screenshot -- out.svg # custom path
-//! cargo run --example screenshot -- run     # animate it in a real terminal
-//! cargo run --example screenshot -- run gruvbox-dark  # …in a bundled theme
+//! cargo run --example screenshot                         # real terminal
+//! cargo run --example screenshot -- out.svg              # write SVG
+//! cargo run --example screenshot -- docs/hero.svg        # write the doc asset
+//! cargo run --example screenshot -- --theme gruvbox-dark # themed terminal
+//! cargo run --example screenshot -- out.svg --theme light # themed SVG
 //! cargo run --example screenshot -- bg gruvbox-dark   # print its background hex
 //! ```
 //!
@@ -21,15 +22,13 @@
 //! a commit message typing); cells that never change are emitted once in a static
 //! base layer, so only the moving region is duplicated per frame.
 //!
-//! The `run` subcommand animates the same `scene()` in the alternate screen so a
-//! terminal recorder (VHS) can capture it as a GIF — that is how `docs/hero.gif`
-//! is produced (see `scripts/gen-hero.sh`). SVG and GIF therefore share one
-//! source of truth. `run <theme>` animates a bundled palette instead of the
-//! default, which is how the per-theme demos in `docs/themes.md` are recorded
-//! (see `scripts/gen-theme-demos.sh`).
+//! With no output path, the example animates the same `scene()` in the alternate
+//! screen so a terminal recorder (VHS) can capture it as a GIF — that is how
+//! `docs/hero.gif` is produced (see `scripts/gen-hero.sh`). SVG and GIF therefore
+//! share one source of truth. `--theme <name>` applies a bundled palette to
+//! either form, which is how the per-theme demos in `docs/themes.md` are made.
 
 use std::io;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use crossterm::event::{self, Event as CtEvent, KeyCode as CtKeyCode, KeyEventKind};
@@ -39,6 +38,8 @@ use ratatui::text::{Line, Span};
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
 use tuika::prelude::*;
+
+mod support;
 
 /// Grid size (character cells). Chosen to give the gallery room to breathe while
 /// staying a comfortable README width.
@@ -50,10 +51,28 @@ const ROWS: u16 = 28;
 const FRAMES: usize = 16;
 
 fn main() -> io::Result<()> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let theme = Theme::default();
+    let cli = support::Cli::parse()?;
+    let args = &cli.args;
+    let theme = cli.theme;
+
+    if args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "--help" | "-h"))
+    {
+        println!(
+            "usage: cargo run --example screenshot [-- [OUTPUT.svg] [--theme NAME]]\n\
+             no OUTPUT renders in the terminal; an OUTPUT path writes SVG"
+        );
+        return Ok(());
+    }
 
     if args.iter().any(|a| a == "--dump") {
+        if args.len() != 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "--dump cannot be combined with an output path",
+            ));
+        }
         // One representative frame, as text, for a quick sanity check.
         let buffer = render_frame(6, &theme);
         println!("{}", tuika::testing::grid(&buffer));
@@ -61,37 +80,37 @@ fn main() -> io::Result<()> {
     }
 
     if args.first().map(String::as_str) == Some("run") {
-        // Animate the scene in a real terminal so a recorder can capture it.
-        // An optional theme name (`run gruvbox-dark`) animates that palette; the
-        // per-theme GIFs are recorded this way.
-        let scene_theme = args
-            .get(1)
-            .and_then(|name| tuika::themes::by_name(name))
-            .unwrap_or(theme);
+        if args.len() > 2 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "legacy `run` accepts at most one theme name",
+            ));
+        }
+        // Compatibility for the recorder scripts from before terminal rendering
+        // became the default. `run <theme>` remains accepted as well.
+        let scene_theme = legacy_theme(args.get(1), theme)?;
         return run_interactive(&scene_theme);
     }
 
     if args.first().map(String::as_str) == Some("bg") {
+        if args.len() > 2 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "`bg` accepts at most one theme name",
+            ));
+        }
         // Print a theme's background as `#rrggbb` so the GIF recorder can blend
         // VHS's window padding into the app background. Defaults to the toolkit
-        // theme when the name is unknown.
-        let t = args
-            .get(1)
-            .and_then(|n| tuika::themes::by_name(n))
-            .unwrap_or(theme);
+        // theme when no legacy positional name is supplied.
+        let t = legacy_theme(args.get(1), theme)?;
         println!("{}", hex(t.background));
         return Ok(());
     }
 
-    let out = args
-        .iter()
-        .find(|a| !a.starts_with("--"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("docs")
-                .join("hero.svg")
-        });
+    let out = match support::Output::parse(args)? {
+        support::Output::Terminal => return run_interactive(&theme),
+        support::Output::Svg(out) => out,
+    };
 
     let frames: Vec<Buffer> = (0..FRAMES)
         .map(|i| render_frame(i as u64, &theme))
@@ -110,6 +129,18 @@ fn main() -> io::Result<()> {
         svg.len()
     );
     Ok(())
+}
+
+fn legacy_theme(name: Option<&String>, fallback: Theme) -> io::Result<Theme> {
+    match name {
+        Some(name) => tuika::themes::by_name(name).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("unknown theme {name:?}"),
+            )
+        }),
+        None => Ok(fallback),
+    }
 }
 
 // ---------------------------------------------------------------------------

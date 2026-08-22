@@ -193,12 +193,15 @@ Generated demos follow the rule that the *scene registry is the source of truth*
   built from a registry scene. `examples/split_footer_demo.rs` is the
   recorder-free path to the same picture (a pseudo-terminal, vt100, an animated
   SVG), the way `examples/screenshot.rs` is for the hero: useful without a VHS
-  toolchain and for a text dump, but what it writes is not committed.
-- The image demo is rendered directly by `examples/image_demo.rs` rather than
-  recorded, because VHS captures through `ttyd` + `xterm.js`, which implements
-  no graphics protocol and would only ever show the text fallback. This is the
-  one asset a recorder genuinely *cannot* produce; the split footer only looked
-  like one until the toolchain was available.
+  toolchain and for a text dump, but what it writes is not committed. Both run
+  their real terminal scene by default and only write an SVG when given an
+  explicit output path.
+- The image demo is rendered directly by `examples/image_demo.rs` when given an
+  SVG output path, and otherwise runs the same real terminal scene as `image`,
+  rather than recorded, because VHS captures through `ttyd` + `xterm.js`, which
+  implements no graphics protocol and would only ever show the text fallback.
+  This is the one asset a recorder genuinely *cannot* produce; the split footer
+  only looked like one until the toolchain was available.
 - Release notes embed demos too — see [Release](../processes/release.md#changelog-format) —
   and they reuse the same `DEMOS` scenes rather than adding one-off assets. They
   are the one place that pins the raw URL to a release tag instead of `main`, so

@@ -14,6 +14,8 @@ use ratatui::text::Line;
 use ratatui::widgets::{Bar, BarChart, BarGroup, Block, Borders, Row, Sparkline, Table, Widget};
 use tuika::prelude::*;
 
+mod support;
+
 #[derive(Clone)]
 struct Metrics {
     requests: u64,
@@ -86,6 +88,7 @@ fn dashboard(metrics: &Metrics) -> Element {
 }
 
 fn main() -> std::io::Result<()> {
+    let cli = support::Cli::parse()?;
     let runner = Runner::new(RunnerConfig::default());
     let metrics = Live::with_redraw(
         Metrics {
@@ -115,7 +118,7 @@ fn main() -> std::io::Result<()> {
 
     let live_view = metrics.clone();
     let result = runner.run(
-        &Theme::default(),
+        &cli.theme,
         from_fn(
             &mut (),
             move |(), _frame| element(LiveView::new(live_view.clone(), dashboard)),

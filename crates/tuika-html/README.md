@@ -86,4 +86,5 @@ traversal cannot help; the input has to be refused first.
 ```sh
 cargo run -p tuika-html --example html_view       # the `Html` component (q quits)
 cargo run -p tuika-html --example html_markdown   # HTML blocks inside markdown
+cargo run -p tuika-html --example html_view -- --theme gruvbox-dark
 ```

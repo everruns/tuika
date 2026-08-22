@@ -25,13 +25,14 @@
 //! recording toolchain is unavailable or when a vector asset is wanted.
 //!
 //! ```text
-//! cargo build --example split_footer          # the subject, either way
-//! cargo run --example split_footer_demo       # writes target/split-footer.svg
-//! cargo run --example split_footer_demo -- out.svg
+//! cargo run --example split_footer_demo                         # real terminal
+//! cargo run --example split_footer_demo -- out.svg              # write SVG
+//! cargo run --example split_footer_demo -- --theme gruvbox-dark # themed terminal
 //! ```
 
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -39,6 +40,8 @@ use std::time::Duration;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use ratatui::style::Color;
 use tuika::prelude::Theme;
+
+mod support;
 
 /// Recorded grid. Wide enough for the footer's key hints, tall enough to show
 /// several published blocks plus the shell line that started the session.
@@ -53,13 +56,26 @@ const SAMPLES: usize = 5;
 const SETTLE: Duration = Duration::from_millis(500);
 
 fn main() -> io::Result<()> {
-    let arg = std::env::args().nth(1);
-    let dump = arg.as_deref() == Some("--dump");
-    let out = arg.filter(|_| !dump).map(PathBuf::from).unwrap_or_else(|| {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/split-footer.svg")
-    });
+    let cli = support::Cli::parse()?;
+    let dump = cli.args.iter().any(|arg| arg == "--dump");
+    let args = cli
+        .args
+        .iter()
+        .filter(|arg| arg.as_str() != "--dump")
+        .cloned()
+        .collect::<Vec<_>>();
+    if dump && !args.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "--dump cannot be combined with an output path",
+        ));
+    }
+    let output = support::Output::parse(&args)?;
+    if !dump && output == support::Output::Terminal {
+        return run_interactive(cli.theme_name.as_deref());
+    }
 
-    let frames = record()?;
+    let frames = record(&cli.theme, cli.theme_name.as_deref())?;
     if dump {
         // What the recorder saw as text, for checking the generated asset.
         for (i, frame) in frames.iter().enumerate() {
@@ -71,7 +87,10 @@ fn main() -> io::Result<()> {
         }
         return Ok(());
     }
-    let svg = render_svg(&frames);
+    let support::Output::Svg(out) = output else {
+        unreachable!("non-dump terminal mode returned before recording")
+    };
+    let svg = render_svg(&frames, &cli.theme);
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -83,6 +102,21 @@ fn main() -> io::Result<()> {
         svg.len() as f32 / 1024.0
     );
     Ok(())
+}
+
+fn run_interactive(theme_name: Option<&str>) -> io::Result<()> {
+    let mut command = Command::new(example_bin()?);
+    if let Some(name) = theme_name {
+        command.args(["--theme", name]);
+    }
+    let status = command.status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "split_footer exited with {status}"
+        )))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -99,16 +133,21 @@ fn example_bin() -> io::Result<PathBuf> {
         .map(|dir| dir.join("split_footer"))
         .unwrap_or_default();
     if !bin.is_file() {
-        return Err(io::Error::other(format!(
-            "the `split_footer` example is not built at {} — run \
-             `cargo build --example split_footer` first",
-            bin.display()
-        )));
+        let status = Command::new(env!("CARGO"))
+            .args(["build", "--example", "split_footer"])
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .status()?;
+        if !status.success() || !bin.is_file() {
+            return Err(io::Error::other(format!(
+                "could not build the `split_footer` example at {}",
+                bin.display()
+            )));
+        }
     }
     Ok(bin)
 }
 
-fn record() -> io::Result<Vec<Frame>> {
+fn record(theme: &Theme, theme_name: Option<&str>) -> io::Result<Vec<Frame>> {
     let bin = example_bin()?;
     let pty = NativePtySystem::default();
     let pair = pty
@@ -125,18 +164,25 @@ fn record() -> io::Result<Vec<Frame>> {
     let mut cmd = CommandBuilder::new("/bin/sh");
     // The prompt's own color comes from the theme too, so the one line the
     // shell contributes does not sit outside the palette of everything below it.
-    let prompt = match Theme::default().accent_alt {
+    let prompt = match theme.accent_alt {
         Color::Rgb(r, g, b) => format!("\x1b[38;2;{r};{g};{b}m"),
         _ => String::new(),
     };
+    let theme_suffix = theme_name
+        .map(|name| format!(" --theme {name}"))
+        .unwrap_or_default();
     cmd.args([
         "-c",
         &format!(
-            "printf '{prompt}~/src/tuika\\033[0m $ cargo run --example split_footer\\n'; \
-             exec {}",
-            bin.display()
+            "printf '{prompt}~/src/tuika\\033[0m $ cargo run --example split_footer{theme_suffix}\\n'; \
+             exec \"$@\""
         ),
+        "split-footer-demo",
     ]);
+    cmd.arg(&bin);
+    if let Some(name) = theme_name {
+        cmd.args(["--theme", name]);
+    }
     cmd.env("TERM", "xterm-256color");
     let mut child = pair.slave.spawn_command(cmd).map_err(io::Error::other)?;
     drop(pair.slave);
@@ -172,7 +218,7 @@ fn record() -> io::Result<Vec<Frame>> {
 
     let sample = || -> Frame {
         let parser = parser.lock().expect("lock parser");
-        capture(parser.screen())
+        capture(parser.screen(), theme)
     };
 
     thread::sleep(SETTLE);
@@ -199,13 +245,13 @@ fn record() -> io::Result<Vec<Frame>> {
 }
 
 /// Resolve every cell of `screen` into what the SVG paints.
-fn capture(screen: &vt100::Screen) -> Frame {
+fn capture(screen: &vt100::Screen, theme: &Theme) -> Frame {
     let mut frame = Vec::with_capacity(COLS as usize * ROWS as usize);
     for row in 0..ROWS {
         for col in 0..COLS {
             frame.push(match screen.cell(row, col) {
-                Some(cell) => Paint::of(cell),
-                None => Paint::blank(),
+                Some(cell) => Paint::of(cell, theme),
+                None => Paint::blank(theme),
             });
         }
     }
@@ -230,19 +276,14 @@ const SCREEN_MARGIN: f32 = 14.0;
 const GRID_PAD: f32 = 12.0;
 const TITLE_BAR: f32 = 40.0;
 
-/// The session's palette is `Theme::default()` — tuika's own identity, and the
-/// palette every other generated asset in `docs/` is captured against (the VHS
-/// generators pass the same pair as `Set Theme`). Deriving it here instead of
-/// hand-picking a second one keeps this asset from reading as a different
-/// product beside the rest of the gallery: `background`/`text` are what the
-/// terminal paints a default-colored cell with, `surface`/`border`/`muted` are
-/// the window chrome around it.
-fn term_bg() -> String {
-    hex(Theme::default().background)
+/// Derive the terminal defaults and window chrome from the selected theme so
+/// the real-terminal and SVG paths are the same scene in the same palette.
+fn term_bg(theme: &Theme) -> String {
+    hex(theme.background)
 }
 
-fn term_fg() -> String {
-    hex(Theme::default().text)
+fn term_fg(theme: &Theme) -> String {
+    hex(theme.text)
 }
 
 /// The fully resolved appearance of one cell in one frame.
@@ -274,10 +315,10 @@ impl Paint {
             && self.underline == other.underline
     }
 
-    fn blank() -> Self {
+    fn blank(theme: &Theme) -> Self {
         Self {
             sym: String::new(),
-            fg: term_fg(),
+            fg: term_fg(theme),
             bg: None,
             bold: false,
             dim: false,
@@ -286,7 +327,7 @@ impl Paint {
         }
     }
 
-    fn of(cell: &vt100::Cell) -> Self {
+    fn of(cell: &vt100::Cell, theme: &Theme) -> Self {
         let raw_fg = color_hex(cell.fgcolor());
         let raw_bg = color_hex(cell.bgcolor());
         // Reverse video swaps the pair, defaulting each side to the terminal's
@@ -294,11 +335,11 @@ impl Paint {
         // would paint invisible text.
         let (fg, bg) = if cell.inverse() {
             (
-                raw_bg.unwrap_or_else(term_bg),
-                Some(raw_fg.unwrap_or_else(term_fg)),
+                raw_bg.unwrap_or_else(|| term_bg(theme)),
+                Some(raw_fg.unwrap_or_else(|| term_fg(theme))),
             )
         } else {
-            (raw_fg.unwrap_or_else(term_fg), raw_bg)
+            (raw_fg.unwrap_or_else(|| term_fg(theme)), raw_bg)
         };
         Self {
             sym: cell.contents().to_string(),
@@ -312,7 +353,7 @@ impl Paint {
     }
 }
 
-fn render_svg(frames: &[Frame]) -> String {
+fn render_svg(frames: &[Frame], theme: &Theme) -> String {
     let cols = COLS as usize;
     let rows = ROWS as usize;
     let grid_w = COLS as f32 * CELL_W;
@@ -401,7 +442,6 @@ the program exits.\">\n"
 <feDropShadow dx=\"0\" dy=\"10\" stdDeviation=\"16\" flood-color=\"#000\" flood-opacity=\"0.45\"/>\
 </filter></defs>\n",
     );
-    let theme = Theme::default();
     s.push_str(&format!(
         "<rect x=\"{m:.1}\" y=\"{m:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" rx=\"12\" \
 fill=\"{chrome}\" stroke=\"{stroke}\" stroke-width=\"1\" filter=\"url(#sh)\"/>\n",
@@ -428,7 +468,7 @@ fill=\"{muted}\">tuika · split-footer screen mode</text>\n",
     s.push_str(&format!(
         "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" rx=\"6\" \
 fill=\"{bg}\"/>\n",
-        bg = term_bg(),
+        bg = term_bg(theme),
         x = SCREEN_MARGIN,
         y = TITLE_BAR,
         w = screen_w,

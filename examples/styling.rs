@@ -29,6 +29,8 @@ use ratatui::{Terminal, TerminalOptions, Viewport};
 
 use tuika::prelude::*;
 
+mod support;
+
 /// Grid size (character cells).
 const COLS: u16 = 82;
 const ROWS: u16 = 26;
@@ -95,8 +97,9 @@ fn variants(theme: &Theme) -> Vec<(&'static str, StyleSheet)> {
 }
 
 fn main() -> io::Result<()> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let theme = Theme::default();
+    let cli = support::Cli::parse()?;
+    let args = cli.args;
+    let theme = cli.theme;
 
     if args.first().map(String::as_str) == Some("bg") {
         // The theme background as `#rrggbb`, so a GIF recorder can blend its
@@ -114,14 +117,20 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
 
+    if args.is_empty() {
+        return run_interactive(&theme, None);
+    }
+
     if args.first().map(String::as_str) == Some("run") {
         // A fixed variant name holds one sheet; otherwise the scene cycles.
         let held = args.get(1).cloned();
         return run_interactive(&theme, held.as_deref());
     }
 
-    eprintln!("usage: styling (run [variant] | bg)\nvariants: default, vivid, mono");
-    Ok(())
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "usage: styling [run [variant] | bg] [--theme NAME]\nvariants: default, vivid, mono",
+    ))
 }
 
 /// The sheet named `name` (falling back to `default`), with its label.

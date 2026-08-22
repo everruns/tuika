@@ -311,10 +311,11 @@ cells shared across frames, only the moving region duplicated). Handy when VHS
 isn't available, or for a vector asset.
 
 ```bash
-cargo run --example screenshot            # write an SVG (default path)
-cargo run --example screenshot -- out.svg # custom path
-cargo run --example screenshot -- --dump  # print one frame as text
-cargo run --example screenshot -- run     # animate it (what VHS records)
+cargo run --example screenshot                         # animate in a terminal
+cargo run --example screenshot -- out.svg              # write an SVG
+cargo run --example screenshot -- docs/hero.svg        # write the doc asset
+cargo run --example screenshot -- --theme gruvbox-dark # themed terminal
+cargo run --example screenshot -- --dump               # print one frame as text
 ```
 
 ### The check invariant
@@ -389,9 +390,9 @@ and writes an animated SVG. Nothing it produces is committed; use it when
 VHS/ttyd is unavailable, or for the text dump.
 
 ```bash
-cargo build --example split_footer          # the subject, either way
-cargo run --example split_footer_demo       # writes target/split-footer.svg
-cargo run --example split_footer_demo -- --dump   # the frames as text
+cargo run --example split_footer_demo                 # run in a real terminal
+cargo run --example split_footer_demo -- out.svg      # write an SVG
+cargo run --example split_footer_demo -- --dump       # the frames as text
 ```
 
 Being a whole-terminal recording rather than a registry scene, it is outside the
@@ -411,8 +412,9 @@ standalone generated asset, it is outside the registry-based `demo -- check`
 invariant, so it needs no `DEMOS` scene.
 
 ```bash
-cargo run --example image_demo            # writes docs/demos/image.svg
-cargo run --example image_demo -- out.svg # custom path
+cargo run --example image_demo                         # run in a real terminal
+cargo run --example image_demo -- out.svg              # write an SVG
+cargo run --example image_demo -- docs/demos/image.svg # write the doc asset
 ```
 
 ## Cross-terminal checks

@@ -7,6 +7,8 @@ use tuika::prelude::*;
 use tuika::testing::{grid, render};
 use tuika_charts::{Axis, Chart, Point, Series, Stack};
 
+mod support;
+
 #[derive(Clone, Copy)]
 enum ChartKind {
     Line,
@@ -220,10 +222,10 @@ fn selected_chart() -> Option<ChartKind> {
 }
 
 fn main() -> io::Result<()> {
-    let theme = Theme::default();
+    let (theme, args) = support::theme_and_args()?;
     let isolated = selected_chart();
     let mut gallery = ChartGallery { isolated };
-    if std::env::args().any(|arg| arg == "--dump") {
+    if args.iter().any(|arg| arg == "--dump") {
         println!(
             "{}",
             grid(&render(gallery_view(isolated).as_ref(), 96, 42, &theme))

@@ -539,6 +539,8 @@ rendering; an explicit `Boxed::padding` remains the per-instance override.
 
 Each takes over the terminal — the alternate screen, or a pinned footer for
 [`split_footer`](examples/split_footer.rs); press `q` (or `esc`) to quit.
+Pass `--theme <name>` after Cargo's `--` to run any example with a bundled
+palette, for example `cargo run --example gallery -- --theme gruvbox-dark`.
 
 | Example    | Command                                   | Shows                                              |
 | ---------- | ----------------------------------------- | -------------------------------------------------- |

@@ -5,6 +5,7 @@
 //! generator, and the integrity check.
 //!
 //! ```text
+//! cargo run --example demo                    # spinner in a real terminal
 //! cargo run --example demo -- spinner          # interactive, records a GIF
 //! cargo run --example demo -- list              # list scene names
 //! cargo run --example demo -- check             # verify the docs assets
@@ -33,6 +34,7 @@ use tuika::view::DrawView;
 
 #[path = "demo_scenes/mod.rs"]
 mod demo_scenes;
+mod support;
 use demo_scenes::*;
 
 /// A tiny self-contained Rust highlighter for the `markdown`/`code_block` scenes.
@@ -538,8 +540,9 @@ const DEMOS: &[Demo] = &[
 ];
 
 fn main() -> io::Result<()> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let cmd = args.first().map(String::as_str).unwrap_or("list");
+    let cli = support::Cli::parse()?;
+    let args = cli.args;
+    let cmd = args.first().map(String::as_str).unwrap_or("spinner");
 
     match cmd {
         "list" | "--list" | "-h" | "--help" => {
@@ -563,9 +566,9 @@ fn main() -> io::Result<()> {
                 std::process::exit(2);
             };
             if args.iter().any(|a| a == "--dump") {
-                dump(d)
+                dump(d, &cli.theme)
             } else {
-                run(d)
+                run(d, &cli.theme)
             }
         }
     }
@@ -907,10 +910,9 @@ fn framed(name: &str, blurb: &str, body: Element, theme: &Theme) -> Element {
 ///
 /// Uses the scene's recorded geometry, so a dump is a faithful preview of the
 /// GIF: content that would be clipped out of the recording is clipped here too.
-fn dump(d: &Demo) -> io::Result<()> {
-    let theme = Theme::default();
-    let root = framed(d.title, d.blurb, (d.build)(24, &theme), &theme);
-    let buffer = tuika::testing::render(root.as_ref(), RECORD_COLS, d.rows, &theme);
+fn dump(d: &Demo, theme: &Theme) -> io::Result<()> {
+    let root = framed(d.title, d.blurb, (d.build)(24, theme), theme);
+    let buffer = tuika::testing::render(root.as_ref(), RECORD_COLS, d.rows, theme);
     println!("{}", tuika::testing::grid(&buffer));
     Ok(())
 }
@@ -924,7 +926,7 @@ fn dump(d: &Demo) -> io::Result<()> {
 /// up clipped. Pinning makes the registry the authority instead, and the surplus
 /// (the tape asks for a little more room than the scene needs) is painted in the
 /// theme background, so it reads as margin.
-fn run(d: &Demo) -> io::Result<()> {
+fn run(d: &Demo, theme: &Theme) -> io::Result<()> {
     let _session = tuika::TerminalSession::enter()?;
     let mut terminal = Terminal::with_options(
         ratatui::backend::CrosstermBackend::new(io::stdout()),
@@ -932,7 +934,6 @@ fn run(d: &Demo) -> io::Result<()> {
             viewport: RatatuiViewport::Fullscreen,
         },
     )?;
-    let theme = Theme::default();
     let mut frame = 0u64;
     loop {
         terminal.draw(|f| {
@@ -946,8 +947,8 @@ fn run(d: &Demo) -> io::Result<()> {
             };
             f.buffer_mut()
                 .set_style(area, Style::default().bg(theme.background));
-            let root = framed(d.title, d.blurb, (d.build)(frame, &theme), &theme);
-            paint(f.buffer_mut(), scene, &theme, root.as_ref(), &[]);
+            let root = framed(d.title, d.blurb, (d.build)(frame, theme), theme);
+            paint(f.buffer_mut(), scene, theme, root.as_ref(), &[]);
         })?;
         if event::poll(Duration::from_millis(80))?
             && let CtEvent::Key(key) = event::read()?

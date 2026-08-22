@@ -57,6 +57,7 @@ application normally. To try the complete gallery (`q` or `Esc` quits):
 
 ```bash
 cargo run -p tuika-charts --example charts
+cargo run -p tuika-charts --example charts -- --theme gruvbox-dark
 ```
 
 ## Every series, both ways

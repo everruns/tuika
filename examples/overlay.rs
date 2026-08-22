@@ -15,9 +15,12 @@ use ratatui::text::{Line, Span};
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
 use tuika::prelude::*;
+
+mod support;
 use tuika::probe::RectProbe;
 
 fn main() -> io::Result<()> {
+    let cli = support::Cli::parse()?;
     let mut open = false;
     let mut confirmed = 0u32;
     let trigger = RectProbe::new();
@@ -29,7 +32,7 @@ fn main() -> io::Result<()> {
             viewport: Viewport::Fullscreen,
         },
     )?;
-    let theme = Theme::default();
+    let theme = cli.theme;
 
     loop {
         terminal.draw(|f| {

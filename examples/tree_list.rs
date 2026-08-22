@@ -8,6 +8,8 @@ use std::io;
 
 use tuika::prelude::*;
 
+mod support;
+
 const TREE_Y: u16 = 2;
 
 struct TreeApp {
@@ -146,11 +148,12 @@ impl Application for TreeApp {
 }
 
 fn main() -> io::Result<()> {
+    let cli = support::Cli::parse()?;
     Runner::new(RunnerConfig {
         screen_mode: ScreenMode::Alternate.with_mouse_capture(),
         ..RunnerConfig::default()
     })
-    .run(&Theme::default(), &mut TreeApp::new())
+    .run(&cli.theme, &mut TreeApp::new())
 }
 
 #[cfg(test)]

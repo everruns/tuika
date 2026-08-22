@@ -39,6 +39,8 @@ use ratatui::text::Span;
 use ratatui::{Terminal, TerminalOptions, Viewport};
 
 use tuika::prelude::*;
+
+mod support;
 use tuika::term::hyperlink::{HyperlinkBackend, LinkPolicy, apply_buffer_links};
 
 /// A tiny self-contained Rust highlighter — enough to satisfy the
@@ -171,6 +173,7 @@ fn main() {
 ";
 
 fn main() -> io::Result<()> {
+    let cli = support::Cli::parse()?;
     let highlighter = DemoHighlighter;
     let doc: Vec<char> = SOURCE.chars().collect();
 
@@ -179,7 +182,7 @@ fn main() -> io::Result<()> {
     let mut cursor = 0usize;
     let mut paused = false;
 
-    let capture_mouse = std::env::args().any(|argument| argument == "--mouse");
+    let capture_mouse = cli.args.iter().any(|argument| argument == "--mouse");
     let mode = if capture_mouse {
         ScreenMode::Alternate.with_mouse_capture()
     } else {
@@ -192,7 +195,7 @@ fn main() -> io::Result<()> {
             viewport: Viewport::Fullscreen,
         },
     )?;
-    let theme = Theme::default();
+    let theme = cli.theme;
     let sheet = tuika::StyleSheet::from_theme(&theme);
 
     loop {

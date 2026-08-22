@@ -8,6 +8,8 @@ use std::io;
 
 use tuika::prelude::*;
 
+mod support;
+
 fn hints() -> KeyHints {
     KeyHints::new([("↑/↓", "move"), ("enter", "select"), ("esc", "cancel")])
 }
@@ -35,6 +37,7 @@ fn after<'rows>(rows: &'rows [Line<'static>], state: &SelectState) -> SelectionS
 }
 
 fn main() -> io::Result<()> {
+    let cli = support::Cli::parse()?;
     let rows = [
         Line::from("Run command"),
         Line::from("Delegate to agent"),
@@ -47,7 +50,7 @@ fn main() -> io::Result<()> {
     write_once(
         &mut io::stdout(),
         &after(&rows, &state),
-        &Theme::default(),
+        &cli.theme,
         OneShotOptions {
             width: 54,
             max_height: 9,

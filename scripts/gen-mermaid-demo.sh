@@ -44,6 +44,8 @@ Enter
 Sleep 500ms
 Show
 Sleep 3s
+Type "q"
+Sleep 300ms
 EOF
 
 echo "Recording Mermaid Markdown demo…"

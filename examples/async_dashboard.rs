@@ -17,6 +17,8 @@ use ratatui::widgets::{Block, Borders, Row, Sparkline, Table, Widget};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tuika::prelude::*;
 
+mod support;
+
 /// The dashboard's entire state — owned by the run loop, not shared.
 struct Metrics {
     requests: u64,
@@ -92,6 +94,7 @@ fn dashboard(metrics: &Metrics) -> Element {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::io::Result<()> {
+    let cli = support::Cli::parse()?;
     let runner = AsyncRunner::new(RunnerConfig {
         tick_rate: Duration::from_millis(500),
         ..RunnerConfig::default()
@@ -111,7 +114,7 @@ async fn main() -> std::io::Result<()> {
 
     runner
         .run_with_messages(
-            &Theme::default(),
+            &cli.theme,
             async_from_fn(
                 &mut metrics,
                 |metrics, _frame| dashboard(metrics),
