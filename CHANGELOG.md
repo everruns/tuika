@@ -11,7 +11,32 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
-## [Unreleased]
+## [0.11.0] - 2026-08-22
+
+Released alongside `tuika-charts` 0.1.2, `tuika-codeformatters` 0.5.0,
+`tuika-html` 0.1.4, and `tuika-mermaid` 0.3.2. Their tuika dependency
+requirements now track 0.11.
+
+### Highlights
+
+**One route for every event** — a host registers each surface once and every
+`Event` kind (key, paste, mouse, focus) follows the same path to whichever
+surface owns input this frame, so a paste can no longer take a different route
+from a key and land behind an open overlay. `Router` resolves stages in a fixed
+order and `Delivery` reports which surface received what, including the case
+where nothing did.
+
+**Streaming markdown renders identically to a one-shot render** — two cache
+boundaries that only misfired at particular chunk splits are fixed, so a
+document fed in as it arrives renders exactly like the same document rendered
+whole.
+
+![markdown demo](https://raw.githubusercontent.com/everruns/tuika/v0.11.0/docs/demos/markdown.gif)
+
+- **Binary size**: a default `tuika-codeformatters` build measured ~24.0 MiB on
+  a highlighting probe binary; a `rust` + `python` build is ~4.8 MiB. A tuika
+  host that places no images drops ~8.4 KiB of graphics encoders.
+- **Dependencies**: 66 crates to 55 (the `async` graph, 71 to 59).
 
 ### Breaking Changes
 
@@ -159,6 +184,13 @@ described in the release process begins with the entry below.
 
   Both were found by a new streaming/one-shot fuzz differential, and both
   depended on where the stream's chunk boundaries happened to fall.
+
+- **A link's underline stops at the URL.** When markdown wrapped a run of spans,
+  the space it re-inserted between two words inherited the style and OSC 8
+  target of the word *before* it, so the underline and the link's hit area ran
+  one cell past a `[label](url)` or a bare URL into the text that followed. The
+  separator now carries the style of the source whitespace it stands for, and a
+  boundary with no whitespace behind it no longer has a space invented for it.
 
 ## [0.10.0] - 2026-08-17
 

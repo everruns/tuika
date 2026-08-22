@@ -169,5 +169,5 @@ routes from there.
 
 - [Keymap](keymap.md) — turning key presses into named commands, which a `pre_fn`
   or `fallback_fn` stage dispatches.
-- [`examples/codex`](https://github.com/everruns/tuika/tree/v0.10.0/examples/codex) —
+- [`examples/codex`](https://github.com/everruns/tuika/tree/v0.11.0/examples/codex) —
   a full host: a modal, a picker, a composer, and a transcript on one route.
