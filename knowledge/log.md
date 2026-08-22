@@ -45,6 +45,12 @@
     external showcases retain their host application's real palette. Interactive
     example defaults are unchanged; this is a documentation identity choice.
 
+- **README demo assets track the current repository captures**
+  - Release-pinning the root README's hero and image demo made every regenerated
+    visual invisible there until the next version tag. Those two embeds now
+    track `main`, while the stable logo and public guide links remain pinned to
+    the release and release-note screenshots remain immutable historical proof.
+
 - **Application-scale examples belong beside the products in the showcase**
   - `workbench_demo` is a deterministic in-repo application shell, recorded from
     its real binary and presented beside host applications rather than split

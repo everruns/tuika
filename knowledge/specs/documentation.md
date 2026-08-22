@@ -205,7 +205,7 @@ Generated demos follow the rule that the *scene registry is the source of truth*
   only looked like one until the toolchain was available.
 - Release notes embed demos too — see [Release](../processes/release.md#changelog-format) —
   and they reuse the same `DEMOS` scenes rather than adding one-off assets. They
-  are the one place that pins the raw URL to a release tag instead of `main`, so
+  pin the raw URL to a release tag instead of `main`, so
   a later re-recording cannot rewrite what a past release appeared to ship. That
   also puts `CHANGELOG.md` deliberately outside the `demo -- check` reference
   gate: shipped history may name a scene that no longer exists.
@@ -328,8 +328,10 @@ copy without its large recordings adds weight without a usable offline guide.
 Root `Cargo.toml`'s `exclude` keeps them
 — the generated `site/` bundle, and the repository machinery (`knowledge/`,
 `.agents/`, `.github/`, `scripts/`) — out of that tarball. The root README
-reaches every public guide through a GitHub `blob` URL and its logo, hero, and
-image-protocol demo through a raw URL, all pinned to the release tag; the
+reaches every public guide through a release-tag-pinned GitHub `blob` URL and
+its logo through a release-tag-pinned raw URL. The hero and image-protocol demo
+use raw URLs that track `main`, so a regenerated documentation asset appears in
+the repository README immediately instead of waiting for the next release. The
 split-footer recording lives in the focused guide instead of the README. No
 `docs/` file therefore ships in the root crate.
 
@@ -342,10 +344,11 @@ determines whether the packaged copy is ever read:
   examples are here.
 - **Absolute `raw.githubusercontent.com` URL** — the packaged copy is
   unreachable from inside the `.crate` and is pure weight, so it is excluded
-  wherever it lives. The root README pins these URLs to its release tag so a
-  later asset refresh cannot rewrite a published crates.io page;
-  `tuika-codeformatters` and `tuika-charts` use `main` for their repository-owned
-  galleries.
+  wherever it lives. The root README pins its logo to the release tag, while its
+  regenerated hero and image demo track `main`; the companion-crate galleries
+  also use `main`. This keeps current visual evidence current, including on the
+  published crates.io README, while release notes remain the immutable record of
+  what an older release looked like.
 - **Absolute GitHub `blob` URL** — the same rule for public Markdown guides. The
   root README pins all guide links to the release tag, so the complete guide and
   its repository-hosted media remain versioned together outside the crate.

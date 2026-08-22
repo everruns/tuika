@@ -209,9 +209,10 @@ The root package's public `docs/` tree and alternate logo/demo assets are
 repository-only: `Cargo.toml`'s `exclude` keeps them (and the generated `site/`
 bundle plus repository machinery — `knowledge/`, `.agents/`, `.github/`,
 `scripts/`) out of tuika's published `.crate`, and `tests/packaging.rs` guards
-that split. The root README's guide links and three image embeds use
-release-tag-pinned absolute URLs, and the split-footer recording lives only in
-the focused guide, so no `docs/` file ships in tuika.
+that split. The root README's guide links and logo use release-tag-pinned
+absolute URLs; the hero and image demo track `main` so regenerated visuals show
+up immediately. The split-footer recording lives only in the focused guide, so
+no `docs/` file ships in tuika.
 
 Every published member owns the same rule, and how its README embeds a recording
 decides the answer: `tuika-mermaid`'s small recording ships, because its README

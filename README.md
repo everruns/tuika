@@ -24,7 +24,7 @@
 </div>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/everruns/tuika/v0.11.0/docs/hero.gif" width="880" alt="Animated tuika gallery: a terminal window with tabs, an activity panel of spinners, progress bars and a loader, a command palette, a commit-message input, and a status bar — all animating.">
+  <img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/hero.gif" width="880" alt="Animated tuika gallery: a terminal window with tabs, an activity panel of spinners, progress bars and a loader, a command palette, a commit-message input, and a status bar — all animating.">
 </p>
 
 <div align="center">
@@ -839,7 +839,7 @@ cells it reserves, using whichever terminal graphics protocol
 **iTerm2**, or **Sixel** (foot, xterm +sixel, mlterm, contour). Terminals with
 none show the alt text, so the same view tree renders everywhere.
 
-<img src="https://raw.githubusercontent.com/everruns/tuika/v0.11.0/docs/demos/image.svg" width="880" alt="Two terminal windows side by side: on a Kitty/Ghostty/WezTerm/Konsole terminal an Image view renders a red/green gradient in place; on every other terminal the same view shows a dimmed italic '[image: a red/green gradient]' placeholder.">
+<img src="https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/image.svg" width="880" alt="Two terminal windows side by side: on a Kitty/Ghostty/WezTerm/Konsole terminal an Image view renders a red/green gradient in place; on every other terminal the same view shows a dimmed italic '[image: a red/green gradient]' placeholder.">
 
 Decoding stays in the host — a heavy dependency, kept out like the highlighter
 boundary — so you hand in raw RGBA via `ImageData::from_rgba` and `tuika` owns the
