@@ -852,7 +852,6 @@ fn check_capture_theme(dir: &Path, errors: &mut Vec<String>) {
         "scripts/gen-mermaid-demo.sh",
         "scripts/gen-split-footer-demo.sh",
         "scripts/gen-styling-demos.sh",
-        "scripts/gen-workbench-demo.sh",
     ] {
         let path = dir.join(relative);
         match fs::read_to_string(&path) {
@@ -864,6 +863,20 @@ fn check_capture_theme(dir: &Path, errors: &mut Vec<String>) {
             )),
             Err(error) => errors.push(format!("could not read {}: {error}", path.display())),
         }
+    }
+
+    let workbench = dir.join("scripts/gen-workbench-demo.sh");
+    match fs::read_to_string(&workbench) {
+        Ok(text)
+            if text.contains(
+                "Set Theme { \"background\": \"#161215\", \"foreground\": \"#deccc7\" }",
+            ) && text.contains("Type \"TERM=xterm-256color ${bin}\"")
+                && !text.contains("TUIKA_DEMO_THEME") => {}
+        Ok(_) => errors.push(format!(
+            "{} must record the Workbench example's original palette",
+            workbench.display()
+        )),
+        Err(error) => errors.push(format!("could not read {}: {error}", workbench.display())),
     }
 }
 
@@ -1003,7 +1016,7 @@ mod tests {
     }
 
     #[test]
-    fn repository_generators_select_the_documentation_theme() {
+    fn repository_generators_follow_the_capture_palette_policy() {
         let mut errors = Vec::new();
         check_capture_theme(Path::new(env!("CARGO_MANIFEST_DIR")), &mut errors);
         assert_eq!(errors, Vec::<String>::new());

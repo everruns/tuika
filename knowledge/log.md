@@ -36,14 +36,16 @@
     fonts for full-screen scenes. The component-gallery integrity check reads GIF
     and PNG headers and rejects any recording that drifts from that width.
 - **Repository-owned documentation captures use Solarized Dark**
-  - Component scenes, the hero, styling gallery, whole-app examples, companion
-    integrations, chart screenshots, and generated image SVG now receive the
-    bundled `solarized-dark` theme explicitly from their generators. A shared
-    shell palette keeps VHS padding and window chrome aligned with the cells the
-    application paints.
+  - Component scenes, the hero, styling gallery, the Codex whole-app example,
+    companion integrations, chart screenshots, and generated image SVG receive
+    the bundled `solarized-dark` theme explicitly from their generators. A
+    shared shell palette keeps VHS padding and window chrome aligned with the
+    cells the application paints.
   - The per-theme comparison gallery remains one capture per bundled theme, and
-    external showcases retain their host application's real palette. Interactive
-    example defaults are unchanged; this is a documentation identity choice.
+    palette showcases retain what they demonstrate: external hosts keep their
+    real palette, and the in-repo Workbench keeps its original warm
+    copper-and-plum identity. Interactive example defaults are unchanged; this
+    is a documentation identity choice.
 
 - **README demo assets track the current repository captures**
   - Release-pinning the root README's hero and image demo made every regenerated
