@@ -178,18 +178,20 @@ fn benchmark_results_are_excluded_from_every_package() {
 }
 
 #[test]
-fn root_readme_assets_are_tag_pinned_and_excluded() {
+fn root_readme_assets_use_their_intended_refs_and_are_excluded() {
     let files = packaged_files("tuika");
     let has = |p: &str| files.iter().any(|f| f == p);
 
     let readme = std::fs::read_to_string("README.md").expect("read root README");
     let version = env!("CARGO_PKG_VERSION");
-    for asset in ["logo.svg", "docs/hero.gif", "docs/demos/image.svg"] {
-        let url = format!("https://raw.githubusercontent.com/everruns/tuika/v{version}/{asset}");
-        assert!(
-            readme.contains(&url),
-            "README must pin {asset} to v{version}"
-        );
+    let logo_url = format!("https://raw.githubusercontent.com/everruns/tuika/v{version}/logo.svg");
+    assert!(
+        readme.contains(&logo_url),
+        "README must pin logo.svg to v{version}"
+    );
+    for asset in ["docs/hero.gif", "docs/demos/image.svg"] {
+        let url = format!("https://raw.githubusercontent.com/everruns/tuika/main/{asset}");
+        assert!(readme.contains(&url), "README must track main for {asset}");
     }
     assert!(
         !readme.contains("docs/split-footer.gif"),

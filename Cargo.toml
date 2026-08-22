@@ -46,9 +46,9 @@ categories = ["command-line-interface"]
 # 1. The public `docs/` tree, alternate logo exports, and recordings beside the
 #    in-repo application showcases are consumed from the tagged repository by
 #    public pages or tooling. rustdoc/docs.rs references none of them from its
-#    crate front page, and the crates.io README uses release-tag-pinned absolute
-#    URLs for guides and images, so packaged copies would be incomplete and
-#    unreachable.
+#    crate front page, and the crates.io README uses absolute URLs for guides and
+#    images, so packaged copies would be incomplete and unreachable. Guide and
+#    logo URLs are release-pinned; regenerated demo assets track `main`.
 # 2. Benchmark result snapshots. Benchmark sources remain reproducible, but the
 #    committed IAI baseline is a CI input rather than a consumer file.
 # 3. Repository machinery. Since tuika is the root package, everything beside it
