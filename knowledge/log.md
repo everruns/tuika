@@ -2,6 +2,16 @@
 
 ## 2026-08-22
 
+- **Selection is scoped by what the frame drew, not by the screen**
+  - Runner-provided drag selection streamed across the whole cell grid, so a
+    drag inside a sidebar picked up whatever pane sat beside it. Panels are the
+    unit a reader means: a bordered `Boxed` now records its inner rect while
+    rendering, and the gesture is confined to the innermost region under the
+    press. See [Architecture](specs/architecture.md).
+  - Worth keeping because it sets a precedent: render-time regions (like the
+    text sources behind copy) are how the selection layer learns structure a
+    flat cell buffer has thrown away.
+
 - **A link's underline is a whitespace question, not a link question**
   - The reported bug was a bold bare URL whose underline ran past the URL. The
     cause was in the wrap pass: the space re-inserted between two words inherited

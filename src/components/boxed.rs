@@ -229,6 +229,13 @@ impl<V: View> View for Boxed<V> {
             }
         }
         let inner = self.inner(area, self.resolved_padding(ctx));
+        if self.has_border() {
+            // A bordered box is a *panel*: a host-provided drag selection stays
+            // inside it rather than streaming across the panes beside it. Only
+            // bordered boxes qualify — a borderless `Boxed` is padding, not a
+            // visually separate surface.
+            ctx.record_selection_region(inner);
+        }
         let mut inner_surface = surface.child(inner);
         self.child.render(inner, &mut inner_surface, ctx);
     }

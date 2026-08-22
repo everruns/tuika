@@ -100,13 +100,13 @@ use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 use ratatui_core::terminal::{Terminal, TerminalOptions};
 
-use crate::host::paint_with_context_and_sources;
+use crate::host::paint_with_context_and_selection;
 use crate::live::RedrawHandle;
 use crate::mouse::{SelectionState, paint_selection, selected_text_from_sources};
 use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
 use crate::term::clipboard;
 use crate::term::image::{ImageLayer, ImageSupport};
-use crate::view::SelectionSources;
+use crate::view::SelectionFrame;
 use crate::{
     Clock, Element, Event, RenderCtx, ScopedElement, SystemClock, TerminalSession, Theme, View,
     translate_event,
@@ -920,26 +920,21 @@ where
     F: FrameSource,
 {
     let mut copied = None;
-    let sources = SelectionSources::default();
+    let selection_frame = SelectionFrame::default();
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
         let ctx = graphics.map_or_else(|| RenderCtx::new(theme), |g| g.render_context(theme));
         frames.frame(frame, &mut |root| {
-            paint_with_context_and_sources(
+            paint_with_context_and_selection(
                 terminal_frame.buffer_mut(),
                 area,
                 &ctx,
                 root,
                 &[],
-                &sources,
+                &selection_frame,
             );
         });
-        copied = selection.finish_frame(
-            terminal_frame.buffer_mut(),
-            area,
-            theme,
-            &sources.snapshot(),
-        );
+        copied = selection.finish_frame(terminal_frame.buffer_mut(), area, theme, &selection_frame);
     })?;
     Ok(copied)
 }
@@ -948,6 +943,8 @@ struct RunnerSelection {
     enabled: bool,
     state: SelectionState,
     pending_copy: bool,
+    /// Panel regions from the last painted frame, resolved on the next `Down`.
+    regions: Vec<Rect>,
 }
 
 impl RunnerSelection {
@@ -956,6 +953,7 @@ impl RunnerSelection {
             enabled,
             state: SelectionState::new(),
             pending_copy: false,
+            regions: Vec::new(),
         }
     }
 
@@ -997,6 +995,14 @@ impl RunnerSelection {
             return self.clear();
         }
 
+        if matches!(mouse.kind, crate::MouseKind::Down(crate::MouseButton::Left)) {
+            // A gesture belongs to the panel it starts in, for its whole life.
+            self.state.confine(crate::mouse::region_at(
+                &self.regions,
+                mouse.column,
+                mouse.row,
+            ));
+        }
         let changed = self.state.handle_with_clock(mouse, clock);
         if changed
             && matches!(mouse.kind, crate::MouseKind::Up(crate::MouseButton::Left))
@@ -1012,11 +1018,23 @@ impl RunnerSelection {
         buffer: &mut Buffer,
         area: Rect,
         theme: &Theme,
-        sources: &[crate::view::SelectionSource],
+        frame: &crate::view::SelectionFrame,
     ) -> Option<String> {
         if !self.enabled {
             return None;
         }
+        self.regions = frame.take_regions();
+        let sources = frame.take_sources();
+        // A confined gesture reads, wraps, and paints inside its panel. The
+        // region was recorded by the previous frame, so intersect it with this
+        // one: a layout change between the press and this paint must not point
+        // the selection at geometry that no longer exists.
+        let area = self
+            .state
+            .region()
+            .map(|panel| panel.intersection(area))
+            .filter(|panel| panel.width > 0 && panel.height > 0)
+            .unwrap_or(area);
         if self.state.resolve(buffer, area) {
             self.pending_copy = true;
         }
@@ -1026,7 +1044,7 @@ impl RunnerSelection {
         };
         let copied = self
             .pending_copy
-            .then(|| selected_text_from_sources(buffer, area, range, sources));
+            .then(|| selected_text_from_sources(buffer, area, range, &sources));
         self.pending_copy = false;
         paint_selection(buffer, area, range, theme.selection_style());
         copied
@@ -1132,11 +1150,108 @@ mod tests {
         assert!(selection.handle_event(&Event::Mouse(drag), UpdateResult::Clean, &clock));
         assert!(selection.handle_event(&Event::Mouse(up), UpdateResult::Clean, &clock));
 
-        let copied = selection.finish_frame(&mut buffer, area, &Theme::default(), &[]);
+        let copied = selection.finish_frame(
+            &mut buffer,
+            area,
+            &Theme::default(),
+            &crate::view::SelectionFrame::default(),
+        );
         assert_eq!(copied.as_deref(), Some("hello"));
         for column in 0..=4 {
             assert_eq!(buffer[(column, 0)].bg, Theme::default().selection_bg);
         }
+    }
+
+    /// Two bordered panels side by side, each with its own text.
+    struct TwoPanels;
+
+    impl crate::View for TwoPanels {
+        fn measure(&self, available: crate::Size, _ctx: &crate::RenderCtx) -> crate::Size {
+            available
+        }
+
+        fn render(&self, _area: Rect, surface: &mut crate::Surface, ctx: &crate::RenderCtx) {
+            for (rect, label) in [
+                (Rect::new(0, 0, 10, 3), "alpha"),
+                (Rect::new(10, 0, 10, 3), "bravo"),
+            ] {
+                let panel = crate::components::Boxed::new(crate::element(Text::raw(label)));
+                let mut child = surface.child(rect);
+                crate::View::render(&panel, rect, &mut child, ctx);
+            }
+        }
+    }
+
+    fn paint_panels(selection: &mut RunnerSelection, theme: &Theme) -> (Buffer, Option<String>) {
+        let area = Rect::new(0, 0, 20, 3);
+        let mut buffer = Buffer::empty(area);
+        let frame = crate::view::SelectionFrame::default();
+        crate::host::paint_with_context_and_selection(
+            &mut buffer,
+            area,
+            &crate::RenderCtx::new(theme),
+            &TwoPanels,
+            &[],
+            &frame,
+        );
+        let copied = selection.finish_frame(&mut buffer, area, theme, &frame);
+        (buffer, copied)
+    }
+
+    #[test]
+    fn selection_stays_inside_the_panel_it_started_in() {
+        let clock = FixedClock(Instant::now());
+        let theme = Theme::default();
+        let mut selection = RunnerSelection::new(true);
+        // A first frame publishes the panels' regions.
+        paint_panels(&mut selection, &theme);
+
+        // Press inside the left panel, drag deep into the right one.
+        for mouse in [
+            crate::Mouse::at(crate::MouseKind::Down(crate::MouseButton::Left), 2, 1),
+            crate::Mouse::at(crate::MouseKind::Drag(crate::MouseButton::Left), 16, 1),
+            crate::Mouse::at(crate::MouseKind::Up(crate::MouseButton::Left), 16, 1),
+        ] {
+            selection.handle_event(&Event::Mouse(mouse), UpdateResult::Clean, &clock);
+        }
+
+        let (buffer, copied) = paint_panels(&mut selection, &theme);
+        assert_eq!(copied.as_deref(), Some("alpha"));
+        for column in 2..8 {
+            assert_eq!(
+                buffer[(column, 1)].bg,
+                theme.selection_bg,
+                "left panel cell {column} is selected"
+            );
+        }
+        for column in 8..20 {
+            assert_ne!(
+                buffer[(column, 1)].bg,
+                theme.selection_bg,
+                "cell {column} outside the panel is untouched"
+            );
+        }
+    }
+
+    #[test]
+    fn selection_outside_every_panel_still_spans_the_screen() {
+        let clock = FixedClock(Instant::now());
+        let theme = Theme::default();
+        let mut selection = RunnerSelection::new(true);
+        paint_panels(&mut selection, &theme);
+
+        // Row 0 is the panels' borders — no region covers it.
+        for mouse in [
+            crate::Mouse::at(crate::MouseKind::Down(crate::MouseButton::Left), 1, 0),
+            crate::Mouse::at(crate::MouseKind::Drag(crate::MouseButton::Left), 15, 0),
+            crate::Mouse::at(crate::MouseKind::Up(crate::MouseButton::Left), 15, 0),
+        ] {
+            selection.handle_event(&Event::Mouse(mouse), UpdateResult::Clean, &clock);
+        }
+
+        assert!(selection.state.region().is_none());
+        let (buffer, _) = paint_panels(&mut selection, &theme);
+        assert_eq!(buffer[(15, 0)].bg, theme.selection_bg);
     }
 
     #[test]

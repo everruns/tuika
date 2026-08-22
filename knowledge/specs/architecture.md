@@ -118,6 +118,15 @@ rather than beside it.
   52 on release. Wheel input still routes to the application. A handled gesture
   returns `UpdateResult::Consumed` or `Dirty`; custom-loop hosts keep using the
   public selection primitives directly.
+- **A drag belongs to the panel it starts in.** A bordered `Boxed` records its
+  inner rect as a selection region while rendering; the runner resolves the
+  press cell to the innermost region and confines the whole gesture there, so a
+  linear selection wraps at the panel's edges and the copied text is that
+  panel's text. The screen remains the region when a drag starts outside every
+  panel. Regions come from the previously painted frame, which is what the
+  pointer was actually aimed at; a range is always resolved against the area it
+  is given, so geometry that changed underneath it can only narrow the
+  selection, never reach a cell outside.
 - **Runners own application state directly**: `Application` (and its awaiting
   counterpart `AsyncApplication`) receives signals through `&mut self` and
   builds a `ScopedElement<'_>` through `&self`, so a frame can borrow

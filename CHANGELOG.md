@@ -11,6 +11,27 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
+## [Unreleased]
+
+### Changed
+
+- **Runner drag selection is per panel.** A left drag that starts inside a
+  bordered `Boxed` selects only within that panel: positions clamp to its
+  inner rect, a multi-row selection wraps at the panel's edges instead of the
+  screen's, and the copied text never picks up the pane beside it. A drag that
+  starts outside every panel still spans the screen as before.
+
+### Fixed
+
+- A `SelectionRange` that reaches past the `area` handed to
+  `mouse::paint_selection`, `mouse::selected_text`, or `SelectionRange::contains`
+  now stops at that area's rows instead of indexing the buffer out of bounds.
+
+### Added
+
+- `mouse::SelectionState::confine` / `region` — restrict a gesture to a rect and
+  read it back, for hosts driving the selection primitives from their own loop.
+
 ## [0.11.0] - 2026-08-22
 
 Released alongside `tuika-charts` 0.1.2, `tuika-codeformatters` 0.5.0,
@@ -964,5 +985,5 @@ styling extras) are no longer flattened to `tuika::`. Reach them through
 * test: add a PTY smoke test and guard the published crate contents
 
 [0.6.0]: https://github.com/everruns/tuika/releases/tag/v0.6.0
-[Unreleased]: https://github.com/everruns/tuika/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/everruns/tuika/compare/v0.11.0...HEAD
 [0.10.0]: https://github.com/everruns/tuika/compare/v0.9.0...v0.10.0

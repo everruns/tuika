@@ -34,7 +34,7 @@ use super::overlay::Overlay;
 use super::screen::ScreenMode;
 use super::style::{StyleSheet, Theme};
 use super::surface::Surface;
-use super::view::{RenderCtx, SelectionSources, View};
+use super::view::{RenderCtx, SelectionFrame, View};
 
 /// RAII guard for the alternate screen.
 pub struct AltScreen {
@@ -440,20 +440,20 @@ pub fn paint_with_context(
     root: &dyn View,
     overlays: &[Overlay],
 ) {
-    let sources = SelectionSources::default();
-    paint_with_context_and_sources(buffer, area, ctx, root, overlays, &sources);
+    let selection = SelectionFrame::default();
+    paint_with_context_and_selection(buffer, area, ctx, root, overlays, &selection);
 }
 
-pub(crate) fn paint_with_context_and_sources(
+pub(crate) fn paint_with_context_and_selection(
     buffer: &mut Buffer,
     area: Rect,
     ctx: &RenderCtx,
     root: &dyn View,
     overlays: &[Overlay],
-    sources: &SelectionSources,
+    selection: &SelectionFrame,
 ) {
-    sources.clear();
-    let ctx = ctx.clone().with_selection_sources(sources);
+    selection.clear();
+    let ctx = ctx.clone().with_selection(selection);
     // Base background so the alternate screen is fully owned (no stale cells).
     {
         let mut surface = Surface::new(buffer, area);
