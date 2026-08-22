@@ -28,7 +28,12 @@ if ! git -C "${source_dir}" apply --reverse --check "${patch}" 2>/dev/null; then
   git -C "${source_dir}" apply "${patch}"
 fi
 
-export PKG_CONFIG_PATH="$(cd "${source_dir}" && scripts/build-libghostty-vt.sh)"
+PKG_CONFIG_PATH="$(cd "${source_dir}" && scripts/build-libghostty-vt.sh)"
+export PKG_CONFIG_PATH
+# CGO records the absolute pkg-config library path in cached link actions. A
+# shared Go cache can therefore point at another worktree's deleted `target/`.
+export GOCACHE="${source_dir}/.cache/go-build"
+mkdir -p "${GOCACHE}"
 (cd "${source_dir}" && go build -tags ghostty -o "${output}" .)
 
 echo "Built ${output}"

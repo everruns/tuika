@@ -23,6 +23,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
+source "${repo_root}/scripts/demo-theme.sh"
 
 if ! command -v vhs >/dev/null 2>&1; then
   echo "error: vhs not found on PATH (see https://github.com/charmbracelet/vhs)" >&2
@@ -37,26 +38,25 @@ tapes_dir="$(mktemp -d)"
 trap 'rm -rf "${tapes_dir}"' EXIT
 tape="${tapes_dir}/codex.tape"
 
-# Sized to ~100×28 cells. The VHS theme background matches the example's own
-# palette so the padding blends into the app, and the window bar supplies the
-# chrome. Recorded larger than displayed (width="880" in docs/showcases.md) so
-# it stays crisp on HiDPI screens.
+# Sized to ~100×28 cells. The VHS theme background matches the explicitly
+# selected documentation palette, and the window bar supplies the chrome. Its
+# 1760 px width is exactly twice the 880 px documentation embed.
 cat >"${tape}" <<EOF
 Output "${repo_root}/examples/codex/codex.gif"
 
 Set Shell bash
 Set FontSize 28
 Set CursorBlink false
-Set Width 1800
+Set Width 1760
 Set Height 1132
 Set Padding 31
 Set WindowBar Colorful
-Set Theme { "background": "#0d0e10", "foreground": "#dfe2e6" }
+Set Theme { "background": "${TUIKA_DEMO_BACKGROUND}", "foreground": "${TUIKA_DEMO_FOREGROUND}" }
 Set Framerate 20
 Set TypingSpeed 55ms
 
 Hide
-Type "TERM=xterm-256color ${bin}"
+Type "TERM=xterm-256color ${bin} --theme ${TUIKA_DEMO_THEME}"
 Enter
 Sleep 1s
 Show

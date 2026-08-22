@@ -271,11 +271,13 @@ Three constraints govern any new showcase scene:
 
 ### Capture geometry
 
-Every VHS recording is displayed at `width="880"` (rustdoc caps embeds at roughly
-the same). Crispness therefore depends on one ratio: **recorded pixels per cell
-against displayed pixels per cell.** The component gallery sets the bar — 66
-columns at `FontSize 40`, so ~26 px cells in a ~1800 px window, a little over 2×
-the display width — and every other recording is held to it. A capture that packs
+Every repository-owned VHS recording displayed at `width="880"` (rustdoc caps
+embeds at roughly the same) is captured at exactly 1760 px wide. The integer 2×
+scale matters independently of resolution: a near-2× source makes the browser
+resample glyph edges across fractional source pixels and looks softer than the
+live terminal. The component gallery sets the density bar — 66 columns at
+`FontSize 40`, with the remaining width used as padding — and every other
+repository-owned recording is held to it. A capture that packs
 more columns into the same 880 px must scale its font up to compensate, not leave
 the glyphs at a size that was only ever legible at full resolution. Generators
 pin font size, window geometry, and a non-blinking cursor. They deliberately
@@ -295,26 +297,27 @@ yields to it.
 The practical consequence for a full-screen host, which needs far more columns
 than a single component: pick the smallest grid the UI genuinely needs, then the
 largest font whose frame still records in real time, and verify the result — the
-GIF's duration must match the tape's, not merely look sharp in a still.
+GIF's duration must match the tape's, not merely look sharp in a still. External
+showcases are the exception to the exact-width rule: their host-required grids
+set the frame, but they must still meet or exceed the gallery's displayed pixel
+density.
 
 ### Capture palette
 
-Every toolkit asset is captured against `Theme::default()` — tuika's own warm
-red-on-dark identity. The VHS generators pass it as the tape's `Set Theme`, and the two
-recorder-free SVG paths (`examples/screenshot.rs` for the hero,
-`examples/split_footer_demo.rs` for the split footer) derive both the terminal's
-default-cell colors and the window chrome around them from the same `Theme`
-rather than a second hand-picked set. An in-repo application showcase may carry
-an intentional application palette — the Codex replica imitates another
-product, while `workbench_demo` demonstrates a copper-and-plum identity — but its
-VHS theme must match the application's background so the capture remains one
-coherent surface.
+Every repository-owned documentation asset is captured against the bundled
+`solarized-dark` preset. VHS generators pass both `--theme solarized-dark` to
+the real example and the matching background/foreground to the tape's
+`Set Theme`, so application cells, terminal defaults, padding, and window chrome
+agree. `scripts/demo-theme.sh` owns the shared capture name and terminal colors;
+generated SVG assets receive the same explicit theme. The per-theme
+comparison gallery remains one capture per bundled theme by definition, and
+external showcases retain the real host application's palette.
 
-The rule exists because a hand-picked palette drifts silently: the split-footer
+The rule exists because hand-picked palettes drift silently: the split-footer
 asset shipped for a while on a cold neutral gray of its own, next to a page of
-warm assets, and read as a screenshot of a different program. Deriving the colors
-also means a change to the default theme reaches the generated assets on the next
-regeneration instead of leaving them stale.
+warm assets, and read as a screenshot of a different program. A shared capture
+palette keeps independently generated assets visually coherent without changing
+the examples' interactive default.
 
 ### The crate/GitHub asset split
 

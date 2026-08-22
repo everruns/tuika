@@ -6,6 +6,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
+source "${repo_root}/scripts/demo-theme.sh"
 
 for tool in vhs ttyd ffmpeg; do
   command -v "${tool}" >/dev/null || {
@@ -55,11 +56,11 @@ Set Width 1200
 Set Height 720
 Set Padding 28
 Set WindowBar Colorful
-Set Theme { "background": "#141214", "foreground": "#ebe6e6" }
+Set Theme { "background": "${TUIKA_DEMO_BACKGROUND}", "foreground": "${TUIKA_DEMO_FOREGROUND}" }
 ${environment}
 
 Hide
-Type "clear; ${command_env} TUIKA_CHART_DEMO=${kind} ${bin}"
+Type "clear; ${command_env} TUIKA_CHART_DEMO=${kind} ${bin} --theme ${TUIKA_DEMO_THEME}"
 Show
 Enter
 Sleep 1.5s

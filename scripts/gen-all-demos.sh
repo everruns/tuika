@@ -12,6 +12,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
+source "${repo_root}/scripts/demo-theme.sh"
 
 skip_showcases=false
 if [[ ${1-} == "--skip-showcases" ]]; then
@@ -31,7 +32,7 @@ scripts/gen-styling-demos.sh
 scripts/gen-split-footer-demo.sh
 
 echo "Generating image SVG…"
-cargo run -q --example image_demo -- docs/demos/image.svg
+cargo run -q --example image_demo -- docs/demos/image.svg --theme "${TUIKA_DEMO_THEME}"
 
 
 scripts/gen-codex-demo.sh

@@ -260,10 +260,13 @@ scripts/gen-demos.sh              # all scenes
 scripts/gen-demos.sh spinner tabs # just these
 ```
 
-Recordings are captured at ~2× pixel density and displayed at `width="880"`
-(rustdoc uses its own `max-width`), so they stay crisp on HiDPI screens.
+Recordings are captured at exactly 1760 px and displayed at `width="880"`
+(rustdoc uses its own `max-width`). The integer 2× scale keeps terminal glyphs
+crisp instead of asking the browser to resample fractional source pixels.
 Motion scenes are GIFs; settled scenes are full-color PNG screenshots so text
-antialiasing is not reduced to GIF's palette.
+antialiasing is not reduced to GIF's palette. Repository-owned captures use
+`solarized-dark`; the per-theme comparison gallery remains one capture per
+bundled theme, and external showcases retain their host application's palette.
 
 A tape is sized in *pixels*; how many rows and columns that buys is up to the
 emulator's font metrics, so the harness pins each scene to `RECORD_COLS × rows`
@@ -298,9 +301,9 @@ The README hero (`docs/hero.gif`) is a VHS recording of a composite "app" scene
 that exercises most of the toolkit at once. The scene lives in
 [`examples/screenshot.rs`](examples/screenshot.rs) as one `scene()` builder, and
 [`scripts/gen-hero.sh`](scripts/gen-hero.sh) records it: it builds the example,
-runs its `run` subcommand full-screen under VHS (window bar for chrome, theme
-background matched to tuika's), and writes the GIF. Requires the same toolchain
-as the demos — VHS with `ttyd` and `ffmpeg`.
+runs it full-screen under VHS with `--theme solarized-dark` (window bar for
+chrome, terminal background matched to the scene), and writes the GIF. Requires
+the same toolchain as the demos — VHS with `ttyd` and `ffmpeg`.
 
 ```bash
 scripts/gen-hero.sh
@@ -417,7 +420,7 @@ invariant, so it needs no `DEMOS` scene.
 ```bash
 cargo run --example image_demo                         # run in a real terminal
 cargo run --example image_demo -- out.svg              # write an SVG
-cargo run --example image_demo -- docs/demos/image.svg # write the doc asset
+cargo run --example image_demo -- docs/demos/image.svg --theme solarized-dark # write the doc asset
 ```
 
 ## Cross-terminal checks

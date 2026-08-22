@@ -17,6 +17,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
+source "${repo_root}/scripts/demo-theme.sh"
 
 if ! command -v vhs >/dev/null 2>&1; then
   echo "error: vhs not found on PATH (see https://github.com/charmbracelet/vhs)" >&2
@@ -31,8 +32,8 @@ mkdir -p "${out_dir}"
 tapes_dir="$(mktemp -d)"
 trap 'rm -rf "${tapes_dir}"' EXIT
 
-bg="$("${bin}" bg)"
-fg="#ebe6e6"
+bg="$("${bin}" bg --theme "${TUIKA_DEMO_THEME}")"
+fg="${TUIKA_DEMO_FOREGROUND}"
 
 # Each held variant plus one live-cycling capture. `run <name>` holds a sheet;
 # `run` alone cycles through every variant.
@@ -46,9 +47,9 @@ record() {
 Output "${out_dir}/styling-${name}.gif"
 
 Set Shell bash
-Set FontSize 29
+Set FontSize 28
 Set CursorBlink false
-Set Width 1800
+Set Width 1760
 Set Height 1140
 Set Padding 34
 Set WindowBar Colorful
@@ -56,7 +57,7 @@ Set Theme { "background": "${bg}", "foreground": "${fg}" }
 Set Framerate 24
 
 Hide
-Type "TERM=xterm-256color ${bin} ${cmd}"
+Type "TERM=xterm-256color ${bin} ${cmd} --theme ${TUIKA_DEMO_THEME}"
 Enter
 Sleep 900ms
 Show
