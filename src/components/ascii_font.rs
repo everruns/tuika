@@ -6,8 +6,8 @@
 //! banner/headline analog of OpenTUI's `ASCIIFont`, kept dependency-free by
 //! bundling one compact font rather than parsing FIGlet files.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::{Color, Style};
+use crate::geometry::Rect;
+use crate::style::{Color, Style};
 
 use crate::geometry::Size;
 use crate::surface::Surface;

@@ -6,9 +6,9 @@
 //! Enter is surfaced as [`InputOutcome::Submitted`] so the caller decides what
 //! "confirm" means.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
-use ratatui_core::text::Line;
+use crate::geometry::Rect;
+use crate::style::Style;
+use crate::text::Line;
 
 use crate::event::{Event, InputOutcome, KeyCode, MouseButton, MouseKind};
 use crate::geometry::Size;
@@ -478,7 +478,7 @@ impl MultiSelectState {
 /// # Example
 ///
 /// ```
-/// use ratatui_core::text::Line;
+/// use tuika::ui::Line;
 /// use tuika::prelude::*;
 /// use tuika::testing::{grid, render};
 ///
@@ -771,9 +771,9 @@ mod tests {
     use crate::event::{Event, InputOutcome, Key, KeyCode};
     use crate::style::Theme;
     use crate::tests::support::{buffer, rainbow_theme, row};
+    use crate::text::Line;
     use crate::view::{RenderCtx, View};
     use crate::{Size, Surface};
-    use ratatui_core::text::Line;
 
     #[test]
     fn select_navigation_wraps_and_confirms() {
@@ -937,15 +937,11 @@ mod tests {
     #[test]
     fn select_list_accepts_an_instance_selection_style() {
         let state = SelectState::new();
-        let style = Style::default().fg(ratatui_core::style::Color::Blue);
+        let style = Style::default().fg(crate::style::Color::Blue);
         let list = SelectList::new(vec![Line::from("a")], &state).selection_style(style);
         let buf = crate::testing::render(&list, 5, 1, &Theme::default());
-        assert_eq!(buf[(0, 0)].fg, ratatui_core::style::Color::Blue);
-        assert!(
-            !buf[(0, 0)]
-                .modifier
-                .contains(ratatui_core::style::Modifier::BOLD)
-        );
+        assert_eq!(buf[(0, 0)].fg, crate::style::Color::Blue);
+        assert!(!buf[(0, 0)].modifier.contains(crate::style::Modifier::BOLD));
     }
 
     #[test]
@@ -963,7 +959,7 @@ mod tests {
         assert!(row(&buf, 1).contains("beta"));
         // Selected row carries the selection background.
         assert_eq!(buf[(0, 1)].bg, theme.selection_bg);
-        assert_eq!(buf[(0, 0)].bg, ratatui_core::style::Color::Reset);
+        assert_eq!(buf[(0, 0)].bg, crate::style::Color::Reset);
     }
 
     #[test]

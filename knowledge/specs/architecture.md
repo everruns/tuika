@@ -9,18 +9,18 @@ description: Defines tuika's view/state/layout/host model and the boundaries tha
 ## Why
 
 A terminal UI toolkit has two plausible shapes: a retained widget tree with a
-reconciler, or an immediate-mode redraw. ratatui already diffs a cell buffer
+reconciler, or an immediate-mode redraw. Diffing a cell buffer
 against the terminal every frame, so a second reconciliation layer above it
 would duplicate work and introduce a second source of truth for "what is on
-screen". tuika therefore builds *on top of* the diff ratatui already performs
-rather than beside it.
+screen". tuika therefore makes that buffer diff its *only* reconciliation
+rather than adding a second layer above it.
 
 ## The model
 
 - **Views are ephemeral.** A `View` is rebuilt from application state every
   frame. There is no identity, no keys, no lifecycle. This is affordable because
-  ratatui diffs the resulting buffer, so an unchanged frame writes nothing to
-  the terminal.
+  `Buffer::diff` compares the resulting buffer against the last frame, so an
+  unchanged frame writes nothing to the terminal.
 - **State that must survive lives in the host.** Scroll offset, selection index,
   focus registry, text-input cursor, and toast expiry are `*State` structs the
   host owns and passes back in each frame — the `StatefulWidget` idiom. A view
@@ -185,31 +185,54 @@ max-content availability. Its default adapts to the original `measure`, so old
 views remain source-compatible; the non-exhaustive request and availability
 types can gain future measurement inputs without another trait-wide break.
 
-## Why the `ratatui-core` boundary, not the umbrella
+## Why tuika owns the cell grid
 
-tuika renders none of ratatui's own widgets, so it depends on `ratatui-core`
-directly. This drops `ratatui-widgets`, `ratatui-macros`, and their transitive
-weight from every downstream build that does not use them.
+tuika has no runtime dependency on ratatui. It owns its own `Rect`/`Position`,
+`Color`/`Modifier`/`Style`, `Line`/`Span`, `Buffer`/`Cell`, `Backend`, and
+`Terminal` — everything from the layout area down to the bytes on the wire.
 
-It does not take `ratatui-crossterm` either. That crate supplies exactly one
-thing tuika needs — a `Backend` that writes through crossterm — and tuika
-already implemented the whole trait once, in `HyperlinkBackend`, to wrap it.
-Owning the cell-drawing loop as well collapses those two layers into one and
-drops the crate's eight-crate `instability`/`darling` proc-macro tree. The
-emitted byte stream is held byte-identical to `ratatui-crossterm`'s by a
-differential unit test that draws the same cells through both, so the choice
-stays an implementation detail rather than a compatibility claim. tuika keeps an
-*optional* dependency on it under the `scrolling-regions` feature only, to
-forward that flag: enabling `ratatui-core/scrolling-regions` adds two required
-`Backend` methods, and Cargo unifies features one way, so a host's own
-`ratatui-crossterm` would otherwise fail to compile.
+This was not always so, and the reasoning for the change is worth keeping:
 
-It costs nothing in interoperability: the interop boundary is a raw
-`&mut Buffer` from that same `ratatui-core`. A host bringing the `ratatui`
-umbrella resolves to one shared `ratatui-core`, so `Surface::render_ratatui` and
-`RatatuiView` accept any real ratatui widget without conversion. The
-`underline-color` feature is enabled to match the umbrella's default so cell
-rendering is byte-identical either way.
+- **The public API was version-locked to someone else's crate.** Every `View`
+  signature named a `ratatui-core` type, so a `ratatui-core` major bump was a
+  breaking release for tuika, all four companion crates, and every host at once.
+  Owning the vocabulary makes that a private implementation detail.
+- **Half the dependency weight was for code tuika never called.** `ratatui-core`
+  pulls `kasuari` (a Cassowary solver), `lru`, and a second `hashbrown` for
+  `layout::Layout` — which tuika replaced with its own flex solver on day one —
+  plus `strum`, `compact_str`, `itertools`, and `unicode-truncate`. Removing it
+  took the default graph from 55 crates to 32 and the cold dependency build from
+  roughly 32s to 6s.
+- **The cell model had already outgrown it.** OSC 8 hyperlinks do not fit in a
+  ratatui `Cell`, which is why `HyperlinkBackend` existed as a whole `Backend`
+  implementation whose job was to re-scan finished cells for URLs.
+
+What did *not* motivate it: performance. That the render benchmarks came out
+~7% faster is a side effect of `Cell` storing short grapheme clusters inline
+rather than in a `CompactString`, not the goal.
+
+### Interoperability is preserved, not abandoned
+
+`Surface::render_ratatui` and `RatatuiView` still accept any real ratatui
+widget, behind the optional `ratatui` feature. The boundary is no longer a
+shared `Buffer` — the two crates no longer share a cell type — but a cell-by-cell
+conversion over the *rendered area only*, in `interop.rs`.
+
+That conversion is cheap because `render_ratatui` was always a scratch-buffer
+round trip: cells were already copied in and back out to enforce the clip. The
+only change is that the scratch is converted on the way through. A host that
+renders no ratatui widgets compiles none of it and takes no dependency.
+
+The conversions are exhaustive `match`es rather than transmutes, and the
+modifier bit layout — the one place a silent divergence could hide — is pinned
+by a test rather than assumed.
+
+### The cost that was accepted
+
+Every `pub` item that named a ratatui type changed, which is a breaking release
+for every host. It was taken as one change rather than two: decoupling the API
+without removing the dependency would have broken hosts once, and removing the
+dependency later would have broken them again.
 
 ## The probe pattern
 
@@ -340,7 +363,8 @@ the child's logical extent is much larger.
 3. Views paint into a clipped `Surface`; overlays composite over the base.
 4. The host calls out-of-band emitters (images, native progress) after the
    frame, because those escapes paint outside the cell model.
-5. ratatui diffs the buffer and writes only what changed.
+5. `Terminal` diffs the buffer against the previous frame and writes only what
+   changed.
 
 ## Non-goals
 

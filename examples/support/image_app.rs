@@ -1,9 +1,8 @@
 use std::io;
 
-use ratatui::style::Style;
-use ratatui::text::Span;
 use tuika::prelude::*;
 use tuika::term::image::{ImageData, ImageSupport};
+use tuika::ui::{Span, Style};
 
 pub const ALT: &str = "a red/green gradient";
 

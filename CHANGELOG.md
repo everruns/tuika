@@ -13,7 +13,93 @@ described in the release process begins with the entry below.
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **tuika no longer depends on ratatui.** It now owns its own `Rect`/`Position`,
+  `Color`/`Modifier`/`Style`, `Line`/`Span`, `Buffer`/`Cell`, `Backend`, and
+  `Terminal`. Every one of those types moved from `ratatui-core` to tuika, so
+  any signature naming one changes.
+
+  For most hosts the migration is an import change — the canonical path is
+  unchanged:
+
+  ```rust
+  // before
+  use ratatui_core::layout::Rect;
+  use ratatui_core::style::{Color, Modifier, Style};
+  use ratatui_core::text::{Line, Span};
+
+  // after (or just `use tuika::prelude::*;`)
+  use tuika::ui::{Color, Line, Modifier, Rect, Span, Style};
+  ```
+
+  A host driving its own terminal takes `tuika::term::terminal::{Terminal,
+  TerminalOptions, Viewport}` and `tuika::term::backend::CrosstermBackend`
+  instead of ratatui's, and `tuika::term::testbackend::TestBackend` in tests.
+
+  The types are deliberately shaped like the ones they replace, with two
+  behavioral notes:
+  - `Span::width` and `Line::width` count grapheme-aware display columns
+    (`width::str_cols`) rather than per-`char` widths, so they now agree with
+    what `Surface` actually paints. A line containing a ZWJ emoji measures
+    narrower than before — and correctly.
+  - `Cell` stores short grapheme clusters inline instead of in a
+    `CompactString`. `Cell::new` is no longer `const`; use `Cell::default()`
+    for a blank cell.
+
+- **Ratatui interoperability is now behind the `ratatui` feature**, off by
+  default. `Surface::render_ratatui`, `tuika::interop`, and `RatatuiView` need
+  it; a host wrapping ratatui widgets adds:
+
+  ```toml
+  tuika = { version = "0.11", features = ["ratatui"] }
+  ```
+
+  Every ratatui widget still works. The boundary is no longer a shared `Buffer`
+  — the two crates no longer share a cell type — but a cell-by-cell conversion
+  over the rendered area, which `render_ratatui` was already doing a copy for.
+
+- **`Surface::render_ratatui` was split.** The general escape hatch — a private
+  scratch buffer, composited back through the clip — is now
+  `Surface::render_scratch` and takes tuika's `Buffer`. `render_ratatui` is the
+  ratatui-specific wrapper around it. A caller using it for scratch access
+  rather than for ratatui widgets should switch to `render_scratch`, which needs
+  no feature.
+
+- **`Line::raw` and `Line::styled` split their content on line breaks**, one
+  span per line, matching what they replaced. `Line::raw("")` therefore yields a
+  line with no spans.
+
+### Added
+
+- `Surface::render_scratch` — clipped scratch-buffer access without ratatui.
+- `Buffer::set_style`, `Buffer::content()`, `Cell::raw_symbol()` (tells a wide
+  grapheme's placeholder apart from a blank cell).
+- `framebuffer::QUADRANTS` — the sixteen quadrant block glyphs, previously
+  reached through `ratatui_core::symbols::pixel`.
+- `Style::{bold, dim, italic, underlined, reversed, crossed_out}` shorthands.
+- `tuika::term::backend::CrosstermBackend` and
+  `tuika::term::testbackend::TestBackend` are public, for a host driving
+  `Terminal` itself.
+
+
+- `mouse::SelectionState::confine` / `region` — restrict a gesture to a rect and
+  read it back, for hosts driving the selection primitives from their own loop.
+
 ### Changed
+
+- **Dependencies: 55 crates to 32.** Dropping `ratatui-core` removed 23,
+  including `kasuari` (a Cassowary solver), `lru`, and a second `hashbrown` —
+  all of which existed for `ratatui_core::layout::Layout`, which tuika replaced
+  with its own flex solver and never called — plus `strum`, `compact_str`,
+  `itertools`, `unicode-truncate`, and a second `syn` major version. The cold
+  dependency build drops from roughly 32s to 6s.
+- **Rendering is ~7% cheaper.** `render`, `frame_windowed`, and the scroll paths
+  fall 7.3–7.4% in instruction count, because a `Cell` now stores short
+  grapheme clusters inline. The markdown paths rise ~2%, the cost of measuring
+  widths grapheme-aware; the benchmark baseline is updated accordingly.
+- `scrolling-regions` is now a feature of tuika's own `Backend` trait, and no
+  longer pulls in `ratatui-crossterm` to forward a flag.
 
 - **Runner drag selection is per panel.** A left drag that starts inside a
   bordered `Boxed` selects only within that panel: positions clamp to its
@@ -26,11 +112,6 @@ described in the release process begins with the entry below.
 - A `SelectionRange` that reaches past the `area` handed to
   `mouse::paint_selection`, `mouse::selected_text`, or `SelectionRange::contains`
   now stops at that area's rows instead of indexing the buffer out of bounds.
-
-### Added
-
-- `mouse::SelectionState::confine` / `region` — restrict a gesture to a rect and
-  read it back, for hosts driving the selection primitives from their own loop.
 
 ## [0.11.0] - 2026-08-22
 
@@ -60,6 +141,7 @@ whole.
 - **Dependencies**: 66 crates to 55 (the `async` graph, 71 to 59).
 
 ### Breaking Changes
+
 
 - **`tuika-codeformatters`**: every tree-sitter grammar now sits behind its own
   cargo feature. All fourteen are **on by default**, so a dependant taking the

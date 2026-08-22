@@ -5,7 +5,7 @@
 //! passive panel. The panel's content, focus id, input routing, and chrome stay
 //! with the host.
 
-use ratatui_core::layout::Rect;
+use crate::geometry::Rect;
 
 /// Screen edge that owns a dock or drawer.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -232,7 +232,7 @@ fn split(area: Rect, panel_width: u16, edge: DockEdge) -> (Rect, Rect) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui_core::layout::Rect;
+    use crate::geometry::Rect;
 
     #[test]
     fn passive_dock_focuses_then_closes() {

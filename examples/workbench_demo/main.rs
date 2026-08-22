@@ -9,9 +9,9 @@
 
 use std::time::Duration;
 
-use ratatui::layout::Alignment;
 use tuika::prelude::*;
 use tuika::probe::RectProbe;
+use tuika::ui::Alignment;
 use tuika_charts::{Axis as ChartAxis, Chart, Domain, Point, Series};
 use tuika_codeformatters::TreeSitterHighlighter;
 

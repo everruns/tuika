@@ -2296,7 +2296,6 @@ dependencies = [
  "pulldown-cmark",
  "ratatui",
  "ratatui-core",
- "ratatui-crossterm",
  "tokio",
  "tokio-stream",
  "tuika-charts",

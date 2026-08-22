@@ -12,7 +12,7 @@ use std::task::Waker;
 #[cfg(feature = "async")]
 use std::task::{Context, Poll};
 
-use ratatui_core::layout::Rect;
+use crate::geometry::Rect;
 
 use crate::{Element, RenderCtx, Size, Surface, View};
 

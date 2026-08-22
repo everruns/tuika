@@ -27,8 +27,8 @@
 use std::io;
 use std::time::Duration;
 
-use ratatui::style::{Color, Style};
-use ratatui::text::{Line, Span};
+use tuika::ui::{Color, Style};
+use tuika::ui::{Line, Span};
 
 use tuika::components::{Flex, Rule, Text};
 use tuika::term::capabilities::Capabilities;

@@ -3,8 +3,8 @@
 //! A thin `View` over the same two passes, for static markdown. Streaming hosts
 //! hold a [`MarkdownState`](super::MarkdownState) instead and draw its lines.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::text::Line;
+use crate::geometry::Rect;
+use crate::text::Line;
 
 use crate::components::Image;
 use crate::components::text::line_width;
@@ -209,10 +209,10 @@ impl View for Markdown<'_> {
 mod tests {
     use super::*;
     use crate::components::{MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer};
+    use crate::style::Color;
     use crate::style::StyleBundle;
     use crate::testing::{grid, render_with_sheet};
-    use ratatui_core::style::Color;
-    use ratatui_core::text::{Line, Span};
+    use crate::text::{Line, Span};
 
     struct ContextBlock;
 

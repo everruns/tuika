@@ -4,9 +4,10 @@
 //! explicit color for semantic frames (accent/danger modals, per-pane colors).
 //! This is `tuika`'s framing primitive (Pi's `DynamicBorder` / `Box`).
 
-use ratatui_core::layout::{Alignment, Rect};
-use ratatui_core::style::{Color, Style};
-use ratatui_core::text::Line;
+use crate::geometry::Rect;
+use crate::style::{Color, Style};
+use crate::text::Alignment;
+use crate::text::Line;
 
 use crate::geometry::{Padding, Size};
 use crate::style::{BorderStyle, Role};
@@ -273,11 +274,11 @@ mod tests {
     use super::*;
     use crate::Surface;
     use crate::components::Text;
+    use crate::style::{Color, Modifier};
     use crate::style::{StyleBundle, StyleSheet, Theme};
     use crate::tests::support::{buffer, rainbow_theme, row};
+    use crate::text::Span;
     use crate::view::{RenderCtx, View, element};
-    use ratatui_core::style::{Color, Modifier};
-    use ratatui_core::text::Span;
 
     #[test]
     fn boxed_border_closed_across_sizes() {

@@ -9,8 +9,8 @@
 //! corner. This is the notification analog of OpenTUI's toast system, without a
 //! scheduler.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::{Color, Modifier};
+use crate::geometry::Rect;
+use crate::style::{Color, Modifier};
 
 use crate::geometry::Size;
 use crate::style::StyleRole;

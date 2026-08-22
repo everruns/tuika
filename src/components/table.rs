@@ -22,9 +22,9 @@
 //! [`SelectList`]: crate::components::SelectList
 //! [`Boxed::border_color`]: crate::components::Boxed::border_color
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
-use ratatui_core::text::Line;
+use crate::geometry::Rect;
+use crate::style::Style;
+use crate::text::Line;
 
 use crate::geometry::Size;
 use crate::layout::{Dimension, Item, LayoutStyle, solve};
@@ -77,7 +77,7 @@ impl Column {
 /// # Example
 ///
 /// ```
-/// use ratatui_core::text::Line;
+/// use tuika::ui::Line;
 /// use tuika::prelude::*;
 /// use tuika::testing::{grid, render};
 ///
@@ -470,9 +470,9 @@ mod tests {
     use crate::event::{Event, Key, KeyCode};
     use crate::style::Theme;
     use crate::tests::support::{buffer, rainbow_theme, row};
+    use crate::text::{Line, Span};
     use crate::view::{RenderCtx, View};
     use crate::{Size, Surface};
-    use ratatui_core::text::{Line, Span};
 
     fn sample() -> (Vec<Column>, Vec<Vec<Line<'static>>>) {
         let cols = vec![Column::auto("name"), Column::auto("kind")];
@@ -694,7 +694,7 @@ mod tests {
 
     #[test]
     fn table_header_style_overrides_the_theme_default() {
-        use ratatui_core::style::{Color, Style};
+        use crate::style::{Color, Style};
         let (cols, rows) = sample();
         let t = rainbow_theme();
         let state = SelectState::new();
@@ -716,7 +716,7 @@ mod tests {
 
     #[test]
     fn table_preserve_selection_fg_keeps_cell_colors() {
-        use ratatui_core::style::{Color, Style};
+        use crate::style::{Color, Style};
         let t = rainbow_theme();
         let cols = vec![Column::auto("c")];
         // A color-coded cell on the (only, selected) data row.
@@ -766,7 +766,7 @@ mod tests {
 
     #[test]
     fn table_accepts_an_instance_selection_style() {
-        use ratatui_core::style::{Color, Modifier};
+        use crate::style::{Color, Modifier};
         let (cols, rows) = sample();
         let state = SelectState::new();
         let table =
@@ -778,7 +778,7 @@ mod tests {
 
     #[test]
     fn table_cells_compose_line_style_under_span_style() {
-        use ratatui_core::style::{Color, Modifier};
+        use crate::style::{Color, Modifier};
         let cols = vec![Column::auto("c")];
         let rows = vec![vec![
             Line::from(vec![

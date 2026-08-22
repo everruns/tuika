@@ -1,7 +1,7 @@
 //! Owned scenes, arbitrary-child viewports, forms, and custom drawing.
 
-use ratatui_core::layout::Rect;
 use tuika::prelude::*;
+use tuika::ui::Rect;
 use tuika::view::DrawView;
 
 mod support;

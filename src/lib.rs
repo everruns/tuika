@@ -81,6 +81,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod anim;
+pub mod buffer;
 mod clock;
 pub mod components;
 pub mod dock;
@@ -92,6 +93,8 @@ pub mod framebuffer;
 pub mod geometry;
 pub mod highlight;
 pub mod host;
+#[cfg(feature = "ratatui")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ratatui")))]
 pub mod interop;
 pub mod keymap;
 pub mod layout;
@@ -109,18 +112,23 @@ pub mod style;
 pub mod surface;
 pub mod term;
 pub mod testing;
+pub mod text;
 pub mod themes;
 pub mod view;
 pub mod width;
 
-/// Backend UI vocabulary re-exported for custom [`View`] implementations.
+/// The cell-grid vocabulary, in one place for custom [`View`] implementations.
 ///
-/// Applications can use these canonical types without depending on
-/// `ratatui-core` directly. More specialized backend internals remain private.
+/// These are tuika's own types; nothing here is a re-export of another crate,
+/// so a host writing a `View` takes no rendering dependency beyond tuika
+/// itself. Each also has a canonical home module ([`geometry`], [`style`],
+/// [`text`], [`buffer`]) — this module is the convenience path, and what
+/// [`prelude`] pulls in.
 pub mod ui {
-    pub use ratatui_core::layout::Rect;
-    pub use ratatui_core::style::{Color, Modifier, Style};
-    pub use ratatui_core::text::{Line, Span};
+    pub use crate::buffer::{Buffer, Cell, CellDiffOption};
+    pub use crate::geometry::{Position, Rect};
+    pub use crate::style::{Color, Modifier, Style};
+    pub use crate::text::{Alignment, Line, Span};
 }
 
 // The framework spine: the types a host composes with on essentially every

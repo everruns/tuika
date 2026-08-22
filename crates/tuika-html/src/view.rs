@@ -1,10 +1,10 @@
 //! The [`Html`] view: a fragment placed in a layout.
 
-use ratatui_core::layout::Rect;
 use tuika::components::text::line_width;
 use tuika::geometry::Size;
 use tuika::style::{StyleSheet, Theme};
 use tuika::surface::Surface;
+use tuika::ui::Rect;
 use tuika::view::{RenderCtx, View};
 
 use crate::{Limits, to_lines_with_limits};
@@ -53,7 +53,7 @@ impl Html {
         width: u16,
         theme: &Theme,
         sheet: &StyleSheet,
-    ) -> Vec<ratatui_core::text::Line<'static>> {
+    ) -> Vec<tuika::ui::Line<'static>> {
         to_lines_with_limits(&self.source, width, theme, sheet, self.limits).unwrap_or_default()
     }
 }
@@ -89,9 +89,9 @@ impl View for Html {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui_core::style::Color;
     use tuika::style::StyleBundle;
     use tuika::testing::{grid, render, render_with_sheet};
+    use tuika::ui::Color;
 
     #[test]
     fn the_view_paints_its_fragment() {

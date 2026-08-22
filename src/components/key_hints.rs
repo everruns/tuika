@@ -1,10 +1,10 @@
 //! Compact, responsive key/action hints and complete keymap help.
 
+use crate::geometry::Rect;
 use crate::keymap::{Hint, Keymap};
 use crate::style::StyleRole;
 use crate::width::str_cols;
 use crate::{RenderCtx, Size, Surface, View};
-use ratatui_core::layout::Rect;
 
 /// A key/action hint with a responsive fitting priority.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -244,9 +244,9 @@ impl View for KeymapHelp {
 mod tests {
     use super::*;
     use crate::keymap::Layer;
+    use crate::style::Color;
     use crate::testing::{grid, render, render_sizes};
     use crate::{Size, Theme};
-    use ratatui_core::style::Color;
 
     #[test]
     fn key_hints_measure_unicode_by_terminal_width() {

@@ -21,11 +21,11 @@
 use std::hint::black_box;
 
 use iai_callgrind::{library_benchmark, library_benchmark_group, main};
-use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
-use ratatui::text::{Line, Span};
 use tuika::components::{Scroll, ScrollState};
+use tuika::ui::Buffer;
+use tuika::ui::Rect;
+use tuika::ui::{Color, Style};
+use tuika::ui::{Line, Span};
 use tuika::{Event, Key, KeyCode, RenderCtx, Surface, Theme, View};
 
 const WIDTH: u16 = 80;

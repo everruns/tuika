@@ -6,8 +6,8 @@
 //! child into its rect through a clipped child surface. Nesting `Flex`es is how
 //! every screen is built.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
+use crate::geometry::Rect;
+use crate::style::Style;
 
 use crate::geometry::Size;
 use crate::layout::{AlignContent, Dimension, FlexItemStyle, FlexWrap, Item, LayoutStyle, solve};
@@ -237,7 +237,7 @@ impl<V: View> Flex<V> {
     ///
     /// ```
     /// use tuika::prelude::*;
-    /// use ratatui_core::layout::Rect;
+    /// use tuika::ui::Rect;
     ///
     /// let flex = Flex::row()
     ///     .fixed(4, element(Text::raw("abcd")))

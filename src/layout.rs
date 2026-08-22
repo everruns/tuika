@@ -6,7 +6,7 @@
 
 use std::ops::Range;
 
-use ratatui_core::layout::Rect;
+use crate::geometry::Rect;
 
 use super::geometry::{Axis, Padding, Size};
 

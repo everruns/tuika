@@ -42,11 +42,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use ratatui::style::{Modifier, Style};
-use ratatui::text::Span;
 use tree_sitter_highlight::{Highlight, HighlightConfiguration, HighlightEvent, Highlighter};
 use tuika::Theme;
 use tuika::style::CodeTheme;
+use tuika::ui::{Modifier, Span, Style};
 
 /// Highlight capture names we recognize, longest-specific first so
 /// tree-sitter-highlight resolves the most precise style. Kept in sync with
@@ -387,7 +386,7 @@ mod tests {
     fn follows_the_host_theme() {
         // A different palette restyles the same token.
         let mut theme = Theme::default();
-        theme.code.keyword = ratatui::style::Color::Indexed(200);
+        theme.code.keyword = tuika::ui::Color::Indexed(200);
         let hl = TreeSitterHighlighter::new();
         let out = hl
             .highlight("rust", &["fn f() {}"], &theme)
@@ -396,7 +395,7 @@ mod tests {
             .iter()
             .find(|s| s.content.as_ref() == "fn")
             .expect("fn span");
-        assert_eq!(fn_span.style.fg, Some(ratatui::style::Color::Indexed(200)));
+        assert_eq!(fn_span.style.fg, Some(tuika::ui::Color::Indexed(200)));
     }
 
     // Aliases are per-grammar, so each assertion is gated on the feature that

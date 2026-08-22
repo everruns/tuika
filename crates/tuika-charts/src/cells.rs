@@ -1,6 +1,6 @@
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
-use ratatui_core::symbols::pixel::QUADRANTS;
+use tuika::framebuffer::QUADRANTS;
+use tuika::ui::Rect;
+use tuika::ui::Style;
 use tuika::{RenderCtx, Surface};
 
 use crate::axis::AxisLayout;
