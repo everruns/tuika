@@ -52,6 +52,13 @@ The module's files follow the passes rather than the vocabulary, so a change has
 one obvious home: the intermediate form, the parse pass, the flatten pass, table
 layout, the streaming cache, the image boundary, and the view.
 
+A wrapped line's inter-word space belongs to the *source whitespace* it stands
+for, not to the word before it. Flattening collapses a run of whitespace into one
+cell, and that cell keeps the style and hyperlink target the source whitespace
+carried — which is how a link's underline and its OSC 8 hit area stop at the end
+of the URL instead of running into the following word. A word boundary with no
+whitespace behind it (`**bold**text`) gets no space invented for it.
+
 ### The settled-prefix cache
 
 The cache boundary is the last *stable block boundary*, not the last newline: a

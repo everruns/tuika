@@ -1,5 +1,18 @@
 # Knowledge Log
 
+## 2026-08-22
+
+- **A link's underline is a whitespace question, not a link question**
+  - The reported bug was a bold bare URL whose underline ran past the URL. The
+    cause was in the wrap pass: the space re-inserted between two words inherited
+    the style and href of the preceding word, so any span boundary that happened
+    to be a link leaked one cell. [Markdown](specs/markdown.md) now states the
+    rule the fix restored — the collapsed separator carries the style of the
+    source whitespace, and a boundary with no whitespace behind it gets no space.
+  - Worth keeping because the symptom and the cause sat in different concepts:
+    nothing about link handling was wrong.
+
+
 ## 2026-08-21
 
 - **A session is a test subject the component sweep cannot reach**
