@@ -244,9 +244,15 @@ pub(super) fn wrap_rich(spans: &[RichSpan], width: u16) -> Vec<(Vec<RichSpan>, V
     let n = cells.len();
     let is_break = |g: &str| g.chars().all(char::is_whitespace);
     while i < n {
-        if is_break(cells[i].0) {
+        let mut separator = None;
+        while i < n && is_break(cells[i].0) {
+            // A separator may sit outside the preceding style scope (`[link] next`).
+            // Preserve its own style and href when collapsing whitespace.
+            separator.get_or_insert((cells[i].1, cells[i].2));
             i += 1;
-            continue;
+        }
+        if i == n {
+            break;
         }
         let start = i;
         let mut word_w = 0u16;
@@ -255,10 +261,10 @@ pub(super) fn wrap_rich(spans: &[RichSpan], width: u16) -> Vec<(Vec<RichSpan>, V
             i += 1;
         }
         let word = &cells[start..i];
-        let sep = u16::from(!cur.is_empty());
+        let sep = u16::from(!cur.is_empty() && separator.is_some());
         if word_w <= width && cur_w + sep + word_w <= width {
             if sep == 1 {
-                let (_, st, href) = *cur.last().expect("sep implies non-empty cur");
+                let (st, href) = separator.expect("sep implies source whitespace");
                 cur.push((" ", st, href));
                 cur_w += 1;
             }
