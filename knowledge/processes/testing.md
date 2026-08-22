@@ -32,6 +32,7 @@ terminal encoder, not the component, and belongs in the PTY layer.
 | Property | `src/tests/proptests.rs` | solver and overlay invariants for *any* input — children stay in bounds, flex fills exactly |
 | Fuzz | `src/tests/fuzz.rs` | adversarial text and event streams through the wrap solver, composed trees, stateful components, and the parsers that read untrusted bytes |
 | Black-box sweep | `tests/robustness.rs` | every component × adversarial corpus × degenerate size, through the published API only |
+| Session stress | `tests/stress_ui.rs` | a whole *session* rather than one component: every screen mode driven through the published runners — synchronous and async — over a screen that resizes between frames, plus mode changes mid-session, adversarial publishing, and shell/overlay/dock composition at degenerate sizes |
 | Golden snapshot | `src/tests/snapshots.rs` | whole screens diffed against checked-in glyph grids |
 | Size sweep | unit | no panic and no out-of-clip writes from `0×0` upward |
 | PTY smoke | `tests/pty_smoke.rs` | the terminal-facing protocol in both screen modes: alt-screen and cursor/mouse lifecycle pairs, runner selection through OSC 52, OSC 9;4, OSC 8, truecolor and Braille cells through a reference terminal parser, resize survival, clean exit; and for a split footer, that it stays off the alternate screen, pins to the bottom, publishes above itself, and releases its rows |
@@ -53,6 +54,25 @@ hosts test their views and full state/update/view applications with the same
 signals, theme, and stylesheet contexts used in production. The harness owns
 no terminal or runtime; a dirty update returns an in-memory frame. Changes to
 this surface are API changes.
+
+## Why a session layer exists beside the component sweep
+
+`tests/robustness.rs` answers "does this component survive being painted into a
+hostile rect". It cannot answer "does this *program* survive being used",
+because everything that makes a session hard is outside one paint: a terminal
+that changes size between frames, a footer that has to be re-pinned into the new
+geometry, a queue committed before the next frame, state built against a
+collection that has since changed shape, and a frame tree that swaps while the
+state under it does not.
+
+`tests/stress_ui.rs` models exactly that. Its backend is a screen two renderers
+can share and that resizes *inside* a size query — the moment a real window
+drag lands — so the loop meets the same stale-geometry window a user does. That
+is what caught the pin and publish orderings recorded in the screen-modes spec;
+neither is reachable from a test that paints into a fixed buffer.
+
+Its storms are seeded and replayable, and `TUIKA_STRESS_EVENTS` raises the
+event count the way `PROPTEST_CASES` raises the case count.
 
 ## Why fuzzing is a layer, not a mood
 

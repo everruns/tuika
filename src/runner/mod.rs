@@ -804,6 +804,10 @@ impl Runner {
         let mut last_tick = self.clock.now();
 
         if split {
+            // Same order as every later pin: the terminal may already have been
+            // resized between its construction and this first frame, and
+            // `pin_footer` inserts rows at the geometry the terminal last knew.
+            terminal.autoresize()?;
             pin_footer(terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
@@ -820,6 +824,10 @@ impl Runner {
                 schedule_redraw(&mut redraw_at, now);
             }
             if split {
+                // A block is rendered and inserted at the width the terminal
+                // last knew, so an unobserved resize would publish it at the
+                // old one. Learn the size before committing, not after.
+                terminal.autoresize()?;
                 // Publishing scrolls the terminal and may clear the viewport,
                 // so a committed block always makes the footer dirty.
                 if self.scrollback.flush(terminal, theme)? {
