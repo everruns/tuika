@@ -279,4 +279,5 @@ Run the adaptive gallery with `q` or `Esc` to quit:
 
 ```bash
 cargo run -p tuika-charts --example charts
+cargo run -p tuika-charts --example charts -- --theme gruvbox-dark
 ```

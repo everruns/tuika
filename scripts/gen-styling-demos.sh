@@ -36,7 +36,7 @@ fg="#ebe6e6"
 
 # Each held variant plus one live-cycling capture. `run <name>` holds a sheet;
 # `run` alone cycles through every variant.
-records=("default:run default" "vivid:run vivid" "mono:run mono" "cycle:run")
+records=("default:run default" "vivid:run vivid" "mono:run mono" "cycle:")
 
 record() {
   local name="$1" cmd="$2" sleep_for="$3"

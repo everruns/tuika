@@ -4,8 +4,8 @@
 #
 # The composite gallery scene in examples/screenshot.rs is the
 # single source of truth (the same `scene()` also renders docs/hero.svg). This
-# script builds that example, records its `run` mode under VHS, and writes the
-# GIF. The tape is generated here, not committed.
+# script builds that example, records its default terminal mode under VHS, and
+# writes the GIF. The tape is generated here, not committed.
 #
 # Requirements: vhs (https://github.com/charmbracelet/vhs), which needs ttyd and
 # ffmpeg on PATH. Run from anywhere:
@@ -47,7 +47,7 @@ Set Theme { "background": "#141214", "foreground": "#ebe6e6" }
 Set Framerate 24
 
 Hide
-Type "TERM=xterm-256color ${bin} run"
+Type "TERM=xterm-256color ${bin}"
 Enter
 Sleep 900ms
 Show

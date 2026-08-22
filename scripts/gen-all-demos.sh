@@ -31,7 +31,7 @@ scripts/gen-styling-demos.sh
 scripts/gen-split-footer-demo.sh
 
 echo "Generating image SVG…"
-cargo run -q --example image_demo
+cargo run -q --example image_demo -- docs/demos/image.svg
 
 
 scripts/gen-codex-demo.sh

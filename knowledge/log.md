@@ -22,6 +22,11 @@
   - Worth keeping because the symptom and the cause sat in different concepts:
     nothing about link handling was wrong.
 
+- **Runnable-first example commands**
+  - Standardized examples that also generate assets: their no-argument form now
+    renders in a real terminal, an explicit SVG path selects offline output, and
+    `--theme <name>` applies to both paths. Demo generators pass committed output
+    paths explicitly.
 
 ## 2026-08-21
 

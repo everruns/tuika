@@ -31,4 +31,5 @@ Run the integration example:
 
 ```sh
 cargo run -p tuika-mermaid --example mermaid_markdown
+cargo run -p tuika-mermaid --example mermaid_markdown -- --theme gruvbox-dark
 ```

@@ -14,6 +14,8 @@ use std::io;
 
 use tuika::prelude::*;
 
+mod support;
+
 const ITEMS: [&str; 7] = [
     "Build release",
     "Run test suite",
@@ -114,7 +116,8 @@ fn update(state: &mut PickerState, event: &Event) -> UpdateResult {
 }
 
 fn main() -> io::Result<()> {
-    let theme = Theme::default();
+    let cli = support::Cli::parse()?;
+    let theme = cli.theme;
     let runner = Runner::new(RunnerConfig {
         screen_mode: ScreenMode::Alternate.with_mouse_capture(),
         ..RunnerConfig::default()

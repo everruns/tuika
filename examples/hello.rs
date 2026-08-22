@@ -6,9 +6,12 @@ use std::io;
 
 use tuika::prelude::*;
 
+mod support;
+
 fn main() -> io::Result<()> {
-    let theme = Theme::default();
-    let capture_mouse = std::env::args().any(|argument| argument == "--mouse");
+    let cli = support::Cli::parse()?;
+    let theme = cli.theme;
+    let capture_mouse = cli.args.iter().any(|argument| argument == "--mouse");
     let screen_mode = if capture_mouse {
         ScreenMode::Alternate.with_mouse_capture()
     } else {

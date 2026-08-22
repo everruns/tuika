@@ -13,33 +13,40 @@
 //! Regenerate after changing the look:
 //!
 //! ```text
-//! cargo run --example image_demo            # writes docs/demos/image.svg
-//! cargo run --example image_demo -- out.svg # custom path
+//! cargo run --example image_demo                         # real terminal
+//! cargo run --example image_demo -- out.svg              # write SVG
+//! cargo run --example image_demo -- docs/demos/image.svg # write the doc asset
+//! cargo run --example image_demo -- --theme gruvbox-dark # themed terminal
 //! ```
 
 use std::io;
-use std::path::PathBuf;
 
-use tuika::term::image::ImageData;
+use ratatui::style::Color;
+use tuika::Theme;
+
+#[path = "support/image_app.rs"]
+mod image_app;
+mod support;
 
 /// Source resolution of the embedded gradient. Small on purpose — it's a smooth
 /// gradient, so it upscales cleanly and keeps the committed SVG tiny.
 const IMG_W: u32 = 96;
 const IMG_H: u32 = 48;
 
-/// The exact fallback string `Image` paints when graphics aren't supported (see
-/// `Image::render_fallback`), for the alt text used below.
-const ALT: &str = "a red/green gradient";
-
 fn main() -> io::Result<()> {
-    let out = std::env::args()
-        .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs/demos/image.svg"));
+    let cli = support::Cli::parse()?;
+    let out = match support::Output::parse(&cli.args)? {
+        support::Output::Terminal => return image_app::run(&cli.theme),
+        support::Output::Svg(out) => out,
+    };
 
-    let data = gradient(IMG_W, IMG_H);
-    let png = png_rgba(data.pixel_width(), data.pixel_height(), &rgba(IMG_W, IMG_H));
-    let svg = render_svg(&png);
+    let data = image_app::gradient(IMG_W, IMG_H);
+    let png = png_rgba(
+        data.pixel_width(),
+        data.pixel_height(),
+        &image_app::rgba(IMG_W, IMG_H),
+    );
+    let svg = render_svg(&png, &cli.theme);
 
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;
@@ -52,37 +59,17 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-/// The demo image: red rises left→right, green top→bottom, blue constant — the
-/// same gradient as `examples/image.rs`, kept in sync by hand (both are tiny).
-fn rgba(w: u32, h: u32) -> Vec<u8> {
-    let mut buf = Vec::with_capacity((w * h * 4) as usize);
-    for y in 0..h {
-        for x in 0..w {
-            let r = (x * 255 / w.max(1)) as u8;
-            let g = (y * 255 / h.max(1)) as u8;
-            buf.extend_from_slice(&[r, g, 128, 255]);
-        }
-    }
-    buf
-}
-
-/// Build the real [`ImageData`] so the demo is anchored to the component's own
-/// validation and pixel layout, not an ad-hoc buffer.
-fn gradient(w: u32, h: u32) -> ImageData {
-    ImageData::from_rgba(w, h, rgba(w, h)).expect("gradient is well-formed")
-}
-
 // ---- SVG ------------------------------------------------------------------
 
-// Default-theme colors (see `Theme::default`), so the chrome matches yolop's.
-const BG: &str = "#141214";
-const SURFACE: &str = "#221c1e";
-const TEXT: &str = "#ebe6e6";
-const MUTED: &str = "#968c8e";
-const DIM: &str = "#5a4a4e";
-const ACCENT: &str = "#c83c46";
-
-fn render_svg(png: &[u8]) -> String {
+fn render_svg(png: &[u8], theme: &Theme) -> String {
+    let fallback = Theme::default();
+    let palette = SvgPalette {
+        bg: hex(theme.background, fallback.background),
+        surface: hex(theme.surface, fallback.surface),
+        muted: hex(theme.muted, fallback.muted),
+        dim: hex(theme.dim, fallback.dim),
+        accent: hex(theme.accent, fallback.accent),
+    };
     let b64 = base64(png);
     let mut s = String::new();
     s.push_str(
@@ -90,8 +77,8 @@ fn render_svg(png: &[u8]) -> String {
 "#,
     );
     // Two terminal "cards": left shows the rendered image, right the fallback.
-    card(&mut s, 8.0, "Kitty · Ghostty · WezTerm · Konsole");
-    card(&mut s, 448.0, "every other terminal");
+    card(&mut s, 8.0, "Kitty · Ghostty · WezTerm · Konsole", &palette);
+    card(&mut s, 448.0, "every other terminal", &palette);
 
     // Left card content: the actual gradient pixels, then the app's status line.
     s.push_str(&format!(
@@ -99,57 +86,118 @@ fn render_svg(png: &[u8]) -> String {
 <image x="32" y="64" width="368" height="160" preserveAspectRatio="none" clip-path="url(#pic)" href="data:image/png;base64,{b64}"/>
 "#
     ));
-    status(&mut s, 32.0, ACCENT, " graphics: Kitty protocol detected ");
+    status(
+        &mut s,
+        32.0,
+        &palette.accent,
+        " graphics: Kitty protocol detected ",
+        &palette.surface,
+    );
 
     // Right card content: the exact fallback placeholder, centered and dimmed.
     s.push_str(&format!(
-        r#"<text x="656" y="148" text-anchor="middle" font-size="15" font-style="italic" fill="{MUTED}">[image: {ALT}]</text>
+        r#"<text x="656" y="148" text-anchor="middle" font-size="15" font-style="italic" fill="{muted}">[image: {alt}]</text>
 "#
+        , muted = palette.muted, alt = image_app::ALT
     ));
     status(
         &mut s,
         472.0,
-        MUTED,
+        &palette.muted,
         " graphics: none — showing text fallback ",
+        &palette.surface,
     );
 
     s.push_str("</svg>\n");
     s
 }
 
+struct SvgPalette {
+    bg: String,
+    surface: String,
+    muted: String,
+    dim: String,
+    accent: String,
+}
+
 /// A rounded terminal-window card at `x` with three window dots and a `label`.
-fn card(s: &mut String, x: f32, label: &str) {
+fn card(s: &mut String, x: f32, label: &str, palette: &SvgPalette) {
     s.push_str(&format!(
-        r#"<rect x="{x}" y="8" width="424" height="284" rx="12" fill="{BG}" stroke="{DIM}"/>
-<rect x="{x}" y="8" width="424" height="40" rx="12" fill="{SURFACE}"/>
-<rect x="{x}" y="34" width="424" height="14" fill="{SURFACE}"/>
-"#
+        r#"<rect x="{x}" y="8" width="424" height="284" rx="12" fill="{bg}" stroke="{dim}"/>
+<rect x="{x}" y="8" width="424" height="40" rx="12" fill="{surface}"/>
+<rect x="{x}" y="34" width="424" height="14" fill="{surface}"/>
+"#,
+        bg = palette.bg,
+        dim = palette.dim,
+        surface = palette.surface,
     ));
-    for (i, c) in [ACCENT, "#c9a227", "#3fae6b"].iter().enumerate() {
+    for (i, c) in [palette.accent.as_str(), "#c9a227", "#3fae6b"]
+        .iter()
+        .enumerate()
+    {
         let cx = x + 24.0 + i as f32 * 18.0;
         s.push_str(&format!(r#"<circle cx="{cx}" cy="28" r="5" fill="{c}"/>"#));
         s.push('\n');
     }
     let lx = x + 212.0;
     s.push_str(&format!(
-        r#"<text x="{lx}" y="33" text-anchor="middle" font-size="12" fill="{MUTED}">{label}</text>
-"#
+        r#"<text x="{lx}" y="33" text-anchor="middle" font-size="12" fill="{muted}">{label}</text>
+"#,
+        muted = palette.muted,
     ));
 }
 
 /// The app's status bar line at the bottom of a card, starting at `x`.
-fn status(s: &mut String, x: f32, fg: &str, text: &str) {
+fn status(s: &mut String, x: f32, fg: &str, text: &str, surface: &str) {
     let y = 268.0;
     s.push_str(&format!(
-        r#"<rect x="{x}" y="{}" width="376" height="22" rx="4" fill="{SURFACE}"/>
+        r#"<rect x="{x}" y="{}" width="376" height="22" rx="4" fill="{surface}"/>
 <text x="{}" y="{}" font-size="12" fill="{fg}">{text}</text>
 "#,
         y - 15.0,
         x + 8.0,
         y - 0.0
     ));
-    // Keep TEXT referenced so the palette stays complete for future edits.
-    let _ = TEXT;
+}
+
+fn hex(color: Color, fallback: Color) -> String {
+    match color {
+        Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+        Color::Indexed(index) => indexed_hex(index),
+        Color::Reset => hex(fallback, Color::Black),
+        Color::Black => "#000000".to_owned(),
+        Color::Red | Color::LightRed => "#f14c4c".to_owned(),
+        Color::Green | Color::LightGreen => "#23d18b".to_owned(),
+        Color::Yellow | Color::LightYellow => "#f5f543".to_owned(),
+        Color::Blue | Color::LightBlue => "#3b8eea".to_owned(),
+        Color::Magenta | Color::LightMagenta => "#d670d6".to_owned(),
+        Color::Cyan | Color::LightCyan => "#29b8db".to_owned(),
+        Color::Gray | Color::DarkGray | Color::White => "#e5e5e5".to_owned(),
+    }
+}
+
+fn indexed_hex(index: u8) -> String {
+    const BASE: [&str; 16] = [
+        "#000000", "#cd3131", "#0dbc79", "#e5e510", "#2472c8", "#bc3fbc", "#11a8cd", "#e5e5e5",
+        "#666666", "#f14c4c", "#23d18b", "#f5f543", "#3b8eea", "#d670d6", "#29b8db", "#ffffff",
+    ];
+    match index {
+        0..=15 => BASE[index as usize].to_owned(),
+        16..=231 => {
+            const LEVELS: [u8; 6] = [0, 95, 135, 175, 215, 255];
+            let n = index - 16;
+            format!(
+                "#{:02x}{:02x}{:02x}",
+                LEVELS[(n / 36) as usize],
+                LEVELS[((n % 36) / 6) as usize],
+                LEVELS[(n % 6) as usize]
+            )
+        }
+        _ => {
+            let value = 8 + 10 * (index - 232);
+            format!("#{value:02x}{value:02x}{value:02x}")
+        }
+    }
 }
 
 // ---- Minimal PNG (RFC 2083) + base64, dependency-free ---------------------

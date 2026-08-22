@@ -30,6 +30,7 @@ A runnable, interactive gallery of highlighted snippets across languages
 
 ```bash
 cargo run -p tuika-codeformatters --example languages
+cargo run -p tuika-codeformatters --example languages -- --theme gruvbox-dark
 ```
 
 <img src="https://raw.githubusercontent.com/everruns/tuika/main/crates/tuika-codeformatters/docs/languages.gif" width="880" alt="Syntax highlighting across languages">
@@ -37,6 +38,7 @@ cargo run -p tuika-codeformatters --example languages
 To open a local source file in a scrollable highlighted viewer:
 
 ```bash
+cargo run -p tuika-codeformatters --example highlight_file
 cargo run -p tuika-codeformatters --example highlight_file -- path/to/file.rs
 ```
 

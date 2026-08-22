@@ -23,6 +23,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use tuika::prelude::*;
 
+mod support;
+
 /// Rows the footer reserves. Everything above is the terminal's.
 const FOOTER_ROWS: u16 = 5;
 
@@ -89,9 +91,16 @@ fn publish(scrollback: &Scrollback, seq: u64, theme: &Theme) {
 }
 
 fn main() -> std::io::Result<()> {
+    let cli = support::Cli::parse()?;
     // Opt-in mouse capture: off by default so the terminal keeps the wheel and
     // drag-selection over the scrollback this mode preserves.
-    let capture_mouse = std::env::args().any(|arg| arg == "--mouse");
+    let capture_mouse = cli.args.iter().any(|arg| arg == "--mouse");
+    if cli.args.iter().any(|arg| arg != "--mouse") {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "usage: cargo run --example split_footer [-- --mouse] [--theme NAME]",
+        ));
+    }
     let mode = ScreenMode::split_footer(FOOTER_ROWS);
     let mode = if capture_mouse {
         mode.with_mouse_capture()
@@ -99,7 +108,7 @@ fn main() -> std::io::Result<()> {
         mode
     };
 
-    let theme = Theme::default();
+    let theme = cli.theme;
     let runner = Runner::new(RunnerConfig {
         tick_rate: Duration::from_millis(80),
         screen_mode: mode,

@@ -2,11 +2,19 @@
 
 use ratatui_core::layout::Rect;
 use tuika::prelude::*;
-use tuika::testing::{grid, render};
 use tuika::view::DrawView;
 
-fn main() {
-    let theme = Theme::default();
+mod support;
+
+fn main() -> std::io::Result<()> {
+    let cli = support::Cli::parse()?;
+    if !cli.args.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "usage: cargo run --example primitives [-- --theme NAME]",
+        ));
+    }
+    let theme = cli.theme;
     let scroll = ScrollState::default();
     let form_state = FormState::default();
 
@@ -42,5 +50,14 @@ fn main() {
             .focus_owner("example-form"),
     );
 
-    println!("{}", grid(&render(&scene, 48, 16, &theme)));
+    write_once(
+        &mut std::io::stdout(),
+        &scene,
+        &theme,
+        OneShotOptions {
+            width: 48,
+            max_height: 16,
+            ..OneShotOptions::default()
+        },
+    )
 }

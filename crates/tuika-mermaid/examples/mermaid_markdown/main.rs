@@ -1,7 +1,8 @@
-use tuika::Theme;
-use tuika::components::Markdown;
-use tuika::testing::{grid, render};
+use tuika::prelude::*;
 use tuika_mermaid::MermaidRenderer;
+
+#[path = "../support/mod.rs"]
+mod support;
 
 const DOCUMENT: &str = "\
 # Native Mermaid
@@ -31,15 +32,37 @@ sequenceDiagram
 ```
 ";
 
-fn main() {
-    let theme = Theme::default();
-    let mermaid = MermaidRenderer::new();
-    let document = Markdown::new(DOCUMENT).block_renderer(&mermaid);
-    let buffer = render(&document, 80, 30, &theme);
-    let output = grid(&buffer)
-        .lines()
-        .map(str::trim_end)
-        .collect::<Vec<_>>()
-        .join("\n");
-    println!("{}", output.trim_end());
+struct App {
+    renderer: MermaidRenderer,
+}
+
+impl Application for App {
+    fn update(&mut self, signal: Signal) -> UpdateResult {
+        match signal {
+            Signal::Event(Event::Key(key))
+                if key.plain() && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc) =>
+            {
+                UpdateResult::Exit
+            }
+            _ => UpdateResult::Clean,
+        }
+    }
+
+    fn view(&self, _frame: u64) -> ScopedElement<'_> {
+        element(Markdown::new(DOCUMENT).block_renderer(&self.renderer))
+    }
+}
+
+fn main() -> std::io::Result<()> {
+    let (theme, args) = support::theme_and_args()?;
+    if !args.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "usage: cargo run -p tuika-mermaid --example mermaid_markdown [-- --theme NAME]",
+        ));
+    }
+    let mut app = App {
+        renderer: MermaidRenderer::new(),
+    };
+    Runner::new(RunnerConfig::default()).run(&theme, &mut app)
 }

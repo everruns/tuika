@@ -12,6 +12,8 @@ use ratatui::backend::CrosstermBackend;
 use ratatui_core::terminal::Terminal;
 use tuika::prelude::*;
 
+mod support;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Agent {
     Claude,
@@ -214,7 +216,8 @@ fn summary_line<'a>(summary: &'a str, positions: &[usize]) -> Line<'a> {
 }
 
 fn main() -> io::Result<()> {
-    let theme = Theme::default();
+    let cli = support::Cli::parse()?;
+    let theme = cli.theme;
     let _session = TerminalSession::enter_with(ScreenMode::Alternate.with_mouse_capture())?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     let mut app = App::new();

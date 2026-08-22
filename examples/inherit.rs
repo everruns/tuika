@@ -37,6 +37,8 @@ use tuika::{
     view,
 };
 
+mod support;
+
 /// How long to wait for the terminal to answer. A real tty replies to the
 /// Device Attributes fence immediately, so this is only reached on a terminal
 /// that ignores the query entirely.
@@ -49,6 +51,8 @@ enum Source {
     Probed,
     /// The terminal said nothing, so the ANSI-slot theme inherits implicitly.
     AnsiSlots,
+    /// A bundled palette was selected explicitly for the shared example CLI.
+    Named,
 }
 
 impl Source {
@@ -56,6 +60,7 @@ impl Source {
         match self {
             Source::Probed => "probed — derived from the colors this terminal reported",
             Source::AnsiSlots => "themes::TERMINAL — the terminal answered nothing, ANSI slots",
+            Source::Named => "bundled theme selected with --theme",
         }
     }
 }
@@ -148,8 +153,13 @@ fn build(theme: &Theme, source: Source) -> tuika::Element {
 }
 
 fn main() -> io::Result<()> {
-    let probe_only = std::env::args().any(|a| a == "--probe");
-    let (theme, source) = probe()?;
+    let cli = support::Cli::parse()?;
+    let probe_only = cli.args.iter().any(|a| a == "--probe");
+    let (theme, source) = if cli.theme_name.is_some() {
+        (cli.theme, Source::Named)
+    } else {
+        probe()?
+    };
 
     if probe_only {
         // Plain text, no alternate screen: usable over a pipe and in a test.

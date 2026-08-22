@@ -35,6 +35,8 @@
 mod agent;
 mod app;
 mod history;
+#[path = "../support/mod.rs"]
+mod support;
 mod ui;
 
 use std::io;
@@ -65,19 +67,25 @@ const FOOTER_ROWS: u16 = tuika::screen::DEFAULT_FOOTER_HEIGHT;
 pub const FRAME_MS: u64 = 60;
 
 fn main() -> io::Result<()> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let cli = support::Cli::parse()?;
+    let args = cli.args;
+    let theme = if cli.theme_name.is_some() {
+        cli.theme
+    } else {
+        app::codex_theme()
+    };
     match args.first().map(String::as_str) {
         Some("--help" | "-h") => {
             println!("A replica of the Codex CLI's interface, built on tuika.");
             println!("Not the Codex CLI; not affiliated with OpenAI. The agent is scripted:");
             println!("no model, no network, no shell.");
             println!();
-            println!("usage: cargo run --example codex [-- --split-footer]");
+            println!("usage: cargo run --example codex [-- --split-footer] [--theme NAME]");
             Ok(())
         }
-        Some("--dump") => ui::dump(args.get(1).map(String::as_str)),
-        Some("--split-footer") => run_split(),
-        _ => run(),
+        Some("--dump") => ui::dump(args.get(1).map(String::as_str), &theme),
+        Some("--split-footer") => run_split(theme),
+        _ => run(theme),
     }
 }
 
@@ -87,9 +95,8 @@ fn main() -> io::Result<()> {
 /// The loop is the full-screen one plus two steps — publish what settled, and
 /// keep the footer pinned — which is the whole difference between the two modes
 /// for a host that drives its own loop.
-fn run_split() -> io::Result<()> {
+fn run_split(theme: Theme) -> io::Result<()> {
     let mut app = App::new();
-    let theme = app::codex_theme();
     let sheet = StyleSheet::from_theme(&theme);
     let probe = RectProbe::new();
     let mode = ScreenMode::split_footer(FOOTER_ROWS);
@@ -159,9 +166,8 @@ fn published(cell: &mut Cell, width: u16, theme: &Theme, sheet: &StyleSheet) -> 
     )
 }
 
-fn run() -> io::Result<()> {
+fn run(theme: Theme) -> io::Result<()> {
     let mut app = App::new();
-    let theme = app::codex_theme();
     let sheet = StyleSheet::from_theme(&theme);
     let probe = RectProbe::new();
 

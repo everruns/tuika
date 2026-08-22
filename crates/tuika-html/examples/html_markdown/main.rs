@@ -14,6 +14,9 @@ use tuika::prelude::*;
 use tuika::testing::{grid, render};
 use tuika_html::HtmlRenderer;
 
+#[path = "../support/mod.rs"]
+mod support;
+
 /// Shared with the demo generator so the recording cannot drift from the app.
 const DOCUMENT: &str = include_str!("document.md");
 
@@ -46,8 +49,8 @@ impl View for Padded {
 }
 
 fn main() -> std::io::Result<()> {
-    let theme = Theme::default();
-    if std::env::args().any(|a| a == "--dump") {
+    let (theme, args) = support::theme_and_args()?;
+    if args.iter().any(|a| a == "--dump") {
         let buffer = render(scene().as_ref(), 76, 22, &theme);
         for line in grid(&buffer).lines() {
             println!("{}", line.trim_end());

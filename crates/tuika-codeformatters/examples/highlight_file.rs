@@ -1,6 +1,7 @@
 //! View a source file with tree-sitter syntax highlighting.
 //!
 //! ```text
+//! cargo run -p tuika-codeformatters --example highlight_file
 //! cargo run -p tuika-codeformatters --example highlight_file -- path/to/file.rs
 //! ```
 
@@ -11,6 +12,8 @@ use std::path::{Path, PathBuf};
 
 use tuika::prelude::*;
 use tuika_codeformatters::TreeSitterHighlighter;
+
+mod support;
 
 static HIGHLIGHTER: TreeSitterHighlighter = TreeSitterHighlighter;
 
@@ -152,10 +155,6 @@ fn language_for_path(path: &Path) -> &'static str {
     }
 }
 
-fn input_path() -> io::Result<PathBuf> {
-    input_path_from(std::env::args_os().skip(1))
-}
-
 fn input_path_from(args: impl IntoIterator<Item = OsString>) -> io::Result<PathBuf> {
     let mut args = args.into_iter();
     let Some(path) = args.next() else {
@@ -178,8 +177,14 @@ fn invalid_usage(extra: Option<OsString>) -> io::Error {
 }
 
 fn main() -> io::Result<()> {
-    let mut viewer = FileViewer::open(input_path()?)?;
-    Runner::new(RunnerConfig::default()).run(&Theme::default(), &mut viewer)
+    let (theme, args) = support::theme_and_args()?;
+    let path = if args.is_empty() {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs")
+    } else {
+        input_path_from(args.into_iter().map(OsString::from))?
+    };
+    let mut viewer = FileViewer::open(path)?;
+    Runner::new(RunnerConfig::default()).run(&theme, &mut viewer)
 }
 
 #[cfg(test)]

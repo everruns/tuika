@@ -28,6 +28,8 @@ use ratatui::{Terminal, TerminalOptions, Viewport};
 use tuika::host::AltScreen;
 use tuika::mouse::{ClickTracker, HitMap, SelectionState, paint_selection, selected_text};
 use tuika::prelude::*;
+
+mod support;
 use tuika::term::clipboard;
 
 const SAMPLE: &[&str] = &[
@@ -44,6 +46,7 @@ enum Btn {
 }
 
 fn main() -> io::Result<()> {
+    let cli = support::Cli::parse()?;
     enable_raw_mode()?;
     let mut alt = AltScreen::enter_with_mouse_capture()?;
     let mut term = Terminal::with_options(
@@ -52,7 +55,7 @@ fn main() -> io::Result<()> {
             viewport: Viewport::Fullscreen,
         },
     )?;
-    let theme = Theme::default();
+    let theme = cli.theme;
     let mut sel = SelectionState::new();
     let mut clicks = ClickTracker::new();
     let mut status = String::from("drag to select · click a button · q to quit");

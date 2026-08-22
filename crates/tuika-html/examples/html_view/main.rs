@@ -13,6 +13,9 @@ use tuika::prelude::*;
 use tuika::testing::{grid, render};
 use tuika_html::Html;
 
+#[path = "../support/mod.rs"]
+mod support;
+
 /// Shared with the demo generator so the recording cannot drift from the app.
 const PAGE: &str = include_str!("page.html");
 
@@ -30,8 +33,8 @@ fn scene() -> Element {
 }
 
 fn main() -> std::io::Result<()> {
-    let theme = Theme::default();
-    if std::env::args().any(|a| a == "--dump") {
+    let (theme, args) = support::theme_and_args()?;
+    if args.iter().any(|a| a == "--dump") {
         for line in grid(&render(scene().as_ref(), 78, 44, &theme)).lines() {
             println!("{}", line.trim_end());
         }

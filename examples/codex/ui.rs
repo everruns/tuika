@@ -242,10 +242,9 @@ fn footer(app: &App, theme: &Theme) -> Element {
 
 /// Render canned frames as text — no terminal, no recorder. Handy for a PR
 /// before/after, and it keeps the example runnable in CI-shaped environments.
-pub fn dump(scene: Option<&str>) -> io::Result<()> {
+pub fn dump(scene: Option<&str>, theme: &Theme) -> io::Result<()> {
     const SCENES: [&str; 6] = ["welcome", "turn", "approval", "slash", "mention", "status"];
-    let theme = crate::app::codex_theme();
-    let sheet = StyleSheet::from_theme(&theme);
+    let sheet = StyleSheet::from_theme(theme);
     let (w, h) = (96u16, 34u16);
 
     for name in SCENES {
@@ -281,8 +280,8 @@ pub fn dump(scene: Option<&str>) -> io::Result<()> {
             _ => {}
         }
         let probe = RectProbe::new();
-        let root = build(&mut app, Rect::new(0, 0, w, h), &theme, &sheet, &probe);
-        let buffer = tuika::testing::render(root.as_ref(), w, h, &theme);
+        let root = build(&mut app, Rect::new(0, 0, w, h), theme, &sheet, &probe);
+        let buffer = tuika::testing::render(root.as_ref(), w, h, theme);
         println!(
             "── {name} {}",
             "─".repeat((w as usize).saturating_sub(4 + name.len()))

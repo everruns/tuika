@@ -7,6 +7,8 @@ use std::io;
 
 use tuika::prelude::*;
 
+mod support;
+
 struct CounterApp {
     title: String,
     count: u64,
@@ -56,9 +58,10 @@ impl Application for CounterApp {
 }
 
 fn main() -> io::Result<()> {
+    let cli = support::Cli::parse()?;
     let mut app = CounterApp {
         title: "Borrowed application state".into(),
         count: 0,
     };
-    Runner::new(RunnerConfig::default()).run(&Theme::default(), &mut app)
+    Runner::new(RunnerConfig::default()).run(&cli.theme, &mut app)
 }

@@ -17,6 +17,8 @@ use ratatui::{Terminal, TerminalOptions, Viewport};
 use tuika::prelude::*;
 use tuika_codeformatters::TreeSitterHighlighter;
 
+mod support;
+
 /// A `'static` highlighter so the borrowed `CodeBlock` can enter the `view!`
 /// DSL (which boxes children into `'static` elements).
 static HL: TreeSitterHighlighter = TreeSitterHighlighter;
@@ -127,6 +129,7 @@ LIMIT 5;
 ];
 
 fn main() -> io::Result<()> {
+    let (theme, _) = support::theme_and_args()?;
     let mut tabs = TabsState::default();
 
     let _session = TerminalSession::enter()?;
@@ -136,8 +139,6 @@ fn main() -> io::Result<()> {
             viewport: Viewport::Fullscreen,
         },
     )?;
-    let theme = Theme::default();
-
     loop {
         terminal.draw(|f| {
             let area = f.area();

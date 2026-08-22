@@ -213,6 +213,7 @@ scripts/gen-styling-demos.sh vivid    # just one
 To preview a variant live in your own terminal:
 
 ```bash
-cargo run --example styling -- run          # cycle the sheets
+cargo run --example styling                 # cycle the sheets
 cargo run --example styling -- run vivid    # hold one
+cargo run --example styling -- --theme light # cycle under another palette
 ```

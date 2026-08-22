@@ -57,7 +57,7 @@ Set Theme { "background": "${bg}", "foreground": "${fg}" }
 Set Framerate 24
 
 Hide
-Type "TERM=xterm-256color ${bin} run ${name}"
+Type "TERM=xterm-256color ${bin} --theme ${name}"
 Enter
 Sleep 900ms
 Show
