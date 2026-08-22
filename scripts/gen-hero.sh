@@ -15,6 +15,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
+source "${repo_root}/scripts/demo-theme.sh"
 
 if ! command -v vhs >/dev/null 2>&1; then
   echo "error: vhs not found on PATH (see https://github.com/charmbracelet/vhs)" >&2
@@ -29,25 +30,25 @@ tapes_dir="$(mktemp -d)"
 trap 'rm -rf "${tapes_dir}"' EXIT
 tape="${tapes_dir}/hero.tape"
 
-# The scene fills the terminal, so the window is sized to yield ~92×30 cells.
+# The scene fills the terminal, so the window is sized to yield ~100×34 cells.
 # The theme background matches tuika's own so VHS's padding blends into the app,
-# and the colorful window bar mirrors the chrome the SVG draws itself. Recorded
-# larger than displayed (width="880" in the README) so it stays crisp on HiDPI.
+# and the colorful window bar mirrors the chrome the SVG draws itself. The
+# 1760 px recording is exactly twice its 880 px README display width.
 cat >"${tape}" <<EOF
 Output "${repo_root}/docs/hero.gif"
 
 Set Shell bash
-Set FontSize 31
+Set FontSize 28
 Set CursorBlink false
-Set Width 1800
+Set Width 1760
 Set Height 1248
 Set Padding 36
 Set WindowBar Colorful
-Set Theme { "background": "#141214", "foreground": "#ebe6e6" }
+Set Theme { "background": "${TUIKA_DEMO_BACKGROUND}", "foreground": "${TUIKA_DEMO_FOREGROUND}" }
 Set Framerate 24
 
 Hide
-Type "TERM=xterm-256color ${bin}"
+Type "TERM=xterm-256color ${bin} --theme ${TUIKA_DEMO_THEME}"
 Enter
 Sleep 900ms
 Show

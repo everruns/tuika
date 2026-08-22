@@ -27,6 +27,23 @@
     renders in a real terminal, an explicit SVG path selects offline output, and
     `--theme <name>` applies to both paths. Demo generators pass committed output
     paths explicitly.
+- **HiDPI recording density needs an integer display scale**
+  - The demo family was recorded around 1800 px and displayed at 880 px. Although
+    that supplied more than two source pixels per displayed pixel, the fractional
+    ratio forced browser resampling across terminal glyph edges and made the GIFs
+    look softer than the live application.
+  - Repository-owned 880 px embeds now record at exactly 1760 px, with even-sized
+    fonts for full-screen scenes. The component-gallery integrity check reads GIF
+    and PNG headers and rejects any recording that drifts from that width.
+- **Repository-owned documentation captures use Solarized Dark**
+  - Component scenes, the hero, styling gallery, whole-app examples, companion
+    integrations, chart screenshots, and generated image SVG now receive the
+    bundled `solarized-dark` theme explicitly from their generators. A shared
+    shell palette keeps VHS padding and window chrome aligned with the cells the
+    application paints.
+  - The per-theme comparison gallery remains one capture per bundled theme, and
+    external showcases retain their host application's real palette. Interactive
+    example defaults are unchanged; this is a documentation identity choice.
 
 - **Application-scale examples belong beside the products in the showcase**
   - `workbench_demo` is a deterministic in-repo application shell, recorded from

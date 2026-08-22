@@ -41,15 +41,15 @@ for name in "${themes[@]}"; do
     solarized-light | light) fg="#1e1e1e" ;;
   esac
   tape="${tapes_dir}/theme-${name}.tape"
-  # The scene fills the terminal; window sized to yield ~92×30 cells. Padding
+  # The scene fills the terminal; window sized to yield ~100×34 cells. Padding
   # background matches the theme so VHS's window bar blends into the app.
   cat >"${tape}" <<EOF
 Output "${repo_root}/docs/themes/theme-${name}.gif"
 
 Set Shell bash
-Set FontSize 31
+Set FontSize 28
 Set CursorBlink false
-Set Width 1800
+Set Width 1760
 Set Height 1248
 Set Padding 36
 Set WindowBar Colorful

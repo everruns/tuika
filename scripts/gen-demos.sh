@@ -6,7 +6,7 @@
 # truth. This script asks the example to emit one VHS tape per scene into a temp
 # dir (tapes are generated, not committed), records each, and verifies the
 # result. Motion scenes are GIFs; settled scenes are full-color PNG screenshots.
-# Both are recorded at 2x pixel density and displayed at half width.
+# Both are recorded at exactly 2x pixel density and displayed at half width.
 #
 # Requirements: vhs (https://github.com/charmbracelet/vhs), which needs ttyd and
 # ffmpeg on PATH. Run from anywhere:

@@ -14,6 +14,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
+source "${repo_root}/scripts/demo-theme.sh"
 
 if ! command -v vhs >/dev/null 2>&1; then
   echo "error: vhs not found on PATH (see https://github.com/charmbracelet/vhs)" >&2
@@ -34,16 +35,16 @@ record() {
 Output "${tapes_dir}/${name}.gif"
 
 Set Shell bash
-Set FontSize 31
+Set FontSize 28
 Set CursorBlink false
-Set Width 1800
+Set Width 1760
 Set Height ${height}
 Set Padding 36
 Set WindowBar Colorful
-Set Theme { "background": "#141214", "foreground": "#ebe6e6" }
+Set Theme { "background": "${TUIKA_DEMO_BACKGROUND}", "foreground": "${TUIKA_DEMO_FOREGROUND}" }
 
 Hide
-Type "clear; TERM=xterm-256color ${repo_root}/target/debug/examples/${name}"
+Type "clear; TERM=xterm-256color ${repo_root}/target/debug/examples/${name} --theme ${TUIKA_DEMO_THEME}"
 Enter
 Sleep 1.5s
 Show
