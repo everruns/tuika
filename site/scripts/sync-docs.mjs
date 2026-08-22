@@ -1,23 +1,13 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { GUIDE_SLUGS } from "../src/lib/routes.js";
 
 const siteRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sourceDir = resolve(siteRoot, "../docs");
 const targetDir = resolve(siteRoot, "src/content/docs");
 const componentDir = resolve(sourceDir, "components");
-const guideSlugs = new Set([
-  "charts",
-  "components",
-  "features",
-  "getting-started",
-  "keymap",
-  "layout",
-  "markdown",
-  "showcases",
-  "styling",
-  "themes",
-]);
+const guideSlugs = new Set(GUIDE_SLUGS);
 const componentRoutes = new Map();
 
 function headingAnchor(heading) {
