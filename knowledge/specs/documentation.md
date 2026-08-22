@@ -182,7 +182,8 @@ Generated demos follow the rule that the *scene registry is the source of truth*
 - `scripts/gen-all-demos.sh` is the repository-wide inventory and regeneration
   entry point. A default run includes component assets, the hero, theme and
   styling galleries, the split-footer recording, the generated image SVG,
-  companion-crate galleries, the Codex example, and external showcases.
+  companion-crate galleries, the in-repo application showcases, and external
+  showcases.
   Local-only work may explicitly pass `--skip-showcases`; it must not be
   described as refreshing the showcases.
 - The split-footer demo is a *whole terminal*, not a frame: what makes the mode
@@ -298,14 +299,16 @@ GIF's duration must match the tape's, not merely look sharp in a still.
 
 ### Capture palette
 
-Every asset is captured against `Theme::default()` — tuika's own warm red-on-dark
-identity. The VHS generators pass it as the tape's `Set Theme`, and the two
+Every toolkit asset is captured against `Theme::default()` — tuika's own warm
+red-on-dark identity. The VHS generators pass it as the tape's `Set Theme`, and the two
 recorder-free SVG paths (`examples/screenshot.rs` for the hero,
 `examples/split_footer_demo.rs` for the split footer) derive both the terminal's
 default-cell colors and the window chrome around them from the same `Theme`
-rather than a second hand-picked set. The exception is the Codex replica, which
-imitates another product and therefore carries that product's palette
-deliberately.
+rather than a second hand-picked set. An in-repo application showcase may carry
+an intentional application palette — the Codex replica imitates another
+product, while `workbench_demo` demonstrates a copper-and-plum identity — but its
+VHS theme must match the application's background so the capture remains one
+coherent surface.
 
 The rule exists because a hand-picked palette drifts silently: the split-footer
 asset shipped for a while on a cold neutral gray of its own, next to a page of

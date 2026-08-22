@@ -43,11 +43,12 @@ keywords = ["tui", "terminal", "ratatui", "framework", "widgets"]
 categories = ["command-line-interface"]
 # Three kinds of file are kept out of the published `.crate`:
 #
-# 1. The public `docs/` tree, alternate logo exports, and recording beside the
-#    `codex` example are consumed from the tagged repository by public pages or
-#    tooling. rustdoc/docs.rs references none of them from its crate front page,
-#    and the crates.io README uses release-tag-pinned absolute URLs for guides
-#    and images, so packaged copies would be incomplete and unreachable.
+# 1. The public `docs/` tree, alternate logo exports, and recordings beside the
+#    in-repo application showcases are consumed from the tagged repository by
+#    public pages or tooling. rustdoc/docs.rs references none of them from its
+#    crate front page, and the crates.io README uses release-tag-pinned absolute
+#    URLs for guides and images, so packaged copies would be incomplete and
+#    unreachable.
 # 2. Benchmark result snapshots. Benchmark sources remain reproducible, but the
 #    committed IAI baseline is a CI input rather than a consumer file.
 # 3. Repository machinery. Since tuika is the root package, everything beside it
@@ -63,6 +64,7 @@ exclude = [
     "/logo*.png",
     "/docs",
     "examples/codex/*.gif",
+    "examples/workbench_demo/*.gif",
     "/benches/*.json",
     "/.agents",
     "/.claude",
@@ -172,6 +174,15 @@ vt100 = "0.16"
 # Its `ratatui-core` matches the version the library depends on, so the `Buffer`
 # type is shared across the interop boundary.
 ratatui = "0.30.2"
+# The in-repo application-shell showcase exercises the published companion
+# components as a consumer would: adaptive charts and Rust syntax highlighting.
+tuika-charts = { version = "0.1.2", path = "crates/tuika-charts" }
+tuika-codeformatters = {
+    version = "0.5.0",
+    path = "crates/tuika-codeformatters",
+    default-features = false,
+    features = ["rust"],
+}
 # Benchmark harness. default-features off drops the plotters/rayon HTML-report
 # stack (heavy, and an MSRV liability) while keeping `cargo bench` working;
 # Criterion still writes machine-readable `estimates.json` for archiving.

@@ -28,6 +28,18 @@
     `--theme <name>` applies to both paths. Demo generators pass committed output
     paths explicitly.
 
+- **Application-scale examples belong beside the products in the showcase**
+  - `workbench_demo` is a deterministic in-repo application shell, recorded from
+    its real binary and presented beside host applications rather than split
+    into the component gallery. Its source, recording, and generator follow the
+    same co-location rule as the Codex replica.
+  - The showcase is composed from tuika views rather than buffer-painted
+    facsimiles: native bordered panels preserve framework behavior such as
+    panel-confined drag selection, while the chart and syntax highlighter come
+    from tuika's published companion crates.
+  - Application showcases may define an intentional palette; the recorder must
+    use the same background so terminal padding remains part of one surface.
+
 ## 2026-08-21
 
 - **A session is a test subject the component sweep cannot reach**

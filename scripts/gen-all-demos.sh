@@ -35,6 +35,7 @@ cargo run -q --example image_demo -- docs/demos/image.svg
 
 
 scripts/gen-codex-demo.sh
+scripts/gen-workbench-demo.sh
 scripts/gen-mermaid-demo.sh
 scripts/gen-html-demo.sh
 scripts/gen-language-demo.sh

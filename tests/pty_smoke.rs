@@ -506,6 +506,30 @@ fn runner_drag_selection_stops_at_the_panel_edge() {
 }
 
 #[test]
+fn workbench_demo_drag_selection_stops_at_the_code_panel_edge() {
+    // The first code line begins on zero-based row 4, with `use` at column 27.
+    // Dragging into the metrics column must clamp to the code panel's interior.
+    let drag_into_metrics = b"\x1b[<0;28;5M\x1b[<32;81;5M\x1b[<0;81;5m";
+    let run = Script::new("workbench_demo")
+        .size(27, 96)
+        .settle(Duration::from_millis(500))
+        .key(drag_into_metrics, Duration::from_millis(500))
+        .run();
+
+    assert!(
+        run.exited_ok,
+        "workbench_demo should exit cleanly after selection"
+    );
+    assert!(
+        contains(
+            &run.output,
+            b"\x1b]52;c;dXNlIHR1aWthOjpwcmVsdWRlOjoqOw==\x1b\\"
+        ),
+        "dragging out of the code panel should copy only its first code line"
+    );
+}
+
+#[test]
 fn gallery_can_opt_into_mouse_capture_without_leaking_terminal_state() {
     let run = Script::new("gallery")
         .arg("--mouse")
