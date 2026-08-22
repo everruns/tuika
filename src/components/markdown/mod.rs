@@ -713,6 +713,37 @@ mod tests {
     }
 
     #[test]
+    fn bare_url_does_not_underline_the_following_space() {
+        let theme = Theme::default();
+        let source = "Fetched **https://everruns.com/** and saved a durable summary to:";
+        let (lines, links) = to_linked_lines(
+            source,
+            80,
+            &theme,
+            &StyleSheet::from_theme(&theme),
+            CodeHighlighter::Plain,
+        );
+        let url = "https://everruns.com/";
+        let url_span = lines[0]
+            .spans
+            .iter()
+            .find(|span| span.content.starts_with(url))
+            .expect("url span");
+
+        assert_eq!(url_span.content.as_ref(), url);
+        let link = links.iter().find(|link| link.url == url).expect("url link");
+        assert_eq!(link.end_col - link.start_col, url.len() as u16);
+
+        let buffer = crate::testing::render(&Markdown::new(source), 80, 1, &theme);
+        let following_space = link.end_col;
+        assert!(
+            !buffer[(following_space, 0)]
+                .modifier
+                .contains(Modifier::UNDERLINED)
+        );
+    }
+
+    #[test]
     fn labeled_markdown_link_preserves_destination_for_ctrl_click() {
         // Reproduction of the Ghostty Ctrl+click failure: `[label](url)` was
         // only styled — the destination was dropped — so OSC 8 / ctrl_click had
