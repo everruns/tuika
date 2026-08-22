@@ -72,10 +72,10 @@ use super::{
     FrameGraphics, FrameGraphicsCleanup, PaintRoot, RESIZE_FRAME_INTERVAL, RunnerAction,
     RunnerCore, RunnerSelection, Signal,
 };
-use crate::host::paint_with_context_and_sources;
+use crate::host::paint_with_context_and_selection;
 use crate::live::RedrawHandle;
 use crate::screen::{Scrollback, close_footer, pin_footer};
-use crate::view::{ScopedElement, SelectionSources};
+use crate::view::{ScopedElement, SelectionFrame};
 use crate::{
     Element, Event, RenderCtx, RunnerConfig, SystemClock, TerminalSession, Theme, UpdateResult,
     translate_event,
@@ -753,26 +753,21 @@ where
     S: AsyncFrameSource<M>,
 {
     let mut copied = None;
-    let sources = SelectionSources::default();
+    let selection_frame = SelectionFrame::default();
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
         let ctx = graphics.map_or_else(|| RenderCtx::new(theme), |g| g.render_context(theme));
         frames.frame(frame, &mut |root| {
-            paint_with_context_and_sources(
+            paint_with_context_and_selection(
                 terminal_frame.buffer_mut(),
                 area,
                 &ctx,
                 root,
                 &[],
-                &sources,
+                &selection_frame,
             );
         });
-        copied = selection.finish_frame(
-            terminal_frame.buffer_mut(),
-            area,
-            theme,
-            &sources.snapshot(),
-        );
+        copied = selection.finish_frame(terminal_frame.buffer_mut(), area, theme, &selection_frame);
     })?;
     Ok(copied)
 }

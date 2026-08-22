@@ -55,9 +55,11 @@ impl SelectionRange {
     }
 
     /// The inclusive `[left, right]` selected column span on `row`, clamped to
-    /// `area`. Rows outside the selection return `None`.
+    /// `area`. Rows outside the selection — or outside `area`, so a range that
+    /// outlived the geometry it was made in can never reach a cell the caller
+    /// did not offer — return `None`.
     fn row_span(&self, row: u16, area: Rect) -> Option<(u16, u16)> {
-        if row < self.start.1 || row > self.end.1 {
+        if row < self.start.1 || row > self.end.1 || row < area.y || row >= area.bottom() {
             return None;
         }
         let left = if row == self.start.1 {
@@ -85,8 +87,10 @@ impl SelectionRange {
 /// Tracks click-drag and double-click text selection across mouse events.
 ///
 /// Left `Down` starts (and clears any previous selection); `Drag` extends;
-/// `Up` finishes. Two plain clicks on the same cell within the double-click
-/// interval queue a word selection. Call [`Self::resolve`] after rendering so
+/// `Up` finishes. [`confine`](Self::confine) restricts a gesture to one panel:
+/// positions are clamped into that rect, so dragging out of the panel selects
+/// to its edge rather than across whatever is beside it. Two plain clicks on
+/// the same cell within the double-click interval queue a word selection. Call [`Self::resolve`] after rendering so
 /// word boundaries can be read from the current buffer.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SelectionState {
@@ -96,6 +100,7 @@ pub struct SelectionState {
     selecting: bool,
     last_click: Option<((u16, u16), Instant)>,
     pending_word: Option<(u16, u16)>,
+    region: Option<Rect>,
 }
 
 impl SelectionState {
@@ -116,10 +121,11 @@ impl SelectionState {
     /// double-click timing deterministic in tests, replay systems, and hosts
     /// with a virtual clock.
     pub fn handle_with_clock(&mut self, m: &Mouse, clock: &dyn Clock) -> bool {
+        let (column, row) = clamp_to_region(self.region, m.column, m.row);
         match m.kind {
             MouseKind::Down(MouseButton::Left) => {
-                self.anchor = (m.column, m.row);
-                self.cursor = (m.column, m.row);
+                self.anchor = (column, row);
+                self.cursor = (column, row);
                 self.pressed = true;
                 let had = self.selecting;
                 self.selecting = false;
@@ -127,14 +133,14 @@ impl SelectionState {
                 had
             }
             MouseKind::Drag(MouseButton::Left) if self.pressed => {
-                self.cursor = (m.column, m.row);
+                self.cursor = (column, row);
                 self.selecting = self.cursor != self.anchor;
                 self.last_click = None;
                 self.pending_word = None;
                 true
             }
             MouseKind::Up(MouseButton::Left) if self.pressed => {
-                self.cursor = (m.column, m.row);
+                self.cursor = (column, row);
                 self.pressed = false;
                 self.selecting = self.cursor != self.anchor;
                 if self.selecting {
@@ -172,6 +178,23 @@ impl SelectionState {
         true
     }
 
+    /// Confine the gesture to `region` — a panel, list viewport, or any other
+    /// rect the host considers one selectable surface.
+    ///
+    /// Set it on the `Down` that starts a gesture: every position is clamped
+    /// into the rect, and [`region`](Self::region) reports it back so painting
+    /// and text extraction use the same bounds (pass it as their `area`, so a
+    /// multi-row selection wraps at the panel edge). `None` restores whole-screen
+    /// selection.
+    pub fn confine(&mut self, region: Option<Rect>) {
+        self.region = region.filter(|r| r.width > 0 && r.height > 0);
+    }
+
+    /// The panel the current gesture is confined to, if any.
+    pub fn region(&self) -> Option<Rect> {
+        self.region
+    }
+
     /// Clear the selection (e.g. on Esc or a new turn).
     pub fn clear(&mut self) {
         *self = Self::default();
@@ -187,6 +210,29 @@ impl SelectionState {
     pub fn is_active(&self) -> bool {
         self.selecting
     }
+}
+
+/// Clamp a cell into `region` (a no-op when the gesture is unconfined).
+fn clamp_to_region(region: Option<Rect>, column: u16, row: u16) -> (u16, u16) {
+    let Some(r) = region else {
+        return (column, row);
+    };
+    (
+        column.clamp(r.x, r.right().saturating_sub(1)),
+        row.clamp(r.y, r.bottom().saturating_sub(1)),
+    )
+}
+
+/// The innermost region of `regions` containing `(column, row)`.
+///
+/// Regions are recorded parent-before-child while rendering, so the last match
+/// is the innermost panel at that cell.
+pub(crate) fn region_at(regions: &[Rect], column: u16, row: u16) -> Option<Rect> {
+    regions
+        .iter()
+        .rev()
+        .find(|r| in_rect(**r, column, row))
+        .copied()
 }
 
 const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(500);
@@ -663,6 +709,64 @@ mod tests {
         assert_eq!(range.start, (1, 0));
         assert_eq!(range.end, (4, 0));
         assert!(sel.is_active());
+    }
+
+    #[test]
+    fn a_range_reaching_past_its_area_paints_nothing_outside_it() {
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 4, 2));
+        let area = buffer.area;
+        let sel = SelectionRange {
+            start: (0, 0),
+            end: (9, 6), // outlived the geometry it was made in
+        };
+
+        // Reading and hit-testing stay inside the offered area instead of
+        // indexing a cell the buffer does not have.
+        selected_text(&buffer, area, sel);
+        assert!(!sel.contains(1, 5, area));
+        paint_selection(&mut buffer, area, sel, Style::default().bg(Color::Red));
+        for row in 0..2 {
+            for column in 0..4 {
+                assert_eq!(buffer[(column, row)].bg, Color::Red);
+            }
+        }
+    }
+
+    #[test]
+    fn a_confined_drag_clamps_to_its_panel() {
+        let panel = Rect::new(2, 1, 6, 2);
+        let mut sel = SelectionState::new();
+        sel.confine(Some(panel));
+        sel.handle(&down(3, 1));
+        sel.handle(&drag(19, 9)); // far outside the panel
+
+        let range = sel.range().expect("a drag selects");
+        assert_eq!(range.start, (3, 1));
+        assert_eq!(range.end, (7, 2));
+        assert_eq!(sel.region(), Some(panel));
+        // Row 2 of the selection starts at the panel's left edge, not the screen's.
+        assert!(!range.contains(1, 2, panel));
+        assert!(range.contains(2, 2, panel));
+    }
+
+    #[test]
+    fn a_zero_sized_region_leaves_the_gesture_unconfined() {
+        let mut sel = SelectionState::new();
+        sel.confine(Some(Rect::new(4, 4, 0, 0)));
+        assert_eq!(sel.region(), None);
+        sel.handle(&down(0, 0));
+        sel.handle(&drag(9, 0));
+        assert_eq!(sel.range().map(|r| r.end), Some((9, 0)));
+    }
+
+    #[test]
+    fn the_innermost_region_wins_at_a_cell() {
+        let outer = Rect::new(0, 0, 10, 4);
+        let inner = Rect::new(2, 1, 4, 2);
+        let regions = [outer, inner];
+        assert_eq!(region_at(&regions, 3, 1), Some(inner));
+        assert_eq!(region_at(&regions, 8, 1), Some(outer));
+        assert_eq!(region_at(&regions, 12, 1), None);
     }
 
     #[test]

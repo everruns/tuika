@@ -258,7 +258,10 @@ activation, selection, and scrolling. Capture is explicit through
 Once an app opts into capture, the terminal stops handling links and selection.
 `Runner` and `AsyncRunner` restore selection over the final cell
 frame: a plain left drag highlights text, a same-cell double click selects a
-word, and releasing copies through OSC 52. Wheel events continue to reach the
+word, and releasing copies through OSC 52. Selection is *per panel* — a drag
+that starts inside a bordered `Boxed` stays inside it, wrapping at that panel's
+edges rather than streaming across the panes beside it, so copying a sidebar
+entry never drags in the editor next to it. Wheel events continue to reach the
 application. Return
 `UpdateResult::Consumed` for a handled gesture that needs no repaint, or
 `UpdateResult::Dirty` for one that does; either result keeps draggable controls
@@ -279,7 +282,10 @@ selection, copy, and hit-testing — from tuika's enriched event model
   boundaries; `selected_text(buffer, area, range)` then reads the selected text
   back out of the rendered buffer (wide glyphs intact) and `mouse::paint_selection(buffer,
   area, range, style)` paints it in. `handle_with_clock` accepts a host `Clock`
-  for deterministic gesture timing; `handle` uses `SystemClock`.
+  for deterministic gesture timing; `handle` uses `SystemClock`. `confine(Some(rect))`
+  restricts a gesture to one panel — positions clamp into the rect, and `region()`
+  reports it back so `resolve`, `selected_text`, and `paint_selection` can be
+  given the same bounds as their `area`.
 - `ctrl_click_url(event, buffer, area)` is an application-side fallback for a
   host that opted into capture. It returns the URL under a Ctrl+left-button
   release: first an OSC 8 target embedded in the cell run (labeled markdown

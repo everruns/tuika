@@ -478,6 +478,34 @@ fn runner_drag_selection_copies_the_rendered_cells() {
 }
 
 #[test]
+fn runner_drag_selection_stops_at_the_panel_edge() {
+    // Press on `H` inside the bordered panel (zero-based cell (3, 2)), then
+    // drag to the bottom-right corner of an 8x40 screen — past the panel on
+    // both axes, across the footer line outside it. SGR coordinates are
+    // one-based.
+    let drag_out_of_the_panel = b"\x1b[<0;4;3M\x1b[<32;40;8M\x1b[<0;40;8m";
+    let run = Script::new("hello")
+        .arg("--mouse")
+        .size(8, 40)
+        .settle(Duration::from_millis(500))
+        .key(drag_out_of_the_panel, Duration::from_millis(500))
+        .run();
+
+    assert!(run.exited_ok, "hello should exit cleanly after selection");
+    assert!(
+        contains(
+            &run.output,
+            b"\x1b]52;c;SGVsbG8gZnJvbSB0aGUgdGVybWluYWw=\x1b\\"
+        ),
+        "a drag out of the panel copies only the panel's own line"
+    );
+    assert!(
+        !contains(&run.output, b"cSBvciBlc2MgdG8gcXVpdA=="),
+        "the footer outside the panel must never join the selection"
+    );
+}
+
+#[test]
 fn gallery_can_opt_into_mouse_capture_without_leaking_terminal_state() {
     let run = Script::new("gallery")
         .arg("--mouse")

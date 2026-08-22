@@ -136,20 +136,42 @@ pub(crate) struct SelectionSource {
     pub(crate) text: String,
 }
 
+/// Per-frame selection metadata collected while rendering: the original text
+/// behind rendered paragraphs, and the panel regions a drag selection is
+/// confined to.
 #[derive(Debug, Default)]
-pub(crate) struct SelectionSources(RefCell<Vec<SelectionSource>>);
+pub(crate) struct SelectionFrame {
+    sources: RefCell<Vec<SelectionSource>>,
+    regions: RefCell<Vec<Rect>>,
+}
 
-impl SelectionSources {
+impl SelectionFrame {
     pub(crate) fn clear(&self) {
-        self.0.borrow_mut().clear();
+        self.sources.borrow_mut().clear();
+        self.regions.borrow_mut().clear();
     }
 
-    pub(crate) fn push(&self, area: Rect, text: String) {
-        self.0.borrow_mut().push(SelectionSource { area, text });
+    pub(crate) fn push_source(&self, area: Rect, text: String) {
+        self.sources
+            .borrow_mut()
+            .push(SelectionSource { area, text });
     }
 
-    pub(crate) fn snapshot(&self) -> Vec<SelectionSource> {
-        self.0.borrow().clone()
+    /// Record a selectable panel. Regions are pushed parent-before-child, so
+    /// the *last* one containing a cell is the innermost panel there.
+    pub(crate) fn push_region(&self, area: Rect) {
+        self.regions.borrow_mut().push(area);
+    }
+
+    /// Take the frame's text sources, leaving it empty (the next paint clears
+    /// it anyway, so nothing needs a copy).
+    pub(crate) fn take_sources(&self) -> Vec<SelectionSource> {
+        std::mem::take(&mut self.sources.borrow_mut())
+    }
+
+    /// Take the frame's panel regions, leaving it empty.
+    pub(crate) fn take_regions(&self) -> Vec<Rect> {
+        std::mem::take(&mut self.regions.borrow_mut())
     }
 }
 
@@ -169,7 +191,7 @@ pub struct RenderCtx<'a> {
     style_resolver: Option<&'a dyn StyleResolver>,
     /// Graphics protocol and per-frame placement collector supplied by a host.
     image_graphics: Option<(ImageSupport, &'a ImageLayer)>,
-    selection_sources: Option<&'a SelectionSources>,
+    selection: Option<&'a SelectionFrame>,
     /// Whether the focused component of the frame is this one. Containers pass
     /// this down unchanged; focus-aware leaves use it to highlight borders.
     pub focused: bool,
@@ -183,7 +205,7 @@ impl<'a> RenderCtx<'a> {
             sheet: StyleSheet::from_theme(theme),
             style_resolver: None,
             image_graphics: None,
-            selection_sources: None,
+            selection: None,
             focused: false,
         }
     }
@@ -211,14 +233,22 @@ impl<'a> RenderCtx<'a> {
         self
     }
 
-    pub(crate) fn with_selection_sources(mut self, sources: &'a SelectionSources) -> Self {
-        self.selection_sources = Some(sources);
+    pub(crate) fn with_selection(mut self, selection: &'a SelectionFrame) -> Self {
+        self.selection = Some(selection);
         self
     }
 
     pub(crate) fn record_selection_source(&self, area: Rect, source: String) {
-        if let Some(sources) = self.selection_sources {
-            sources.push(area, source);
+        if let Some(selection) = self.selection {
+            selection.push_source(area, source);
+        }
+    }
+
+    /// Mark `area` as a selectable panel: a drag that starts inside it selects
+    /// only within it, instead of streaming across the whole screen.
+    pub(crate) fn record_selection_region(&self, area: Rect) {
+        if let Some(selection) = self.selection {
+            selection.push_region(area);
         }
     }
 
@@ -252,7 +282,7 @@ impl<'a> RenderCtx<'a> {
             sheet: self.sheet,
             style_resolver: self.style_resolver,
             image_graphics: self.image_graphics,
-            selection_sources: self.selection_sources,
+            selection: self.selection,
             focused,
         }
     }
