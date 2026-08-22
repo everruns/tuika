@@ -2299,6 +2299,8 @@ dependencies = [
  "ratatui-crossterm",
  "tokio",
  "tokio-stream",
+ "tuika-charts",
+ "tuika-codeformatters",
  "unicode-segmentation",
  "unicode-width",
  "vt100",

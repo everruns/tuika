@@ -552,6 +552,7 @@ palette, for example `cargo run --example gallery -- --theme gruvbox-dark`.
 | [`overlay`](examples/overlay.rs)  | `cargo run --example overlay`    | Target-following popover + input routing           |
 | [`primitives`](examples/primitives.rs) | `cargo run --example primitives` | owned dialog scene + form + arbitrary-child viewport |
 | [`ratatui_dashboard`](examples/ratatui_dashboard.rs) | `cargo run --example ratatui_dashboard` | mixed Ratatui widgets + responsive live data |
+| [`workbench_demo`](examples/workbench_demo) | `cargo run --example workbench_demo` | native tuika editor/dashboard shell with keyboard and mouse navigation |
 | [`async_dashboard`](examples/async_dashboard.rs) | `cargo run --example async_dashboard --features async` | typed background messages waking `AsyncRunner`, no shared mutable state |
 | [`mouse`](examples/mouse.rs)     | `cargo run --example mouse`      | drag-to-select + highlight + OSC 52 copy, clickable buttons |
 | [`image`](examples/image.rs)     | `cargo run --example image`      | `Image` over reserved cells (Kitty/iTerm2/Sixel), alt-text fallback |
@@ -560,8 +561,8 @@ palette, for example `cargo run --example gallery -- --theme gruvbox-dark`.
 | [`codex`](examples/codex)        | `cargo run --example codex`      | a scripted Codex CLI interface replica: streaming transcript, composer, `@`/`/` pickers, approval prompt |
 | [`codex --split-footer`](examples/codex) | `cargo run --example codex -- --split-footer` | the same agent UI with its transcript published into the terminal's own scrollback |
 
-Each of the single-topic examples above quits on `q`/`esc`. [`codex`](examples/codex)
-is the composite one — those keys are text there, so it quits with `⌃C`.
+Every example above except [`codex`](examples/codex) quits on `q`/`esc`. Those
+keys are composer text in the Codex replica, so it quits with `⌃C`.
 
 ## Declarative DSL (`view!`)
 

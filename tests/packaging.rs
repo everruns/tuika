@@ -3,9 +3,9 @@
 //! Three things must stay out of the tarball, and `Cargo.toml`'s `exclude` is the
 //! only thing keeping them out:
 //!
-//! - The root public `docs/` tree and the `codex` example's own recording are
-//!   read only from the tagged repository; docs.rs builds the crate front page
-//!   from the hand-written `//!` header in `lib.rs`, which references neither.
+//! - The root public `docs/` tree and the in-repo application showcase recordings
+//!   are read only from the tagged repository; docs.rs builds the crate front
+//!   page from the hand-written `//!` header in `lib.rs`, which references neither.
 //! - Repository machinery. tuika is the *root* package of its repo, so the
 //!   internal knowledge bundle, agent skills, CI definitions, and
 //!   asset-generation scripts all sit beside it and would otherwise ship. The
@@ -136,6 +136,21 @@ fn generated_site_is_excluded_from_the_package() {
         leaked.is_empty(),
         "the generated documentation site must not ship in the crate: {leaked:?}"
     );
+}
+
+#[test]
+fn in_repo_showcase_recordings_are_excluded_from_the_package() {
+    let files = packaged_files("tuika");
+
+    for asset in [
+        "examples/codex/codex.gif",
+        "examples/workbench_demo/workbench-demo.gif",
+    ] {
+        assert!(
+            !files.iter().any(|file| file == asset),
+            "repository-hosted showcase recording must not ship: {asset}"
+        );
+    }
 }
 
 #[test]

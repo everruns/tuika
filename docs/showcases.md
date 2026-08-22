@@ -1,6 +1,6 @@
 ---
 title: Showcases
-description: See applications and full terminal interfaces built with tuika, including yolop, LLMSim, and the Codex UI replica.
+description: See applications and full terminal interfaces built with tuika, including yolop, LLMSim, Workbench demo, and the Codex UI replica.
 sidebar:
   order: 11
 ---
@@ -9,8 +9,8 @@ sidebar:
 
 Applications whose terminal UI is built on tuika — what they are, and what the
 toolkit looks like once it is carrying a real product. At the end,
-[one in-repo example](#codex-cli-replica-in-repo-example) that reproduces a
-well-known agent UI rather than shipping a product of its own.
+[two in-repo examples](#workbench-demo-in-repo-example): a polished application
+shell and a replica of a well-known agent UI.
 
 Building something on tuika? Open a PR adding it here.
 
@@ -48,6 +48,29 @@ requests are in flight.
 
 The dashboard above is under ~5 requests/second across four models, with rate
 limit and server-error injection turned on.
+
+## Workbench demo (in-repo example)
+
+A compact editor and operations dashboard assembled as a runnable tuika
+application. It pairs a file tree and keymap with highlighted Rust source, a
+24-hour request chart, status metrics, navigation tabs, and a full-width status
+bar. The warm copper, brown, and plum palette is defined by the example rather
+than inherited from the terminal.
+
+Its layout is nested `Flex`, every visible panel is a bordered `Boxed`, and its
+content comes from tuika's `Table`, `CodeBlock`, `TabSelect`, `Rule`, and
+`StatusBar` components plus the `tuika-charts` and `tuika-codeformatters`
+companions. That native panel tree also confines terminal text selection to the
+panel where each drag begins.
+
+[`examples/workbench_demo/`](../examples/workbench_demo) ·
+`cargo run --example workbench_demo`
+
+<img src="../examples/workbench_demo/workbench-demo.gif" width="880" alt="The Workbench demo example: a warm copper-and-plum terminal interface with a file tree and keymap, highlighted Rust source, request chart, status metrics, navigation tabs, and status bar.">
+
+The interface is deterministic and offline. Arrow keys move through its tabs
+and file tree, file rows are clickable, and `q` or `Esc` exits. Its showcase
+palette is the default; `--theme <name>` switches to any bundled tuika theme.
 
 ## Codex CLI replica (in-repo example)
 
