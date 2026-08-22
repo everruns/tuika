@@ -304,14 +304,17 @@ density.
 
 ### Capture palette
 
-Every repository-owned documentation asset is captured against the bundled
-`solarized-dark` preset. VHS generators pass both `--theme solarized-dark` to
-the real example and the matching background/foreground to the tape's
-`Set Theme`, so application cells, terminal defaults, padding, and window chrome
-agree. `scripts/demo-theme.sh` owns the shared capture name and terminal colors;
-generated SVG assets receive the same explicit theme. The per-theme
-comparison gallery remains one capture per bundled theme by definition, and
-external showcases retain the real host application's palette.
+Repository-owned documentation assets are captured against the bundled
+`solarized-dark` preset unless the asset demonstrates a palette itself. VHS
+generators pass both `--theme solarized-dark` to the real example and the
+matching background/foreground to the tape's `Set Theme`, so application cells,
+terminal defaults, padding, and window chrome agree. `scripts/demo-theme.sh`
+owns the shared capture name and terminal colors; generated SVG assets receive
+the same explicit theme. The per-theme comparison gallery remains one capture
+per bundled theme by definition, and external showcases retain the real host
+application's palette. The in-repo Workbench showcase likewise retains its
+original warm copper-and-plum palette because that visual identity is part of
+what the example demonstrates.
 
 The rule exists because hand-picked palettes drift silently: the split-footer
 asset shipped for a while on a cold neutral gray of its own, next to a page of

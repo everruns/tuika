@@ -8,7 +8,6 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
-source "${repo_root}/scripts/demo-theme.sh"
 
 if ! command -v vhs >/dev/null 2>&1; then
   echo "error: vhs not found on PATH (see https://github.com/charmbracelet/vhs)" >&2
@@ -25,8 +24,8 @@ trap 'rm -rf "${tapes_dir}"' EXIT
 tape="${tapes_dir}/workbench-demo.tape"
 
 # Roughly 96×27 cells, captured at exactly twice the 880 px embed width. The
-# terminal background matches the selected documentation theme so the padding
-# disappears.
+# terminal background matches the example's original warm palette so the
+# padding disappears.
 cat >"${tape}" <<EOF
 Output "${out}"
 
@@ -37,11 +36,11 @@ Set Width 1760
 Set Height 1050
 Set Padding 30
 Set WindowBar Colorful
-Set Theme { "background": "${TUIKA_DEMO_BACKGROUND}", "foreground": "${TUIKA_DEMO_FOREGROUND}" }
+Set Theme { "background": "#161215", "foreground": "#deccc7" }
 Set Framerate 12
 
 Hide
-Type "TERM=xterm-256color ${bin} --theme ${TUIKA_DEMO_THEME}"
+Type "TERM=xterm-256color ${bin}"
 Enter
 Sleep 1s
 Show
