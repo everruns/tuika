@@ -50,6 +50,9 @@ terminal UI with tuika without requiring knowledge of repository internals.
   X/Twitter large-image cards in tuika's terminal-grid identity. These
   discovery surfaces are part of the documentation contract: browsers, search
   engines, and coding agents should reach the same current content.
+  One checked route inventory feeds the worker, link rewriting, and build
+  verification; it must match every top-level guide and component-family source
+  below `docs/`, so adding a guide cannot silently publish an unreachable page.
 - rustdoc is public documentation too. The crate-level `//!` header in `lib.rs`
   is what docs.rs renders as the front page; component demos are embedded inline
   on the relevant type via `raw.githubusercontent.com` URLs so they resolve

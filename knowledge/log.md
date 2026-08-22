@@ -2,6 +2,13 @@
 
 ## 2026-08-22
 
+- **Published guides share one checked route inventory**
+  - The input-routing guide existed in `docs/` but remained unreachable on
+    tuika.dev because separate worker, link-rewrite, verification, and deployment
+    allowlists omitted it. The worker, link rewriting, and build verification
+    now share one inventory, checked against every public guide and
+    component-family source; a regression test pins deployment routing to it.
+
 - **Selection is scoped by what the frame drew, not by the screen**
   - Runner-provided drag selection streamed across the whole cell grid, so a
     drag inside a sidebar picked up whatever pane sat beside it. Panels are the

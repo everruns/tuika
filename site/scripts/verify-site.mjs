@@ -1,27 +1,9 @@
 import { access, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { PAGE_SLUGS } from "../src/lib/routes.js";
 
 const root = resolve(import.meta.dirname, "..");
-const pages = [
-  "",
-  "charts",
-  "components",
-  "components/motion",
-  "components/text",
-  "components/markdown-code",
-  "components/layout",
-  "components/interactive",
-  "components/notifications-console",
-  "components/banners-codes-pixels",
-  "features",
-  "getting-started",
-  "keymap",
-  "layout",
-  "markdown",
-  "showcases",
-  "styling",
-  "themes",
-];
+const pages = PAGE_SLUGS;
 
 const failures = [];
 

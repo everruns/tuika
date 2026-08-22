@@ -1,23 +1,4 @@
-const PAGE_ROUTES = new Set([
-  "/",
-  "/charts/",
-  "/components/",
-  "/components/motion/",
-  "/components/text/",
-  "/components/markdown-code/",
-  "/components/layout/",
-  "/components/interactive/",
-  "/components/notifications-console/",
-  "/components/banners-codes-pixels/",
-  "/features/",
-  "/getting-started/",
-  "/keymap/",
-  "/layout/",
-  "/markdown/",
-  "/showcases/",
-  "/styling/",
-  "/themes/",
-]);
+import { PAGE_ROUTES } from "./lib/routes.js";
 
 export default {
   async fetch(request, env) {

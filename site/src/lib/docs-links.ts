@@ -1,14 +1,6 @@
-const guideSlugs = new Set([
-  "charts",
-  "components",
-  "features",
-  "keymap",
-  "layout",
-  "markdown",
-  "showcases",
-  "styling",
-  "themes",
-]);
+import { GUIDE_SLUGS } from "./routes.js";
+
+const guideSlugs = new Set(GUIDE_SLUGS);
 
 export function normalizeMarkdownLinks(markdown: string): string {
   return markdown

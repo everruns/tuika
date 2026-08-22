@@ -1,16 +1,48 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readdir, readFile } from "node:fs/promises";
 import worker, {
   canonicalPagePath,
   htmlAssetPath,
   markdownAssetPath,
   prefersMarkdown,
 } from "./worker.js";
+import { COMPONENT_SLUGS, GUIDE_SLUGS } from "./lib/routes.js";
+
+test("route inventory matches every public guide", async () => {
+  const docs = new URL("../../docs/", import.meta.url);
+  const guideSlugs = (await readdir(docs, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => entry.name.slice(0, -3))
+    .sort();
+  const componentSlugs = (await readdir(new URL("components/", docs), {
+    withFileTypes: true,
+  }))
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => entry.name.slice(0, -3))
+    .sort();
+
+  assert.deepEqual([...GUIDE_SLUGS].sort(), guideSlugs);
+  assert.deepEqual([...COMPONENT_SLUGS].sort(), componentSlugs);
+});
+
+test("deployment sends every guide route through the worker", async () => {
+  const config = JSON.parse(
+    await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
+  );
+
+  assert.deepEqual(config.assets.run_worker_first, [
+    "/",
+    "/index.html",
+    ...GUIDE_SLUGS.map((slug) => `/${slug}*`),
+  ]);
+});
 
 test("maps public pages to their markdown twins", () => {
   assert.equal(markdownAssetPath("/"), "/index.md");
   assert.equal(markdownAssetPath("/components/"), "/components/index.md");
   assert.equal(markdownAssetPath("/getting-started/"), "/getting-started/index.md");
+  assert.equal(markdownAssetPath("/routing/"), "/routing/index.md");
   assert.equal(
     markdownAssetPath("/components/interactive/"),
     "/components/interactive/index.md",
@@ -24,6 +56,7 @@ test("maps canonical pages to exact static assets", () => {
   assert.equal(canonicalPagePath("/index.html"), "/");
   assert.equal(canonicalPagePath("/components"), "/components/");
   assert.equal(canonicalPagePath("/getting-started"), "/getting-started/");
+  assert.equal(canonicalPagePath("/routing"), "/routing/");
   assert.equal(canonicalPagePath("/components/index.html"), "/components/");
   assert.equal(canonicalPagePath("/components/interactive"), "/components/interactive/");
   assert.equal(
