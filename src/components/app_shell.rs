@@ -77,6 +77,10 @@ impl Region<'_> {
 /// footer also keeps one row when there is room beside the main content.
 /// Separators use the active stylesheet's [`Role::Rule`] style.
 ///
+/// Run the [complete interactive example](https://github.com/everruns/tuika/blob/main/examples/app_shell.rs)
+/// with `cargo run --example app_shell`. The focused component image below is
+/// recorded with `cargo run --example demo -- app_shell`.
+///
 /// ![application shell demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/app_shell.png)
 pub struct AppShell<'view> {
     before_main: Vec<Region<'view>>,
