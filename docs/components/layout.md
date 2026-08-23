@@ -37,6 +37,25 @@ let screen = AppShell::new(content)
     .footer(KeyHints::from_keymap(&keymap));
 ```
 
+The [complete runnable example](https://github.com/everruns/tuika/blob/main/examples/app_shell.rs)
+keeps selection and input in application state while rebuilding the borrowed
+shell view each frame. Run it with `cargo run --example app_shell`; resize the
+terminal to see rules and secondary chrome yield before the main body and
+footer.
+
+#### `AppShell` or `Flex`?
+
+Use `AppShell` when the application has one growing body surrounded by
+intrinsic header, status, rule, and footer rows. It supplies that vertical
+allocation and its short-terminal collapse policy; it does not own navigation,
+input routing, or application state.
+
+Use `Flex` directly when several regions need to grow, split an axis, or change
+shape responsively — sidebars, editor panes, dashboards, and nested panel
+grids. The [Workbench example](../showcases.md#workbench-demo-in-repo-example)
+uses nested `Flex` for that multi-pane shape. The two compose normally: an
+`AppShell` main body can itself be a `Flex` tree.
+
 ### `SelectionScreen`
 
 A responsive full-screen picker for the repeated action, agent, permission,
