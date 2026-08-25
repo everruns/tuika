@@ -73,9 +73,12 @@ because their published manifests pin a compatible tuika version. Update that
 requirement in the same change or the companion will resolve against old tuika.
 
 `publish.yml` derives the dependency-first order from Cargo metadata
-(`scripts/publish_order.py` — currently `tuika`, then its three companions) and
+(`scripts/publish_order.py` — currently `tuika`, then its four companions) and
 skips versions already live, so a workspace member cannot be silently omitted
-or published out of order.
+or published out of order. Only normal and build dependencies constrain that
+order: `cargo publish` strips dev-dependencies, and the root package
+dev-depends on companions that depend back on it, so counting those would
+report a cycle that publishing never has.
 
 ## Release Flow
 

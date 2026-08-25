@@ -11,7 +11,24 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
-## [Unreleased]
+## [0.11.1] - 2026-08-25
+
+`tuika` only. The companion crates carry a caret requirement on tuika 0.11, so
+`tuika-charts` 0.1.2, `tuika-codeformatters` 0.5.0, `tuika-html` 0.1.4, and
+`tuika-mermaid` 0.3.2 pick this up without a republish.
+
+### Highlights
+
+**Drag selection stays in the panel it started in** — a left drag that begins
+inside a bordered `Boxed` now selects only within that panel: positions clamp to
+its inner rect, a multi-row selection wraps at the panel's edges instead of the
+screen's, and the copied text never picks up the pane beside it. A drag that
+starts outside every panel still spans the screen as before.
+
+![mouse demo](https://raw.githubusercontent.com/everruns/tuika/v0.11.1/docs/demos/mouse.gif)
+
+- **Robustness**: a `SelectionRange` that outlived the geometry it was made in
+  can no longer index the buffer out of bounds.
 
 ### Changed
 
@@ -20,17 +37,33 @@ described in the release process begins with the entry below.
   inner rect, a multi-row selection wraps at the panel's edges instead of the
   screen's, and the copied text never picks up the pane beside it. A drag that
   starts outside every panel still spans the screen as before.
+- Examples render in a real terminal by default rather than printing a frame.
 
 ### Fixed
 
 - A `SelectionRange` that reaches past the `area` handed to
   `mouse::paint_selection`, `mouse::selected_text`, or `SelectionRange::contains`
   now stops at that area's rows instead of indexing the buffer out of bounds.
+- The routing guide is published on the website again.
 
 ### Added
 
 - `mouse::SelectionState::confine` / `region` — restrict a gesture to a rect and
   read it back, for hosts driving the selection primitives from their own loop.
+- `app_shell` and `workbench_demo` examples, with recordings.
+
+### What's Changed
+
+* fix(release): ignore dev-dependencies when ordering the publish
+* docs(demos): add interactive AppShell recording
+* feat(examples): add AppShell application
+* fix(site): publish routing guide
+* docs(demos): restore Workbench palette (#123)
+* docs(readme): track current demo assets
+* docs(demos): adopt Solarized Dark capture theme
+* feat(examples): add native workbench showcase
+* feat(examples): render in terminals by default
+* feat(mouse): confine drag selection to the panel it starts in (#118)
 
 ## [0.11.0] - 2026-08-22
 

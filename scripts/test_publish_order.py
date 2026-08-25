@@ -91,6 +91,32 @@ class PublishOrderTests(unittest.TestCase):
 
         self.assertEqual(publish_order(metadata), ["tuika"])
 
+    def test_ignores_dev_dependency_back_edge(self) -> None:
+        # The real shape: `tuika`'s examples dev-depend on a companion that
+        # depends back on `tuika`. `cargo publish` strips dev-dependencies, so
+        # this is not a cycle and must not be treated as one.
+        metadata = {
+            "workspace_members": ["tuika-id", "charts-id"],
+            "packages": [
+                {
+                    "id": "charts-id",
+                    "name": "tuika-charts",
+                    "publish": None,
+                    "dependencies": [{"name": "tuika", "path": ".."}],
+                },
+                {
+                    "id": "tuika-id",
+                    "name": "tuika",
+                    "publish": None,
+                    "dependencies": [
+                        {"name": "tuika-charts", "path": "crates/tuika-charts", "kind": "dev"}
+                    ],
+                },
+            ],
+        }
+
+        self.assertEqual(publish_order(metadata), ["tuika", "tuika-charts"])
+
     def test_detects_dependency_cycle(self) -> None:
         metadata = {
             "workspace_members": ["a-id", "b-id"],
