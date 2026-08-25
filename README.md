@@ -876,9 +876,17 @@ To check support across every terminal feature in one place — `graphics`,
 
 Mouse handling stays with the terminal by default, including in alternate-screen
 mode. That preserves native OSC 8 link activation, click-drag selection, and
-terminal scrolling. An app that needs pointer or wheel events opts into capture
-with `ScreenMode::Alternate.with_mouse_capture()`,
-`ScreenMode::split_footer(rows).with_mouse_capture()`, an enabled
+terminal scrolling. A runner-based app that needs pointer or wheel events
+declares that input requirement independently of its viewport:
+
+```rust
+let runner = AsyncRunner::new(RunnerConfig::default())
+    .with_mouse_input(MouseInput::Captured);
+assert_eq!(runner.mouse_input(), MouseInput::Captured);
+```
+
+The declaration is the same for alternate-screen and split-footer modes.
+Custom-loop hosts use `ScreenMode::with_mouse_capture`, an enabled
 `TerminalSessionConfig::mouse_capture`, or
 `AltScreen::enter_with_mouse_capture()`.
 

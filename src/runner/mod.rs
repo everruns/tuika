@@ -6,6 +6,10 @@
 //! place does not have to assemble them itself. Either [`ScreenMode`] works:
 //! pick one in [`RunnerConfig::screen_mode`] and the loop reserves, keeps, and
 //! releases a split footer for you.
+//! Mouse input is a separate application requirement: opt in with
+//! [`Runner::with_mouse_input`] or [`AsyncRunner::with_mouse_input`] and inspect
+//! the assembled policy with `mouse_input()` without coupling it to the chosen
+//! viewport.
 //! On real terminals they also detect image support, supply a per-frame image
 //! layer through [`RenderCtx`], emit it after the cell frame, and bound resize
 //! redraws to one frame every 16 ms.
@@ -171,6 +175,9 @@ impl Drop for FrameGraphicsCleanup<'_> {
 
 #[derive(Clone, Copy, Debug)]
 /// Options for [`Runner`] and [`AsyncRunner`].
+///
+/// Mouse input is a runner-level application requirement rather than a field
+/// here; use `with_mouse_input` on the constructed runner.
 pub struct RunnerConfig {
     /// Maximum time between frames and data-driven redraw checks.
     pub tick_rate: Duration,
@@ -625,6 +632,26 @@ impl Runner {
         self
     }
 
+    /// Choose whether mouse input stays with the terminal or reaches the app.
+    ///
+    /// This is independent of [`ScreenMode`], so changing the viewport does not
+    /// accidentally change an application's input requirements. The last call
+    /// to this method or [`with_session_config`](Self::with_session_config) wins.
+    pub fn with_mouse_input(self, mouse_input: crate::MouseInput) -> Self {
+        let config = self
+            .session_config
+            .unwrap_or_else(|| crate::TerminalSessionConfig::for_mode(self.config.screen_mode))
+            .with_mouse_input(mouse_input);
+        self.with_session_config(config)
+    }
+
+    /// The effective mouse-input behavior for this runner's terminal session.
+    pub fn mouse_input(&self) -> crate::MouseInput {
+        self.session_config
+            .unwrap_or_else(|| crate::TerminalSessionConfig::for_mode(self.config.screen_mode))
+            .mouse_input()
+    }
+
     /// Enable or disable runner-provided drag selection over the final cell
     /// frame. It is enabled by default whenever the terminal session captures
     /// the mouse. Applications claim a gesture by returning
@@ -635,11 +662,7 @@ impl Runner {
     }
 
     fn selects_text(&self) -> bool {
-        self.text_selection
-            && self.session_config.map_or_else(
-                || self.config.screen_mode.captures_mouse(),
-                crate::host::TerminalSessionConfig::captures_mouse,
-            )
+        self.text_selection && self.mouse_input() == crate::MouseInput::Captured
     }
 
     /// Run until the frame source returns [`UpdateResult::Exit`].
@@ -1301,6 +1324,25 @@ mod tests {
                 })
                 .selects_text()
         );
+    }
+
+    #[test]
+    fn runner_mouse_input_is_explicit_and_inspectable() {
+        let native = Runner::new(RunnerConfig::default());
+        assert_eq!(native.mouse_input(), crate::MouseInput::Native);
+
+        let captured =
+            Runner::new(RunnerConfig::default()).with_mouse_input(crate::MouseInput::Captured);
+        assert_eq!(captured.mouse_input(), crate::MouseInput::Captured);
+        assert!(captured.selects_text());
+
+        let native_override = Runner::new(RunnerConfig {
+            screen_mode: ScreenMode::Alternate.with_mouse_capture(),
+            ..RunnerConfig::default()
+        })
+        .with_mouse_input(crate::MouseInput::Native);
+        assert_eq!(native_override.mouse_input(), crate::MouseInput::Native);
+        assert!(!native_override.selects_text());
     }
 
     #[test]

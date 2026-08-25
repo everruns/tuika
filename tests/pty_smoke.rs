@@ -472,6 +472,10 @@ fn runner_drag_selection_copies_the_rendered_cells() {
 
     assert!(run.exited_ok, "hello should exit cleanly after selection");
     assert!(
+        contains(&run.output, b"\x1b[?1000h"),
+        "runner-level mouse input should enable terminal reporting"
+    );
+    assert!(
         contains(&run.output, b"\x1b]52;c;SGVsbG8=\x1b\\"),
         "drag release should copy `Hello` through OSC 52"
     );

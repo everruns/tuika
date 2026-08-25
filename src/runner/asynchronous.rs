@@ -254,6 +254,27 @@ impl AsyncRunner {
         self
     }
 
+    /// Choose whether mouse input stays with the terminal or reaches the app.
+    ///
+    /// This is independent of [`ScreenMode`](crate::ScreenMode), so changing
+    /// the viewport does not accidentally change an application's input
+    /// requirements. The last call to this method or
+    /// [`with_session_config`](Self::with_session_config) wins.
+    pub fn with_mouse_input(self, mouse_input: crate::MouseInput) -> Self {
+        let config = self
+            .session_config
+            .unwrap_or_else(|| crate::TerminalSessionConfig::for_mode(self.config.screen_mode))
+            .with_mouse_input(mouse_input);
+        self.with_session_config(config)
+    }
+
+    /// The effective mouse-input behavior for this runner's terminal session.
+    pub fn mouse_input(&self) -> crate::MouseInput {
+        self.session_config
+            .unwrap_or_else(|| crate::TerminalSessionConfig::for_mode(self.config.screen_mode))
+            .mouse_input()
+    }
+
     /// Enable or disable runner-provided drag selection over the final cell
     /// frame. It is enabled by default whenever the terminal session captures
     /// the mouse. Applications claim a gesture by returning
@@ -264,11 +285,7 @@ impl AsyncRunner {
     }
 
     fn selects_text(&self) -> bool {
-        self.text_selection
-            && self.session_config.map_or_else(
-                || self.config.screen_mode.captures_mouse(),
-                crate::TerminalSessionConfig::captures_mouse,
-            )
+        self.text_selection && self.mouse_input() == crate::MouseInput::Captured
     }
 
     /// Return a handle for publishing content above a
@@ -927,8 +944,10 @@ mod tests {
     async fn clean_mouse_drag_uses_selection_when_mouse_is_captured() {
         let runner = AsyncRunner::new(RunnerConfig {
             tick_rate: Duration::from_secs(3600),
-            screen_mode: ScreenMode::Alternate.with_mouse_capture(),
-        });
+            screen_mode: ScreenMode::Alternate,
+        })
+        .with_mouse_input(crate::MouseInput::Captured);
+        assert_eq!(runner.mouse_input(), crate::MouseInput::Captured);
         let mut terminal = terminal(11, 1);
         let mut mouse_events = 0usize;
         let events = stream::iter([

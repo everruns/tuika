@@ -44,7 +44,7 @@ pub use crate::{
     Align, AlignContent, Application, AvailableSpace, Backdrop, Clock, Delivery, Dimension,
     Direction, DockEdge, DockLayout, DockPlacement, DockSpec, DockState, Element, Event, EventFlow,
     EventSource, FlexItemStyle, FlexWrap, FrameSource, InputOutcome, InputTarget, Justify, Key,
-    KeyCode, LayoutStyle, MeasureRequest, Mouse, MouseButton, MouseCapture, MouseKind,
+    KeyCode, LayoutStyle, MeasureRequest, Mouse, MouseButton, MouseCapture, MouseInput, MouseKind,
     OneShotOptions, Overlay, OverlaySpec, Padding, RenderCtx, RouteStage, Router, Runner,
     RunnerAction, RunnerConfig, RunnerCore, Scene, SceneOverlay, ScopedElement, ScopedScene,
     ScreenMode, Scrollback, SemanticRole, Signal, Size, StyleSheet, Surface, SystemClock,

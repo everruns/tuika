@@ -122,7 +122,27 @@ pub struct TerminalSession {
     cursor_hidden: bool,
 }
 
+/// Which side receives pointer and wheel input during a runner session.
+///
+/// [`Native`](Self::Native) leaves mouse handling to the terminal emulator,
+/// preserving its link activation, selection, and scrolling.
+/// [`Captured`](Self::Captured) asks the terminal to report mouse events to the
+/// application instead.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MouseInput {
+    /// The terminal emulator handles pointer and wheel input.
+    #[default]
+    Native,
+    /// The application receives pointer and wheel events.
+    Captured,
+}
+
 /// Mouse-capture policy for a [`TerminalSessionConfig`].
+///
+/// Runner hosts normally use [`MouseInput`] through
+/// [`Runner::with_mouse_input`](crate::Runner::with_mouse_input). This
+/// three-state policy remains for custom session configuration that wants to
+/// follow or override a [`ScreenMode`] default.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum MouseCapture {
     /// Follow the selected [`ScreenMode`].
@@ -136,6 +156,10 @@ pub enum MouseCapture {
 }
 
 /// Independently configurable terminal lifecycle policy.
+///
+/// [`with_mouse_input`](Self::with_mouse_input) is the explicit two-state
+/// convenience; [`mouse_input`](Self::mouse_input) exposes the effective result
+/// after resolving [`MouseCapture::ModeDefault`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TerminalSessionConfig {
     /// Screen ownership and viewport mode.
@@ -165,6 +189,24 @@ impl TerminalSessionConfig {
             enhanced_keyboard: true,
             mouse_capture: MouseCapture::ModeDefault,
             hide_cursor: true,
+        }
+    }
+
+    /// Set who receives mouse input, independently of the screen mode.
+    pub const fn with_mouse_input(mut self, mouse_input: MouseInput) -> Self {
+        self.mouse_capture = match mouse_input {
+            MouseInput::Native => MouseCapture::Disabled,
+            MouseInput::Captured => MouseCapture::Enabled,
+        };
+        self
+    }
+
+    /// The effective mouse-input behavior after resolving the mode default.
+    pub fn mouse_input(self) -> MouseInput {
+        if self.captures_mouse() {
+            MouseInput::Captured
+        } else {
+            MouseInput::Native
         }
     }
 
@@ -568,6 +610,26 @@ mod tests {
             ..TerminalSessionConfig::for_mode(ScreenMode::split_footer(3))
         };
         assert!(footer.captures_mouse());
+    }
+
+    #[test]
+    fn session_reports_the_effective_mouse_input() {
+        assert_eq!(
+            TerminalSessionConfig::for_mode(ScreenMode::Alternate).mouse_input(),
+            MouseInput::Native,
+        );
+        assert_eq!(
+            TerminalSessionConfig::for_mode(ScreenMode::split_footer(3))
+                .with_mouse_input(MouseInput::Captured)
+                .mouse_input(),
+            MouseInput::Captured,
+        );
+        assert_eq!(
+            TerminalSessionConfig::for_mode(ScreenMode::Alternate.with_mouse_capture())
+                .with_mouse_input(MouseInput::Native)
+                .mouse_input(),
+            MouseInput::Native,
+        );
     }
 
     /// A representative tree: a scrollable bordered body, a progress bar, and a

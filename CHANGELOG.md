@@ -11,6 +11,15 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
+## Unreleased
+
+### Added
+
+- `MouseInput`, plus `Runner::with_mouse_input` / `mouse_input` and matching
+  `AsyncRunner` methods, lets a host declare and inspect application mouse input
+  independently of its screen mode. Existing `ScreenMode` and
+  `TerminalSessionConfig` capture APIs remain compatible.
+
 ## [0.11.1] - 2026-08-25
 
 `tuika` only. The companion crates carry a caret requirement on tuika 0.11, so

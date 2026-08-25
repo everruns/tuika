@@ -30,11 +30,13 @@ until it happens.
 | `SplitFooter { height }` | `height` rows at the bottom of the main screen | the terminal's, live | off by default |
 
 Both modes preserve the terminal's native OSC 8 activation, selection, and
-scrolling by default. A host that needs pointer or wheel events opts into mouse
-capture with `with_mouse_capture`; capture necessarily takes those native
-behaviors away from the terminal. When a runner captures, it restores plain
-drag selection over its final cell frame while continuing to route wheel events
-to the application. Custom-loop hosts opt into capture and selection independently.
+scrolling by default. A runner host that needs pointer or wheel events declares
+`MouseInput::Captured` with `with_mouse_input`, independently of its viewport;
+the effective policy is inspectable through `mouse_input`. A custom-loop host
+opts into mouse capture through its screen or session policy. Capture necessarily
+takes native mouse behaviors away from the terminal. When a runner captures, it
+restores plain drag selection over its final cell frame while continuing to route
+wheel events to the application.
 
 A split footer renders into a ratatui `Viewport::Inline`. The pieces around it:
 
@@ -49,9 +51,10 @@ A split footer renders into a ratatui `Viewport::Inline`. The pieces around it:
   into the loop from elsewhere; `publish_block` commits one view straight from
   inside the loop, with no `Send` bound.
 
-Both runners drive all of this from `RunnerConfig::screen_mode`; hosts with
-their own loop compose the same pieces. The `codex` example runs either way
-(`--split-footer`), which is what keeps the hand-rolled path honest.
+Both runners drive viewport ownership from `RunnerConfig::screen_mode` and
+application mouse input from a runner-level policy; hosts with their own loop
+compose the same pieces. The `codex` example runs either way (`--split-footer`),
+which is what keeps the hand-rolled path honest.
 
 ## Design
 
@@ -78,6 +81,12 @@ Both screen modes therefore leave mouse handling to the emulator. A mode that
 needs application pointer or wheel input opts in with `with_mouse_capture`,
 accepting that native link activation, selection, and scrolling stop until the
 session restores the terminal state.
+
+Screen ownership and input requirements change for different reasons. A host
+may switch between an alternate screen and a split footer without ceasing to be
+mouse-driven, so runner APIs keep `MouseInput` separate from `ScreenMode` and
+let tests inspect the effective result. `ScreenMode::with_mouse_capture` remains
+the lower-level convenience for hosts that construct their own session.
 
 ### The footer is pinned, not merely inline
 

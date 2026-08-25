@@ -143,7 +143,7 @@ fn main() -> std::io::Result<()> {
         return Ok(());
     }
 
-    let runner = Runner::new(runner_config());
+    let runner = Runner::new(runner_config()).with_mouse_input(MouseInput::Captured);
     let files = RectProbe::new();
     let render_files = files.clone();
     runner.run(
@@ -162,7 +162,7 @@ fn main() -> std::io::Result<()> {
 fn runner_config() -> RunnerConfig {
     RunnerConfig {
         tick_rate: Duration::from_millis(100),
-        screen_mode: ScreenMode::Alternate.with_mouse_capture(),
+        screen_mode: ScreenMode::Alternate,
     }
 }
 

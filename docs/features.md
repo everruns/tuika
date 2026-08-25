@@ -252,7 +252,10 @@ must be enabled: `set -g allow-passthrough on`.
 
 Tuika leaves mouse handling to the terminal by default, preserving native OSC 8
 activation, selection, and scrolling. Capture is explicit through
-`ScreenMode::with_mouse_capture`, `MouseCapture::Enabled`, or
+`Runner::with_mouse_input(MouseInput::Captured)` (and its `AsyncRunner`
+counterpart). The runner's `mouse_input()` reports the effective policy, so a
+host can pin the assembled runtime configuration in a test. Custom-loop hosts
+use `ScreenMode::with_mouse_capture`, `MouseCapture::Enabled`, or
 `AltScreen::enter_with_mouse_capture`.
 
 Once an app opts into capture, the terminal stops handling links and selection.

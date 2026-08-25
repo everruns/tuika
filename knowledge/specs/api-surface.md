@@ -67,9 +67,10 @@ module path would do for free.
 
 ### A startup decision can still earn the root
 
-`ScreenMode` and `Scrollback` sit at the crate root even though a host names the
-first once, at startup: the mode is a field of `RunnerConfig`, which is already
-there, and `TerminalSession` — also a once-per-run type — set the precedent. The
+`ScreenMode`, `MouseInput`, and `Scrollback` sit at the crate root even though a
+host names the first once, at startup: the mode is a field of `RunnerConfig`,
+which is already there, mouse input configures both runner types, and
+`TerminalSession` — also a once-per-run type — set the precedent. The
 rest of `screen` stays behind its module path, because `pin_footer`,
 `close_footer`, and `publish_block` are for hosts that drive their own loop, and
 an explicit `screen::` documents that call better than a bare name would.
