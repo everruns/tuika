@@ -1,5 +1,19 @@
 # Knowledge Log
 
+## 2026-08-25
+
+- **Input requirements must survive viewport changes**
+  - A host can fully test click, drag, and wheel handlers by injecting
+    `Event::Mouse` through `run_driven_by` while its real runner session never
+    enables terminal mouse reporting. Both runners now accept an explicit,
+    inspectable `MouseInput` policy independently of `ScreenMode`; their PTY
+    coverage proves the assembled session emits and consumes real mouse input.
+    See [Screen modes](specs/screen-modes.md) and
+    [Architecture](specs/architecture.md).
+  - Worth keeping because a compile-clean viewport migration can otherwise
+    disable every pointer path at once, beyond the reach of component and
+    in-memory loop tests.
+
 ## 2026-08-22
 
 - **Published guides share one checked route inventory**

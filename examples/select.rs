@@ -119,9 +119,10 @@ fn main() -> io::Result<()> {
     let cli = support::Cli::parse()?;
     let theme = cli.theme;
     let runner = Runner::new(RunnerConfig {
-        screen_mode: ScreenMode::Alternate.with_mouse_capture(),
+        screen_mode: ScreenMode::Alternate,
         ..RunnerConfig::default()
-    });
+    })
+    .with_mouse_input(MouseInput::Captured);
     let mut state = PickerState::new();
     runner.run(
         &theme,

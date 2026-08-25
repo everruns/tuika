@@ -134,8 +134,8 @@ pub use dock::{DockEdge, DockLayout, DockPlacement, DockSpec, DockState};
 pub use event::{Event, EventFlow, InputOutcome, Key, KeyCode, Mouse, MouseButton, MouseKind};
 pub use geometry::{Padding, Size};
 pub use host::{
-    MouseCapture, TerminalSession, TerminalSessionConfig, paint, paint_scene, paint_with_context,
-    paint_with_sheet, translate_event,
+    MouseCapture, MouseInput, TerminalSession, TerminalSessionConfig, paint, paint_scene,
+    paint_with_context, paint_with_sheet, translate_event,
 };
 pub use layout::{
     Align, AlignContent, Dimension, Direction, FlexItemStyle, FlexLine, FlexWrap, Item, Justify,

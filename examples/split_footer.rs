@@ -102,17 +102,17 @@ fn main() -> std::io::Result<()> {
         ));
     }
     let mode = ScreenMode::split_footer(FOOTER_ROWS);
-    let mode = if capture_mouse {
-        mode.with_mouse_capture()
-    } else {
-        mode
-    };
 
     let theme = cli.theme;
     let runner = Runner::new(RunnerConfig {
         tick_rate: Duration::from_millis(80),
         screen_mode: mode,
     });
+    let runner = if capture_mouse {
+        runner.with_mouse_input(MouseInput::Captured)
+    } else {
+        runner
+    };
     let scrollback = runner.scrollback();
     let status = Live::with_redraw(
         Status {

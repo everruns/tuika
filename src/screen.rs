@@ -131,6 +131,9 @@ impl ScreenMode {
     ///
     /// This is opt-in because terminal mouse reporting takes native OSC 8 link
     /// activation, selection, and scrolling away from the terminal emulator.
+    /// Runner-based hosts should prefer
+    /// [`Runner::with_mouse_input`](crate::Runner::with_mouse_input), which
+    /// keeps the input requirement independent of viewport selection.
     pub fn with_mouse_capture(self) -> Self {
         match self {
             Self::Alternate | Self::AlternateWithMouseCapture => Self::AlternateWithMouseCapture,

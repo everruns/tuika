@@ -158,6 +158,14 @@ rather than beside it.
   extended to the run loop. The synchronous side gets its input through an
   `EventSource` because it blocks on a timeout rather than selecting on a
   stream; that trait is the boundary a scripted or custom input implements.
+- **Mouse input is a requirement, not a viewport property.** Runner hosts opt
+  into application mouse events with `MouseInput::Captured`, and can inspect
+  the effective policy before entering the terminal. `ScreenMode` still carries
+  its compatible low-level capture defaults for custom session hosts, but a
+  runner-level declaration survives a switch between alternate-screen and
+  split-footer geometry. This makes assembled runtime policy directly testable;
+  an in-memory `run_driven_by` test cannot prove that a real terminal was asked
+  to emit the mouse events it injects.
 - **The frame source is an argument, not a method name.** `FrameSource` has two
   implementors — `&mut app` for an `Application`, and `from_fn` over a state
   value and closures — so a run method never has to name which one it takes.

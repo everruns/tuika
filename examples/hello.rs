@@ -12,15 +12,15 @@ fn main() -> io::Result<()> {
     let cli = support::Cli::parse()?;
     let theme = cli.theme;
     let capture_mouse = cli.args.iter().any(|argument| argument == "--mouse");
-    let screen_mode = if capture_mouse {
-        ScreenMode::Alternate.with_mouse_capture()
-    } else {
-        ScreenMode::Alternate
-    };
     let runner = Runner::new(RunnerConfig {
-        screen_mode,
+        screen_mode: ScreenMode::Alternate,
         ..RunnerConfig::default()
     });
+    let runner = if capture_mouse {
+        runner.with_mouse_input(MouseInput::Captured)
+    } else {
+        runner
+    };
 
     runner.run(
         &theme,
