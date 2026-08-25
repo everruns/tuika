@@ -2285,7 +2285,7 @@ dependencies = [
 
 [[package]]
 name = "tuika"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "criterion",
  "crossterm",

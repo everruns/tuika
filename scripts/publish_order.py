@@ -8,6 +8,11 @@ publishing — or publish it before the crate it depends on.
 Unlike a root-rooted traversal, this walks *every* workspace member: the root
 package (`tuika`) is a dependency of the member crate, not the other way round,
 so starting from the root would never reach `tuika-codeformatters`.
+
+Dev-dependencies are ignored. `cargo publish` strips them from the packaged
+manifest, so they impose no publish order — and the root package dev-depends on
+companions that depend back on it (examples render real charts and highlighted
+code), which would otherwise read as a cycle.
 """
 
 from __future__ import annotations
@@ -45,6 +50,8 @@ def publish_order(metadata: Mapping[str, Any]) -> list[str]:
         package = packages[name]
         dependencies: Sequence[Mapping[str, Any]] = package.get("dependencies", [])
         for dependency in dependencies:
+            if dependency.get("kind") == "dev":
+                continue
             dependency_name = dependency["name"]
             if dependency.get("path") and dependency_name in packages:
                 visit(dependency_name)
