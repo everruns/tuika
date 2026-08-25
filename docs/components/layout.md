@@ -43,6 +43,12 @@ shell view each frame. Run it with `cargo run --example app_shell`; resize the
 terminal to see rules and secondary chrome yield before the main body and
 footer.
 
+The recording drives that real application: selection moves through the growing
+body, submission updates the status region, and the shell keeps its intrinsic
+chrome around the host-owned state.
+
+<img src="../../examples/app_shell.gif" width="880" alt="Interactive AppShell example in Solarized Dark: selection moves through repository files and submission updates the status region inside header, rule, body, status, and key-hint chrome.">
+
 #### `AppShell` or `Flex`?
 
 Use `AppShell` when the application has one growing body surrounded by
