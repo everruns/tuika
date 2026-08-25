@@ -78,10 +78,10 @@ impl Region<'_> {
 /// Separators use the active stylesheet's [`Role::Rule`] style.
 ///
 /// Run the [complete interactive example](https://github.com/everruns/tuika/blob/main/examples/app_shell.rs)
-/// with `cargo run --example app_shell`. The focused component image below is
-/// recorded with `cargo run --example demo -- app_shell`.
+/// with `cargo run --example app_shell`. The recording below drives that binary
+/// through navigation and submission with the Solarized Dark theme.
 ///
-/// ![application shell demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/app_shell.png)
+/// ![interactive application shell demo](https://raw.githubusercontent.com/everruns/tuika/main/examples/app_shell.gif)
 pub struct AppShell<'view> {
     before_main: Vec<Region<'view>>,
     main: Region<'view>,

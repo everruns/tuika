@@ -139,16 +139,17 @@ fn generated_site_is_excluded_from_the_package() {
 }
 
 #[test]
-fn in_repo_showcase_recordings_are_excluded_from_the_package() {
+fn in_repo_application_recordings_are_excluded_from_the_package() {
     let files = packaged_files("tuika");
 
     for asset in [
         "examples/codex/codex.gif",
+        "examples/app_shell.gif",
         "examples/workbench_demo/workbench-demo.gif",
     ] {
         assert!(
             !files.iter().any(|file| file == asset),
-            "repository-hosted showcase recording must not ship: {asset}"
+            "repository-hosted application recording must not ship: {asset}"
         );
     }
 }

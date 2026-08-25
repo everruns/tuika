@@ -844,6 +844,7 @@ fn check_capture_theme(dir: &Path, errors: &mut Vec<String>) {
 
     for relative in [
         "scripts/gen-all-demos.sh",
+        "scripts/gen-app-shell-demo.sh",
         "scripts/gen-chart-demo.sh",
         "scripts/gen-codex-demo.sh",
         "scripts/gen-hero.sh",
