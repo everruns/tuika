@@ -573,9 +573,9 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "futures-core"
-version = "0.3.33"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cd50c473c80f6d7c3670a752354b8e569b1a7cbfdc0419ec88e5edad85e0dc7"
+checksum = "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e"
 
 [[package]]
 name = "futures-sink"
@@ -2123,9 +2123,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter"
-version = "0.26.12"
+version = "0.26.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83c567a8e18ae93f20982c90370b16fd24023aeaf52f6052b96957ab253a0fec"
+checksum = "17ebdd3a5a7e28a1890b876fdbd0c3c0fe0a6336cffaa104f11b9f720c9daa29"
 dependencies = [
  "cc",
  "regex",
@@ -2167,9 +2167,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-highlight"
-version = "0.26.12"
+version = "0.26.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12bf7c298789885e63e7c1c9c86976875136064d23f541007bae3a02a23a74f9"
+checksum = "662316ecd27166f79e18865429638c05194aee76a7bc374136d844f05d778f74"
 dependencies = [
  "regex",
  "streaming-iterator",
