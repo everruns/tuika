@@ -5,8 +5,8 @@
 //! question of *how much* of one measurable step is complete; an activity item
 //! may include that fraction and the list composes a bar beneath the status row.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
+use crate::geometry::Rect;
+use crate::style::Style;
 
 use crate::geometry::Size;
 use crate::style::SemanticRole;

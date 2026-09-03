@@ -1,8 +1,8 @@
 //! Focus-independent tab navigation with host-owned selection state.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::{Modifier, Style};
-use ratatui_core::text::Line;
+use crate::geometry::Rect;
+use crate::style::{Modifier, Style};
+use crate::text::Line;
 
 use crate::{Event, InputOutcome, KeyCode, RenderCtx, Size, Surface, View};
 
@@ -133,7 +133,7 @@ mod tests {
     use crate::event::{Event, InputOutcome, Key, KeyCode};
     use crate::style::Theme;
     use crate::tests::support::row;
-    use ratatui_core::text::Line;
+    use crate::text::Line;
 
     #[test]
     fn tabs_state_wraps_and_tabs_render_selection() {
@@ -154,7 +154,7 @@ mod tests {
         assert!(
             rendered[(10, 0)]
                 .modifier
-                .contains(ratatui_core::style::Modifier::UNDERLINED)
+                .contains(crate::style::Modifier::UNDERLINED)
         );
     }
 }

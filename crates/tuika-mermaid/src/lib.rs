@@ -8,10 +8,10 @@
 //! fallback.
 
 use mmdflux::{OutputFormat, RenderConfig, TextColorMode, render_diagram};
-use ratatui_core::style::Style;
-use ratatui_core::text::{Line, Span};
 use tuika::Theme;
 use tuika::components::{MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer};
+use tuika::ui::Style;
+use tuika::ui::{Line, Span};
 
 /// Upper bound for one Mermaid fence handed to mmdflux.
 const MAX_SOURCE_BYTES: usize = 64 * 1024;

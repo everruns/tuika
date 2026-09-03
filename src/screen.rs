@@ -64,10 +64,10 @@
 
 use std::sync::{Arc, Mutex};
 
-use ratatui_core::backend::Backend;
-use ratatui_core::buffer::Buffer;
-use ratatui_core::terminal::{Terminal, Viewport};
-use ratatui_core::text::Line;
+use crate::buffer::Buffer;
+use crate::term::terminal::{Terminal, Viewport};
+use crate::term::traits::Backend;
+use crate::text::Line;
 
 use crate::components::Text;
 use crate::geometry::Size;
@@ -405,14 +405,14 @@ pub fn close_footer<B: Backend>(terminal: &mut Terminal<B>) -> Result<(), B::Err
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geometry::{Position, Rect};
     use crate::style::StyleSheet;
+    use crate::style::{Color, Style};
+    use crate::term::terminal::TerminalOptions;
+    use crate::term::testbackend::TestBackend;
     use crate::tests::support::rainbow_theme;
+    use crate::text::Span;
     use crate::view::element;
-    use ratatui_core::backend::TestBackend;
-    use ratatui_core::layout::{Position, Rect};
-    use ratatui_core::style::{Color, Style};
-    use ratatui_core::terminal::TerminalOptions;
-    use ratatui_core::text::Span;
 
     /// An inline terminal whose viewport is anchored at `cursor_row`, i.e. what
     /// a host gets when it starts a footer partway down a used screen.

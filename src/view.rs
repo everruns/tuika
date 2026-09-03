@@ -12,7 +12,7 @@
 
 use std::cell::RefCell;
 
-use ratatui_core::layout::Rect;
+use crate::geometry::Rect;
 
 use super::geometry::Size;
 use super::style::{StyleBundle, StyleResolver, StyleRole, StyleSheet, Theme};
@@ -464,9 +464,9 @@ pub type CanvasView<F> = DrawView<F>;
 mod draw_view_tests {
     use super::*;
     use crate::Theme;
+    use crate::style::Color;
     use crate::style::{StyleBundle, StyleResolver, StyleRole};
     use crate::testing::{grid, render, render_with_context};
-    use ratatui_core::style::Color;
 
     const METRIC: StyleRole = StyleRole::new("example.metric");
 
@@ -522,7 +522,7 @@ mod draw_view_tests {
         assert!(
             buffer[(0, 0)]
                 .modifier
-                .contains(ratatui_core::style::Modifier::BOLD)
+                .contains(crate::style::Modifier::BOLD)
         );
         assert_eq!(buffer[(1, 0)].fg, Color::Yellow);
         assert_eq!(

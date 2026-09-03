@@ -2,8 +2,8 @@
 
 use std::ops::Range;
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
+use crate::geometry::Rect;
+use crate::style::Style;
 
 use crate::geometry::Size;
 use crate::style::StyleRole;

@@ -5,7 +5,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use ratatui_core::layout::Rect;
+use tuika::ui::Rect;
 use tuika::{
     AlignContent, Dimension, FlexItemStyle, FlexWrap, Item, LayoutStyle, Size, solve_layout,
 };

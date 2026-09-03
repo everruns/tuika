@@ -6,10 +6,10 @@
 //! renderer uses, minus the width-independent middle form — HTML is not
 //! streamed token by token, so there is no settled prefix to cache.
 
-use ratatui_core::style::{Modifier, Style};
-use ratatui_core::text::{Line, Span};
 use tuika::components::text::wrap_lines;
 use tuika::style::{StyleSheet, Theme};
+use tuika::ui::{Line, Span};
+use tuika::ui::{Modifier, Style};
 use tuika::width::str_cols;
 
 use markup5ever_rcdom::{Handle, NodeData};

@@ -13,8 +13,8 @@
 //! (dark modules black, light modules white by default, for scanner contrast),
 //! surrounded by the mandatory 4-module quiet zone.
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::{Color, Style};
+use crate::geometry::Rect;
+use crate::style::{Color, Style};
 
 use crate::geometry::Size;
 use crate::surface::Surface;

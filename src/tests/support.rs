@@ -6,9 +6,9 @@
 //! identifiable "rainbow" theme, rendering an element to text — live here so
 //! they are defined once.
 
-use ratatui_core::buffer::Buffer;
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Color;
+use crate::buffer::Buffer;
+use crate::geometry::Rect;
+use crate::style::Color;
 
 use crate::Surface;
 use crate::style::Theme;

@@ -17,6 +17,10 @@
 
 use std::io::{self, Write};
 
+use crate::buffer::Cell;
+use crate::geometry::{Position, Size};
+use crate::style::{Color, Modifier};
+use crate::term::traits::{Backend, ClearType, WindowSize};
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::queue;
 use crossterm::style::{
@@ -24,27 +28,25 @@ use crossterm::style::{
     SetBackgroundColor, SetColors, SetForegroundColor, SetUnderlineColor,
 };
 use crossterm::terminal::{self, Clear};
-use ratatui_core::backend::{Backend, ClearType, WindowSize};
-use ratatui_core::buffer::Cell;
-use ratatui_core::layout::{Position, Size};
-use ratatui_core::style::{Color, Modifier};
 
 use super::hyperlink::to_ct_color;
 
-/// A ratatui [`Backend`] that draws through crossterm.
+/// A [`Backend`] that draws through crossterm.
 ///
-/// Internal: hosts reach the terminal through
-/// [`Runner`](crate::Runner)/[`AsyncRunner`](crate::AsyncRunner), or wrap their
-/// own writer in [`HyperlinkBackend`](super::hyperlink::HyperlinkBackend). A
-/// host that wants a bare backend still has ratatui's own.
-pub(crate) struct CrosstermBackend<W: Write> {
+/// Most hosts never name this: [`Runner`](crate::Runner) and
+/// [`AsyncRunner`](crate::AsyncRunner) build one, and a host wanting OSC 8
+/// hyperlinks wraps its writer in
+/// [`HyperlinkBackend`](super::hyperlink::HyperlinkBackend) instead. It is
+/// public for the host that drives
+/// [`Terminal`](crate::term::terminal::Terminal) itself.
+pub struct CrosstermBackend<W: Write> {
     writer: W,
 }
 
 impl<W: Write> CrosstermBackend<W> {
     /// Draw into `writer` — in production the process's stdout, in tests a
     /// `Vec<u8>` the assertions read back.
-    pub(crate) const fn new(writer: W) -> Self {
+    pub const fn new(writer: W) -> Self {
         Self { writer }
     }
 }
@@ -331,7 +333,7 @@ impl crossterm::Command for ScrollInRegion {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui_core::style::Style;
+    use crate::style::Style;
 
     /// Draw `cells` at consecutive columns on row 0 and return the byte stream.
     fn drawn(cells: &[(&'static str, Style)]) -> String {
@@ -424,6 +426,11 @@ mod tests {
     /// backend would plausibly drift — cursor elision, the shared
     /// intensity/blink SGR slots, indexed and truecolor pairs, underline color,
     /// and wide/zero-width symbols.
+    ///
+    /// Gated on the `ratatui` feature because the comparison needs the cell
+    /// conversion in [`crate::interop`], which is what that feature turns on.
+    /// CI runs `--all-features`, so the proof still runs on every change.
+    #[cfg(feature = "ratatui")]
     #[test]
     fn the_byte_stream_matches_ratatui_crossterm_exactly() {
         use ratatui::backend::CrosstermBackend as Reference;
@@ -461,11 +468,15 @@ mod tests {
         let mut ours = CrosstermBackend::new(Vec::<u8>::new());
         ours.draw(cells.iter().map(|(x, y, cell)| (*x, *y, cell)))
             .expect("draw");
+        let foreign: Vec<(u16, u16, ratatui_core::buffer::Cell)> = cells
+            .iter()
+            .map(|(x, y, cell)| (*x, *y, crate::interop::to_ratatui_cell(cell)))
+            .collect();
         let mut expected = Vec::<u8>::new();
         let mut reference = Reference::new(&mut expected);
         ratatui::backend::Backend::draw(
             &mut reference,
-            cells.iter().map(|(x, y, cell)| (*x, *y, cell)),
+            foreign.iter().map(|(x, y, cell)| (*x, *y, cell)),
         )
         .expect("draw");
 

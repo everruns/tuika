@@ -5,8 +5,8 @@
 //! output carries styles but not line breaks; [`flatten`](super::flatten) adds
 //! those.
 
+use crate::style::{Modifier, Style};
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-use ratatui_core::style::{Modifier, Style};
 
 use crate::components::code_block::code_block_rows;
 use crate::highlight::CodeHighlighter;

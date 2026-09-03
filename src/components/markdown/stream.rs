@@ -5,7 +5,7 @@
 //! the in-flight tail. Without it a streamed render is O(n²) in transcript
 //! length — see the comments on the cache fields.
 
-use ratatui_core::text::Line;
+use crate::text::Line;
 
 use crate::highlight::CodeHighlighter;
 use crate::style::{StyleSheet, Theme};
@@ -417,7 +417,7 @@ mod tests {
     use crate::highlight::CodeHighlighter;
     use crate::style::{StyleSheet, Theme};
 
-    use ratatui_core::text::Line;
+    use crate::text::Line;
     use std::cell::Cell;
     use std::rc::Rc;
 
@@ -449,7 +449,7 @@ mod tests {
 
     #[test]
     fn sheet_change_invalidates_stream_cache() {
-        use ratatui_core::style::Color;
+        use crate::style::Color;
         let theme = Theme::default();
         let mut state = MarkdownState::new();
         state.set("A [link](https://ex.com) in prose.");
@@ -599,7 +599,7 @@ mod tests {
         let sheet = StyleSheet::from_theme(&theme);
         // Compare the *styles* too: a leaked scope changes how the tail is
         // painted without changing a single character of it.
-        let styled = |lines: &[Line<'static>]| -> Vec<(String, ratatui_core::style::Style)> {
+        let styled = |lines: &[Line<'static>]| -> Vec<(String, crate::style::Style)> {
             lines
                 .iter()
                 .flat_map(|l| &l.spans)
@@ -833,7 +833,7 @@ mod tests {
         assert!(state.stable_len > 0);
 
         let mut b = Theme::default();
-        b.code.heading = ratatui_core::style::Color::Indexed(200);
+        b.code.heading = crate::style::Color::Indexed(200);
         let _ = state.lines(40, &b, &StyleSheet::from_theme(&b), CodeHighlighter::Plain);
         // Cache was rebuilt under the new theme; still consistent, no stale panic.
         assert_eq!(state.cached_theme, Some(b));

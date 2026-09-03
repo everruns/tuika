@@ -22,8 +22,8 @@
 
 use std::cell::RefCell;
 
-use ratatui_core::buffer::Buffer;
-use ratatui_core::layout::Rect;
+use crate::buffer::Buffer;
+use crate::geometry::Rect;
 
 use crate::geometry::Size;
 use crate::style::{StyleSheet, Theme};
@@ -349,7 +349,7 @@ fn render_scrolled<V: View>(
         return;
     }
     let destination = Rect::new(x, y, width, visible);
-    surface.render_ratatui(destination, |dst, buffer| {
+    surface.render_scratch(destination, |dst, buffer| {
         let window = Rect::new(0, hidden, width, dst.height);
         let mut scratch = Buffer::empty(window);
         // Seed the window with what is already on screen, so an item that paints
@@ -379,8 +379,8 @@ mod tests {
     use crate::components::{Boxed, Text};
     use crate::style::Theme;
     use crate::tests::support::{buffer, row};
+    use crate::text::Line;
     use crate::view::element;
-    use ratatui_core::text::Line;
 
     /// `n` items, each a `rows`-tall block of numbered lines.
     fn blocks(n: usize, rows: usize) -> Vec<Element> {
@@ -553,7 +553,7 @@ mod tests {
             }
             fn render(&self, area: Rect, surface: &mut Surface, _ctx: &RenderCtx) {
                 for y in area.y..area.bottom().min(area.y.saturating_add(4)) {
-                    surface.set_string(area.x, y, "greedy", ratatui_core::style::Style::default());
+                    surface.set_string(area.x, y, "greedy", crate::style::Style::default());
                 }
             }
         }

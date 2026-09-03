@@ -18,7 +18,7 @@
 //! [`Event::InlineHtml`]: pulldown_cmark::Event::InlineHtml
 //! [`Event::Html`]: pulldown_cmark::Event::Html
 
-use ratatui_core::style::Modifier;
+use crate::style::Modifier;
 
 use crate::style::Role;
 

@@ -18,19 +18,19 @@ use std::time::Duration;
 
 use crossterm::event::{self, Event as CtEvent, KeyCode, KeyEventKind};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use ratatui::backend::CrosstermBackend;
-use ratatui::layout::Rect;
-use ratatui::style::Style;
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Paragraph};
-use ratatui::{Terminal, TerminalOptions, Viewport};
+use tuika::term::backend::CrosstermBackend;
+use tuika::term::terminal::{Terminal, TerminalOptions, Viewport};
+use tuika::ui::Rect;
+use tuika::ui::Style;
 
+use tuika::Surface;
 use tuika::host::AltScreen;
 use tuika::mouse::{ClickTracker, HitMap, SelectionState, paint_selection, selected_text};
 use tuika::prelude::*;
+use tuika::style::BorderStyle;
+use tuika::term::clipboard;
 
 mod support;
-use tuika::term::clipboard;
 
 const SAMPLE: &[&str] = &[
     "Drag across this text to select it.",
@@ -84,29 +84,21 @@ fn main() -> io::Result<()> {
             clear_btn = Rect::new(2, btn_y, 9, 1);
             quit_btn = Rect::new(12, btn_y, 8, 1);
 
-            f.render_widget(
-                Paragraph::new(Line::from(Span::styled(
-                    " tuika mouse demo ",
-                    theme.accent_style(),
-                ))),
-                Rect::new(1, 0, area.width.saturating_sub(2), 1),
-            );
-            f.render_widget(
-                Block::bordered(),
-                Rect::new(1, 1, area.width.saturating_sub(2), SAMPLE.len() as u16 + 2),
-            );
-            f.render_widget(
-                Paragraph::new(SAMPLE.iter().map(|s| Line::from(*s)).collect::<Vec<_>>()),
-                text_area,
-            );
-            f.render_widget(
-                Paragraph::new(Span::styled("[ clear ]", theme.muted_style())),
-                clear_btn,
-            );
-            f.render_widget(
-                Paragraph::new(Span::styled("[ quit ]", theme.muted_style())),
-                quit_btn,
-            );
+            {
+                let full = f.area();
+                let mut surface = Surface::new(f.buffer_mut(), full);
+                surface.set_string(1, 0, " tuika mouse demo ", theme.accent_style());
+                surface.draw_border(
+                    Rect::new(1, 1, area.width.saturating_sub(2), SAMPLE.len() as u16 + 2),
+                    BorderStyle::Plain.glyphs(),
+                    Style::default().fg(theme.border),
+                );
+                for (i, line) in SAMPLE.iter().enumerate() {
+                    surface.set_string(text_area.x, text_area.y + i as u16, line, Style::default());
+                }
+                surface.set_string(clear_btn.x, clear_btn.y, "[ clear ]", theme.muted_style());
+                surface.set_string(quit_btn.x, quit_btn.y, "[ quit ]", theme.muted_style());
+            }
 
             if sel.resolve(f.buffer_mut(), text_area) {
                 pending_copy = true;
@@ -126,15 +118,16 @@ fn main() -> io::Result<()> {
                 pending_copy = false;
             }
 
-            f.render_widget(
-                Paragraph::new(Span::styled(status.clone(), theme.muted_style())),
-                Rect::new(
+            {
+                let full = f.area();
+                let mut surface = Surface::new(f.buffer_mut(), full);
+                surface.set_string(
                     1,
                     area.height.saturating_sub(1),
-                    area.width.saturating_sub(2),
-                    1,
-                ),
-            );
+                    &status,
+                    theme.muted_style(),
+                );
+            }
         })?;
 
         let mut hits: HitMap<Btn> = HitMap::new();

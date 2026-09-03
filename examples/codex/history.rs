@@ -9,8 +9,8 @@
 //! their rows in a `Text`; panel-shaped ones return a real `Boxed`. A streamed
 //! answer still keeps a [`MarkdownState`] so only its in-flight tail re-parses.
 
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
+use tuika::ui::{Line, Span};
+use tuika::ui::{Modifier, Style};
 
 use tuika::components::text::wrap_lines;
 use tuika::prelude::*;

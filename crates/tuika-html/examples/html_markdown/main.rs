@@ -34,9 +34,9 @@ impl View for Padded {
         available
     }
 
-    fn render(&self, area: ratatui_core::layout::Rect, surface: &mut Surface, ctx: &RenderCtx) {
+    fn render(&self, area: tuika::ui::Rect, surface: &mut Surface, ctx: &RenderCtx) {
         let html = HtmlRenderer::new();
-        let inner = ratatui_core::layout::Rect {
+        let inner = tuika::ui::Rect {
             x: area.x.saturating_add(2),
             y: area.y.saturating_add(1),
             width: area.width.saturating_sub(4),

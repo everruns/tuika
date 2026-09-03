@@ -1,6 +1,6 @@
 //! A deliberately small row-major terminal grid.
 
-use ratatui_core::layout::Rect;
+use crate::geometry::Rect;
 
 use crate::geometry::{Padding, Size};
 use crate::surface::Surface;

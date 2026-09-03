@@ -1,6 +1,6 @@
-use ratatui_core::style::Color;
 use tuika::RenderCtx;
 use tuika::term::image::ImageData;
+use tuika::ui::Color;
 
 use crate::axis::AxisLayout;
 use crate::plan::{ChartPlan, Geometry};

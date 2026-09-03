@@ -9,9 +9,9 @@
 //! [`tuika::term::image::ImageSupport`] and an
 //! [`tuika::term::image::ImageLayer`] through [`tuika::RenderCtx`].
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::{Color, Style};
 use tuika::term::image::{ImageLayer, ImageSupport};
+use tuika::ui::Rect;
+use tuika::ui::{Color, Style};
 use tuika::{RenderCtx, Size, Surface, View};
 
 mod axis;
@@ -418,15 +418,15 @@ fn draw_line(mut from: (i32, i32), to: (i32, i32), mut draw: impl FnMut(i32, i32
 mod tests {
     use super::*;
     use crate::cells::{BrailleGrid, QuadrantGrid, draw_quadrant_band};
-    use ratatui_core::buffer::Buffer;
     use tuika::Theme;
+    use tuika::ui::Buffer;
 
     fn is_braille(ch: char) -> bool {
         ('\u{2801}'..='\u{28ff}').contains(&ch)
     }
 
     fn is_quadrant(ch: char) -> bool {
-        ratatui_core::symbols::pixel::QUADRANTS[1..].contains(&ch)
+        tuika::framebuffer::QUADRANTS[1..].contains(&ch)
     }
 
     pub(super) fn grid_of(buffer: &Buffer, area: Rect) -> String {
@@ -1019,7 +1019,7 @@ mod axis_tests {
         let (cells, area) = render_to(&chart, 36, 12);
 
         let layer = ImageLayer::new();
-        let mut graphics = ratatui_core::buffer::Buffer::empty(area);
+        let mut graphics = tuika::ui::Buffer::empty(area);
         chart.support(ImageSupport::Kitty).in_layer(&layer).render(
             area,
             &mut Surface::new(&mut graphics, area),
@@ -1163,7 +1163,7 @@ mod baseline_tests {
     #[test]
     fn bars_render_proportional_heights_from_the_baseline() {
         let area = Rect::new(0, 0, 30, 12);
-        let mut buffer = ratatui_core::buffer::Buffer::empty(area);
+        let mut buffer = tuika::ui::Buffer::empty(area);
         Chart::new()
             .legend(false)
             .series(Series::bar("bars", points([1.0, 2.0, 4.0])))

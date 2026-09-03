@@ -11,9 +11,9 @@
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
 
-use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
-use ratatui_core::text::Line;
+use crate::geometry::Rect;
+use crate::style::Style;
+use crate::text::Line;
 
 use crate::event::{Event, InputOutcome, KeyCode, MouseButton, MouseKind};
 use crate::geometry::Size;
@@ -1262,8 +1262,8 @@ mod tests {
     use std::rc::Rc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use ratatui_core::style::{Color, Style};
-    use ratatui_core::text::Span;
+    use crate::style::{Color, Style};
+    use crate::text::Span;
 
     use super::*;
     use crate::event::{Key, Mouse};

@@ -32,10 +32,11 @@ use std::convert::Infallible;
 use std::rc::Rc;
 use std::time::Duration;
 
-use ratatui_core::backend::{Backend, ClearType, TestBackend, WindowSize};
-use ratatui_core::buffer::Cell as BufferCell;
-use ratatui_core::layout::{Position, Size as BackendSize};
-use ratatui_core::terminal::{Terminal, TerminalOptions};
+use tuika::buffer::Cell as BufferCell;
+use tuika::geometry::{Position, Size as BackendSize};
+use tuika::term::terminal::{Terminal, TerminalOptions};
+use tuika::term::testbackend::TestBackend;
+use tuika::term::traits::{Backend, ClearType, WindowSize};
 
 use tuika::overlay::Anchor;
 use tuika::prelude::*;
@@ -1208,7 +1209,7 @@ fn assert_contained(name: &str, view: &dyn View, theme: &Theme, sheet: StyleShee
     for &(width, height) in SIZES {
         let outer = Rect::new(0, 0, width + MARGIN * 2, height + MARGIN * 2);
         let inner = Rect::new(MARGIN, MARGIN, width, height);
-        let mut first = ratatui_core::buffer::Buffer::empty(outer);
+        let mut first = tuika::buffer::Buffer::empty(outer);
         paint_with_sheet(&mut first, inner, theme, sheet, view, &[]);
 
         let blank = BufferCell::default();
@@ -1233,7 +1234,7 @@ fn assert_contained(name: &str, view: &dyn View, theme: &Theme, sheet: StyleShee
             }
         }
 
-        let mut second = ratatui_core::buffer::Buffer::empty(outer);
+        let mut second = tuika::buffer::Buffer::empty(outer);
         paint_with_sheet(&mut second, inner, theme, sheet, view, &[]);
         assert_eq!(
             first, second,
@@ -1521,7 +1522,7 @@ fn borrowed_overlays_stay_inside_the_screen_at_every_size() {
             })
             .collect();
 
-        let mut buffer = ratatui_core::buffer::Buffer::empty(outer);
+        let mut buffer = tuika::buffer::Buffer::empty(outer);
         paint_with_sheet(&mut buffer, inner, &theme, sheet, &root, &overlays);
 
         let blank = BufferCell::default();

@@ -7,8 +7,8 @@
 //! `ScrollState`, `SelectState`) and renders from them; the wiring below is the
 //! part a real host writes.
 
-use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use tuika::ui::Rect;
+use tuika::ui::{Color, Modifier, Style};
 
 use tuika::prelude::*;
 

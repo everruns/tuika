@@ -38,8 +38,8 @@ use std::thread;
 use std::time::Duration;
 
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
-use ratatui::style::Color;
 use tuika::prelude::Theme;
+use tuika::ui::Color;
 
 mod support;
 

@@ -63,9 +63,9 @@ use std::time::Duration;
 
 use super::stream::{self, Stream};
 use crate::term::backend::CrosstermBackend;
+use crate::term::terminal::{Terminal, TerminalOptions};
+use crate::term::traits::Backend;
 use crossterm::event::EventStream;
-use ratatui_core::backend::Backend;
-use ratatui_core::terminal::{Terminal, TerminalOptions};
 use tokio::time::{Instant as TokioInstant, MissedTickBehavior, interval, sleep_until};
 
 use super::{
@@ -482,7 +482,7 @@ impl AsyncRunner {
     ///
     /// This is the loop itself, and what [`run`](Self::run) builds on. The boundary
     /// tests drive it against a
-    /// [`TestBackend`](ratatui_core::backend::TestBackend) with scripted
+    /// [`TestBackend`](crate::term::testbackend::TestBackend) with scripted
     /// streams; hosts that already own their terminal and event source (or want
     /// a non-crossterm one) can call it directly. Pass [`no_messages`] when
     /// there is no application stream.
@@ -490,7 +490,7 @@ impl AsyncRunner {
     /// The backend error and both stream errors share one type `Er`, which is
     /// the run's error type: for the real terminal that is [`io::Error`], but
     /// leaving it generic lets an infallible backend
-    /// ([`TestBackend`](ratatui_core::backend::TestBackend), whose error is
+    /// ([`TestBackend`](crate::term::testbackend::TestBackend), whose error is
     /// [`Infallible`]) pair with infallible streams.
     ///
     /// `events` yields already-translated tuika [`Event`]s. An `Err` item from
@@ -788,9 +788,9 @@ mod tests {
     use crate::ScreenMode;
     use crate::components::Text;
     use crate::event::{Key, KeyCode, Mouse, MouseButton, MouseKind};
+    use crate::geometry::Rect;
+    use crate::term::testbackend::TestBackend;
     use crate::view::element;
-    use ratatui_core::backend::TestBackend;
-    use ratatui_core::layout::Rect;
 
     use crate::View;
     use crate::geometry::Size;
@@ -1186,8 +1186,8 @@ mod tests {
     // the scrollback above it, and the footer is repainted afterwards.
     #[tokio::test]
     async fn split_footer_publishes_above_a_pinned_footer() {
+        use crate::geometry::Position;
         use crate::screen::ScreenMode;
-        use ratatui_core::layout::Position;
 
         let runner = AsyncRunner::new(RunnerConfig {
             tick_rate: Duration::from_secs(3600),
@@ -1216,8 +1216,8 @@ mod tests {
                     &mut state,
                     |_state, _frame| {
                         element(Text::new(vec![
-                            ratatui_core::text::Line::from("FOOTER"),
-                            ratatui_core::text::Line::from("FOOTER"),
+                            crate::text::Line::from("FOOTER"),
+                            crate::text::Line::from("FOOTER"),
                         ]))
                     },
                     async |_state, signal| match signal {
@@ -1252,8 +1252,8 @@ mod tests {
     // its blocks published without touching the runner's state.
     #[tokio::test]
     async fn a_background_task_publishes_while_the_loop_runs() {
+        use crate::geometry::Position;
         use crate::screen::ScreenMode;
-        use ratatui_core::layout::Position;
 
         let runner = AsyncRunner::new(RunnerConfig {
             tick_rate: Duration::from_millis(5),
@@ -1367,8 +1367,8 @@ mod tests {
     // given rect and never touches the terminal.
     #[tokio::test]
     async fn stream_error_propagates() {
+        use crate::geometry::Rect;
         use crate::term::backend::CrosstermBackend;
-        use ratatui_core::layout::Rect;
 
         let runner = AsyncRunner::new(RunnerConfig {
             tick_rate: Duration::from_secs(3600),
@@ -1377,7 +1377,7 @@ mod tests {
         let mut terminal = Terminal::with_options(
             CrosstermBackend::new(Vec::<u8>::new()),
             TerminalOptions {
-                viewport: ratatui_core::terminal::Viewport::Fixed(Rect::new(0, 0, 10, 1)),
+                viewport: crate::term::terminal::Viewport::Fixed(Rect::new(0, 0, 10, 1)),
             },
         )
         .expect("test terminal");
@@ -1573,7 +1573,7 @@ mod tests {
         let mut terminal = Terminal::with_options(
             CrosstermBackend::new(Vec::<u8>::new()),
             TerminalOptions {
-                viewport: ratatui_core::terminal::Viewport::Fixed(Rect::new(0, 0, 10, 1)),
+                viewport: crate::term::terminal::Viewport::Fixed(Rect::new(0, 0, 10, 1)),
             },
         )
         .expect("test terminal");

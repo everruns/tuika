@@ -4,7 +4,7 @@
 //! [`Boxed`](super::Boxed) when they want a frame; on its own it fits inline in
 //! a status row or overlay.
 
-use ratatui_core::layout::Rect;
+use crate::geometry::Rect;
 
 use crate::geometry::Size;
 use crate::surface::Surface;
