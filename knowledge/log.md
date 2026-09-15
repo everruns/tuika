@@ -1,5 +1,19 @@
 # Knowledge Log
 
+## 2026-09-15
+
+- **A demo recording can fail without anything failing**
+  - `docs/demos/scroll.gif` never showed the Scroll scene: the demo process was
+    suspended during the capture, so every frame was a bash prompt carrying a
+    maintainer's absolute path — and `demo -- check`, which asks only that an
+    asset exist at the right size, passed it. Re-recorded, and the class is now
+    closed from two sides: the generated tape keeps the recording host off the
+    screen, and `scripts/gen-demos.sh` fails when an asset was not rewritten by
+    the run. See [Documentation](specs/documentation.md).
+  - Worth keeping because both defects were invisible to the integrity gate that
+    exists to catch stale assets: what a recording *depicts* is outside what the
+    check can see, so the guards belong at capture time.
+
 ## 2026-09-14
 
 - **A CI gate that cannot fail is worse than no gate**
