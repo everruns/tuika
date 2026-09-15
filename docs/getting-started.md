@@ -74,7 +74,8 @@ your shell.
 - The first closure builds a view from application state for each frame.
 - `view!` describes layout; it expands to the ordinary tuika builders.
 - The second closure handles input and says whether to redraw or exit.
-- ratatui remains underneath, owning the cell buffer and its terminal diff.
+- tuika owns the cell buffer and the terminal diff itself; there is no other
+  rendering library underneath.
 
 For stateful input, replace `()` with an application struct and keep selection,
 scroll, focus, or text-input state there. Views borrow that state for a frame;
@@ -82,10 +83,11 @@ tuika does not maintain a hidden component tree.
 
 ## When to use tuika
 
-Use tuika when an application needs structure around ratatui: layout, focus,
-keymaps, overlays, components, or terminal lifecycle. For a small screen made
-from a few widgets, ratatui alone may be enough. Existing ratatui widgets remain
-usable through `RatatuiView`.
+Use tuika when an application needs structure rather than a bag of widgets:
+layout, focus, keymaps, overlays, components, and the terminal lifecycle. For a
+single screen drawn by hand, a lower-level cell library may be enough. Existing
+ratatui widgets remain usable through `RatatuiView` behind the optional
+`ratatui` feature, so adopting tuika does not mean rewriting them.
 
 ## Next
 

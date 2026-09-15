@@ -1,6 +1,6 @@
 [package]
 name = "tuika-html"
-version = "0.1.4"
+version = "0.2.0"
 # Identity, MSRV, and license come from `[workspace.package]` in the root
 # manifest — see the comment there for what is and isn't shared.
 edition.workspace = true
@@ -24,8 +24,7 @@ categories = ["command-line-interface", "text-processing"]
 # tuika-html cannot be published until then. `publish_order.py` publishes tuika
 # first, and
 # the release process owns the bump; see `knowledge/processes/release.md`.
-tuika = { version = "0.11.0", path = "../.." }
-ratatui-core = "0.1"
+tuika = { version = "0.12.0", path = "../.." }
 # html5ever is the whole point of this crate existing separately: a spec
 # compliant tree builder (implied end tags, `<tbody>` insertion, malformed-input
 # recovery) is exactly the dependency tuika core will not carry.

@@ -63,7 +63,7 @@ those:
 
 ```toml
 [dependencies]
-tuika-codeformatters = { version = "0.4", default-features = false, features = ["rust", "python"] }
+tuika-codeformatters = { version = "0.6", default-features = false, features = ["rust", "python"] }
 ```
 
 Feature names match the language keys above, lowercased and without punctuation:
@@ -75,8 +75,8 @@ supported: it returns `None` and the caller renders plain code.
 
 ## Compatibility
 
-`ratatui` and `tuika` are part of this crate's public interface, so pin the same
-minor versions in your own crate and Cargo will deduplicate them.
+`tuika` is part of this crate's public interface, so pin the same minor version
+in your own crate and Cargo will deduplicate them.
 
 ## License
 

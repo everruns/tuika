@@ -1,7 +1,8 @@
 # tuika — coding-agent guidance
 
 `tuika` is a standalone, published terminal-UI toolkit: flexbox layout, anchored
-overlays, focus, a keymap engine, and components over ratatui — including the
+overlays, focus, a keymap engine, and components over its own cell grid,
+backend, and terminal loop — including the
 streaming `Markdown` renderer and `CodeBlock`. It is host-agnostic and knows
 nothing about the applications that embed it. See `README.md` for the model.
 
@@ -93,7 +94,7 @@ CI inputs and are excluded from the published crates; benchmark source remains.
 ### Testing
 
 Layout and rendering are tested hermetically by rendering into an in-memory
-ratatui `Buffer` and reading cells back — no real terminal. The consumer-facing
+`Buffer` and reading cells back — no real terminal. The consumer-facing
 subset (`testing::{render, render_sizes, grid}`) is documented in the README;
 tuika's own suite covers more:
 

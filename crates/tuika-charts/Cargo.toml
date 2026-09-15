@@ -1,6 +1,6 @@
 [package]
 name = "tuika-charts"
-version = "0.1.2"
+version = "0.2.0"
 # Identity, MSRV, and license come from `[workspace.package]` in the root
 # manifest, matching the other independently versioned companions.
 edition.workspace = true
@@ -15,11 +15,9 @@ keywords = ["terminal", "tui", "charts", "kitty", "ratatui"]
 categories = ["command-line-interface", "visualization"]
 
 [dependencies]
-tuika = { version = "0.11.0", path = "../.." }
-ratatui-core = "0.1.0"
+tuika = { version = "0.12.0", path = "../.." }
 
 [dev-dependencies]
-ratatui = { version = "0.30.0", default-features = false, features = ["crossterm"] }
 criterion = { version = "0.8", default-features = false, features = [
     "cargo_bench_support",
 ] }

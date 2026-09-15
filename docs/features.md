@@ -175,7 +175,7 @@ in the mode with `cargo run --example codex -- --split-footer`.
 
 Turn a bare `http(s)` URL — or a markdown `[label](url)` whose visible text is
 not the URL — into a real clickable link, without changing the visible text. A
-cell buffer can't carry a link target — a `ratatui::Cell` is one grapheme plus a
+cell buffer can't carry a link target — a `Cell` is one grapheme plus a
 style — so tuika emits the link by writing the OSC 8 sequence around the run
 (via [`HyperlinkBackend`] scanning arbitrary rendered output, or
 [`apply_buffer_links`] for destinations retained by `Paragraph` and the
@@ -192,10 +192,10 @@ The entry points cover both components and lower-level output:
 
 - `hyperlink::encode(url, text)` — the pure encoder. Returns `text` wrapped in the OSC 8
   sequence, or `text` unchanged when `url` isn't a safe web URL. No I/O.
-- `write_line(out, line)` — serialize a `ratatui::Line` (colors, modifiers, and
+- `write_line(out, line)` — serialize a `Line` (colors, modifiers, and
   OSC 8 links) straight to a writer, so a host can push a transcript line to
   scrollback with live links instead of routing it through the cell buffer.
-- `HyperlinkBackend` — a `ratatui::Backend` wrapper that scans drawn cell runs
+- `HyperlinkBackend` — a `Backend` wrapper that scans drawn cell runs
   for URLs and wraps just those in OSC 8, so links work inside the normal render
   path too. When disabled it's a zero-cost pass-through.
 - `markdown::to_linked_lines` + `apply_buffer_links` — the markdown renderer
@@ -415,7 +415,7 @@ above — `Runner` owns a two-step draw:
   placement into a shared `ImageLayer` (the ownership shape of `RectProbe`).
 - **After** `terminal.draw()` flushes the frame, the runner writes
   each image's escape at its cell origin, bracketed by a cursor save/restore so
-  ratatui's cursor model is undisturbed, then resets the layer for the next
+  the terminal's cursor model is undisturbed, then resets the layer for the next
   frame.
 
 ```rust
