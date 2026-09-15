@@ -11,7 +11,31 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
-## [Unreleased]
+## [0.12.0] - 2026-09-15
+
+Released alongside `tuika-charts` 0.2.0, `tuika-codeformatters` 0.6.0,
+`tuika-html` 0.2.0, and `tuika-mermaid` 0.4.0. Every companion's tuika
+requirement moves to 0.12, and all four drop the `ratatui-core` (or `ratatui`)
+dependency they no longer use.
+
+### Highlights
+
+**tuika owns the cell grid** — `Rect`, `Color`/`Style`, `Line`/`Span`,
+`Buffer`/`Cell`, `Backend`, and `Terminal` are tuika's own types now, so a host
+takes one crate instead of two and is no longer exposed to a `ratatui-core`
+major bump. Existing ratatui widgets still compose, behind the optional
+`ratatui` feature.
+
+![markdown demo](https://raw.githubusercontent.com/everruns/tuika/v0.12.0/docs/demos/markdown.gif)
+
+- **Dependencies**: 55 crates to 32; the cold dependency build drops from
+  roughly 32s to 6s.
+- **Performance**: `render`, `frame_windowed`, and the scroll paths fall
+  7.3–7.4% in instruction count.
+- **Correctness**: `Span::width` and `Line::width` now count grapheme-aware
+  display columns, so they agree with what `Surface` actually paints.
+
+Rendering is unchanged on screen, so this release carries no new recording.
 
 ### Breaking Changes
 
@@ -96,6 +120,15 @@ described in the release process begins with the entry below.
   widths grapheme-aware; the benchmark baseline is updated accordingly.
 - `scrolling-regions` is now a feature of tuika's own `Backend` trait, and no
   longer pulls in `ratatui-crossterm` to forward a flag.
+- **The companion crates no longer depend on ratatui.** `tuika-charts`,
+  `tuika-html`, and `tuika-mermaid` dropped `ratatui-core`, and
+  `tuika-codeformatters` dropped the full `ratatui` umbrella; none of them had
+  named a ratatui type since tuika took over the cell grid. `ratatui` is no
+  longer part of `tuika-codeformatters`' public interface, so a dependant pins
+  only `tuika`.
+- Public documentation follows the new model: the guides, the component gallery,
+  and the getting-started page import from `tuika::ui` instead of `ratatui::*`,
+  and no longer describe ratatui as running underneath.
 
 ### Fixed
 
@@ -110,6 +143,15 @@ described in the release process begins with the entry below.
   outranks, so every check ran on the newer toolchain. The job now pins
   `RUSTUP_TOOLCHAIN` and fails if the active toolchain is not the
   `rust-version` in `Cargo.toml`.
+
+### What's Changed
+
+* refactor(deps)!: own the cell grid and drop ratatui (#114)
+* fix(ci): make the MSRV job run the MSRV (#131)
+* fix(demos): re-record scroll and close the broken-capture class (#132)
+* chore(deps): drop the companion crates' unused ratatui dependencies
+* docs: retire ratatui from the guides, gallery, and durable knowledge
+* fix(release): keep companion dev-dependencies out of the published manifest
 
 ## [0.11.1] - 2026-08-25
 

@@ -12,7 +12,7 @@ sidebar:
 
 ### `Text`
 
-A block of pre-styled [`Line`](https://docs.rs/ratatui)s drawn top-down and
+A block of pre-styled [`Line`](https://docs.rs/tuika/latest/tuika/text/struct.Line.html)s drawn top-down and
 clipped. `Paragraph` word-wraps plain prose from a base style and turns bare
 `http(s)` URLs into styled OSC 8 hyperlinks by default; `Wrap` word-wraps
 pre-styled lines while preserving per-span styles. Use
@@ -31,8 +31,7 @@ intended; `Wrap` carries a line's alignment onto every reflowed row.
 <img src="../demos/text.png" width="880" alt="Text demo">
 
 ```rust
-use ratatui::layout::Alignment;
-use ratatui::text::Line;
+use tuika::ui::{Alignment, Line};
 use tuika::term::hyperlink::LinkPolicy;
 use tuika::prelude::*;
 view! {

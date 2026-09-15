@@ -2285,7 +2285,7 @@ dependencies = [
 
 [[package]]
 name = "tuika"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "criterion",
  "crossterm",
@@ -2307,22 +2307,19 @@ dependencies = [
 
 [[package]]
 name = "tuika-charts"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "criterion",
- "ratatui",
- "ratatui-core",
  "tuika",
 ]
 
 [[package]]
 name = "tuika-codeformatters"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "criterion",
  "crossterm",
  "iai-callgrind",
- "ratatui",
  "tree-sitter",
  "tree-sitter-c-sharp",
  "tree-sitter-css",
@@ -2343,20 +2340,18 @@ dependencies = [
 
 [[package]]
 name = "tuika-html"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "html5ever",
  "markup5ever_rcdom",
- "ratatui-core",
  "tuika",
 ]
 
 [[package]]
 name = "tuika-mermaid"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "mmdflux",
- "ratatui-core",
  "tuika",
 ]
 

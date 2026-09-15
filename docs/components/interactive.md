@@ -175,7 +175,7 @@ closures may borrow frame-scoped application state.
 [Draw view API](https://docs.rs/tuika/latest/tuika/view/struct.DrawView.html)
 
 ```rust
-use ratatui::layout::Rect;
+use tuika::ui::Rect;
 use tuika::{RenderCtx, Surface};
 use tuika::view::DrawView;
 let chart = DrawView::new(
@@ -215,7 +215,7 @@ mapping.
 <img src="../demos/select.gif" width="880" alt="SelectList demo">
 
 ```rust
-use ratatui::style::{Color, Style};
+use tuika::ui::{Color, Style};
 use tuika::prelude::*;
 let mut state = SelectState::unselected();
 let style = Style::default().fg(Color::Blue);
@@ -304,8 +304,7 @@ window".
 [API](https://docs.rs/tuika/latest/tuika/components/struct.Table.html)
 
 ```rust
-use ratatui::style::{Color, Style};
-use ratatui::text::Line;
+use tuika::ui::{Color, Line, Style};
 use tuika::prelude::*;
 let mut state = SelectState::new();
 state.handle(&event, rows.len());

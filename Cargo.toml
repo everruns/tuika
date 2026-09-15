@@ -29,7 +29,7 @@ repository = "https://github.com/everruns/tuika"
 
 [package]
 name = "tuika"
-version = "0.11.1"
+version = "0.12.0"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -160,10 +160,17 @@ vt100 = "0.16"
 ratatui = "0.30.2"
 # The in-repo application-shell showcase exercises the published companion
 # components as a consumer would: adaptive charts and Rust syntax highlighting.
-tuika-charts = { version = "0.1.2", path = "crates/tuika-charts" }
+#
+# Path-only, deliberately: both companions depend on tuika, so they are published
+# *after* it. A `version` here would be carried into the published manifest and
+# make `cargo publish -p tuika` resolve a companion release that cannot exist yet
+# — the release that bumps them would deadlock. Cargo drops a path-only
+# dev-dependency from the packaged manifest, which is exactly what a consumer
+# needs, since these back examples and benches only.
+tuika-charts = { path = "crates/tuika-charts" }
 # One line on purpose: TOML 1.0 inline tables may not span lines, and the Cargo
 # on tuika's MSRV rejects the multi-line form outright — see tests/manifest.rs.
-tuika-codeformatters = { version = "0.5.0", path = "crates/tuika-codeformatters", default-features = false, features = ["rust"] }
+tuika-codeformatters = { path = "crates/tuika-codeformatters", default-features = false, features = ["rust"] }
 # Benchmark harness. default-features off drops the plotters/rayon HTML-report
 # stack (heavy, and an MSRV liability) while keeping `cargo bench` working;
 # Criterion still writes machine-readable `estimates.json` for archiving.

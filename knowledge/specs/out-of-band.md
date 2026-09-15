@@ -8,11 +8,11 @@ description: Defines how tuika emits escapes that live outside the cell buffer �
 
 ## Why
 
-A ratatui cell carries one grapheme plus a style. Several things a modern
+A cell carries one grapheme plus a style. Several things a modern
 terminal can do are not expressible that way: making a text run clickable,
 writing the system clipboard, driving the window's own progress indicator, or
 painting pixels. Each needs an escape sequence that lives *outside* the cell
-buffer, which ratatui's diff knows nothing about.
+buffer, which the frame diff knows nothing about.
 
 Emitting them naively fights the diff: writes appear at the wrong cursor
 position, or get overwritten on the next frame, or leave the cursor somewhere
@@ -52,13 +52,13 @@ cell-grid concern. The split is deliberate — see [images.md](./images.md).
 ### Cursor-neutral escapes can be spliced; graphics cannot
 
 OSC 8, 52, and 9;4 do not move the cursor. That is what lets `HyperlinkBackend`
-wrap a URL run *inside* the byte stream ratatui is already writing: the diff's
+wrap a URL run *inside* the byte stream the backend is already writing: the diff's
 cursor model is unaffected, so nothing downstream needs to know.
 
 Graphics escapes are not cursor-neutral — Kitty places the image at the cursor —
 so they cannot be spliced. They are emitted after the frame, wrapped in a cursor
 save/restore with an explicit CUP to each image's cell origin, leaving the net
-effect on ratatui's cursor model at nil. See [images.md](./images.md).
+effect on tuika's cursor model at nil. See [images.md](./images.md).
 
 ### A query is answered on stdin, so it must be fenced and timed
 
@@ -108,7 +108,7 @@ intact.
 
 That opt-in applies to backend-wide inference. Components that own prose can
 retain link destinations before painting and emit them without reconstructing
-meaning from ratatui's incremental draw runs. `Markdown` does this for explicit
+meaning from the backend's incremental draw runs. `Markdown` does this for explicit
 and bare links; `Paragraph` does it for bare URLs, under `LinkPolicy::WEB` by
 default. Literal components (`Text`, `Wrap`, `CodeBlock`, `Console`) do not infer
 links. `HyperlinkBackend` remains the host-controlled escape hatch for arbitrary

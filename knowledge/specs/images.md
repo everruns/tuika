@@ -8,14 +8,14 @@ description: Defines how tuika paints real pixels over reserved cells via termin
 
 ## Why
 
-tuika renders everything into a ratatui cell buffer, where a cell carries one
+tuika renders everything into its own cell buffer, where a cell carries one
 grapheme plus a style and nothing else. Pictures — an avatar in a chat
 transcript, a chart, a rendered diagram, an image referenced from markdown —
 have no home in that model. Terminals that speak a graphics protocol (Kitty
 graphics, iTerm2 inline images, Sixel) can paint real pixels, but only via
 escape sequences that live *outside* the cell buffer.
 
-tuika already smuggles out-of-band escapes past ratatui several times — OSC 8
+tuika already smuggles out-of-band escapes past the cell buffer several times — OSC 8
 hyperlinks, OSC 52 clipboard, OSC 9;4 progress, OSC 22 pointer shape, all under
 `term`. Image support follows the same shape, with one new constraint those did
 not have (see *Cursor* below), which is why the protocol half lives beside them
@@ -68,7 +68,7 @@ Scope is deliberately phased:
 
 ### Decoding stays in the host
 
-tuika depends only on ratatui-core, crossterm, unicode-\*, and pulldown-cmark,
+tuika depends only on crossterm, unicode-\*, and pulldown-cmark,
 and adds nothing heavy. Image *decoding* (PNG/JPEG → RGBA) is a
 heavy dependency, so it stays in the host exactly like syntax highlighting does:
 the host hands tuika an `ImageData` of raw RGBA plus pixel dimensions, the way
@@ -87,7 +87,7 @@ established for reading a view's painted rect back out:
    to its pixel data into a shared `ImageLayer` (an `Rc<RefCell<…>>` handle,
    cheap to clone, cleared each frame — the same ownership shape as
    `RectProbe`). It paints the reserved cells blank (or, when unsupported, the
-   alt-text placeholder) so ratatui's diff has stable content there.
+   alt-text placeholder) so the frame diff has stable content there.
 3. **After** `terminal.draw()` returns, `Runner` calls `ImageLayer::emit`, which
    writes each image's graphics escape positioned at its cell origin, then
    clears the layer. A custom host performs those same two calls itself.
@@ -98,7 +98,7 @@ established for reading a view's painted rect back out:
 
 Emission happens after the frame because the graphics escape paints pixels the
 cell buffer knows nothing about; doing it inside the paint pass would fight
-ratatui's diff.
+the frame diff.
 
 ### Cursor: the one new constraint
 
@@ -110,7 +110,7 @@ Graphics escapes are **not**: Kitty places the image at the cursor. So
 col H`) before emitting. Kitty placements also set `C=1`; restoring a saved
 cursor cannot undo scrolling caused by the protocol's default post-placement
 cursor movement when an image reaches the viewport bottom. Net effect on
-ratatui's cursor model and viewport is nil, so the diff stays consistent.
+tuika's cursor model and viewport is nil, so the diff stays consistent.
 
 ### Terminal-response suppression
 

@@ -44,7 +44,7 @@ tracking the theme:
 
 ```rust
 use tuika::prelude::*;
-use ratatui::style::Color;
+use tuika::ui::Color;
 
 let theme = Theme::default();
 let sheet = StyleSheet {
@@ -143,7 +143,7 @@ The one-shot and streaming renderers both take the sheet:
 ```rust
 use tuika::components::markdown::to_lines;
 use tuika::prelude::*;
-use ratatui::style::Color;
+use tuika::ui::Color;
 
 let theme = Theme::default();
 let sheet = StyleSheet {

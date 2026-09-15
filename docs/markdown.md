@@ -56,7 +56,7 @@ view! { node(tuika::components::Text::new(lines)) }  // then apply links to this
 ```
 
 Lines come out already wrapped to the width you passed. Draw them **without**
-further wrapping — tuika's `Text`, or ratatui's `Paragraph` with no `.wrap` —
+further wrapping — tuika's `Text`, or any renderer that draws lines verbatim —
 or code indentation and table borders will be re-flowed into nonsense. After
 painting, pass the visible `links` to `apply_buffer_links`; the metadata is
 cached and row-aligned with the lines, including while a URL is still streaming.

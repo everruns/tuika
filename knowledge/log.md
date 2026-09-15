@@ -2,6 +2,20 @@
 
 ## 2026-09-15
 
+- **A dependency is not dropped until its documentation is**
+  - tuika stopped depending on ratatui one release earlier, but the public
+    guides still imported `ratatui::style::Color`, the getting-started page
+    still said ratatui "remains underneath", and three companion crates still
+    declared a `ratatui-core` they no longer referenced — `tuika-codeformatters`
+    still declared the whole `ratatui` umbrella and named it public interface.
+    All of it was corrected before 0.12.0 shipped. See
+    [Architecture](specs/architecture.md) and
+    [Documentation](specs/documentation.md).
+  - Worth keeping because nothing failed: the code compiled, the tests passed,
+    and the only readers who would have noticed were new users following an
+    import that no longer exists. A removal has a documentation and manifest
+    tail, and the release that announces it is the deadline for clearing it.
+
 - **A demo recording can fail without anything failing**
   - `docs/demos/scroll.gif` never showed the Scroll scene: the demo process was
     suspended during the capture, so every frame was a bash prompt carrying a

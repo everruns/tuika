@@ -36,7 +36,7 @@ behaviors away from the terminal. When a runner captures, it restores plain
 drag selection over its final cell frame while continuing to route wheel events
 to the application. Custom-loop hosts opt into capture and selection independently.
 
-A split footer renders into a ratatui `Viewport::Inline`. The pieces around it:
+A split footer renders into tuika's own `Viewport::Inline`. The pieces around it:
 
 - `TerminalSession::enter_with(mode)` takes only what the mode needs and
   restores exactly that.
@@ -81,7 +81,7 @@ session restores the terminal state.
 
 ### The footer is pinned, not merely inline
 
-ratatui anchors an inline viewport to the cursor row it was created at, so on a
+An inline viewport is anchored to the cursor row it was created at, so on a
 fresh prompt the footer would float mid-screen with blank space below it. tuika
 inserts the gap as blank rows instead, scrolling existing output up so the
 footer sits on the last rows — and re-pins after a resize, which is why
@@ -112,7 +112,7 @@ boundary, one crosses none.
 
 ### Scrolling regions look like the obvious optimization and are the wrong trade
 
-ratatui's portable path for inserting above an inline viewport clears the
+The portable path for inserting above an inline viewport clears the
 viewport and queries the cursor position for every committed block, so the
 footer repaints each time. DECSTBM scrolling regions avoid that by scrolling
 only the rows above the footer — and lose the point of the mode while doing it:
@@ -120,12 +120,11 @@ a terminal discards what scrolls out of a scroll region instead of adding it to
 the scrollback buffer. Published output would survive only as long as it stayed
 on screen.
 
-So `scrolling-regions` exists as a **compatibility mirror**, not an
-optimization. Cargo unifies features one way only, so a host that enables
-ratatui's feature would otherwise fail to build tuika — `term::hyperlink::HyperlinkBackend`
-implements `Backend`, which the feature gives two more required methods. The
-`codex` PTY tests assert the difference under both settings rather than leave it
-to be discovered.
+So `scrolling-regions` exists as an **opt-in capability**, not an
+optimization. It is now a feature of tuika's own `Backend` trait, where it adds
+two required methods to every host implementation — which is why it stays a
+feature rather than becoming always-on. The `codex` PTY tests assert the
+difference under both settings rather than leave it to be discovered.
 
 This is also why the PTY layer earns its keep: `TestBackend` *does* model
 region-scrolled rows as entering its scrollback, so no hermetic test could have
@@ -134,14 +133,14 @@ caught this. Only a reference terminal on the other end of a real pty did.
 ### What a fixed footer height costs, and why it is still fixed
 
 `ScreenMode::SplitFooter { height }` is decided when the terminal is created,
-because that is where ratatui fixes an inline viewport; changing it means
+because that is where an inline viewport is fixed; changing it means
 rebuilding the `Terminal`. A host whose footer grows — a composer expanding, a
 completion popup opening — therefore reserves the tallest state it needs and
 lays out inside it, which is what `codex --split-footer` does.
 
 Runtime resizing is a real capability (opentui exposes `footerHeight` as a
 setter) and a plausible follow-up, but it needs a boundary for recreating the
-backend that does not exist on ratatui's `Terminal` today (there is no
+backend that does not exist on tuika's `Terminal` today (there is no
 `into_backend`). Reserving the maximum is the honest interim: it costs rows, not
 correctness.
 

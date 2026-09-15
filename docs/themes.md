@@ -108,7 +108,7 @@ that is exactly how yolop builds its own look on top of tuika.
 use tuika::{Theme, themes};
 
 let mine = Theme {
-    accent: ratatui::style::Color::Rgb(45, 91, 158),
+    accent: tuika::ui::Color::Rgb(45, 91, 158),
     ..themes::GRUVBOX_DARK
 };
 ```
