@@ -165,6 +165,18 @@ Generated demos follow the rule that the *scene registry is the source of truth*
 - Component demos come from the `DEMOS` registry in `examples/demo.rs`; VHS
   tapes are generated per scene into a temp dir and are **not committed**.
   Motion scenes are GIFs; settled scenes are full-color PNG screenshots.
+- A capture never carries the recording host's identity. The tape sets a neutral
+  prompt, cds into the built binary's directory, clears, and runs it by a
+  relative name, so the host's user and paths exist only in the hidden preamble.
+  This is what a *failed* capture is worth: when the scene is lost — the program
+  suspended, or never starting — what remains on screen is an anonymous prompt
+  instead of a maintainer's home directory. `docs/demos/scroll.gif` shipped that
+  way for a release, every frame a bash prompt and an absolute path.
+- A generator trusts the file on disk, not the recorder's exit status: each
+  recording must have been rewritten by the run that claims to have made it, or
+  the script fails. A recorder that fails silently (vhs 0.12.0 hands ffmpeg a
+  cancelled context and exits 0) otherwise leaves the previous asset in place,
+  and a stale asset is indistinguishable from a fresh one in review.
 - The README hero and the theme gallery come from the shared `scene()` in
   `examples/screenshot.rs`, so hero and themes cannot drift apart.
 - The stylesheet gallery comes from the variant list in `examples/styling.rs`.

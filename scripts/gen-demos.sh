@@ -31,16 +31,35 @@ trap 'rm -rf "${tapes_dir}"' EXIT
 echo "Emitting tapes…"
 cargo run -q --example demo -- tapes "${tapes_dir}"
 
+# The asset a tape writes, read from the tape itself: a motion scene records a
+# GIF through `Output`, a settled one a PNG through `Screenshot`. Reading the
+# tape keeps this in step with the registry without duplicating its rules.
+asset_for() {
+  sed -n -E 's#^(Output|Screenshot) (docs/demos/[^"]*)$#\2#p' "$1" | head -1
+}
+
 for tape in "${tapes_dir}"/*.tape; do
   name="$(basename "${tape}" .tape)"
   if [[ $# -gt 0 ]] && ! printf '%s\n' "$@" | grep -qxF "${name}"; then
     continue
   fi
   echo "Recording ${name}…"
+  asset="$(asset_for "${tape}")"
+  marker="${tapes_dir}/${name}.stamp"
+  touch "${marker}"
   # Tape Output paths are relative to the repo root.
   # Documentation records the theme's palette even when the caller prefers
   # colorless command output in their own shell.
   (cd "${repo_root}" && env -u NO_COLOR vhs "${tape}")
+  # A recorder can fail without failing: vhs 0.12.0 hands ffmpeg an already
+  # cancelled context, so it writes nothing, logs nothing, and exits 0 —
+  # leaving the previous asset in place to be committed as if it were fresh.
+  # Trust the file on disk, not the exit status.
+  if [[ ! -f "${asset}" || ! "${asset}" -nt "${marker}" ]]; then
+    echo "error: ${asset} was not written by this run; the recorder failed silently" >&2
+    echo "hint: vhs 0.12.0 produces no output at all — use a version that does" >&2
+    exit 1
+  fi
 done
 
 echo "Verifying gallery assets…"

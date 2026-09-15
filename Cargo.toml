@@ -211,3 +211,10 @@ required-features = ["async"]
 [[example]]
 name = "ratatui_dashboard"
 required-features = ["ratatui"]
+
+# The gallery registry lives in this example, and so do the tests that pin its
+# invariants (capture palette, tape shape). `test = true` puts them in `cargo
+# test`, so CI runs them instead of only `demo -- check`.
+[[example]]
+name = "demo"
+test = true

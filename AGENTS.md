@@ -260,6 +260,11 @@ cargo run --example demo -- check            # verify the docs assets
 the example to emit one VHS tape per scene into a temp dir — **tapes are
 generated, not committed** — records each, and runs `check`. Requires
 [VHS](https://github.com/charmbracelet/vhs) with `ttyd` and `ffmpeg` on `PATH`.
+A recording that was not rewritten by the run fails the script: vhs 0.12.0 hands
+ffmpeg a cancelled context, so it writes nothing and still exits 0, leaving the
+previous asset to be committed as if it were fresh. The tapes also run the scene
+behind a neutral prompt from the binary's own directory, so a capture that loses
+the scene shows an anonymous shell rather than the recording host's paths.
 
 ```bash
 scripts/gen-demos.sh              # all scenes
