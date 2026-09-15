@@ -97,6 +97,20 @@ described in the release process begins with the entry below.
 - `scrolling-regions` is now a feature of tuika's own `Backend` trait, and no
   longer pulls in `ratatui-crossterm` to forward a flag.
 
+### Fixed
+
+- **The workspace builds on its declared MSRV again.** A dependency in the root
+  manifest was written as a multi-line inline table, which TOML 1.0 does not
+  allow and the Cargo on Rust 1.88 rejects outright — so `cargo` failed to parse
+  `Cargo.toml` before compiling anything. Only the manifest changed; no
+  dependency version or feature moved.
+
+  The MSRV CI job did not catch it because it never ran the MSRV: the job set
+  1.88 as the `rustup` default, which `rust-toolchain.toml`'s development pin
+  outranks, so every check ran on the newer toolchain. The job now pins
+  `RUSTUP_TOOLCHAIN` and fails if the active toolchain is not the
+  `rust-version` in `Cargo.toml`.
+
 ## [0.11.1] - 2026-08-25
 
 `tuika` only. The companion crates carry a caret requirement on tuika 0.11, so

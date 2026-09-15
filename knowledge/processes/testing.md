@@ -229,6 +229,19 @@ pins a newer toolchain for development and an MSRV break therefore never shows
 up locally. Raising the MSRV is a deliberate, changelog-worthy decision, not a
 side effect of reaching for a new language feature.
 
+That job must *prove* which toolchain it is running. `rust-toolchain.toml`
+outranks `rustup default`, so installing the MSRV and making it the default is
+not enough to select it — the job pins `RUSTUP_TOOLCHAIN` and asserts the active
+version against `rust-version` before checking anything. A gate that cannot fail
+is worse than no gate: it reports the floor is held while nothing tests it.
+
+The MSRV is also a *manifest* constraint, not only a language one. Cargo parses
+`Cargo.toml` before it compiles, so a manifest using syntax newer than the floor
+fails the whole workspace with an error that names no code — the multi-line
+inline table, which TOML 1.0 forbids and newer Cargo accepts, is the trap that
+actually sprang. `tests/manifest.rs` rejects that shape on any toolchain, so the
+break surfaces locally instead of waiting for CI.
+
 ## Requirements
 
 - Every behavior change carries a test that exercises the changed behavior

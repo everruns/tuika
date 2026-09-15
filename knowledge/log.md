@@ -1,5 +1,25 @@
 # Knowledge Log
 
+## 2026-09-14
+
+- **A CI gate that cannot fail is worse than no gate**
+  - The MSRV job reported green for weeks while never running the MSRV: it
+    installed 1.88 and set it as the `rustup` default, which
+    `rust-toolchain.toml`'s development pin silently outranks, so every check
+    ran on the newer toolchain. A multi-line inline table then reached `main`
+    and left the workspace unable to parse `Cargo.toml` on its own declared
+    floor. The job now pins `RUSTUP_TOOLCHAIN` and asserts the active version
+    against `rust-version` before it checks anything.
+    See [Testing](processes/testing.md).
+  - Worth keeping because the failure was in the *evidence*, not the code: the
+    signal everyone trusted was measuring the wrong thing, so the bug it existed
+    to catch was the one it let through. Any job pinning a toolchain, platform,
+    or feature set should prove what it selected rather than assume the request
+    took effect.
+  - The MSRV is also a manifest constraint. Cargo parses before it compiles, so
+    manifest syntax newer than the floor fails the workspace with an error that
+    names no code; `tests/manifest.rs` now rejects that shape on any toolchain.
+
 ## 2026-08-22
 
 - **Published guides share one checked route inventory**
