@@ -190,7 +190,7 @@ impl SelectViewportState {
         let outcome = self
             .selection
             .handle_mouse(event, len, bounds, window.start());
-        if outcome == InputOutcome::Submitted {
+        if matches!(outcome, InputOutcome::Changed | InputOutcome::Submitted) {
             self.offset = window.start();
             self.follow_selection = true;
             let _ = self.resolve(len, window.len());
@@ -310,7 +310,9 @@ impl SelectState {
     ///
     /// `bounds` is the rendered list body and `first_visible` is the item shown
     /// on its first row. Supplying the scroll offset explicitly keeps mouse
-    /// selection correct for viewported lists.
+    /// selection correct for viewported lists. Clicking the highlighted row
+    /// confirms it (`Submitted`); clicking another row only moves the highlight
+    /// (`Changed`).
     pub fn handle_mouse(
         &mut self,
         event: &Event,
@@ -334,8 +336,15 @@ impl SelectState {
         if index >= len {
             return InputOutcome::Ignored;
         }
-        self.selected = Some(index);
-        InputOutcome::Submitted
+        // Clicking the already-highlighted row confirms it; clicking elsewhere
+        // only moves the highlight so the host can show the new row before a
+        // second click confirms it.
+        if self.selected == Some(index) {
+            InputOutcome::Submitted
+        } else {
+            self.selected = Some(index);
+            InputOutcome::Changed
+        }
     }
 
     fn step_up(&mut self, len: usize) -> InputOutcome {
@@ -846,6 +855,12 @@ mod tests {
             12,
             6,
         ));
+        assert_eq!(
+            state.handle_mouse(&click, 10, bounds, 4),
+            InputOutcome::Changed
+        );
+        assert_eq!(state.selected(), Some(5));
+        // A second click on the now-highlighted row confirms it.
         assert_eq!(
             state.handle_mouse(&click, 10, bounds, 4),
             InputOutcome::Submitted
