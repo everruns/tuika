@@ -567,6 +567,9 @@ impl<K: Clone + PartialEq> KeyedSelectState<K> {
     }
 
     /// Select a clicked row in an already resolved projected-source viewport.
+    ///
+    /// Clicking the highlighted row confirms it (`Submitted`); clicking another
+    /// row only moves the highlight (`Changed`).
     pub fn handle_mouse_source<S>(
         &mut self,
         event: &Event,
@@ -593,9 +596,21 @@ impl<K: Clone + PartialEq> KeyedSelectState<K> {
         let Some(row) = source.row(index).filter(|_| index < window.end()) else {
             return InputOutcome::Ignored;
         };
-        self.selected = Some(source.key(index, row));
-        self.follow_selection = true;
-        InputOutcome::Submitted
+        // Clicking the already-highlighted row confirms it; clicking elsewhere
+        // only moves the highlight so the host can show the new row before a
+        // second click confirms it.
+        if self
+            .selected
+            .as_ref()
+            .is_some_and(|selected| source.key_eq(index, row, selected))
+        {
+            self.follow_selection = true;
+            InputOutcome::Submitted
+        } else {
+            self.selected = Some(source.key(index, row));
+            self.follow_selection = true;
+            InputOutcome::Changed
+        }
     }
 }
 
@@ -1403,6 +1418,13 @@ mod tests {
         let click = Event::Mouse(Mouse::at(MouseKind::Down(MouseButton::Left), 3, 6));
         assert_eq!(
             state.handle_mouse(&click, &rows, body, window, key),
+            InputOutcome::Changed
+        );
+        assert_eq!(state.selected(), Some(&5));
+        // A second click on the now-highlighted row confirms it.
+        let window = state.window(&rows, 3, key);
+        assert_eq!(
+            state.handle_mouse(&click, &rows, body, window, key),
             InputOutcome::Submitted
         );
         assert_eq!(state.selected(), Some(&5));
@@ -1926,7 +1948,7 @@ mod tests {
         let click = Event::Mouse(Mouse::at(MouseKind::Down(MouseButton::Left), 5, 8));
         assert_eq!(
             state.handle_mouse_source(&click, &source, body, window),
-            InputOutcome::Submitted
+            InputOutcome::Changed
         );
         assert_eq!(state.selected().unwrap().agent, Agent::Codex);
         assert_eq!(state.selected().unwrap().session_id, "same");
