@@ -11,7 +11,7 @@ use tuika::ui::Span;
 use tuika::ui::{Modifier, Style};
 
 use crate::dom::{self, attr, tag};
-use markup5ever_rcdom::{Handle, NodeData};
+use crate::dom::{DomHandle as Handle, DomNodeData as NodeData};
 
 /// Accumulated inline content for one block, already split at `<br>`.
 #[derive(Default)]

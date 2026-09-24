@@ -28,5 +28,4 @@ tuika = { version = "0.12.0", path = "../.." }
 # html5ever is the whole point of this crate existing separately: a spec
 # compliant tree builder (implied end tags, `<tbody>` insertion, malformed-input
 # recovery) is exactly the dependency tuika core will not carry.
-html5ever = "0.39"
-markup5ever_rcdom = "0.39"
+html5ever = "0.40"

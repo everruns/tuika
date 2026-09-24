@@ -12,7 +12,7 @@ use tuika::ui::{Line, Span};
 use tuika::ui::{Modifier, Style};
 use tuika::width::str_cols;
 
-use markup5ever_rcdom::{Handle, NodeData};
+use crate::dom::{DomHandle as Handle, DomNodeData as NodeData};
 
 use crate::Limits;
 use crate::dom::{self, attr, tag};

@@ -10,7 +10,7 @@ use tuika::ui::Style;
 use tuika::ui::{Line, Span};
 use tuika::width::str_cols;
 
-use markup5ever_rcdom::Handle;
+use crate::dom::DomHandle as Handle;
 
 use crate::block::Layout;
 use crate::dom::tag;

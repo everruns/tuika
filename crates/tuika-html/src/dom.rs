@@ -5,17 +5,17 @@
 //! recovery from malformed input — so everything downstream can walk a
 //! well-formed tree instead of guessing.
 
+use crate::sink::{Handle, NodeData, RcDom};
 use html5ever::tendril::TendrilSink;
 use html5ever::{QualName, local_name, ns, parse_fragment};
-use markup5ever_rcdom::{Handle, NodeData, RcDom};
+
+pub(crate) use crate::sink::{Handle as DomHandle, NodeData as DomNodeData};
 
 /// Parse a fragment (not a document): the input is a run of markup from inside
 /// a markdown file or a `<div>`, never a whole page with `<html>` around it.
 pub(crate) fn parse(source: &str) -> Handle {
     let context = QualName::new(None, ns!(html), local_name!("div"));
-    let dom =
-        parse_fragment(RcDom::default(), Default::default(), context, vec![], false).one(source);
-    dom.document
+    parse_fragment(RcDom::default(), Default::default(), context, vec![], false).one(source)
 }
 
 /// The lowercased tag name of an element node.
@@ -246,6 +246,49 @@ mod tests {
         let mut names = Vec::new();
         collect_tags(&root, &mut names);
         assert_eq!(names.iter().filter(|t| *t == "li").count(), 2, "{names:?}");
+        assert!(names.contains(&"ul".to_string()), "{names:?}");
+    }
+
+    #[test]
+    fn template_contents_survive_the_vendored_sink() {
+        // Exercises get_template_contents: the template's children live in a
+        // separate fragment, not the main child list.
+        let root = parse("<template><p>x</p></template>");
+        let mut names = Vec::new();
+        collect_tags(&root, &mut names);
+        assert!(names.contains(&"template".to_string()), "{names:?}");
+        fn find_tag(node: &Handle, wanted: &str) -> Option<Handle> {
+            if tag(node).as_deref() == Some(wanted) {
+                return Some(node.clone());
+            }
+            node.children
+                .borrow()
+                .iter()
+                .find_map(|child| find_tag(child, wanted))
+        }
+        let template = find_tag(&root, "template").expect("template element");
+        let contents = crate::sink::template_contents_of(&template);
+        let mut inner = Vec::new();
+        collect_tags(&contents, &mut inner);
+        assert!(inner.contains(&"p".to_string()), "{inner:?}");
+    }
+
+    #[test]
+    fn select_without_cloned_selectedcontent_keeps_shape() {
+        // The vendored sink omits rcdom's selectedcontent-cloning override
+        // (the TreeSink default is a no-op): parsing must still succeed and
+        // keep the select/option structure intact.
+        let root = parse(
+            "<select selectedcontent><option>one</option><option selected>two</option></select>",
+        );
+        let mut names = Vec::new();
+        collect_tags(&root, &mut names);
+        assert!(names.contains(&"select".to_string()), "{names:?}");
+        assert_eq!(
+            names.iter().filter(|t| *t == "option").count(),
+            2,
+            "{names:?}"
+        );
     }
 
     #[test]

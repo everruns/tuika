@@ -65,6 +65,7 @@ use tuika::ui::Line;
 mod block;
 mod dom;
 mod inline;
+mod sink;
 mod table;
 mod view;
 
