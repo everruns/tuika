@@ -20,7 +20,7 @@
 //! Anything tuika did not produce itself is untrusted: ids, app names,
 //! titles, and messages come from the host and are validated here before
 //! they reach the terminal. Invalid reports return `None` from
-//! [`Report::encode`] and [`write`] emits nothing rather than a
+//! [`Report::encode`] and [`crate::term::program_status::write`] emits nothing rather than a
 //! half-valid sequence. Unknown terminals swallow the OSC whole, so no
 //! capability detection is needed.
 //!
@@ -82,7 +82,7 @@ impl BlockKind {
 /// One OSC 7501 status report.
 ///
 /// Built with the builder methods, then either [`Report::encode`] for the
-/// raw bytes or [`write`] to push them at an I/O handle.
+/// raw bytes or [`crate::term::program_status::write`] to push them at an I/O handle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Report {
     state: State,
