@@ -447,8 +447,16 @@ fn gallery_drives_altscreen_and_native_progress() {
         "should emit the native indeterminate progress sequence"
     );
     assert!(
+        contains(out, b"\x1b]7501;state=working:app=gallery"),
+        "should emit the OSC 7501 program status sequence"
+    );
+    assert!(
         contains(out, b"\x1b]9;4;0"),
         "should clear the native progress indicator on exit"
+    );
+    assert!(
+        contains(out, b"\x1b]7501;state=clear"),
+        "should clear the OSC 7501 program status on exit"
     );
 
     let text = visible_text(out);

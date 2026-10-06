@@ -20,13 +20,14 @@ the renderer did not expect.
 
 ## What
 
-Six out-of-band capabilities, in three families:
+Seven out-of-band capabilities, in three families:
 
 | Capability | Sequence | Module | Emission point |
 | --- | --- | --- | --- |
 | Hyperlinks | OSC 8 | `term::hyperlink` | embedded by semantic prose components or spliced into arbitrary drawn runs by `HyperlinkBackend` |
 | Clipboard | OSC 52 | `term::clipboard` | host- or runner-initiated, any time |
 | Native progress | OSC 9;4 | `term::progress` | host-initiated, any time |
+| Program status | OSC 7501 | `term::program_status` | host-initiated, any time |
 | Pointer shape | OSC 22 | `term::pointer` | host-initiated, any time |
 | Images | Kitty / iTerm2 / Sixel | `term::image` | after `terminal.draw()` returns |
 | Terminal queries | DA1, OSC 10 / 11 / 4 | `term::capabilities`, `term::palette` | host-initiated, once at startup, in raw mode |
@@ -85,8 +86,8 @@ default by what terminal it finds itself in, unless a host asks it to.
 
 ### "Unknown escapes are swallowed" holds for three of the four
 
-A terminal that does not understand OSC 8, 52, or 9;4 ignores it. That is why
-those three need no capability detection and are safe to emit everywhere — the
+A terminal that does not understand OSC 8, 52, 9;4, or 7501 ignores it. That is why
+those four need no capability detection and are safe to emit everywhere — the
 worst case is that nothing happens.
 
 Graphics protocols break that assumption: an unsupported terminal may render the
