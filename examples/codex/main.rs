@@ -29,12 +29,17 @@
 //! cargo run --example codex                 # interactive
 //! ```
 //!
+//! It also reports its state with OSC 7501 (`status.rs`), so a terminal that
+//! reads the Program Status Protocol shows the pane as working, blocked on the
+//! approval prompt, or done.
+//!
 //! Try: `why does the snapshot test fail?`, `clean up the build artifacts`
 //! (raises the approval prompt), `explain this repo`, or `/init`.
 
 mod agent;
 mod app;
 mod history;
+mod status;
 #[path = "../support/mod.rs"]
 mod support;
 mod ui;
@@ -56,6 +61,7 @@ use tuika::{
 
 use crate::app::{App, Flow};
 use crate::history::Cell;
+use crate::status::ProgramStatus;
 
 /// Rows the split-footer mode reserves: enough for the working row, the
 /// composer at a couple of lines, a completion popup, and the status footer.
@@ -108,8 +114,10 @@ fn run_split(theme: Theme) -> io::Result<()> {
             viewport: mode.viewport(),
         },
     )?;
+    let mut status = ProgramStatus::new();
 
     loop {
+        status.sync(&app.agent)?;
         // Hand over everything that will not change again. A cell holds a
         // streaming-markdown cache and so is not `Send`; `publish_block` takes
         // it straight from this loop rather than through the `Scrollback` queue.
@@ -142,6 +150,7 @@ fn run_split(theme: Theme) -> io::Result<()> {
         app.tick();
     }
 
+    status.clear();
     // Give the reserved rows back; everything published above them is the
     // user's session now.
     let _ = close_footer(&mut terminal);
@@ -178,8 +187,10 @@ fn run(theme: Theme) -> io::Result<()> {
             viewport: Viewport::Fullscreen,
         },
     )?;
+    let mut status = ProgramStatus::new();
 
     loop {
+        status.sync(&app.agent)?;
         terminal.draw(|f| {
             let area = f.area();
             let root = ui::build(&mut app, area, &theme, &sheet, &probe);
@@ -200,6 +211,7 @@ fn run(theme: Theme) -> io::Result<()> {
         app.tick();
     }
 
+    status.clear();
     let _ = terminal.clear();
     drop(terminal);
     Ok(())
