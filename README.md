@@ -574,6 +574,16 @@ palette, for example `cargo run --example gallery -- --theme gruvbox-dark`.
 Every example above except [`codex`](examples/codex) quits on `q`/`esc`. Those
 keys are composer text in the Codex replica, so it quits with `⌃C`.
 
+### Program status in tuios
+
+[`program_status`](examples/program_status.rs) reports a scripted build job to
+the terminal with OSC 7501 and prints every report it sends. Run inside
+[tuios](https://github.com/Gaurav-Gosain/tuios), the pane's status follows: here
+the right pane polls `tuios get-agent-state` for the job's pane while it works,
+waits on a question, finishes, and quits.
+
+<img src="https://raw.githubusercontent.com/everruns/tuika/main/examples/program_status.gif" width="880" alt="The program_status example running in a tuios pane beside a live tuios get-agent-state readout: a build job reports working with rising progress, blocks on a question at 85%, finishes after y, and its record disappears when it quits.">
+
 ## Declarative DSL (`view!`)
 
 `view!` is optional sugar over the builders — it expands to the exact same

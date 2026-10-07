@@ -6,7 +6,8 @@
 # default. Pass --skip-showcases for an otherwise complete local-only refresh.
 #
 # Requirements are the union of the individual generators documented in
-# AGENTS.md: Cargo, VHS/ttyd/ffmpeg, and the showcase tools when included.
+# AGENTS.md: Cargo, VHS/ttyd/ffmpeg, tuios and jq for the program-status
+# recording, and the showcase tools when included.
 
 set -euo pipefail
 
@@ -37,6 +38,7 @@ cargo run -q --example image_demo -- docs/demos/image.svg --theme "${TUIKA_DEMO_
 
 scripts/gen-codex-demo.sh
 scripts/gen-app-shell-demo.sh
+scripts/gen-program-status-demo.sh
 scripts/gen-workbench-demo.sh
 scripts/gen-mermaid-demo.sh
 scripts/gen-html-demo.sh

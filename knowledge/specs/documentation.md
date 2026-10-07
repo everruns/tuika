@@ -185,7 +185,10 @@ Generated demos follow the rule that the *scene registry is the source of truth*
   committed beside the example rather than under `docs/` so the example directory
   stays self-contained. The README's runnable-examples section links to the
   example source instead of embedding the full recording; the recording belongs
-  on the relevant guide or showcase page. These sit outside the `demo -- check`
+  on the relevant guide or showcase page. The exception is an example whose
+  effect cannot be seen in its own output: `program_status` speaks OSC 7501,
+  which only the terminal acts on, so the README carries its recording, made
+  inside tuios with tuios's own readout beside it, to show that it works. These sit outside the `demo -- check`
   invariant, which is about single-component scenes and their gallery references.
   The `tuika-mermaid` and `tuika-html` recordings follow this rule and ship with
   their companion crates so each crates.io README can show what it documents.

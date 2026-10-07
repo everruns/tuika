@@ -1,5 +1,16 @@
 # Knowledge Log
 
+## 2026-10-07
+
+- **Some examples only prove themselves in a terminal**
+  - OSC 7501 program status changes nothing in tuika's own grid, so the
+    `program_status` recording runs the example in a tuios pane beside
+    `tuios get-agent-state`, and the README's runnable examples embed it, an
+    exception to the link-only rule. Checking against tuios also found two
+    reports tuika encoded but every conforming terminal discards (ids over the
+    128-byte or 8-level limits, C1 controls in text); they now encode to `None`.
+    See [Documentation](specs/documentation.md).
+
 ## 2026-09-15
 
 - **A dependency is not dropped until its documentation is**

@@ -434,6 +434,8 @@ The [`program_status`](../examples/program_status.rs) example walks a scripted
 build through every state and prints the exact reports it sends; run it inside
 tuios to watch the pane's status follow along.
 
+<img src="../examples/program_status.gif" width="880" alt="The program_status example running in a tuios pane beside a live tuios get-agent-state readout: a build job reports working with rising progress, blocks on a question at 85%, finishes after y, and its record disappears when it quits.">
+
 **Supported terminals:** tuios. Others swallow the unknown OSC.
 
 ## Images (Kitty, iTerm2 & Sixel graphics protocols)

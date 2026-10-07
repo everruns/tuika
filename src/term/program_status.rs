@@ -25,6 +25,8 @@
 //! capability detection is needed.
 //!
 //! Spec: <https://www.superlogical.com/rex/docs/build/program-status>
+//!
+//! ![program status in tuios](https://raw.githubusercontent.com/everruns/tuika/main/examples/program_status.gif)
 
 use std::io::Write;
 
