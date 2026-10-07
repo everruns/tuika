@@ -566,6 +566,7 @@ palette, for example `cargo run --example gallery -- --theme gruvbox-dark`.
 | [`mouse`](examples/mouse.rs)     | `cargo run --example mouse`      | drag-to-select + highlight + OSC 52 copy, clickable buttons |
 | [`image`](examples/image.rs)     | `cargo run --example image`      | `Image` over reserved cells (Kitty/iTerm2/Sixel), alt-text fallback |
 | [`inherit`](examples/inherit.rs) | `cargo run --example inherit`    | adopting the terminal's own palette — probe, derive, and the no-I/O fallback |
+| [`program_status`](examples/program_status.rs) | `cargo run --example program_status` | OSC 7501 program-status reports (working, blocked, done) with the bytes sent shown on screen |
 | [`split_footer`](examples/split_footer.rs) | `cargo run --example split_footer` | a pinned footer over live terminal scrollback, published through `Scrollback` |
 | [`codex`](examples/codex)        | `cargo run --example codex`      | a scripted Codex CLI interface replica: streaming transcript, composer, `@`/`/` pickers, approval prompt |
 | [`codex --split-footer`](examples/codex) | `cargo run --example codex -- --split-footer` | the same agent UI with its transcript published into the terminal's own scrollback |
