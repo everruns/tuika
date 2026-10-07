@@ -114,6 +114,10 @@ struct Script {
     rows: u16,
     cols: u16,
     settle: Duration,
+    /// After the settle, keep waiting (up to the limit) until the stream
+    /// contains these bytes. For output a slow runner produces late — a
+    /// fixed settle alone flakes on loaded CI machines.
+    settle_until: Option<(&'static [u8], Duration)>,
     resize_to: Option<(u16, u16)>,
     /// Bytes to type after the settle, each followed by a pause.
     keys: Vec<(&'static [u8], Duration)>,
@@ -128,6 +132,7 @@ impl Script {
             rows: 24,
             cols: 80,
             settle: Duration::from_millis(1200),
+            settle_until: None,
             resize_to: None,
             keys: Vec::new(),
             quit: b"q",
@@ -146,6 +151,12 @@ impl Script {
 
     fn settle(mut self, settle: Duration) -> Self {
         self.settle = settle;
+        self
+    }
+
+    /// Extend the settle until `needle` has been written, or `limit` passes.
+    fn settle_until(mut self, needle: &'static [u8], limit: Duration) -> Self {
+        self.settle_until = Some((needle, limit));
         self
     }
 
@@ -266,6 +277,14 @@ impl Script {
 
         // Let it paint a few frames, then follow the script.
         thread::sleep(self.settle);
+        if let Some((needle, limit)) = self.settle_until {
+            let deadline = Instant::now() + limit;
+            while Instant::now() < deadline
+                && !contains(&buffer.lock().expect("lock read buffer"), needle)
+            {
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
         for (bytes, pause) in &self.keys {
             send(bytes);
             thread::sleep(*pause);
@@ -653,12 +672,17 @@ fn gallery_emits_osc8_hyperlink() {
 
 #[test]
 fn markdown_emits_native_link_without_capturing_the_mouse() {
+    const OSC8: &[u8] = b"\x1b]8;;https://docs.rs/tuika\x1b\\";
     let run = Script::new("markdown")
         .size(30, 100)
         .settle(Duration::from_millis(2200))
+        // The link arrives mid-stream; a loaded macOS runner can take longer
+        // than the fixed settle to reach it.
+        .settle_until(OSC8, Duration::from_secs(10))
         .run();
     assert!(run.exited_ok, "markdown should exit cleanly");
     let osc8 = format!("\x1b]8;;{MARKDOWN_URL}\x1b\\");
+    assert_eq!(osc8.as_bytes(), OSC8, "OSC8 mirrors MARKDOWN_URL");
     assert!(
         contains(&run.output, osc8.as_bytes()),
         "expected an OSC 8 hyperlink for {MARKDOWN_URL}"

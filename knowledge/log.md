@@ -5,8 +5,8 @@
 - **Some examples only prove themselves in a terminal**
   - OSC 7501 program status changes nothing in tuika's own grid, so the
     `program_status` recording runs the example in a tuios pane beside
-    `tuios get-agent-state`, and the README's runnable examples embed it, an
-    exception to the link-only rule. Checking against tuios also found two
+    `tuios get-agent-state`, embedded in the terminal features guide while the
+    README links to it. Checking against tuios also found two
     reports tuika encoded but every conforming terminal discards (ids over the
     128-byte or 8-level limits, C1 controls in text); they now encode to `None`.
     See [Documentation](specs/documentation.md).
