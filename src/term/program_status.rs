@@ -25,6 +25,8 @@
 //! capability detection is needed.
 //!
 //! Spec: <https://www.superlogical.com/rex/docs/build/program-status>
+//!
+//! ![program status in tuios](https://raw.githubusercontent.com/everruns/tuika/main/examples/program_status.gif)
 
 use std::io::Write;
 
@@ -118,7 +120,8 @@ impl Report {
     }
 
     /// Record id: `segment(/segment)*`, each 1-32 chars of
-    /// `[A-Za-z0-9_.+-]`. Absent means the root record.
+    /// `[A-Za-z0-9_.+-]`, at most 8 segments and 128 bytes in all. Absent
+    /// means the root record.
     pub fn id(mut self, id: &str) -> Self {
         self.id = Some(id.to_string());
         self
@@ -246,14 +249,27 @@ fn is_valid_segment(segment: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'+' | b'-'))
 }
 
+/// Spec limits: at most 128 bytes in all and 8 segments deep. A longer or
+/// deeper id is discarded whole by the terminal, never truncated, so it must
+/// not be emitted at all.
 fn is_valid_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 512 && id.split('/').all(is_valid_segment)
+    !id.is_empty()
+        && id.len() <= 128
+        && id.split('/').count() <= 8
+        && id.split('/').all(is_valid_segment)
 }
 
 /// Check plain text, then base64 it. `None` on control characters or
 /// over either the decoded or the encoded limit.
+///
+/// The spec's control set is C0, DEL, *and* C1 (U+0080..=U+009F): a
+/// terminal discards a report whose decoded text holds any of them, so a
+/// byte-level C0 check alone would let e.g. U+0085 (NEL) through.
 fn encode_text(text: &str, max_decoded: usize, max_encoded: usize) -> Option<String> {
-    if text.bytes().any(|b| b < 0x20 || b == 0x7f) {
+    if text
+        .chars()
+        .any(|c| c <= '\u{1f}' || ('\u{7f}'..='\u{9f}').contains(&c))
+    {
         return None;
     }
     if text.len() > max_decoded {
@@ -355,6 +371,19 @@ mod tests {
     }
 
     #[test]
+    fn id_over_spec_limits_rejects_report() {
+        // 8 segments of 15 bytes plus separators: 127 bytes, the deepest legal id.
+        let deepest = vec!["a".repeat(15); 8].join("/");
+        assert!(Report::new(State::Working).id(&deepest).encode().is_some());
+
+        let too_deep = ["a"; 9].join("/");
+        assert_eq!(Report::new(State::Working).id(&too_deep).encode(), None);
+
+        let too_long = vec!["a".repeat(32); 4].join("/"); // 131 bytes, 4 segments
+        assert_eq!(Report::new(State::Working).id(&too_long).encode(), None);
+    }
+
+    #[test]
     fn control_chars_in_text_reject_report() {
         assert_eq!(
             Report::new(State::Working).msg("line\nbreak").encode(),
@@ -363,6 +392,21 @@ mod tests {
         assert_eq!(
             Report::new(State::Working).title("tab\there").encode(),
             None
+        );
+        // C1 controls are controls too, though their UTF-8 bytes are >= 0x80.
+        assert_eq!(
+            Report::new(State::Working).msg("next\u{85}line").encode(),
+            None
+        );
+        assert_eq!(
+            Report::new(State::Working).title("csi\u{9b}").encode(),
+            None
+        );
+        assert!(
+            Report::new(State::Working)
+                .msg("caf\u{e9} \u{a0}ok")
+                .encode()
+                .is_some()
         );
     }
 
