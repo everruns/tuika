@@ -19,6 +19,7 @@
 //! | [`clipboard`] | OSC 52 | puts text on the system clipboard |
 //! | [`hyperlink`] | OSC 8 | makes a text run clickable |
 //! | [`progress`] | OSC 9;4 | lights its own progress bar or taskbar |
+//! | [`program_status`] | OSC `7501` | reports program activity: idle, working, done, blocked, error, clear |
 //! | [`mod@pointer`] | OSC 22 | changes the mouse pointer shape |
 //! | [`capabilities`] | DA1 | answers what it supports |
 //! | [`palette`] | OSC 10 / 11 / 4 | reports the colors it was configured with |
@@ -39,6 +40,7 @@ pub mod hyperlink;
 pub mod image;
 pub mod palette;
 pub mod pointer;
+pub mod program_status;
 pub mod progress;
 pub mod terminal;
 pub mod testbackend;

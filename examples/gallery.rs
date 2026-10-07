@@ -154,6 +154,11 @@ fn main() -> io::Result<()> {
     let theme = cli.theme;
     let mut progress = tuika::term::progress::TerminalProgress::new();
     progress.indeterminate();
+    let _ = tuika::term::program_status::write(
+        &mut io::stdout(),
+        &tuika::term::program_status::Report::new(tuika::term::program_status::State::Working)
+            .app("gallery"),
+    );
 
     let mut frame = 0u64;
     loop {
@@ -173,6 +178,10 @@ fn main() -> io::Result<()> {
     }
 
     progress.clear();
+    let _ = tuika::term::program_status::write(
+        &mut io::stdout(),
+        &tuika::term::program_status::Report::clear(None),
+    );
     let _ = terminal.clear();
     drop(terminal);
     Ok(())

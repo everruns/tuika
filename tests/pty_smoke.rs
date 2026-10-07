@@ -377,7 +377,7 @@ fn visible_text(bytes: &[u8]) -> String {
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '\u{1b}' {
-            // Skip an escape sequence: ESC [ ... <final>, or ESC ] ... BEL.
+            // Skip an escape sequence: ESC [ ... <final>, or ESC ] ... BEL/ST.
             match chars.next() {
                 Some('[') => {
                     for e in chars.by_ref() {
@@ -387,10 +387,13 @@ fn visible_text(bytes: &[u8]) -> String {
                     }
                 }
                 Some(']') => {
+                    // OSC ends with BEL or ST (ESC backslash); program_status uses ST.
+                    let mut prev_esc = false;
                     for e in chars.by_ref() {
-                        if e == '\u{7}' {
+                        if e == '\u{7}' || (prev_esc && e == '\\') {
                             break;
                         }
+                        prev_esc = e == '\u{1b}';
                     }
                 }
                 _ => {}
@@ -447,8 +450,16 @@ fn gallery_drives_altscreen_and_native_progress() {
         "should emit the native indeterminate progress sequence"
     );
     assert!(
+        contains(out, b"\x1b]7501;state=working:app=gallery"),
+        "should emit the OSC 7501 program status sequence"
+    );
+    assert!(
         contains(out, b"\x1b]9;4;0"),
         "should clear the native progress indicator on exit"
+    );
+    assert!(
+        contains(out, b"\x1b]7501;state=clear"),
+        "should clear the OSC 7501 program status on exit"
     );
 
     let text = visible_text(out);
