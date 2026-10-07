@@ -1,6 +1,6 @@
 ---
 title: Terminal features
-description: Images, hyperlinks, clipboard, native progress, terminal palettes, mouse input, and screen modes in tuika.
+description: Images, hyperlinks, clipboard, native progress, program status, terminal palettes, mouse input, and screen modes in tuika.
 sidebar:
   order: 9
 ---
@@ -382,6 +382,60 @@ Terminal and ConEmu (taskbar), WezTerm, Konsole, mintty. Others swallow the
 unknown OSC. Writes are best-effort — a failed progress write never disrupts the
 session.
 
+## Program status (OSC 7501)
+
+Tell the terminal what the program is doing — idle, working (with optional
+0–100 progress), blocked on the user, done, or errored — so it can show that
+beside the pane instead of a spinner nobody can read. This is Mitchell
+Hashimoto's [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status),
+read by [tuios](https://tuios.dev/docs/program-status). Like OSC 9;4 it
+is out-of-band and works in every screen mode.
+[API](https://docs.rs/tuika/latest/tuika/term/program_status/index.html)
+
+The host decides the state; tuika only encodes and validates. Build a `Report`,
+then `write` it to the terminal:
+
+```rust
+use tuika::term::program_status::{self, BlockKind, Report, State};
+
+let mut out = std::io::stdout();
+let working = Report::new(State::Working)
+    .app("build")
+    .progress(40)
+    .msg("Compiling");
+let _ = program_status::write(&mut out, &working);
+
+let asking = Report::new(State::Blocked)
+    .kind(BlockKind::Question)
+    .app("build")
+    .msg("Publish the build?");
+let _ = program_status::write(&mut out, &asking);
+
+let _ = program_status::write(&mut out, &Report::new(State::Done).app("build"));
+let _ = program_status::write(&mut out, &Report::clear(None)); // on exit
+```
+
+The emitted bytes (`title` and `msg` are base64 of UTF-8 text):
+
+```text
+ESC ] 7501 ; state=working:progress=40:app=build:msg=Q29tcGlsaW5n ESC \
+```
+
+Records form a tree through `.id("build/test")`; no id addresses the root
+record. A terminal drops an invalid report whole, so `encode` returns `None`
+and `write` emits nothing for one tuika can tell is invalid: a malformed or
+over-long id (more than 128 bytes or 8 segments), an `app` outside
+`[A-Za-z0-9_.+-]{1,32}`, a control character (C0, DEL, or C1) in `title` or
+`msg`, or a text over the spec's length limits. `kind` without `blocked` and
+`progress` outside `working`/`blocked` are dropped rather than rejected.
+`encode_query()` builds the `ESC ] 7501 ; ? ESC \` feature query.
+
+The [`program_status`](../examples/program_status.rs) example walks a scripted
+build through every state and prints the exact reports it sends; run it inside
+tuios to watch the pane's status follow along.
+
+**Supported terminals:** tuios. Others swallow the unknown OSC.
+
 ## Images (Kitty, iTerm2 & Sixel graphics protocols)
 
 Paint real pixels — an avatar, a chart, a rendered diagram — over the cells a
@@ -474,7 +528,7 @@ inline placeholder rather than dropping the URL.
 - [Markdown guide](markdown.md) — where hyperlinks and images meet rendered
   markdown.
 - [API documentation](https://docs.rs/tuika) — the complete reference for the
-  `capabilities`, `hyperlink`, `mouse`, `clipboard`, `native`, and `image`
+  `capabilities`, `hyperlink`, `mouse`, `clipboard`, `native`, `program_status`, and `image`
   modules.
 - [Runnable examples](../examples/) — `mouse` records the selection/clipboard
   workflow live; quit with `q`/`esc`.

@@ -1,6 +1,6 @@
 //! OSC 7501 program-status reports for the scripted agent.
 //!
-//! A terminal that reads the protocol (tuios, Rex) can then show the pane as
+//! A terminal that reads the protocol (such as tuios) can then show the pane as
 //! working, waiting on an approval, or finished, without scraping the screen.
 //! Terminals that do not read it swallow the sequence. tuika only encodes;
 //! deciding which state the app is in is the host's job, done here.

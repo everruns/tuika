@@ -9,7 +9,7 @@
 //! [`tuika::term::program_status::write`]; the lower panel prints the exact
 //! bytes of every report sent, so what the terminal receives is on screen.
 //!
-//! In a terminal that reads the protocol (tuios, Rex) the pane's status follows
+//! In a terminal that reads the protocol (such as tuios) the pane's status follows
 //! along; anywhere else the sequences are swallowed and only the UI changes.
 
 use std::collections::VecDeque;

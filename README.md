@@ -183,7 +183,7 @@ Four places, so you can guess where something is:
 | --- | --- |
 | `tuika::` | the framework spine — `View`, `view_fn`, `Element`, `ScopedElement`, `RenderCtx`, layout, events, `Theme`, `Surface`, the host boundary |
 | `tuika::components` | every widget: `Flex`, `Boxed`, `Text`, `Scroll`, `Markdown`, `Table`, … |
-| `tuika::term` | everything out-of-band: `clipboard` (OSC 52), `hyperlink` (OSC 8), `progress` (OSC 9;4), `pointer` (OSC 22), `image`, `capabilities`, `palette` (the terminal's own colors) |
+| `tuika::term` | everything out-of-band: `clipboard` (OSC 52), `hyperlink` (OSC 8), `progress` (OSC 9;4), `program_status` (OSC 7501), `pointer` (OSC 22), `image`, `capabilities`, `palette` (the terminal's own colors) |
 | `tuika::prelude` | the spine and the components in one glob import |
 
 Application code usually wants the prelude:
@@ -852,6 +852,13 @@ so it works in both the inline and full-screen renderers; terminals that don't
 understand it ignore the sequence. A host typically shows it (indeterminate)
 while long work runs and clears it when idle.
 
+`term::program_status` emits OSC 7501, the Program Status Protocol: the host
+reports idle, working with progress, blocked on the user, done, or error, and a
+terminal that reads it (such as tuios) shows that state beside the pane. tuika
+validates each report against the spec's grammar and limits, and an invalid one
+writes nothing. The [`program_status`](examples/program_status.rs) example
+walks through every state.
+
 ## Images
 
 `Image` paints real pixels — an avatar, a chart, a rendered diagram — over the
@@ -946,8 +953,8 @@ path — there is no separate touch event to handle.
 
 > See the [terminal features guide](https://github.com/everruns/tuika/blob/v0.12.0/docs/features.md) for these
 > terminal-integration capabilities — OSC 8 hyperlinks, mouse selection and
-> clicks, OSC 52 clipboard, OSC 9;4 progress, and Kitty/iTerm2/Sixel images —
-> plus `Capabilities` detection, with demos and runnable examples.
+> clicks, OSC 52 clipboard, OSC 9;4 progress, OSC 7501 program status, and
+> Kitty/iTerm2/Sixel images — plus `Capabilities` detection, with demos and runnable examples.
 
 ## Testing your UI
 
