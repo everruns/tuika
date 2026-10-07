@@ -15,6 +15,10 @@ const pages = Object.fromEntries(
 
 export const { getStaticPaths, GET } = await OGImageRoute({
   pages,
+  // The default slug strips everything after the last dot as an extension,
+  // which would turn `releases/0.13.0` into `releases/0.13.png`. Entry ids
+  // carry no extension, so append one.
+  getSlug: (path) => `${path}.png`,
   getImageOptions: (_path, page) => ({
     title: page.title,
     description: ogCardDescription,

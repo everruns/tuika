@@ -1,9 +1,12 @@
 import { access, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { PAGE_SLUGS } from "../src/lib/routes.js";
+import { PAGE_SLUGS, RELEASE_ROUTE } from "../src/lib/routes.js";
+import { parseChangelog, releaseSlug } from "../src/lib/changelog.js";
 
 const root = resolve(import.meta.dirname, "..");
-const pages = PAGE_SLUGS;
+const releases = parseChangelog(await readFile(resolve(root, "../CHANGELOG.md"), "utf8"));
+const releaseSlugs = releases.map(({ version }) => releaseSlug(version));
+const pages = [...PAGE_SLUGS, ...releaseSlugs];
 
 const failures = [];
 
@@ -98,6 +101,20 @@ const distFiles = await Promise.all(pages.map((slug) => read(`${slug ? `${slug}/
 const combined = distFiles.join("\n");
 for (const marker of ["example.com", "CHANGE_ME", "sitemap-index.xml", 'href="docs/', 'src="demos/']) {
   if (combined.includes(marker)) failures.push(`built pages contain ${marker}`);
+}
+
+const sitemapLocations = new Set(
+  [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]),
+);
+for (const slug of releaseSlugs) {
+  if (!RELEASE_ROUTE.test(`/${slug}/`)) failures.push(`/${slug}/ is not a worker page route`);
+  if (!sitemapLocations.has(`https://tuika.dev/${slug}/`)) {
+    failures.push(`sitemap.xml lacks https://tuika.dev/${slug}/`);
+  }
+}
+const releaseIndex = await read("releases/index.html");
+for (const slug of releaseSlugs) {
+  if (!releaseIndex.includes(`href="/${slug}/"`)) failures.push(`/releases/ does not link /${slug}/`);
 }
 
 const componentIndex = await read("components/index.html");

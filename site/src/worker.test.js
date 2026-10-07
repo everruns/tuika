@@ -34,7 +34,7 @@ test("deployment sends every guide route through the worker", async () => {
   assert.deepEqual(config.assets.run_worker_first, [
     "/",
     "/index.html",
-    ...GUIDE_SLUGS.map((slug) => `/${slug}*`),
+    ...[...GUIDE_SLUGS, "releases"].sort().map((slug) => `/${slug}*`),
   ]);
 });
 
@@ -64,6 +64,11 @@ test("maps canonical pages to exact static assets", () => {
     "/components/interactive/",
   );
   assert.equal(canonicalPagePath("/not-a-guide"), null);
+  assert.equal(canonicalPagePath("/releases"), "/releases/");
+  assert.equal(canonicalPagePath("/releases/0.13.0"), "/releases/0.13.0/");
+  assert.equal(canonicalPagePath("/releases/0.13.0/index.html"), "/releases/0.13.0/");
+  assert.equal(canonicalPagePath("/releases/latest"), null);
+  assert.equal(markdownAssetPath("/releases/0.13.0/"), "/releases/0.13.0/index.md");
   assert.equal(htmlAssetPath("/"), "/index.html");
   assert.equal(htmlAssetPath("/components/"), "/components/index.html");
   assert.equal(
@@ -109,4 +114,36 @@ test("redirects non-canonical page URLs", async () => {
   const response = await worker.fetch(new Request("https://tuika.dev/components"), {});
   assert.equal(response.status, 308);
   assert.equal(response.headers.get("Location"), "https://tuika.dev/components/");
+});
+
+test("parses every changelog release into a page", async () => {
+  const { parseChangelog, releaseHighlights } = await import("./lib/changelog.js");
+  const releases = parseChangelog(
+    await readFile(new URL("../../CHANGELOG.md", import.meta.url), "utf8"),
+  );
+  assert.ok(releases.length > 0);
+  for (const { version, date, body } of releases) {
+    assert.match(version, /^\d+\.\d+\.\d+/);
+    assert.match(date ?? "", /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(body.length > 0, `${version} has notes`);
+    assert.ok(!/^\[[^\]]+\]: /m.test(body), `${version} drops link definitions`);
+  }
+
+  const sample = parseChangelog(
+    [
+      "# Changelog",
+      "## [Unreleased]",
+      "- pending",
+      "## [1.2.0] - 2026-01-02",
+      "### Highlights",
+      "**Fast** — quicker.",
+      "```md",
+      "## not a release",
+      "```",
+      "[1.2.0]: https://example.invalid",
+    ].join("\n"),
+  );
+  assert.deepEqual(sample.map(({ version }) => version), ["1.2.0"]);
+  assert.match(sample[0].body, /## not a release/);
+  assert.deepEqual(releaseHighlights(sample[0].body), ["Fast"]);
 });

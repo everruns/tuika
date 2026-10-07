@@ -388,8 +388,8 @@ Tell the terminal what the program is doing — idle, working (with optional
 0–100 progress), blocked on the user, done, or errored — so it can show that
 beside the pane instead of a spinner nobody can read. This is Mitchell
 Hashimoto's [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status),
-read by [tuios](https://tuios.dev/docs/program-status). Like OSC 9;4 it
-is out-of-band and works in every screen mode.
+an open terminal protocol: any terminal or multiplexer can read it, and the
+rest ignore it. Like OSC 9;4 it is out-of-band and works in every screen mode.
 [API](https://docs.rs/tuika/latest/tuika/term/program_status/index.html)
 
 The host decides the state; tuika only encodes and validates. Build a `Report`,
@@ -431,12 +431,16 @@ over-long id (more than 128 bytes or 8 segments), an `app` outside
 `encode_query()` builds the `ESC ] 7501 ; ? ESC \` feature query.
 
 The [`program_status`](../examples/program_status.rs) example walks a scripted
-build through every state and prints the exact reports it sends; run it inside
-tuios to watch the pane's status follow along.
+build through every state and prints the exact reports it sends; run it in a
+terminal that reads OSC 7501 to watch the pane's status follow along. The
+recording below uses [tuios](https://tuios.dev/docs/program-status), one such
+terminal.
 
 <img src="../examples/program_status.gif" width="880" alt="The program_status example running in a tuios pane beside a live tuios get-agent-state readout: a build job reports working with rising progress, blocks on a question at 85%, finishes after y, and its record disappears when it quits.">
 
-**Supported terminals:** tuios. Others swallow the unknown OSC.
+**Supported terminals:** any that implement the Program Status Protocol, such
+as [tuios](https://tuios.dev/docs/program-status). Others swallow the unknown
+OSC.
 
 ## Images (Kitty, iTerm2 & Sixel graphics protocols)
 

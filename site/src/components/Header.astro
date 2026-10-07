@@ -68,6 +68,7 @@ const showSections = sections.length >= 2;
     <div class="flex items-center gap-2">
       {config.search !== false && <SearchTrigger />}
       <a href="/getting-started/" class="hidden sm:inline text-xs font-medium text-muted-foreground hover:text-foreground no-underline">Docs</a>
+      <a href="/releases/" class="hidden sm:inline text-xs font-medium text-muted-foreground hover:text-foreground no-underline">Releases</a>
       {config.github && (
         <LinkButton
           href={config.github}

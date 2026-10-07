@@ -282,9 +282,26 @@ pre.astro-code {
 	font-family: var(--nb-font-mono);
 	font-size: 0.875rem;
 	line-height: 1.625;
+	/* rustfmt lines run to 100 columns, wider than the prose column: keep a
+	   visible scrollbar so a clipped line reads as scrollable, not cut off. */
+	scrollbar-width: thin;
+	scrollbar-color: color-mix(in oklch, var(--nb-foreground) 25%, transparent) transparent;
 }
 pre.astro-code > code {
 	background: transparent;
+}
+
+/* JetBrains Mono's contextual ligatures draw `->`, `::`, `=>` and `!=` as
+   single glyphs. In Rust that hides the characters a reader has to type, so
+   every monospace surface shows the literal source instead. */
+code,
+kbd,
+pre,
+samp {
+	font-variant-ligatures: none;
+	font-feature-settings:
+		"liga" 0,
+		"calt" 0;
 }
 
 /* Classed Shiki tokens set --shiki-light/--shiki-dark once in _nimbus/shiki.css. */

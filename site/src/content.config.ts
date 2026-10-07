@@ -11,6 +11,9 @@ export const collections = {
         // Nimbus docs are agent-friendly by default. Set `audience: human`
         // to flag a page that's written primarily for human readers.
         audience: z.literal("human").optional(),
+        // Astro's glob loader takes the entry id from `slug` when present.
+        // Generated release pages set it so `/releases/0.13.0/` keeps its dots.
+        slug: z.string().optional(),
       },
     }),
   ),
