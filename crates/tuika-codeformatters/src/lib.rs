@@ -30,7 +30,7 @@
 //! languages keeps only those:
 //!
 //! ```toml
-//! tuika-codeformatters = { version = "0.4", default-features = false, features = ["rust", "python"] }
+//! tuika-codeformatters = { version = "0.7", default-features = false, features = ["rust", "python"] }
 //! ```
 //!
 //! Feature names are the language keys lowercased without punctuation: `rust`,

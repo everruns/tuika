@@ -63,7 +63,7 @@ those:
 
 ```toml
 [dependencies]
-tuika-codeformatters = { version = "0.6", default-features = false, features = ["rust", "python"] }
+tuika-codeformatters = { version = "0.7", default-features = false, features = ["rust", "python"] }
 ```
 
 Feature names match the language keys above, lowercased and without punctuation:

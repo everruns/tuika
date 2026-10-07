@@ -11,6 +11,67 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
+## [0.13.0] - 2026-10-07
+
+Released alongside `tuika-charts` 0.3.0, `tuika-codeformatters` 0.7.0,
+`tuika-html` 0.3.0, and `tuika-mermaid` 0.5.0. Every companion's tuika
+requirement moves to 0.13.
+
+### Highlights
+
+**Program status for the terminal (OSC 7501)** — a host can now tell the
+terminal what it is doing instead of leaving it to guess from a spinner: idle,
+working with 0–100 progress, done, blocked on the user, or errored, as a tree of
+records keyed by id. `tuika::term::program_status` owns the bytes and validates
+everything the host passes in; the host owns the semantics. Verified against
+tuios, which renders the reports in its pane chrome and agent-state query.
+
+![program status in tuios](https://raw.githubusercontent.com/everruns/tuika/v0.13.0/examples/program_status.gif)
+
+- **Dependencies**: `tuika-html` moves to html5ever 0.40 and drops
+  `markup5ever_rcdom`, building its own small DOM through a vendored `TreeSink`.
+
+OSC 7501 changes nothing in tuika's own cell grid, so the highlight is the
+`program_status` example's recording inside tuios rather than a gallery scene.
+
+### Breaking Changes
+
+- **Clicking a select row confirms only when it is already highlighted.** In
+  `SelectState` and `KeyedSelectState` (and the multi-select variants), a click
+  on an unhighlighted row now moves the highlight and reports `Changed`; a click
+  on the highlighted row reports `Submitted`. Keyboard Enter is unchanged. No
+  signature changed. A host that wants single-click confirm treats both
+  outcomes as confirm:
+
+  ```rust
+  // before: a click on any row returned Submitted
+  if outcome == InputOutcome::Submitted { confirm() }
+
+  // after: keep single-click confirm explicitly
+  if matches!(outcome, InputOutcome::Changed | InputOutcome::Submitted) { confirm() }
+  ```
+
+### Added
+
+- `tuika::term::program_status` — `Report` (builder: `id`, `kind`,
+  `progress`, `app`, `title`, `msg`, `encode`; `Report::clear`), `State`,
+  `BlockKind`, `write`, and `encode_query`. `Report::encode` returns `None` for
+  anything a conforming terminal would discard: bad id or app grammar, ids over
+  128 bytes or 8 segments, and C0/C1 controls in titles and messages.
+- The `program_status` example (working with progress, blocked on a question,
+  done/error, clear on exit, with the sent payloads on screen), and OSC 7501
+  reporting in the `codex` example.
+- A Program status section in the terminal features guide.
+
+### What's Changed
+
+* feat(term): verify OSC 7501 against tuios, add example and docs (#141)
+* feat(term): add OSC 7501 program status reports (#140)
+* feat(tuika-html): vendor TreeSink DOM, drop rcdom, html5ever 0.40
+* chore(deps): bump futures-core to 0.3.34
+* fix(site): resolve 11 Dependabot alerts in docs lockfile (#135)
+* fix(select): confirm only when clicking the highlighted row (#134)
+
 ## [0.12.0] - 2026-09-15
 
 Released alongside `tuika-charts` 0.2.0, `tuika-codeformatters` 0.6.0,

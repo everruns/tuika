@@ -1,6 +1,6 @@
 [package]
 name = "tuika-codeformatters"
-version = "0.6.0"
+version = "0.7.0"
 # Identity, MSRV, and license come from `[workspace.package]` in the root
 # manifest — see the comment there for what is and isn't shared.
 edition.workspace = true
@@ -78,7 +78,7 @@ typescript = ["dep:tree-sitter-typescript"]
 zig = ["dep:tree-sitter-zig"]
 
 [dependencies]
-tuika = { version = "0.12.0", path = "../.." }
+tuika = { version = "0.13.0", path = "../.." }
 tree-sitter = "0.26"
 tree-sitter-highlight = "0.26"
 tree-sitter-c-sharp = { version = "0.23", optional = true }
