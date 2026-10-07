@@ -26,8 +26,67 @@ function componentHref(hash = "") {
   return family ? `/components/${family}/${hash}` : `/components/${hash}`;
 }
 
+// Byte-level escape-sequence diagrams (```text blocks that start with `ESC`)
+// are one long line in the source, which a code block can only scroll. On the
+// site they render as a wrapping sequence: control bytes as chips, the command
+// number emphasised, `<placeholders>` set apart, and a break opportunity after
+// every separator. The text content stays the literal sequence, so copying it
+// still yields what the guide documents. GitHub keeps the plain fence.
+const CONTROL_TOKENS = new Set(["ESC", "BEL", "ST", "CSI", "OSC", "DCS", "APC"]);
+
+function escapeHtml(text) {
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function escapeParams(token) {
+  if (/^https?:\/\//.test(token)) return escapeHtml(token);
+  return token
+    .split(/(<[^<>\s]+>|[;:,=])/)
+    .filter(Boolean)
+    .map((part) => {
+      if (/^<[^<>\s]+>$/.test(part)) {
+        return `<span class="nb-esc-var">${escapeHtml(part)}</span>`;
+      }
+      if (/^[;:,]$/.test(part)) return `<span class="nb-esc-sep">${part}</span><wbr>`;
+      if (part === "=") return `<span class="nb-esc-sep">=</span>`;
+      return escapeHtml(part);
+    })
+    .join("");
+}
+
+function escapeLine(line) {
+  const tokens = line.trim().split(/ +/);
+  const out = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (CONTROL_TOKENS.has(token)) {
+      // `ESC ]`, `ESC _`, `ESC P`, `ESC \` name one control function together.
+      const next = tokens[i + 1];
+      const joined = token === "ESC" && next && next.length === 1 && !/\w/.test(next);
+      const label = joined ? `${token} ${next}` : token;
+      if (joined) i += 1;
+      out.push(`<span class="nb-esc-ctl">${escapeHtml(label)}</span>`);
+      // The command number right after an introducer (`ESC ] 7501`).
+      if (joined && /^\d+$/.test(tokens[i + 1] ?? "")) {
+        i += 1;
+        out.push(`<span class="nb-esc-cmd">${tokens[i]}</span>`);
+      }
+    } else {
+      out.push(`<span class="nb-esc-arg">${escapeParams(token)}</span>`);
+    }
+  }
+  return out.join(" ");
+}
+
+function escapeDiagrams(markdown) {
+  return markdown.replace(/^```text\n(ESC [^`]*?)\n```$/gm, (_match, body) => {
+    const lines = body.split("\n").map((line) => `<span class="nb-esc-line">${escapeLine(line)}</span>`);
+    return `<pre class="nb-esc" aria-label="Escape sequence"><code>${lines.join("\n")}</code></pre>`;
+  });
+}
+
 function forSite(markdown) {
-  return markdown
+  return escapeDiagrams(markdown)
     // Shiki accepts the language name, while rustdoc's comma-separated fence
     // attributes are meaningful only to rustdoc.
     .replace(/^```([^,\s]+),[^\n]*$/gm, "```$1")

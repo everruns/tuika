@@ -117,6 +117,13 @@ for (const slug of releaseSlugs) {
   if (!releaseIndex.includes(`href="/${slug}/"`)) failures.push(`/releases/ does not link /${slug}/`);
 }
 
+// Escape-sequence diagrams render as wrapping sequences, not scrolling code.
+const features = await read("features/index.html");
+if (!features.includes('<pre class="nb-esc"')) failures.push("/features/ lacks escape-sequence diagrams");
+if (/<pre[^>]*data-language="text"[^>]*><code><span class="line"><span[^>]*>ESC /.test(features)) {
+  failures.push("/features/ renders an ESC sequence as a plain code block");
+}
+
 const componentIndex = await read("components/index.html");
 for (const match of componentIndex.matchAll(/href="\/components\/([a-z-]+)\/#([a-z0-9-]+)"/g)) {
   const [, family, anchor] = match;
