@@ -1,4 +1,4 @@
-import { PAGE_ROUTES } from "./lib/routes.js";
+import { isPageRoute } from "./lib/routes.js";
 
 export default {
   async fetch(request, env) {
@@ -34,7 +34,7 @@ export function canonicalPagePath(pathname) {
   const candidate = withoutIndex === "/" || withoutIndex.endsWith("/")
     ? withoutIndex
     : `${withoutIndex}/`;
-  return PAGE_ROUTES.has(candidate) ? candidate : null;
+  return isPageRoute(candidate) ? candidate : null;
 }
 
 export function htmlAssetPath(canonicalPath) {

@@ -9,6 +9,9 @@ assets.
   files under `src/content/docs/`; `pnpm sync:docs` recreates them and Git
   ignores them.
 - Guide frontmatter belongs in the source file under `../docs/`.
+- Release notes come from `../CHANGELOG.md`: `pnpm sync:docs` writes
+  `/releases/` and one `/releases/<version>/` page per entry (parsed by
+  `src/lib/changelog.js`). Edit the changelog, never the generated pages.
 - The custom home page lives at `src/pages/index.astro`. Keep it factual,
   minimal, and consistent with Everruns branding.
 - Repository documentation assets are served through `public/docs-assets`, a

@@ -21,6 +21,19 @@ const nimbusConfig = defineNimbusConfig({
 
 export default defineConfig({
   output: "static",
+  // Nimbus' default (github-light/github-dark) path rewrites token colors to
+  // classes and collects their CSS into `_nimbus/shiki.css`, but under the
+  // static build that registry is filled in a different module instance than
+  // the one that writes the file, so the stylesheet ships empty and every
+  // fenced block renders uncoloured. A non-default theme pair keeps Nimbus off
+  // that path: tokens carry inline `--shiki-light`/`--shiki-dark` variables,
+  // which `pre.astro-code span` in globals.css already resolves per mode.
+  markdown: {
+    shikiConfig: {
+      themes: { light: "github-light-default", dark: "github-dark-default" },
+      defaultColor: false,
+    },
+  },
   // Tailwind v4 via its Vite plugin (the integration Astro recommends for
   // Tailwind v4 — replaces the PostCSS plugin, which doesn't build under
   // Astro 7's Vite 8 bundler).

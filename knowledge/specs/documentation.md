@@ -41,7 +41,9 @@ terminal UI with tuika without requiring knowledge of repository internals.
   generated from public Markdown below `docs/` before each Nimbus build; the generated copies are
   ignored, so the website cannot become a competing documentation source. The
   custom home page explains the framework model and routes readers into those
-  guides without duplicating them.
+  guides without duplicating them. Release notes follow the same rule: `/releases/` and one
+  `/releases/<version>/` page per entry are generated from `CHANGELOG.md`, so
+  every release is a crawlable page in the sitemap without a second copy.
 - The website is a static Cloudflare Workers asset deployment with a small
   request worker for content negotiation. Every guide has canonical HTML and a
   Markdown twin, and the site publishes a single `/sitemap.xml` with
