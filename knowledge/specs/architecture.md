@@ -82,12 +82,13 @@ rather than adding a second layer above it.
 - **Dialog presets compose primitives.** Confirm, choice, multi-choice, and
   input flows pair host-owned state with a one-frame `Dialog` snapshot. They do
   not introduce a retained modal manager or a second input-outcome vocabulary.
-- **Application shells compose regions.** `AppShell` is a thin flex allocation
-  around one growing main view plus intrinsic, optional chrome. Regions remain
-  ordinary frame-scoped views; short terminals collapse separators and
-  secondary chrome without introducing navigation, input, or host policy.
-- **Selection screens are shell presets, not a new state model.** Action,
-  agent, permission, and resume pickers compose `AppShell`, the borrowed
+- **Application layouts use Flex directly.** `view!` is syntax for the same
+  composition primitive, including per-item sizing and shrink constraints.
+  Sidebars, multiple growing panes, and chrome are ordinary nested views; the
+  host chooses their layout and short-terminal policy rather than a public
+  shell preset imposing one vertical shape.
+- **Selection screens are picker presets, not a new state model.** Action,
+  agent, permission, and resume pickers compose `Flex`, the borrowed
   `SelectList` row renderer, `SelectState`, and `KeyHints`. Their viewport is
   derived from the body rows allocated this frame, while row ownership,
   navigation, submission, and cancellation remain with the host.

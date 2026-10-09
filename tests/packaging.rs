@@ -144,7 +144,6 @@ fn in_repo_application_recordings_are_excluded_from_the_package() {
 
     for asset in [
         "examples/codex/codex.gif",
-        "examples/app_shell.gif",
         "examples/program_status.gif",
         "examples/workbench_demo/workbench-demo.gif",
     ] {

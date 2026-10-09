@@ -377,7 +377,7 @@ struct App {
 let app = App {
     query: "view".into(),
     match_label: "3 matches".into(),
-    results: vec!["src/view.rs".into(), "src/components/app_shell.rs".into()],
+    results: vec!["src/view.rs".into(), "src/components/flex.rs".into()],
 };
 let search_header = view_fn(
     |available, _ctx| Size::new(available.width, available.height.min(2)),
@@ -392,15 +392,20 @@ let search_header = view_fn(
         );
     },
 );
-let screen = AppShell::new(view_fn(
+let body = view_fn(
     |available, _ctx| available, // growing body
     |area, surface, ctx| {
         for (row, result) in app.results.iter().take(area.height as usize).enumerate() {
             surface.set_string(area.x, area.y + row as u16, result, ctx.theme.text_style());
         }
     },
-))
-.header(search_header);
+);
+let screen = view! {
+    col {
+        node(search_header)
+        grow(1) { node(body) }
+    }
+};
 let _ = screen;
 ```
 
@@ -559,7 +564,6 @@ palette, for example `cargo run --example gallery -- --theme gruvbox-dark`.
 | [`tree_list`](examples/tree_list.rs) | `cargo run --example tree_list` | expandable stable-id tree, refresh, mouse selection, and persistent scrolling |
 | [`overlay`](examples/overlay.rs)  | `cargo run --example overlay`    | Target-following popover + input routing           |
 | [`primitives`](examples/primitives.rs) | `cargo run --example primitives` | owned dialog scene + form + arbitrary-child viewport |
-| [`app_shell`](examples/app_shell.rs) | `cargo run --example app_shell` | responsive header/body/status/footer shell with host-owned selection |
 | [`ratatui_dashboard`](examples/ratatui_dashboard.rs) | `cargo run --example ratatui_dashboard` | mixed Ratatui widgets + responsive live data |
 | [`workbench_demo`](examples/workbench_demo) | `cargo run --example workbench_demo` | native tuika editor/dashboard shell with keyboard and mouse navigation |
 | [`async_dashboard`](examples/async_dashboard.rs) | `cargo run --example async_dashboard --features async` | typed background messages waking `AsyncRunner`, no shared mutable state |

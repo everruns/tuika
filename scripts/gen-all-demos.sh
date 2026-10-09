@@ -37,7 +37,6 @@ cargo run -q --example image_demo -- docs/demos/image.svg --theme "${TUIKA_DEMO_
 
 
 scripts/gen-codex-demo.sh
-scripts/gen-app-shell-demo.sh
 scripts/gen-program-status-demo.sh
 scripts/gen-workbench-demo.sh
 scripts/gen-mermaid-demo.sh

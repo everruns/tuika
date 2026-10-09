@@ -19,7 +19,7 @@
 //! - Frame shapes that change under state that does not: the tree swaps for a
 //!   list, the dialog opens, the row count moves, while selection, scroll,
 //!   expansion, and a half-typed chord all persist across it.
-//! - Shell chrome: [`AppShell`] region combinations under overlays, dialogs, and
+//! - Shell chrome: [`Flex`] region combinations under overlays, dialogs, and
 //!   docks at every degenerate size.
 //!
 //! Everything is hermetic: an in-memory screen, scripted events, and a clock
@@ -620,7 +620,7 @@ impl Application for StressApp {
             )
         };
 
-        let shell = AppShell::new(Tabs::new(
+        let tabs = Tabs::new(
             vec![
                 Line::from("one"),
                 Line::from("two"),
@@ -628,31 +628,60 @@ impl Application for StressApp {
                 Line::from("four"),
             ],
             &self.tabs,
-        ))
-        .header(
-            Flow::new()
-                .gap(1)
-                .item(element(Spinner::new(frame)))
-                .item(element(Loader::new(frame, "loading 日本語").hint(PROSE)))
-                .item(element(
-                    ActivityList::new(vec![
-                        ActivityItem::new("task 界", ActivityStatus::Running)
-                            .detail(PROSE)
-                            .progress((frame % 100) as f32 / 100.0),
-                        ActivityItem::new("queued", ActivityStatus::Queued),
-                    ])
-                    .frame(frame),
-                ))
-                .item(element(
-                    StatusBar::new().left(vec![Span::raw(format!("frame {frame}"))]),
-                )),
-        )
-        .top_rule()
-        .before_main(Scroll::new(rows, &self.scroll))
-        .after_main(ToastList::new(&self.toasts))
-        .bottom_rule()
-        .status(ProgressBar::determinate((frame % 100) as f32 / 100.0))
-        .footer(KeyHints::new([("q", "quit"), ("tab", "overlay")]));
+        );
+        let shell = Flex::column()
+            .styled(
+                FlexItemStyle::default().shrink(10),
+                element(
+                    Flow::new()
+                        .gap(1)
+                        .item(element(Spinner::new(frame)))
+                        .item(element(Loader::new(frame, "loading 日本語").hint(PROSE)))
+                        .item(element(
+                            ActivityList::new(vec![
+                                ActivityItem::new("task 界", ActivityStatus::Running)
+                                    .detail(PROSE)
+                                    .progress((frame % 100) as f32 / 100.0),
+                                ActivityItem::new("queued", ActivityStatus::Queued),
+                            ])
+                            .frame(frame),
+                        ))
+                        .item(element(
+                            StatusBar::new().left(vec![Span::raw(format!("frame {frame}"))]),
+                        )),
+                ),
+            )
+            .styled(
+                FlexItemStyle::default().shrink(u16::MAX),
+                element(shell_rule()),
+            )
+            .styled(
+                FlexItemStyle::default().shrink(10),
+                element(Scroll::new(rows, &self.scroll)),
+            )
+            .styled(
+                FlexItemStyle::default()
+                    .basis(Dimension::Flex(1))
+                    .grow(1)
+                    .min_main(1),
+                element(tabs),
+            )
+            .styled(
+                FlexItemStyle::default().shrink(20),
+                element(ToastList::new(&self.toasts)),
+            )
+            .styled(
+                FlexItemStyle::default().shrink(u16::MAX),
+                element(shell_rule()),
+            )
+            .styled(
+                FlexItemStyle::default().shrink(20),
+                element(ProgressBar::determinate((frame % 100) as f32 / 100.0)),
+            )
+            .styled(
+                FlexItemStyle::default().min_main(1),
+                element(KeyHints::new([("q", "quit"), ("tab", "overlay")])),
+            );
 
         element(OverlayScene {
             root: element(DockFrame {
@@ -1243,23 +1272,56 @@ fn assert_contained(name: &str, view: &dyn View, theme: &Theme, sheet: StyleShee
     }
 }
 
-/// Build one `AppShell` shape from a five-bit mask over its optional regions.
-fn shell_shape(mask: u8, main: ScopedElement<'static>) -> AppShell<'static> {
-    let mut shell = AppShell::new(main);
+fn shell_rule() -> impl View {
+    view_fn(
+        |available, _| Size::new(available.width, u16::from(available.height > 0)),
+        |area, surface, ctx| {
+            Rule::new()
+                .style(ctx.sheet.resolve(Role::Rule).to_style())
+                .render(area, surface, ctx);
+        },
+    )
+}
+
+/// Build one Flex application shape from a five-bit mask over optional chrome.
+fn shell_shape(mask: u8, main: ScopedElement<'static>) -> Flex {
+    let mut shell = Flex::column();
     if mask & 1 != 0 {
-        shell = shell.header(StatusBar::new().left(vec![Span::raw("header 日本語 👩‍👩‍👦")]));
+        shell = shell.styled(
+            FlexItemStyle::default().shrink(10),
+            element(StatusBar::new().left(vec![Span::raw("header 日本語 👩‍👩‍👦")])),
+        );
     }
     if mask & 2 != 0 {
-        shell = shell.top_rule();
+        shell = shell.styled(
+            FlexItemStyle::default().shrink(u16::MAX),
+            element(shell_rule()),
+        );
     }
+    shell = shell.styled(
+        FlexItemStyle::default()
+            .basis(Dimension::Flex(1))
+            .grow(1)
+            .min_main(1),
+        main,
+    );
     if mask & 4 != 0 {
-        shell = shell.status(ProgressBar::determinate(0.5).label("status").percent(true));
+        shell = shell.styled(
+            FlexItemStyle::default().shrink(20),
+            element(ProgressBar::determinate(0.5).label("status").percent(true)),
+        );
     }
     if mask & 8 != 0 {
-        shell = shell.bottom_rule();
+        shell = shell.styled(
+            FlexItemStyle::default().shrink(u16::MAX),
+            element(shell_rule()),
+        );
     }
     if mask & 16 != 0 {
-        shell = shell.footer(KeyHints::new([("ctrl+c", "quit 界"), ("?", "help")]));
+        shell = shell.styled(
+            FlexItemStyle::default().min_main(1),
+            element(KeyHints::new([("ctrl+c", "quit 界"), ("?", "help")])),
+        );
     }
     shell
 }

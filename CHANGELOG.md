@@ -11,6 +11,23 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
+## Unreleased
+
+### Breaking
+
+- Removed `components::AppShell` (including its prelude export). Compose
+  application chrome and side panels directly with `Flex` or `view!`; see the
+  [layout migration guide](docs/layout.md#migrating-appshell). `SelectionScreen`
+  keeps its public API and responsive picker behavior, now composed from Flex.
+  The obsolete AppShell example, recordings, and generator were removed.
+  This change requires the next minor release, not a 0.13 patch.
+
+### Added
+
+- `view!` supports `styled(style) { node }` for direct row/column children,
+  exposing the complete `FlexItemStyle`: basis, grow/shrink, min/max, and
+  per-item alignment.
+
 ## [0.13.0] - 2026-10-07
 
 Released alongside `tuika-charts` 0.3.0, `tuika-codeformatters` 0.7.0,

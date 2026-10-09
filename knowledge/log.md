@@ -1,5 +1,16 @@
 # Knowledge Log
 
+## 2026-10-08
+
+- **One application-layout primitive, explicit host policy**
+  - Removed the public `AppShell` preset: its single-growing-body allocation
+    duplicated Flex while fixing a chrome policy that general multi-pane
+    applications need to choose themselves. `view!` exposes `FlexItemStyle`
+    through `styled(style)` so sizing constraints do not require abandoning
+    declarative composition. SelectionScreen remains a useful picker preset:
+    it owns viewport derivation, not host state or general application layout.
+    See [Architecture](specs/architecture.md).
+
 ## 2026-10-07
 
 - **Some examples only prove themselves in a terminal**
