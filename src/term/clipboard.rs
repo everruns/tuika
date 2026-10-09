@@ -9,7 +9,7 @@
 //! The sequence is `OSC 52 ; c ; <base64> ST`, where the payload is the text
 //! base64-encoded (RFC 4648) and `c` selects the system clipboard. Terminals
 //! that support OSC 52 (Ghostty, iTerm2 with it enabled, WezTerm, Kitty, recent
-//! VTE, xterm) copy it; others ignore the sequence. [`write`] detects tmux and
+//! VTE, xterm) copy it; others ignore the sequence. [`write()`] detects tmux and
 //! GNU Screen and adds DCS passthrough framing. tmux requires
 //! `set -g allow-passthrough on`. [`write_for`] chooses a transport explicitly.
 //!
