@@ -80,6 +80,11 @@ impl Capabilities {
             env("KITTY_WINDOW_ID").as_deref(),
             env("GHOSTTY_RESOURCES_DIR").as_deref(),
         )
+        .with_hyperlink_environment(
+            env("TERM_PROGRAM").as_deref(),
+            env("VTE_VERSION").as_deref(),
+            env("TMUX").is_some() || env("STY").is_some(),
+        )
     }
 
     /// The pure core of [`from_env`](Self::from_env), taking the environment
@@ -113,12 +118,33 @@ impl Capabilities {
 
         Self {
             graphics,
-            hyperlinks: modern,
+            hyperlinks: modern || is("vscode") || is("zed") || is("mintty") || is("konsole"),
             clipboard: modern,
             // OSC 9;4 has a narrower support set than the OSC 8/52 features.
             progress: is("ghostty") || is("wezterm") || is("konsole") || term_has("konsole"),
             truecolor: modern || colorterm == "truecolor" || colorterm == "24bit",
         }
+    }
+
+    /// Refine OSC 8 support using terminal identity and VTE's version.
+    /// Outer-terminal environment values cannot prove multiplexer support;
+    /// callers with a custom transport should pass that transport's identity.
+    pub fn with_hyperlink_environment(
+        mut self,
+        program: Option<&str>,
+        vte_version: Option<&str>,
+        multiplexed: bool,
+    ) -> Self {
+        if multiplexed {
+            self.hyperlinks = false;
+        } else {
+            let program = program.unwrap_or_default().to_ascii_lowercase();
+            self.hyperlinks |= matches!(program.as_str(), "vscode" | "zed" | "mintty" | "konsole")
+                || vte_version
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .is_some_and(|v| v >= 5202);
+        }
+        self
     }
 
     /// Detect from the environment, then refine with a Device Attributes probe.
@@ -313,6 +339,33 @@ pub(crate) fn probe_terminal(_request: &str, _timeout: std::time::Duration) -> O
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hyperlink_heuristics_do_not_promote_unrelated_capabilities() {
+        for program in ["vscode", "zed", "mintty", "konsole"] {
+            let caps = Capabilities::from_env_parts(None, Some(program), None, None, None);
+            assert!(caps.hyperlinks);
+            assert!(!caps.clipboard && !caps.truecolor && !caps.supports_images());
+        }
+        let base = Capabilities::from_env_parts(None, None, None, None, None);
+        for (version, expected) in [
+            ("5201", false),
+            ("5202", true),
+            ("8000", true),
+            ("bad", false),
+        ] {
+            assert_eq!(
+                base.with_hyperlink_environment(None, Some(version), false)
+                    .hyperlinks,
+                expected
+            );
+        }
+        assert!(
+            !base
+                .with_hyperlink_environment(Some("vscode"), Some("8000"), true)
+                .hyperlinks
+        );
+    }
 
     #[test]
     fn env_detects_kitty_graphics_and_truecolor() {

@@ -9,9 +9,9 @@
 //! The sequence is `OSC 52 ; c ; <base64> ST`, where the payload is the text
 //! base64-encoded (RFC 4648) and `c` selects the system clipboard. Terminals
 //! that support OSC 52 (Ghostty, iTerm2 with it enabled, WezTerm, Kitty, recent
-//! VTE, xterm) copy it; others ignore the sequence. Under tmux it requires
-//! `set -g allow-passthrough on` (or tmux's own `set-clipboard`), the same
-//! passthrough caveat as OSC 8 hyperlinks.
+//! VTE, xterm) copy it; others ignore the sequence. [`write()`] detects tmux and
+//! GNU Screen and adds DCS passthrough framing. tmux requires
+//! `set -g allow-passthrough on`. [`write_for`] chooses a transport explicitly.
 //!
 //! Terminals cap an OSC 52 sequence near 100 000 bytes; encoded, that bounds
 //! the copyable text at [`MAX_LEN`] bytes. Longer text is refused rather than
@@ -26,6 +26,65 @@ pub const MAX_LEN: usize = 74_994;
 /// String terminator for the OSC sequence: `ESC \`.
 const ST: &str = "\x1b\\";
 
+/// The terminal multiplexer enclosing a clipboard write.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Multiplexer {
+    /// Write directly to the terminal.
+    #[default]
+    None,
+    /// DCS passthrough (requires tmux's `allow-passthrough`).
+    Tmux,
+    /// GNU Screen DCS passthrough with bounded payloads.
+    Screen,
+}
+
+impl Multiplexer {
+    /// Detect a known multiplexer from the process environment.
+    /// Custom or nested transports should select their framing explicitly.
+    pub fn detect() -> Self {
+        if std::env::var_os("TMUX").is_some() {
+            Self::Tmux
+        } else if std::env::var_os("STY").is_some() {
+            Self::Screen
+        } else {
+            Self::None
+        }
+    }
+}
+
+/// Encode a clipboard write for an explicit multiplexer.
+/// Payload validation is identical to [`encode`]. Screen needs BEL instead of
+/// an inner ST, which would terminate its passthrough envelope prematurely.
+pub fn encode_for(text: &str, multiplexer: Multiplexer) -> Option<String> {
+    let sequence = encode(text)?;
+    Some(match multiplexer {
+        Multiplexer::None => sequence,
+        Multiplexer::Tmux => format!("\x1bPtmux;{}\x1b\\", sequence.replace('\x1b', "\x1b\x1b")),
+        Multiplexer::Screen => {
+            let sequence = format!("{}\x07", sequence.strip_suffix(ST)?);
+            let mut out = String::new();
+            // Older Screen versions have a 768-byte DCS buffer. Leave room
+            // for the envelope, including at the maximum clipboard length.
+            for chunk in sequence.as_bytes().chunks(760) {
+                out.push_str("\x1bP");
+                out.push_str(std::str::from_utf8(chunk).expect("OSC 52 is ASCII"));
+                out.push_str(ST);
+            }
+            out
+        }
+    })
+}
+
+/// Write a clipboard sequence using explicit transport framing.
+pub fn write_for(out: &mut impl Write, text: &str, multiplexer: Multiplexer) -> io::Result<bool> {
+    let Some(sequence) = encode_for(text, multiplexer) else {
+        return Ok(false);
+    };
+    out.write_all(sequence.as_bytes())?;
+    out.flush()?;
+    Ok(true)
+}
+
 /// Encode `text` as an OSC 52 clipboard-set sequence, or `None` when `text` is
 /// empty or longer than [`MAX_LEN`]. Pure and allocation-only — no I/O.
 pub fn encode(text: &str) -> Option<String> {
@@ -39,14 +98,7 @@ pub fn encode(text: &str) -> Option<String> {
 /// Returns `Ok(true)` when a sequence was written, `Ok(false)` when `text` was
 /// empty or too large (see [`MAX_LEN`]).
 pub fn write(out: &mut impl Write, text: &str) -> io::Result<bool> {
-    match encode(text) {
-        Some(seq) => {
-            out.write_all(seq.as_bytes())?;
-            out.flush()?;
-            Ok(true)
-        }
-        None => Ok(false),
-    }
+    write_for(out, text, Multiplexer::detect())
 }
 
 /// Standard base64 (RFC 4648) with `=` padding. Inlined to keep `tuika` free of
@@ -111,11 +163,39 @@ mod tests {
     #[test]
     fn write_clipboard_reports_whether_it_wrote() {
         let mut buf: Vec<u8> = Vec::new();
-        assert!(write(&mut buf, "hi").expect("write"));
+        assert!(write_for(&mut buf, "hi", Multiplexer::None).expect("write"));
         assert_eq!(buf, b"\x1b]52;c;aGk=\x1b\\");
 
         let mut empty: Vec<u8> = Vec::new();
         assert!(!write(&mut empty, "").expect("write"));
         assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn tmux_escapes_the_inner_osc_and_screen_uses_bounded_bel_frames() {
+        assert_eq!(
+            encode_for("hi", Multiplexer::Tmux).unwrap(),
+            "\x1bPtmux;\x1b\x1b]52;c;aGk=\x1b\x1b\\\x1b\\"
+        );
+        let text = "世".repeat(MAX_LEN / 3);
+        let encoded = encode_for(&text, Multiplexer::Screen).unwrap();
+        let chunks = encoded
+            .split("\x1b\\")
+            .filter(|chunk| !chunk.is_empty())
+            .collect::<Vec<_>>();
+        assert!(chunks.len() > 1);
+        let mut payload = String::new();
+        for chunk in chunks {
+            assert!(chunk.len() + 2 <= 768);
+            payload.push_str(chunk.strip_prefix("\x1bP").unwrap());
+        }
+        assert_eq!(
+            payload,
+            format!("\x1b]52;c;{}\x07", base64_encode(text.as_bytes()))
+        );
+        for mux in [Multiplexer::None, Multiplexer::Tmux, Multiplexer::Screen] {
+            assert!(encode_for("", mux).is_none());
+            assert!(encode_for(&"x".repeat(MAX_LEN + 1), mux).is_none());
+        }
     }
 }

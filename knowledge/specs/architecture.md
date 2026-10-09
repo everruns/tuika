@@ -332,6 +332,19 @@ and soft-wrap plus cursor placement use grapheme display width in terminal
 cells. Keeping one cell-width model across measurement, painting, and cursor
 math prevents CJK and multi-scalar emoji from drifting apart.
 
+Bulk insertion splices source lines once and advances the scalar cursor by the
+inserted text. It must agree with scalar editing without rebuilding each line
+per character; a large paste is one content revision.
+
+Prose wrapping admits boundaries between CJK characters while preserving
+adjacent source ranges without invented spaces. Opening brackets stay with the
+following character, and closing punctuation with the preceding one where
+width permits. ASCII words and URLs retain their existing literal boundaries.
+
+Captured mouse selection resolves against the painted grid: the second press
+selects a word and the third a confined row. Subsequent dragging extends by the
+same units in either direction, and copying remains a release action.
+
 Time-sensitive component state never owns an unreplaceable wall clock. Mouse
 double-click detection and the synchronous runner consume the root `Clock`
 boundary, defaulting to `SystemClock`; animation frames, toast expiry, and keymap

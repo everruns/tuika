@@ -872,6 +872,58 @@ fn every_screen_mode_survives_a_resize_and_input_storm() {
 }
 
 #[test]
+fn shrink_restore_between_frames_repaints_the_physical_screen() {
+    let screen = Screen::new(24, 12);
+    let runner = Runner::with_clock(
+        RunnerConfig {
+            tick_rate: Duration::from_secs(3600),
+            ..RunnerConfig::default()
+        },
+        StepClock::new(),
+    );
+    let mut terminal = Terminal::new(screen.handle()).unwrap();
+    let mut state = ();
+    runner
+        .run_driven_by(
+            &mut terminal,
+            &Theme::default(),
+            from_fn(
+                &mut state,
+                |(), _| {
+                    element(Text::new(
+                        (0..12)
+                            .map(|row| Line::from(if row == 11 { "RESTORED" } else { "" }))
+                            .collect(),
+                    ))
+                },
+                |(), signal| match signal {
+                    Signal::Event(Event::Resize { .. }) => {
+                        screen.with(|backend| {
+                            backend.resize(3, 1);
+                            backend.resize(24, 12);
+                        });
+                        UpdateResult::Clean
+                    }
+                    Signal::Event(Event::Key(_)) => UpdateResult::Exit,
+                    _ => UpdateResult::Clean,
+                },
+            ),
+            Script::new(
+                &screen,
+                vec![
+                    Event::Resize {
+                        width: 24,
+                        height: 12,
+                    },
+                    Event::Key(Key::new(KeyCode::Char('q'))),
+                ],
+            ),
+        )
+        .unwrap();
+    assert!(screen.rows()[11].starts_with("RESTORED"));
+}
+
+#[test]
 fn switching_screen_mode_mid_session_leaves_the_terminal_usable() {
     // A host that swaps renderers on a live screen — a full-screen view opening
     // over a split footer and closing again — must hand the footer's rows back
@@ -1668,6 +1720,60 @@ fn a_terminal_resized_before_the_first_frame_is_pinned_at_its_new_size() {
 mod asynchronous {
     use super::*;
     use tokio_stream::Stream;
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn shrink_restore_between_frames_repaints_the_physical_screen() {
+        let screen = Screen::new(24, 12);
+        let runner = AsyncRunner::new(RunnerConfig {
+            tick_rate: Duration::from_secs(3600),
+            ..RunnerConfig::default()
+        });
+        let mut terminal = Terminal::new(screen.handle()).unwrap();
+        let mut state = ();
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                async_from_fn(
+                    &mut state,
+                    |(), _| {
+                        element(Text::new(
+                            (0..12)
+                                .map(|row| Line::from(if row == 11 { "RESTORED" } else { "" }))
+                                .collect(),
+                        ))
+                    },
+                    async |(), signal| match signal {
+                        Signal::Event(Event::Resize { .. }) => {
+                            screen.with(|backend| {
+                                backend.resize(3, 1);
+                                backend.resize(24, 12);
+                            });
+                            UpdateResult::Clean
+                        }
+                        Signal::Event(Event::Key(_)) => UpdateResult::Exit,
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                Box::pin(tokio_stream::StreamExt::throttle(
+                    AsyncScript::new(
+                        &screen,
+                        vec![
+                            Event::Resize {
+                                width: 24,
+                                height: 12,
+                            },
+                            Event::Key(Key::new(KeyCode::Char('q'))),
+                        ],
+                    ),
+                    Duration::from_millis(30),
+                )),
+                no_messages(),
+            )
+            .await
+            .unwrap();
+        assert!(screen.rows()[11].starts_with("RESTORED"));
+    }
 
     /// The same application, driven by the async runner. The synchronous
     /// `Application` impl is reused verbatim so both loops are stressed by one

@@ -561,6 +561,7 @@ pub struct Runner {
     config: RunnerConfig,
     clock: Arc<dyn Clock + Send + Sync>,
     redraw: RedrawHandle,
+    footer_height: crate::live::Live<u16>,
     scrollback: Scrollback,
     session_config: Option<crate::host::TerminalSessionConfig>,
     text_selection: bool,
@@ -582,14 +583,28 @@ impl Runner {
         // events or updates. Keep the public config ergonomic while enforcing
         // a safe scheduling floor at the boundary.
         config.tick_rate = config.tick_rate.max(Duration::from_millis(1));
+        let redraw = RedrawHandle::default();
+        let footer_height = crate::live::Live::with_redraw(
+            config.screen_mode.footer_height().unwrap_or(1),
+            redraw.clone(),
+        );
         Self {
             config,
             clock: Arc::new(clock),
-            redraw: RedrawHandle::default(),
+            redraw,
+            footer_height,
             scrollback: Scrollback::new(),
             session_config: None,
             text_selection: true,
         }
+    }
+
+    /// Requested split-footer height. Calling `set` requests a redraw; the
+    /// runner applies it before publishing or painting on its next iteration.
+    /// A synchronous terminal poll can wait until the next event or tick.
+    /// Rendered heights clamp to at least one row; alternate-screen mode ignores it.
+    pub fn footer_height(&self) -> crate::live::Live<u16> {
+        self.footer_height.clone()
     }
 
     /// Return a handle for publishing content above a
@@ -621,6 +636,8 @@ impl Runner {
     /// Override terminal lifecycle policy while retaining the runner's loop.
     pub fn with_session_config(mut self, config: crate::host::TerminalSessionConfig) -> Self {
         self.config.screen_mode = config.screen_mode;
+        self.footer_height
+            .set(config.screen_mode.footer_height().unwrap_or(1));
         self.session_config = Some(config);
         self
     }
@@ -808,6 +825,7 @@ impl Runner {
             // resized between its construction and this first frame, and
             // `pin_footer` inserts rows at the geometry the terminal last knew.
             terminal.autoresize()?;
+            terminal.set_footer_height(self.footer_height.with(|height| *height))?;
             pin_footer(terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
@@ -830,6 +848,10 @@ impl Runner {
                 terminal.autoresize()?;
                 // Publishing scrolls the terminal and may clear the viewport,
                 // so a committed block always makes the footer dirty.
+                if terminal.set_footer_height(self.footer_height.with(|height| *height))? {
+                    core.request_redraw();
+                    schedule_redraw(&mut redraw_at, now);
+                }
                 if self.scrollback.flush(terminal, theme)? {
                     core.request_redraw();
                     schedule_redraw(&mut redraw_at, now);
@@ -854,6 +876,7 @@ impl Runner {
                 if let RunnerAction::Render(frame) = core.next_action() {
                     if split {
                         terminal.autoresize()?;
+                        terminal.set_footer_height(self.footer_height.with(|height| *height))?;
                         pin_footer(terminal)?;
                     }
                     let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
@@ -872,6 +895,9 @@ impl Runner {
             if let Some(event) = events.poll_event(timeout)? {
                 let signal = Signal::Event(event);
                 let requires_redraw = signal.requires_redraw();
+                if requires_redraw {
+                    terminal.invalidate();
+                }
                 let selection_event = match &signal {
                     Signal::Event(event) => Some(event.clone()),
                     _ => None,
@@ -1004,10 +1030,7 @@ impl RunnerSelection {
             ));
         }
         let changed = self.state.handle_with_clock(mouse, clock);
-        if changed
-            && matches!(mouse.kind, crate::MouseKind::Up(crate::MouseButton::Left))
-            && self.state.range().is_some()
-        {
+        if changed && matches!(mouse.kind, crate::MouseKind::Up(crate::MouseButton::Left)) {
             self.pending_copy = true;
         }
         changed
@@ -1035,9 +1058,7 @@ impl RunnerSelection {
             .map(|panel| panel.intersection(area))
             .filter(|panel| panel.width > 0 && panel.height > 0)
             .unwrap_or(area);
-        if self.state.resolve(buffer, area) {
-            self.pending_copy = true;
-        }
+        self.state.resolve(buffer, area);
         let Some(range) = self.state.range() else {
             self.pending_copy = false;
             return None;
@@ -1060,6 +1081,7 @@ impl RunnerSelection {
 
 #[cfg(test)]
 mod tests {
+    use crate::term::terminal::Viewport;
     use std::time::Instant;
 
     use super::*;
@@ -1160,6 +1182,101 @@ mod tests {
         for column in 0..=4 {
             assert_eq!(buffer[(column, 0)].bg, Theme::default().selection_bg);
         }
+    }
+
+    #[test]
+    fn multi_click_selection_only_copies_on_release() {
+        let clock = FixedClock(Instant::now());
+        let mut selection = RunnerSelection::new(true);
+        let theme = Theme::default();
+        let area = Rect::new(0, 0, 13, 1);
+        for kind in [
+            crate::MouseKind::Down(crate::MouseButton::Left),
+            crate::MouseKind::Up(crate::MouseButton::Left),
+            crate::MouseKind::Down(crate::MouseButton::Left),
+        ] {
+            selection.handle_event(
+                &Event::Mouse(crate::Mouse::at(kind, 5, 0)),
+                UpdateResult::Clean,
+                &clock,
+            );
+            let mut buffer = crate::testing::render(&Text::raw("one two three"), 13, 1, &theme);
+            assert!(
+                selection
+                    .finish_frame(
+                        &mut buffer,
+                        area,
+                        &theme,
+                        &crate::view::SelectionFrame::default()
+                    )
+                    .is_none()
+            );
+        }
+        selection.handle_event(
+            &Event::Mouse(crate::Mouse::at(
+                crate::MouseKind::Up(crate::MouseButton::Left),
+                10,
+                0,
+            )),
+            UpdateResult::Clean,
+            &clock,
+        );
+        let mut buffer = crate::testing::render(&Text::raw("one two three"), 13, 1, &theme);
+        assert_eq!(
+            selection
+                .finish_frame(
+                    &mut buffer,
+                    area,
+                    &theme,
+                    &crate::view::SelectionFrame::default()
+                )
+                .as_deref(),
+            Some("two three")
+        );
+    }
+
+    #[test]
+    fn footer_height_handle_repaints_after_a_clean_update() {
+        let runner = Runner::new(RunnerConfig {
+            screen_mode: ScreenMode::split_footer(2),
+            ..RunnerConfig::default()
+        });
+        let height = runner.footer_height();
+        let mut terminal = Terminal::with_options(
+            TestBackend::new(12, 8),
+            TerminalOptions {
+                viewport: Viewport::Inline(2),
+            },
+        )
+        .unwrap();
+        let frames = std::cell::Cell::new(0);
+        let mut state = ();
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut state,
+                    |(), _| {
+                        frames.set(frames.get() + 1);
+                        element(Text::raw("footer"))
+                    },
+                    |(), signal| match signal {
+                        Signal::Event(Event::Key(key)) if key.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        Signal::Event(Event::Key(_)) => {
+                            height.set(4);
+                            UpdateResult::Clean
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                scripted_events([key_event(KeyCode::Char('+')), key_event(KeyCode::Esc)]),
+            )
+            .unwrap();
+        assert_eq!(terminal.viewport(), Viewport::Inline(4));
+        assert_eq!(frames.get(), 2);
     }
 
     /// Two bordered panels side by side, each with its own text.

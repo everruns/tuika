@@ -827,6 +827,57 @@ fn split_footer_survives_resize() {
 }
 
 #[test]
+fn split_footer_changes_height_while_publishing_and_releases_the_new_rows() {
+    let run = Script::new("split_footer")
+        .size(14, 80)
+        .key(b"+", Duration::from_millis(1000))
+        .key(b"+", Duration::from_millis(2000))
+        .key(b"-", Duration::from_millis(1000))
+        .key(b"-", Duration::from_millis(2000))
+        .run();
+    assert!(run.exited_ok);
+    let live = run.live_screen();
+    let rows = live.screen().contents();
+    let rows = rows.lines().collect::<Vec<_>>();
+    let footer_top = (run.rows - 5) as usize;
+    assert!(
+        rows[footer_top].contains("split footer"),
+        "{}",
+        live.screen().contents()
+    );
+    assert!(
+        !rows[..footer_top]
+            .iter()
+            .any(|r| r.contains("split footer"))
+    );
+    assert!(
+        rows[..footer_top]
+            .iter()
+            .any(|r| r.contains("build finished in"))
+    );
+    // Every published row must survive intact, including those displaced by
+    // footer growth. Merely finding one log line misses partial erasure.
+    let history = run.scrollback_text();
+    for row in history.lines().filter(|row| row.starts_with('[')) {
+        assert!(row.contains("] build finished in "), "damaged row: {row:?}");
+    }
+    for row in run.final_screen().screen().contents().lines() {
+        if !row.trim().is_empty() {
+            assert!(
+                row.starts_with('[') && row.contains("] build finished in "),
+                "unexpected output after releasing the footer: {row:?}"
+            );
+        }
+    }
+    assert!(
+        !run.final_screen()
+            .screen()
+            .contents()
+            .contains("split footer")
+    );
+}
+
+#[test]
 fn split_footer_captures_the_mouse_only_when_asked() {
     let run = Script::new("split_footer")
         .arg("--mouse")

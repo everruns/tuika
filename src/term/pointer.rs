@@ -18,6 +18,18 @@ pub enum PointerShape {
     Default,
     /// Show the pointing-hand cursor used for links.
     Pointer,
+    /// Text insertion cursor.
+    Text,
+    /// Horizontal splitter or resize handle.
+    EwResize,
+    /// Vertical splitter or resize handle.
+    NsResize,
+    /// An object that can be grabbed.
+    Grab,
+    /// An object currently being dragged.
+    Grabbing,
+    /// An unavailable action.
+    NotAllowed,
 }
 
 /// Encode an OSC 22 pointer-shape sequence. Pure and unit-testable — no I/O.
@@ -25,6 +37,12 @@ pub fn encode(shape: PointerShape) -> &'static str {
     match shape {
         PointerShape::Default => "\x1b]22;default\x1b\\",
         PointerShape::Pointer => "\x1b]22;pointer\x1b\\",
+        PointerShape::Text => "\x1b]22;text\x1b\\",
+        PointerShape::EwResize => "\x1b]22;ew-resize\x1b\\",
+        PointerShape::NsResize => "\x1b]22;ns-resize\x1b\\",
+        PointerShape::Grab => "\x1b]22;grab\x1b\\",
+        PointerShape::Grabbing => "\x1b]22;grabbing\x1b\\",
+        PointerShape::NotAllowed => "\x1b]22;not-allowed\x1b\\",
     }
 }
 
@@ -42,5 +60,17 @@ mod tests {
     fn osc_pointer_shape_encoding() {
         assert_eq!(encode(PointerShape::Default), "\x1b]22;default\x1b\\");
         assert_eq!(encode(PointerShape::Pointer), "\x1b]22;pointer\x1b\\");
+        for (shape, name) in [
+            (PointerShape::Text, "text"),
+            (PointerShape::EwResize, "ew-resize"),
+            (PointerShape::NsResize, "ns-resize"),
+            (PointerShape::Grab, "grab"),
+            (PointerShape::Grabbing, "grabbing"),
+            (PointerShape::NotAllowed, "not-allowed"),
+        ] {
+            let mut output = Vec::new();
+            write(&mut output, shape).unwrap();
+            assert_eq!(output, format!("\x1b]22;{name}\x1b\\").as_bytes());
+        }
     }
 }

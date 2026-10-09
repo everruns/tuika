@@ -348,7 +348,7 @@ jobs:
         # version-matched runner (see the `iai` job) and reject Criterion's CLI
         # flags, so naming the targets explicitly keeps the two families apart.
         run: |
-          cargo bench --locked -p tuika --bench markdown --bench scroll -- \
+          cargo bench --locked -p tuika --bench markdown --bench scroll --bench input -- \
             --warm-up-time 2 --measurement-time 5 --noplot | tee bench-output.txt
           cargo bench --locked -p tuika-charts --bench render -- \
             --warm-up-time 2 --measurement-time 5 --noplot | tee -a bench-output.txt

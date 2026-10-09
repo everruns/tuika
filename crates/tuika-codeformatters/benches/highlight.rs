@@ -15,7 +15,7 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use tuika::Theme;
-use tuika::highlight::Highlighter;
+use tuika::highlight::{CachedHighlighter, Highlighter};
 use tuika_codeformatters::TreeSitterHighlighter;
 
 /// Code sizes, as the repetition count applied to each snippet. The byte size
@@ -41,7 +41,23 @@ fn highlight(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, highlight);
+fn cached_highlight(c: &mut Criterion) {
+    let inner = TreeSitterHighlighter::new();
+    let theme = Theme::default();
+    let mut group = c.benchmark_group("highlight/cache");
+    for &(name, reps) in SIZES {
+        let src = corpus::repeat(corpus::SNIPPETS[0].1, reps);
+        let lines = src.lines().collect::<Vec<_>>();
+        let cached = CachedHighlighter::new(&inner);
+        cached.highlight("rust", &lines, &theme);
+        group.bench_function(name, |b| {
+            b.iter(|| black_box(cached.highlight("rust", black_box(&lines), &theme)))
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(benches, highlight, cached_highlight);
 criterion_main!(benches);
 
 /// Representative snippets per language. Kept deterministic and syntactically

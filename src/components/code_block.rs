@@ -15,7 +15,6 @@ use crate::geometry::Rect;
 use crate::style::{Modifier, Style};
 use crate::text::{Line, Span};
 
-use crate::components::text::line_width;
 use crate::geometry::Size;
 use crate::highlight::CodeHighlighter;
 use crate::style::Theme;
@@ -75,7 +74,7 @@ pub(crate) fn code_block_rows(
     // Width of the numeric column: enough digits for the last line, plus a
     // leading and trailing space, shared by every row so the rail stays aligned.
     let gutter_width = gutter.map(|start| {
-        let last = start + body.len().saturating_sub(1);
+        let last = start.saturating_add(body.len().saturating_sub(1));
         let digits = last.to_string().len();
         digits + 2
     });
@@ -112,7 +111,7 @@ pub(crate) fn code_block_rows(
         if let (Some(start), Some(w)) = (gutter, gutter_width) {
             // Right-align the number within `w-1` cells, then a trailing space.
             spans.push(Span::styled(
-                format!(" {:>width$} ", start + row, width = w - 2),
+                format!(" {:>width$} ", start.saturating_add(row), width = w - 2),
                 gutter_style,
             ));
         }
@@ -233,15 +232,34 @@ impl<'a> CodeBlock<'a> {
 
 impl View for CodeBlock<'_> {
     fn measure(&self, available: Size, _ctx: &RenderCtx) -> Size {
-        let theme = Theme::default();
-        let lines = self.lines(&theme);
-        let width = lines
+        // Styling cannot change source geometry. Measuring must never invoke
+        // the host's parser or build highlighted rows merely to count cells.
+        let gutter = self.start_line.map_or(0, |start| {
+            start
+                .saturating_add(self.body.len().saturating_sub(1))
+                .to_string()
+                .len()
+                + 2
+        });
+        let body_width = self
+            .body
             .iter()
-            .map(|l| line_width(l))
+            .map(|line| str_cols(line))
             .max()
-            .unwrap_or(0)
-            .min(available.width);
-        Size::new(width, lines.len() as u16)
+            .unwrap_or(0);
+        let label = usize::from(self.show_label && !self.lang.trim().is_empty());
+        let width = body_width
+            .max(if label > 0 {
+                str_cols(self.lang.trim())
+            } else {
+                0
+            })
+            .saturating_add(str_cols(RAIL))
+            .saturating_add(u16::try_from(gutter).unwrap_or(u16::MAX));
+        Size::new(
+            width.min(available.width),
+            u16::try_from(self.body.len() + label).unwrap_or(u16::MAX),
+        )
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
@@ -273,6 +291,30 @@ mod tests {
     use super::*;
     use crate::style::Theme;
     use crate::tests::support::row;
+
+    #[test]
+    fn measurement_never_invokes_syntax_work_and_matches_rows() {
+        struct NoWork;
+        impl crate::highlight::Highlighter for NoWork {
+            fn highlight(&self, _: &str, _: &[&str], _: &Theme) -> Option<Vec<Vec<Span<'static>>>> {
+                panic!("measurement must only inspect source geometry")
+            }
+        }
+        let theme = Theme::default();
+        let block = CodeBlock::new("rust", "世界\nx")
+            .start_line(99)
+            .highlighter(&NoWork);
+        assert_eq!(
+            block.measure(Size::new(100, 100), &RenderCtx::new(&theme)),
+            Size::new(11, 3)
+        );
+        assert_eq!(
+            block
+                .measure(Size::new(5, 100), &RenderCtx::new(&theme))
+                .width,
+            5
+        );
+    }
 
     #[test]
     fn line_numbers_gutter_counts_and_aligns() {

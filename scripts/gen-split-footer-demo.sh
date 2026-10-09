@@ -6,7 +6,7 @@
 #
 # What the picture has to show is a *whole terminal*, not a frame: the footer
 # pinned to the last rows, the published output above it as ordinary scrollback,
-# the shell prompt that started the session — and, after `q`, the same scrollback
+# growing and shrinking without losing output — and, after `q`, the same scrollback
 # with the footer's rows handed back. None of that lives in a `Buffer`, so the
 # scene cannot come from the `demo` registry; it is recorded from the real
 # session, in a real terminal, like the Codex example.
@@ -32,9 +32,11 @@ if ! command -v vhs >/dev/null 2>&1; then
 fi
 
 echo "Building the split_footer example…"
-# Built ahead of the recording so `cargo run` inside it only prints `Finished`
-# and `Running` — the compile is not part of what the demo is showing.
+# Launch the built binary directly: unrelated Cargo builds must not block the
+# recording while the tape is already sending input.
 cargo build -q --example split_footer
+example_dir="${CARGO_TARGET_DIR:-${repo_root}/target}/debug/examples"
+example_dir="$(cd "${example_dir}" && pwd)"
 
 tapes_dir="$(mktemp -d)"
 trap 'rm -rf "${tapes_dir}"' EXIT
@@ -66,18 +68,29 @@ Set TypingSpeed 60ms
 Hide
 Type "PS1='\033[38;2;38;139;210m~/src/tuika\033[0m \$ '"
 Enter
+Type "cd '${example_dir}'"
+Enter
 Type "clear"
 Enter
 Sleep 500ms
 Show
 
-# The command a reader would actually run, in the scrollback where they typed it.
-Type "cargo run --example split_footer -- --theme ${TUIKA_DEMO_THEME}"
+# The actual example binary, with no build output in the recorded scrollback.
+Type "./split_footer --theme ${TUIKA_DEMO_THEME}"
 Sleep 400ms
 Enter
 
-# Long enough for the worker to publish several blocks above the footer.
-Sleep 6s
+# Publish, grow from five to seven rows, then return to five while the worker
+# keeps publishing. The last rows move; existing output stays in scrollback.
+Sleep 2s
+Type "+"
+Sleep 1s
+Type "+"
+Sleep 2s
+Type "-"
+Sleep 1s
+Type "-"
+Sleep 2s
 
 # The point of the mode: quitting releases the footer's rows and leaves every
 # published block behind as the terminal's own scrollback.

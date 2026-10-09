@@ -79,6 +79,9 @@ cached and row-aligned with the lines, including while a URL is still streaming.
 
 Every one of these is measured in *cells*, not chars, so wide CJK glyphs and
 multi-scalar emoji keep the layout honest.
+Prose can break between CJK characters without adding spaces, keeping opening
+brackets with the next character and closing punctuation with the previous one
+when the available width permits. Literal code remains verbatim.
 
 ## Inline HTML
 
@@ -227,7 +230,27 @@ view! { node(Markdown::new(source).highlighter(&highlighter)) }
 
 Without one, code is themed but uncolored. The `tuika-codeformatters` crate ships
 a tree-sitter implementation covering the common languages; a host with its own
-lexer implements the two-method trait instead.
+lexer implements the single-method trait instead.
+
+Keep a `CachedHighlighter` wrapper alongside application state to reuse syntax
+results across resize and redraw:
+
+```rust
+use tuika::prelude::*;
+use tuika_codeformatters::TreeSitterHighlighter;
+
+let syntax = TreeSitterHighlighter::new();
+let highlighter = CachedHighlighter::new(&syntax).with_limits(256 * 1024, 4 * 1024 * 1024);
+let doc = Markdown::new("```rust\nfn main() {}\n```").highlighter(&highlighter);
+# let _ = doc;
+```
+
+The defaults cap a request at 256 KiB of source and retain up to 4 MiB across
+16 blocks. Oversized fences stay complete, themed plain text. Exact source,
+language, and theme changes invalidate a result; `clear()` handles changes to
+the host highlighter's configuration. These are input and storage limits: a
+synchronous host highlighter still controls its own execution time. CodeBlock
+measurement reads source geometry without invoking syntax highlighting.
 
 ## Mermaid diagrams
 

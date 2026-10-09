@@ -5,12 +5,17 @@ iai-callgrind counts instructions and is a CI gate.
 
 ## Criterion (wall clock)
 
-`markdown.rs`, `scroll.rs`, and the wrapped-line `layout.rs` here, `render.rs` in
+`markdown.rs`, `scroll.rs`, bulk-paste `input.rs`, and wrapped-line `layout.rs` here, `render.rs` in
 `crates/tuika-charts/benches/`, and `highlight.rs` in
 `crates/tuika-codeformatters/benches/` are Criterion targets. Wall-clock
 numbers are too noisy on shared runners to gate on, so CI runs these only on
 `main` (and via manual dispatch) and uploads the Criterion output as an
 artifact. Regression checking is local and baseline-to-baseline:
+
+The paste target compares bulk insertion against scalar editing and sweeps
+100–100,000 bytes. The syntax target includes warm cache hits across code sizes;
+regression tests also assert that measurement never invokes a highlighter and
+oversized requests skip it. These contracts complement timing comparisons.
 
 ```bash
 cargo bench --bench markdown -- --save-baseline before

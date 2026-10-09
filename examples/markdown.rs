@@ -174,7 +174,9 @@ fn main() {
 
 fn main() -> io::Result<()> {
     let cli = support::Cli::parse()?;
-    let highlighter = DemoHighlighter;
+    let syntax = DemoHighlighter;
+    // Keep syntax work across reflow; unusually large fences stay plain.
+    let highlighter = CachedHighlighter::new(&syntax);
     let doc: Vec<char> = SOURCE.chars().collect();
 
     let mut state = MarkdownState::new();

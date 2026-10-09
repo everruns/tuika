@@ -13,6 +13,7 @@
 //! cargo run --example split_footer            # the terminal keeps the mouse
 //! cargo run --example split_footer -- --mouse # the footer captures it instead
 //! ```
+//! Press `+` / `-` to grow or shrink the footer while output keeps publishing.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -71,6 +72,7 @@ fn footer(status: &Status, frame: u64, theme: &Theme) -> Element {
                 element(KeyHints::new([
                     ("space", "publish now"),
                     ("p", "pause"),
+                    ("+/-", "resize"),
                     ("q", "quit"),
                 ])),
             ),
@@ -114,6 +116,7 @@ fn main() -> std::io::Result<()> {
         screen_mode: mode,
     });
     let scrollback = runner.scrollback();
+    let footer_height = runner.footer_height();
     let status = Live::with_redraw(
         Status {
             published: 0,
@@ -154,6 +157,14 @@ fn main() -> std::io::Result<()> {
             },
             |(), signal| match signal {
                 Signal::Event(Event::Key(key)) if key.plain() => match key.code {
+                    KeyCode::Char('+') => {
+                        footer_height.update(|height| *height = height.saturating_add(1));
+                        UpdateResult::Clean
+                    }
+                    KeyCode::Char('-') => {
+                        footer_height.update(|height| *height = height.saturating_sub(1).max(1));
+                        UpdateResult::Clean
+                    }
                     KeyCode::Char('q') | KeyCode::Esc => UpdateResult::Exit,
                     KeyCode::Char('p') => {
                         status.update(|status| status.paused = !status.paused);

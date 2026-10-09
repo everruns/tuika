@@ -130,19 +130,27 @@ This is also why the PTY layer earns its keep: `TestBackend` *does* model
 region-scrolled rows as entering its scrollback, so no hermetic test could have
 caught this. Only a reference terminal on the other end of a real pty did.
 
-### What a fixed footer height costs, and why it is still fixed
+### Footer height changes preserve backend ownership
 
-`ScreenMode::SplitFooter { height }` is decided when the terminal is created,
-because that is where an inline viewport is fixed; changing it means
-rebuilding the `Terminal`. A host whose footer grows — a composer expanding, a
-completion popup opening — therefore reserves the tallest state it needs and
-lays out inside it, which is what `codex --split-footer` does.
+The screen mode supplies the initial height. Both runners expose a shared
+`Live<u16>` height handle, so a composer or completion popup can request rows
+without replacing the terminal. Changes wake the loop and apply before both
+publishing and painting. Zero requests one row; the visible height is clamped
+to the current screen, while the requested height survives later resizes.
 
-Runtime resizing is a real capability (opentui exposes `footerHeight` as a
-setter) and a plausible follow-up, but it needs a boundary for recreating the
-backend that does not exist on tuika's `Terminal` today (there is no
-`into_backend`). Reserving the maximum is the honest interim: it costs rows, not
-correctness.
+Growth clears the old footer and scrolls the full main screen by the added
+rows, retaining displaced output in scrollback. Shrink clears the released
+rows. Custom loops use the same `Terminal::set_footer_height` boundary; other
+viewport kinds are unaffected. Backend recreation would lose ownership of
+terminal state and is unnecessary for a geometry change.
+
+### Resize events invalidate physical screen assumptions
+
+A window can shrink and restore between frames. The final dimensions then
+match the cached geometry, but the terminal may have discarded cells while it
+was smaller. Runners therefore invalidate the cell diff on resize input and
+repaint every owned cell on the next frame, even when geometry is unchanged.
+Custom loops can make the same guarantee with `Terminal::invalidate`.
 
 ## Related
 

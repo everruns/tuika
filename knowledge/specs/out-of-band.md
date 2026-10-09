@@ -131,6 +131,17 @@ default because capture also disables emulator-owned OSC 8 activation,
 selection, and scrolling. `ctrl_click_url` is an opt-in application fallback
 for captured sessions; opening its result remains host policy.
 
+The clipboard writer detects tmux and GNU Screen and wraps the same validated
+base64 OSC 52 payload in their passthrough envelopes. Screen's inner OSC ends
+with BEL so ST cannot close DCS early, and its payloads stay below the older
+Screen buffer limit. Pure encoders and explicit transport writers remain
+available; nested transport order is host policy rather than guessed from
+ambiguous environment markers. No clipboard path negotiates emulator permission.
+
+OSC 8 environment hints recognize editor terminals and versioned VTE support,
+but an outer terminal's identity does not prove multiplexer link support.
+Pointer shapes are a fixed vocabulary of OSC 22 CSS names, never caller text.
+
 ## Constraints
 
 - Terminal replies must be suppressed where a protocol acknowledges commands on

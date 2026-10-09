@@ -210,6 +210,7 @@ where
 pub struct AsyncRunner {
     config: RunnerConfig,
     redraw: RedrawHandle,
+    footer_height: crate::live::Live<u16>,
     scrollback: Scrollback,
     session_config: Option<crate::TerminalSessionConfig>,
     text_selection: bool,
@@ -222,13 +223,26 @@ impl AsyncRunner {
         // events or updates. Enforce the same scheduling floor the synchronous
         // `Runner` does.
         config.tick_rate = config.tick_rate.max(Duration::from_millis(1));
+        let redraw = RedrawHandle::default();
+        let footer_height = crate::live::Live::with_redraw(
+            config.screen_mode.footer_height().unwrap_or(1),
+            redraw.clone(),
+        );
         Self {
             config,
-            redraw: RedrawHandle::default(),
+            redraw,
+            footer_height,
             scrollback: Scrollback::new(),
             session_config: None,
             text_selection: true,
         }
+    }
+
+    /// Requested split-footer height. Calling `set` on this shared value wakes
+    /// the runner and applies the latest height before publishing or painting.
+    /// Rendered heights clamp to at least one row; alternate-screen mode ignores it.
+    pub fn footer_height(&self) -> crate::live::Live<u16> {
+        self.footer_height.clone()
     }
 
     /// Return a handle that background producers can use to request redraws.
@@ -250,6 +264,8 @@ impl AsyncRunner {
     /// Override terminal lifecycle policy while retaining the async loop.
     pub fn with_session_config(mut self, config: crate::TerminalSessionConfig) -> Self {
         self.config.screen_mode = config.screen_mode;
+        self.footer_height
+            .set(config.screen_mode.footer_height().unwrap_or(1));
         self.session_config = Some(config);
         self
     }
@@ -612,6 +628,7 @@ impl AsyncRunner {
             // resized between its construction and this first frame, and
             // `pin_footer` inserts rows at the geometry the terminal last knew.
             terminal.autoresize()?;
+            terminal.set_footer_height(self.footer_height.with(|height| *height))?;
             pin_footer(terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
@@ -670,6 +687,7 @@ impl AsyncRunner {
                 if let RunnerAction::Render(frame) = core.next_action() {
                     if split {
                         terminal.autoresize()?;
+                        terminal.set_footer_height(self.footer_height.with(|height| *height))?;
                         pin_footer(terminal)?;
                     }
                     let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
@@ -690,6 +708,9 @@ impl AsyncRunner {
                 Wake::Redraw | Wake::Requested => unreachable!("handled above"),
             };
             let requires_redraw = signal.requires_redraw();
+            if requires_redraw {
+                terminal.invalidate();
+            }
             let result = frames.update(signal).await;
             core.apply(result);
             if core.is_exited() {
@@ -713,6 +734,11 @@ impl AsyncRunner {
                 // last knew, so an unobserved resize would publish it at the
                 // old one. Learn the size before committing, not after.
                 terminal.autoresize()?;
+                if terminal.set_footer_height(self.footer_height.with(|height| *height))? {
+                    core.request_redraw();
+                    let now = TokioInstant::now();
+                    redraw_at = Some(redraw_at.map_or(now, |current| current.min(now)));
+                }
                 if self.scrollback.flush(terminal, theme)? {
                     core.request_redraw();
                     let now = TokioInstant::now();
@@ -725,6 +751,7 @@ impl AsyncRunner {
                 if let RunnerAction::Render(frame) = core.next_action() {
                     if split {
                         terminal.autoresize()?;
+                        terminal.set_footer_height(self.footer_height.with(|height| *height))?;
                         pin_footer(terminal)?;
                     }
                     let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
@@ -782,6 +809,7 @@ pub fn no_messages<Er>() -> impl Stream<Item = Result<Infallible, Er>> + Unpin {
 
 #[cfg(test)]
 mod tests {
+    use crate::term::terminal::Viewport;
     use std::convert::Infallible;
 
     use super::*;
@@ -831,6 +859,52 @@ mod tests {
             ..RunnerConfig::default()
         });
         assert_eq!(runner.config.tick_rate, Duration::from_millis(1));
+    }
+
+    #[tokio::test]
+    async fn footer_height_handle_repaints_after_a_clean_update() {
+        let runner = AsyncRunner::new(RunnerConfig {
+            screen_mode: ScreenMode::split_footer(2),
+            ..RunnerConfig::default()
+        });
+        let height = runner.footer_height();
+        let mut terminal = Terminal::with_options(
+            TestBackend::new(12, 8),
+            TerminalOptions {
+                viewport: Viewport::Inline(2),
+            },
+        )
+        .unwrap();
+        let frames = std::cell::Cell::new(0);
+        let mut state = ();
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                async_from_fn(
+                    &mut state,
+                    |(), _| {
+                        frames.set(frames.get() + 1);
+                        element(Text::raw("footer"))
+                    },
+                    async |(), signal| match signal {
+                        Signal::Event(Event::Key(key)) if key.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        Signal::Event(Event::Key(_)) => {
+                            height.set(4);
+                            UpdateResult::Clean
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                stream::iter([key(KeyCode::Char('+')), key(KeyCode::Esc)]),
+                no_messages(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(terminal.viewport(), Viewport::Inline(4));
+        assert_eq!(frames.get(), 2);
     }
 
     // Events flow through `update`, mutate the owned local state, and a quit key

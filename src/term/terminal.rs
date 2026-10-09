@@ -100,6 +100,7 @@ pub struct Terminal<B: Backend> {
     /// re-anchor itself across a resize.
     last_known_cursor_pos: Position,
     frame_count: usize,
+    force_redraw: bool,
 }
 
 impl<B: Backend> Terminal<B> {
@@ -152,6 +153,7 @@ impl<B: Backend> Terminal<B> {
             last_known_area: area,
             last_known_cursor_pos: cursor_pos,
             frame_count: 0,
+            force_redraw: false,
         })
     }
 
@@ -242,11 +244,53 @@ impl<B: Backend> Terminal<B> {
     pub fn flush(&mut self) -> Result<(), B::Error> {
         let previous = &self.buffers[1 - self.current];
         let current = &self.buffers[self.current];
-        let updates = previous.diff(current);
+        let updates = previous.diff_frame(current, self.force_redraw);
         if let Some((x, y, _)) = updates.last() {
             self.last_known_cursor_pos = Position { x: *x, y: *y };
         }
-        self.backend.draw(updates.into_iter())
+        self.backend.draw(updates.into_iter())?;
+        self.force_redraw = false;
+        Ok(())
+    }
+
+    /// Repaint every owned cell on the next frame, even at unchanged geometry.
+    /// A shrink followed by a restore may have changed the physical screen
+    /// without changing the dimensions observed by the renderer.
+    pub fn invalidate(&mut self) {
+        self.force_redraw = true;
+    }
+
+    /// Resize a pinned inline footer without replacing its backend.
+    /// Returns whether the visible area changed. Other viewports are untouched.
+    /// Growth scrolls the main screen so displaced output remains in scrollback;
+    /// shrink clears and returns the unused rows to the terminal.
+    pub fn set_footer_height(&mut self, height: u16) -> Result<bool, B::Error> {
+        if !matches!(self.viewport, Viewport::Inline(_)) {
+            return Ok(false);
+        }
+        self.autoresize()?;
+        let screen = self.last_known_area;
+        let height = height.max(1);
+        if self.viewport == Viewport::Inline(height) {
+            return Ok(false);
+        }
+        self.viewport = Viewport::Inline(height);
+        let visible = height.min(screen.height);
+        let next = Rect::new(
+            0,
+            screen.height.saturating_sub(visible),
+            screen.width,
+            visible,
+        );
+        if next == self.viewport_area {
+            return Ok(false);
+        }
+        self.clear()?;
+        self.scroll_up(visible.saturating_sub(self.viewport_area.height))?;
+        self.set_viewport_area(next);
+        self.last_known_cursor_pos = next.as_position();
+        self.invalidate();
+        Ok(true)
     }
 
     /// Make the back buffer current and blank the one just shown.
@@ -658,6 +702,72 @@ mod tests {
 
     fn terminal(width: u16, height: u16) -> Terminal<TestBackend> {
         Terminal::new(TestBackend::new(width, height)).unwrap()
+    }
+
+    #[test]
+    fn invalidation_repairs_a_shrink_restore_even_at_identical_geometry() {
+        let mut terminal = terminal(8, 3);
+        let paint = |f: &mut Frame<'_>| {
+            f.buffer_mut()
+                .set_string(0, 2, "restored", Style::default());
+        };
+        terminal.draw(paint).unwrap();
+        // Both resizes happen between frames; the diff baseline still contains
+        // text that the physical terminal discarded during the shrink.
+        terminal.backend_mut().resize(3, 1);
+        terminal.backend_mut().resize(8, 3);
+        terminal.invalidate();
+        terminal.draw(paint).unwrap();
+        assert_eq!(terminal.backend().rows()[2], "restored");
+        assert!(!terminal.force_redraw);
+    }
+
+    #[test]
+    fn growing_and_shrinking_a_footer_preserves_published_output() {
+        let mut terminal = Terminal::with_options(
+            TestBackend::new(10, 6),
+            TerminalOptions {
+                viewport: Viewport::Inline(2),
+            },
+        )
+        .unwrap();
+        crate::screen::pin_footer(&mut terminal).unwrap();
+        terminal
+            .insert_before(1, |b| {
+                b.set_string(0, 0, "PUBLISHED", Style::default());
+            })
+            .unwrap();
+        for height in [4, 1, 99, 0, 3] {
+            assert!(terminal.set_footer_height(height).unwrap());
+            let expected = height.clamp(1, 6);
+            assert_eq!(
+                terminal.viewport_area,
+                Rect::new(0, 6 - expected, 10, expected)
+            );
+            assert!(
+                terminal
+                    .backend()
+                    .rows()
+                    .iter()
+                    .any(|r| r.starts_with("PUBLISHED"))
+                    || terminal.backend().scrollback().iter().any(|r| r
+                        .iter()
+                        .map(|c| c.symbol())
+                        .collect::<String>()
+                        .starts_with("PUBLISHED"))
+            );
+            terminal
+                .draw(|f| {
+                    let area = f.area();
+                    f.buffer_mut()
+                        .set_string(0, area.y, "FOOT", Style::default());
+                })
+                .unwrap();
+        }
+        assert!(!terminal.set_footer_height(3).unwrap());
+        let mut fullscreen = super::tests::terminal(5, 2);
+        assert!(!fullscreen.set_footer_height(1).unwrap());
+        assert_eq!(fullscreen.viewport(), Viewport::Fullscreen);
     }
 
     #[test]
