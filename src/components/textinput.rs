@@ -366,9 +366,28 @@ impl TextInputState {
 
     /// Insert a string (honoring embedded newlines) at the cursor.
     pub fn insert_str(&mut self, s: &str) {
-        for ch in s.chars() {
-            self.insert_char(ch);
+        if s.is_empty() {
+            return;
         }
+        let line = &self.lines[self.row];
+        let at = line
+            .char_indices()
+            .nth(self.col)
+            .map_or(line.len(), |(i, _)| i);
+        let mut parts = s.split('\n');
+        let first = parts.next().expect("split has a first part");
+        let mut inserted = vec![format!("{}{first}", &line[..at])];
+        inserted.extend(parts.map(str::to_owned));
+        self.col = if inserted.len() == 1 {
+            self.col.min(line.chars().count()) + first.chars().count()
+        } else {
+            inserted.last().expect("nonempty").chars().count()
+        };
+        inserted.last_mut().expect("nonempty").push_str(&line[at..]);
+        let last_row = self.row + inserted.len() - 1;
+        self.lines.splice(self.row..=self.row, inserted);
+        self.row = last_row;
+        self.revision = self.revision.wrapping_add(1);
     }
 
     /// Split the current line at the cursor into two lines.
@@ -1257,6 +1276,41 @@ mod tests {
     use crate::surface::Surface;
     use crate::tests::support::{buffer, render_el, render_view_rows};
     use crate::view::{RenderCtx, element};
+
+    #[test]
+    fn bulk_paste_matches_scalar_insertion_at_unicode_boundaries() {
+        for source in ["", "café世界\nsecond line", "a\n\nb"] {
+            for row in 0..source.split('\n').count() {
+                for col in 0..=source.split('\n').nth(row).unwrap().chars().count() {
+                    for paste in ["", "é世", "\n", "x\n\ny\n", "e\u{301}👩‍💻"] {
+                        let mut bulk = TextInputState::from_text(source);
+                        bulk.set_cursor(row, col);
+                        let mut scalar = bulk.clone();
+                        bulk.insert_str(paste);
+                        for ch in paste.chars() {
+                            scalar.insert_char(ch);
+                        }
+                        assert_eq!(bulk.text(), scalar.text());
+                        assert_eq!(bulk.cursor(), scalar.cursor());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn large_paste_is_one_revision_and_preserves_the_suffix() {
+        let mut state = TextInputState::from_text("prefix suffix");
+        state.set_cursor(0, 7);
+        let revision = state.revision;
+        let pasted = "世x\n".repeat(25_000);
+        state.insert_str(&pasted);
+        assert_eq!(state.text(), format!("prefix {pasted}suffix"));
+        assert_eq!(state.cursor(), (25_000, 0));
+        assert_eq!(state.revision, revision.wrapping_add(1));
+        state.insert_str("");
+        assert_eq!(state.revision, revision.wrapping_add(1));
+    }
 
     #[test]
     fn single_line_normalizes_setter_and_paste_newlines() {

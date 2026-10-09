@@ -38,6 +38,9 @@ Two tiers. `Capabilities::from_env()` is an **advisory** guess from `TERM`,
 never blocks. Because the OSC features above degrade harmlessly, you emit them
 regardless; the flag only decides whether to *show an affordance* (a "copy" hint,
 a link underline) the terminal can't act on, so those flags lean conservative.
+OSC 8 detection also recognizes VS Code, Zed, mintty, Konsole, and
+`VTE_VERSION >= 5202`. Under tmux / GNU Screen the outer terminal's environment
+does not prove OSC 8 passthrough, so the hyperlink flag stays conservative.
 
 For accuracy — mainly to confirm **Sixel**, which has no reliable environment
 signal — `Capabilities::query(timeout)` also does a **Device Attributes** probe:
@@ -148,7 +151,7 @@ selection, and the output the app publishes, which is still there after it
 exits.
 
 <p align="center">
-  <img src="split-footer.gif" width="880" alt="A terminal running the split_footer example: a bordered status box pinned to the last rows while published build lines accumulate above it as ordinary scrollback; after the example exits the lines remain and the box's rows are gone.">
+  <img src="split-footer.gif" width="880" alt="A live split footer grows and shrinks at the bottom while build lines accumulate above it as ordinary scrollback; after exit the lines remain and the footer's rows are released.">
 </p>
 
 Because the footer owns the cursor, a host publishes through tuika instead of
@@ -170,6 +173,11 @@ scrollback.write(|_width| element(Text::raw("build finished in 12 ms")));
 
 Run it with `cargo run --example split_footer`, or see a whole coding-agent UI
 in the mode with `cargo run --example codex -- --split-footer`.
+Press `+` / `-` in the split-footer example to change its height. Both runners
+expose `footer_height() -> Live<u16>`: setting it wakes the loop, applies the
+height before publishing or painting, and preserves the backend and scrollback.
+Zero clamps to one row; a short terminal limits the visible height. Hosts with
+their own loop call `Terminal::set_footer_height` on an inline viewport.
 
 ## Hyperlinks (OSC 8)
 
@@ -220,6 +228,8 @@ selection, and scrolling. A host should opt into capture only when it needs
 application pointer/wheel events. Full-screen hosts that capture pointer motion can use
 `write_pointer_shape(..., PointerShape::Pointer)` on link hover; it emits OSC 22
 and should be paired with `PointerShape::Default` on hover exit and shutdown.
+Other shapes are `Text`, `EwResize`, `NsResize`, `Grab`, `Grabbing`, and
+`NotAllowed`, for editors, splitters, drag handles, and unavailable actions.
 
 ```rust
 use tuika::term::hyperlink::{encode, is_web_url};
@@ -258,7 +268,9 @@ activation, selection, and scrolling. Capture is explicit through
 Once an app opts into capture, the terminal stops handling links and selection.
 `Runner` and `AsyncRunner` restore selection over the final cell
 frame: a plain left drag highlights text, a same-cell double click selects a
-word, and releasing copies through OSC 52. Selection is *per panel* — a drag
+word, a third selects the panel row, and releasing copies through OSC 52.
+Dragging after the second or third press extends by whole words or rows.
+Selection is *per panel* — a drag
 that starts inside a bordered `Boxed` stays inside it, wrapping at that panel's
 edges rather than streaming across the panes beside it, so copying a sidebar
 entry never drags in the editor next to it. Wheel events continue to reach the
@@ -278,8 +290,9 @@ selection, copy, and hit-testing — from tuika's enriched event model
 
 - `SelectionState` turns a left-button `Down → Drag → Up` gesture into a
   `SelectionRange`, and a same-cell double click selects the word under the
-  pointer. Call `resolve(buffer, area)` after rendering to resolve pending word
-  boundaries; `selected_text(buffer, area, range)` then reads the selected text
+  pointer; a third selects the confined row. Call `resolve(buffer, area)` after
+  rendering to resolve word/row boundaries and selection updates;
+  `selected_text(buffer, area, range)` then reads the selected text
   back out of the rendered buffer (wide glyphs intact) and `mouse::paint_selection(buffer,
   area, range, style)` paints it in. `handle_with_clock` accepts a host `Clock`
   for deterministic gesture timing; `handle` uses `SystemClock`. `confine(Some(rect))`
@@ -320,10 +333,13 @@ does the copy, so there's no platform clipboard library and it works over SSH.
 That makes it the natural partner to a mouse selection.
 [API](https://docs.rs/tuika/latest/tuika/term/clipboard/index.html)
 
-- `osc52(text)` — pure encoder; returns the sequence, or `None` when `text` is
+- `clipboard::encode(text)` — pure encoder; returns the sequence, or `None` when `text` is
   empty or exceeds `MAX_LEN`.
 - `clipboard::write(out, text)` — encode and write in one step, returning whether
-  a sequence was emitted.
+  a sequence was emitted. It detects tmux (`TMUX`) / GNU Screen (`STY`) and
+  applies their DCS passthrough framing.
+- `encode_for(text, Multiplexer)` / `write_for(out, text, Multiplexer)` — use an
+  explicit transport, including `Multiplexer::None` for an unwrapped OSC.
 
 ```rust
 use tuika::term::clipboard;
@@ -343,9 +359,11 @@ WezTerm, Kitty, recent VTE, xterm.
 
 **Limits.** Terminals cap the sequence near 100 000 bytes, so a single copy is
 bounded at `MAX_LEN` (74 994 bytes); longer text is refused rather than sent
-truncated — a truncated clipboard is worse than a failed copy. Under tmux it
-needs `set -g allow-passthrough on` (or tmux's own `set-clipboard`), the same
-passthrough caveat as OSC 8.
+truncated — a truncated clipboard is worse than a failed copy. tmux passthrough
+needs `set -g allow-passthrough on`. GNU Screen uses BEL to terminate the inner
+OSC and splits it across bounded DCS payloads. Custom or nested transports
+should choose their framing explicitly; the writer does not negotiate terminal
+clipboard permissions.
 
 ## Native progress (OSC 9;4)
 

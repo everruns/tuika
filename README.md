@@ -470,6 +470,11 @@ crates. The companion crate
 [`tuika-codeformatters`](https://crates.io/crates/tuika-codeformatters) ships a
 ready-made tree-sitter `Highlighter`.
 
+Wrap it in `highlight::CachedHighlighter` and keep the wrapper beside application
+state to reuse syntax work across frames and resizes. Its default limits are
+256 KiB of source per request, 4 MiB of cached storage, and 16 blocks. Larger
+fences remain complete plain text; `with_limits` changes the byte budgets.
+
 Structured blocks can replace their source with a different, width-aware
 presentation through `MarkdownBlockRenderer`. The
 [`tuika-mermaid`](crates/tuika-mermaid/) companion uses that boundary with mmdflux:
@@ -727,9 +732,13 @@ let scrollback = runner.scrollback();
 scrollback.write(|_width| element(Text::raw("build finished in 12 ms")));
 ```
 
-The footer's height is fixed for the life of the terminal, so a host whose
-footer grows (a composer, a completion popup) reserves the tallest state it
-needs. There is a `scrolling-regions` feature, but it is a compatibility mirror
+`runner.footer_height()` returns a `Live<u16>` handle on either runner:
+`height.set(rows)` resizes and wakes the loop. Zero becomes one row; the visible
+footer is clamped to the terminal height. Growth preserves displaced output in
+scrollback, and shrink returns cleared rows. Custom loops use
+`Terminal::set_footer_height` on their inline viewport. The `split_footer`
+example accepts `+` / `-` to try it. There is a `scrolling-regions` feature,
+but it is a compatibility mirror
 of ratatui's, not an optimization to reach for: rows scrolled out of a DECSTBM
 region are discarded by the terminal instead of entering its scrollback, which
 is the one thing this mode exists to provide.
@@ -923,7 +932,9 @@ Capture is a deliberate trade: the terminal stops activating OSC 8 links and
 performing its own selection/scrolling because it hands those mouse events to
 the app instead. `Runner` and `AsyncRunner` then restore selection over the
 final rendered grid: a plain left drag highlights text, a same-cell double
-click selects a word, and releasing copies through OSC 52. Wheel events reach
+click selects a word, a third selects the panel row, and releasing copies through
+OSC 52. Double- and triple-click dragging extends by whole words and rows.
+Wheel events reach
 application scrolling. An
 application claims a mouse gesture by returning `UpdateResult::Consumed` (no
 repaint) or `UpdateResult::Dirty` (repaint), and can disable the default
@@ -936,7 +947,7 @@ Hosts with their own loop use the `mouse` module to build the same affordances:
   clears the old selection). `selected_text(buffer, area, range)` reads the text
   back out of the rendered `Buffer` — linear/stream selection like a
   terminal's own, wide glyphs intact — and `mouse::paint_selection(buffer, area, range,
-  style)` paints it in. A same-cell double click selects a word;
+  style)` paints it in. A same-cell double click selects a word, a third a row;
   `handle_with_clock` accepts a virtual monotonic `Clock`, while `handle` uses
   `SystemClock`.
 - **Application link fallback.** `ctrl_click_url` resolves an OSC 8 target or
@@ -948,8 +959,10 @@ Hosts with their own loop use the `mouse` module to build the same affordances:
   after their parents take precedence. `ClickTracker` turns a same-cell
   `Down`/`Up` into a `Click` and lets an intervening drag cancel it.
 - **Clipboard.** `clipboard::write(out, text)` copies via **OSC 52**
-  (`clipboard::osc52` is the pure encoder) — no platform clipboard library,
-  works over SSH. Same tmux caveat as OSC 8: needs `allow-passthrough on`.
+  (`clipboard::encode` is the pure encoder) — no platform clipboard library,
+  works over SSH. The writer detects tmux / GNU Screen and frames passthrough;
+  tmux needs `allow-passthrough on`. `encode_for` / `write_for` select the
+  transport explicitly for hosts with custom environment handling.
 
 The enriched event model carries what selection and clicks need: `MouseKind` is
 `Down/Up/Drag(MouseButton)`, `Moved`, and `ScrollUp/Down/Left/Right`, and every

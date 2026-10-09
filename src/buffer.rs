@@ -550,6 +550,14 @@ impl Buffer {
     /// recoverable state, and silently diffing mismatched grids would corrupt
     /// the screen.
     pub fn diff<'next>(&self, next: &'next Self) -> Vec<(u16, u16, &'next Cell)> {
+        self.diff_frame(next, false)
+    }
+
+    pub(crate) fn diff_frame<'next>(
+        &self,
+        next: &'next Self,
+        force: bool,
+    ) -> Vec<(u16, u16, &'next Cell)> {
         assert!(
             self.area.x == next.area.x
                 && self.area.y == next.area.y
@@ -579,15 +587,16 @@ impl Buffer {
                     // The symbol carries escape bytes that occupy `width`
                     // columns on screen; step over the columns they cover.
                     index = index.saturating_add(width.get().saturating_sub(1) as usize);
-                    if current != previous {
+                    if force || current != previous {
                         let (x, y) = next.pos_of(position);
                         updates.push((x, y, current));
                     }
                 }
                 CellDiffOption::None | CellDiffOption::AlwaysUpdate => {
                     let width = current.cell_width() as usize;
-                    let unchanged =
-                        matches!(current.diff_option, CellDiffOption::None) && current == previous;
+                    let unchanged = !force
+                        && matches!(current.diff_option, CellDiffOption::None)
+                        && current == previous;
                     if unchanged {
                         index += width.saturating_sub(1);
                         continue;
@@ -601,7 +610,8 @@ impl Buffer {
                         // The wide cluster covers its placeholder column; the
                         // terminal paints both from the one write.
                         index += width - 1;
-                    } else if previous_width > width
+                    } else if !force
+                        && previous_width > width
                         && (previous.bg != Color::Reset
                             || previous.modifier.intersection(VISIBLE_ON_BLANK)
                                 != Modifier::empty())
@@ -841,6 +851,20 @@ mod tests {
         let updates = previous.diff(&next);
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0].0, 0);
+    }
+
+    #[test]
+    fn forced_repaint_respects_wide_placeholders_and_unowned_cells() {
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 5, 1));
+        buffer.set_string(0, 0, "日", Style::default());
+        buffer[(3, 0)].set_diff_option(CellDiffOption::Skip);
+        assert!(buffer.diff(&buffer).is_empty());
+        let positions = buffer
+            .diff_frame(&buffer, true)
+            .iter()
+            .map(|(x, y, _)| (*x, *y))
+            .collect::<Vec<_>>();
+        assert_eq!(positions, [(0, 0), (2, 0), (4, 0)]);
     }
 
     #[test]

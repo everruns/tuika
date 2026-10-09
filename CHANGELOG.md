@@ -15,6 +15,10 @@ described in the release process begins with the entry below.
 
 ### Breaking
 
+- Added `PointerShape` variants `Text`, `EwResize`, `NsResize`, `Grab`,
+  `Grabbing`, and `NotAllowed`. Exhaustive matches must handle the new variants;
+  this requires the next minor release.
+
 - Removed `components::AppShell` (including its prelude export). Compose
   application chrome and side panels directly with `Flex` or `view!`; see the
   [layout migration guide](docs/layout.md#migrating-appshell). `SelectionScreen`
@@ -24,9 +28,32 @@ described in the release process begins with the entry below.
 
 ### Added
 
+- Bounded `highlight::CachedHighlighter`: exact source/language/theme caching,
+  configurable input/storage limits, plain-text fallback above the input limit.
+- Runtime split-footer height changes through `Runner::footer_height()` /
+  `AsyncRunner::footer_height()` and `Terminal::set_footer_height`, preserving
+  scrollback and backend ownership.
+- Triple-click row selection and whole-word/row dragging after multi-clicks.
+- Explicit tmux / GNU Screen OSC 52 framing, selected automatically by the
+  clipboard writer or explicitly with `encode_for` / `write_for`.
 - `view!` supports `styled(style) { node }` for direct row/column children,
   exposing the complete `FlexItemStyle`: basis, grow/shrink, min/max, and
   per-item alignment.
+
+### Changed
+
+- Paste insertion splices lines in bulk instead of rebuilding per character.
+  CodeBlock measurement no longer invokes syntax highlighting. Added paste and
+  warm syntax-cache benchmarks.
+- CJK prose wraps between characters without invented spaces, respecting
+  opening/closing punctuation when it fits.
+- OSC 8 detection recognizes VS Code, Zed, mintty, Konsole, and VTE 0.52.2+;
+  multiplexer environments remain conservative.
+
+### Fixed
+
+- Resize events invalidate the physical screen even when a shrink and restore
+  happen between frames and the final geometry matches the diff baseline.
 
 ## [0.13.0] - 2026-10-07
 

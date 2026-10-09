@@ -84,14 +84,15 @@ impl SelectionRange {
     }
 }
 
-/// Tracks click-drag and double-click text selection across mouse events.
+/// Tracks click-drag, word, and line selection across mouse events.
 ///
 /// Left `Down` starts (and clears any previous selection); `Drag` extends;
 /// `Up` finishes. [`confine`](Self::confine) restricts a gesture to one panel:
 /// positions are clamped into that rect, so dragging out of the panel selects
 /// to its edge rather than across whatever is beside it. Two plain clicks on
 /// the same cell within the double-click interval queue a word selection. Call [`Self::resolve`] after rendering so
-/// word boundaries can be read from the current buffer.
+/// word boundaries can be read from the current buffer. A third click selects
+/// the confined row. Dragging after either extends by whole words or rows.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SelectionState {
     anchor: (u16, u16),
@@ -100,6 +101,9 @@ pub struct SelectionState {
     selecting: bool,
     last_click: Option<((u16, u16), Instant)>,
     pending_word: Option<(u16, u16)>,
+    click_count: u8,
+    anchor_range: Option<SelectionRange>,
+    pending_drag: bool,
     region: Option<Rect>,
 }
 
@@ -121,39 +125,50 @@ impl SelectionState {
     /// double-click timing deterministic in tests, replay systems, and hosts
     /// with a virtual clock.
     pub fn handle_with_clock(&mut self, m: &Mouse, clock: &dyn Clock) -> bool {
-        let (column, row) = clamp_to_region(self.region, m.column, m.row);
+        let position = clamp_to_region(self.region, m.column, m.row);
         match m.kind {
             MouseKind::Down(MouseButton::Left) => {
-                self.anchor = (column, row);
-                self.cursor = (column, row);
+                let now = clock.now();
+                let repeated = self.last_click.is_some_and(|(previous, at)| {
+                    previous == position
+                        && now.saturating_duration_since(at) <= DOUBLE_CLICK_INTERVAL
+                });
+                self.click_count = if repeated {
+                    self.click_count % 3 + 1
+                } else {
+                    1
+                };
+                self.last_click = Some((position, now));
+                self.anchor = position;
+                self.cursor = position;
                 self.pressed = true;
+                self.anchor_range = None;
+                self.pending_drag = false;
                 let had = self.selecting;
                 self.selecting = false;
-                // Redraw if we cleared an existing selection.
-                had
+                self.pending_word = (self.click_count > 1).then_some(position);
+                had || self.pending_word.is_some()
             }
             MouseKind::Drag(MouseButton::Left) if self.pressed => {
-                self.cursor = (column, row);
-                self.selecting = self.cursor != self.anchor;
+                self.cursor = position;
                 self.last_click = None;
-                self.pending_word = None;
+                if self.click_count > 1 {
+                    self.pending_drag = true;
+                } else {
+                    self.selecting = self.cursor != self.anchor;
+                }
                 true
             }
             MouseKind::Up(MouseButton::Left) if self.pressed => {
-                self.cursor = (column, row);
+                self.cursor = position;
                 self.pressed = false;
-                self.selecting = self.cursor != self.anchor;
-                if self.selecting {
-                    self.last_click = None;
+                if self.click_count > 1 {
+                    self.pending_drag = true;
                 } else {
-                    let position = self.cursor;
-                    let now = clock.now();
-                    let is_double = self.last_click.is_some_and(|(previous, at)| {
-                        previous == position
-                            && now.saturating_duration_since(at) <= DOUBLE_CLICK_INTERVAL
-                    });
-                    self.last_click = Some((position, now));
-                    self.pending_word = is_double.then_some(position);
+                    self.selecting = self.cursor != self.anchor;
+                }
+                if self.last_click.is_some_and(|(start, _)| start != position) {
+                    self.last_click = None;
                 }
                 true
             }
@@ -161,21 +176,54 @@ impl SelectionState {
         }
     }
 
-    /// Resolve a pending double-click against the freshly rendered buffer.
-    ///
-    /// Returns `true` when a word was selected. Word characters are Unicode
-    /// alphanumerics plus `_`; punctuation is selected as a contiguous run.
+    /// Resolve multi-click selection and word/line dragging against the latest
+    /// painted grid. Two presses select a word; three select the confined row.
     pub fn resolve(&mut self, buffer: &Buffer, area: Rect) -> bool {
-        let Some((column, row)) = self.pending_word.take() else {
-            return false;
+        // Events can be batched before a paint; retain the latest raw pointer
+        // position while resolving the initial word/row boundaries.
+        let pointer = self.cursor;
+        let range_at = |position: (u16, u16)| {
+            if self.click_count == 3 {
+                in_rect(area, position.0, position.1).then(|| {
+                    SelectionRange::between(
+                        (area.x, position.1),
+                        (area.right().saturating_sub(1), position.1),
+                    )
+                })
+            } else {
+                word_at(buffer, area, position.0, position.1)
+            }
         };
-        let Some(range) = word_at(buffer, area, column, row) else {
-            return false;
-        };
-        self.anchor = range.start;
-        self.cursor = range.end;
-        self.selecting = true;
-        true
+        let mut changed = false;
+        if let Some(position) = self.pending_word.take()
+            && let Some(range) = range_at(position)
+        {
+            self.anchor_range = Some(range);
+            self.anchor = range.start;
+            self.selecting = true;
+            self.cursor = range.end;
+            changed = true;
+        }
+        if self.pending_drag {
+            self.pending_drag = false;
+            if let Some(anchor) = self.anchor_range
+                && let Some(focus) = range_at(pointer).or_else(|| {
+                    in_rect(area, pointer.0, pointer.1)
+                        .then(|| SelectionRange::between(pointer, pointer))
+                })
+            {
+                if (focus.start.1, focus.start.0) < (anchor.start.1, anchor.start.0) {
+                    self.anchor = anchor.end;
+                    self.cursor = focus.start;
+                } else {
+                    self.anchor = anchor.start;
+                    self.cursor = focus.end;
+                }
+                self.selecting = true;
+                changed = true;
+            }
+        }
+        changed
     }
 
     /// Confine the gesture to `region` — a panel, list viewport, or any other
@@ -608,6 +656,70 @@ mod tests {
             buffer.set_string(0, y as u16, row, Style::default());
         }
         buffer
+    }
+
+    #[test]
+    fn triple_click_selects_and_drags_whole_confined_rows() {
+        let buf = buffer_with_rows(&["xxone twozz", "xxthree  zz"]);
+        let area = Rect::new(2, 0, 7, 2);
+        let mut sel = SelectionState::new();
+        sel.confine(Some(area));
+        for _ in 0..3 {
+            sel.handle(&down(4, 0));
+            sel.resolve(&buf, area);
+            sel.handle(&up(4, 0));
+            sel.resolve(&buf, area);
+        }
+        assert_eq!(selected_text(&buf, area, sel.range().unwrap()), "one two");
+        // A fresh triple-click gesture can extend across complete rows.
+        sel.clear();
+        sel.confine(Some(area));
+        for _ in 0..2 {
+            sel.handle(&down(4, 0));
+            sel.handle(&up(4, 0));
+        }
+        sel.handle(&down(4, 0));
+        sel.handle(&drag(99, 1));
+        sel.resolve(&buf, area);
+        assert_eq!(
+            selected_text(&buf, area, sel.range().unwrap()),
+            "one two\nthree"
+        );
+    }
+
+    #[test]
+    fn double_click_drag_preserves_words_in_both_directions() {
+        let buf = buffer_with_rows(&["one two three"]);
+        for resolve_press in [false, true] {
+            let mut sel = SelectionState::new();
+            sel.handle(&down(5, 0));
+            sel.handle(&up(5, 0));
+            sel.handle(&down(5, 0));
+            if resolve_press {
+                sel.resolve(&buf, buf.area);
+            }
+            sel.handle(&drag(10, 0));
+            sel.resolve(&buf, buf.area);
+            assert_eq!(
+                selected_text(&buf, buf.area, sel.range().unwrap()),
+                "two three"
+            );
+            sel.handle(&drag(3, 0));
+            sel.resolve(&buf, buf.area);
+            assert_eq!(selected_text(&buf, buf.area, sel.range().unwrap()), " two");
+            sel.handle(&drag(1, 0));
+            sel.resolve(&buf, buf.area);
+            assert_eq!(
+                selected_text(&buf, buf.area, sel.range().unwrap()),
+                "one two"
+            );
+            sel.handle(&up(1, 0));
+            sel.resolve(&buf, buf.area);
+            assert_eq!(
+                selected_text(&buf, buf.area, sel.range().unwrap()),
+                "one two"
+            );
+        }
     }
 
     #[test]

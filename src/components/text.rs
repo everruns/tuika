@@ -317,12 +317,14 @@ fn wrap_one(line: &Line<'static>, width: u16, out: &mut Vec<Line<'static>>) {
     let metrics: Vec<CellMetrics> = cells.iter().map(|&(g, _)| CellMetrics::of(g)).collect();
     for row in wrap_cells(&metrics, width) {
         let mut cur: Vec<(&str, Style)> = Vec::new();
+        let mut previous_end = None;
         for word in row {
-            // The joining space inherits the preceding cell's style so a
-            // background run stays continuous across the join.
-            if let Some(&(_, prev)) = cur.last() {
+            if previous_end.is_some_and(|end| end < word.start)
+                && let Some(&(_, prev)) = cur.last()
+            {
                 cur.push((" ", prev));
             }
+            previous_end = Some(word.end);
             cur.extend_from_slice(&cells[word]);
         }
         out.push(coalesce(&cur));
@@ -342,13 +344,45 @@ fn wrap_one(line: &Line<'static>, width: u16, out: &mut Vec<Line<'static>>) {
 struct CellMetrics {
     cols: u16,
     is_break: bool,
+    cjk: bool,
+    opening: bool,
+    closing: bool,
 }
 
 impl CellMetrics {
     fn of(cluster: &str) -> Self {
+        let first = cluster.chars().next().unwrap_or('\0');
         Self {
             cols: grapheme_cols(cluster),
             is_break: is_break(cluster),
+            cjk: matches!(first as u32,
+                0x2e80..=0x9fff | 0xac00..=0xd7af | 0xf900..=0xfaff | 0x20000..=0x323af),
+            opening: matches!(
+                first,
+                '（' | '［' | '｛' | '〈' | '《' | '「' | '『' | '【' | '〔' | '〖' | '〘' | '〚'
+            ),
+            closing: matches!(
+                first,
+                '、' | '。'
+                    | '，'
+                    | '．'
+                    | '！'
+                    | '？'
+                    | '：'
+                    | '；'
+                    | '）'
+                    | '］'
+                    | '｝'
+                    | '〉'
+                    | '》'
+                    | '」'
+                    | '』'
+                    | '】'
+                    | '〕'
+                    | '〗'
+                    | '〙'
+                    | '〛'
+            ),
         }
     }
 }
@@ -363,10 +397,9 @@ impl CellMetrics {
 /// about. Blank (empty or all-whitespace) input yields exactly one empty row, so
 /// a blank source line survives as a blank output line rather than vanishing.
 ///
-/// Breaking only at whitespace is deliberate. A Unicode line-break table would
-/// also offer `/` and `-`, which reads better for prose but splits a bare URL
-/// after its scheme — and [`Paragraph`] turns bare URLs into OSC 8 hyperlinks,
-/// so keeping one contiguous is worth more than the ragged edge it costs.
+/// CJK boundaries may break without adding whitespace. Opening punctuation
+/// stays with what follows and closing punctuation with what precedes when the
+/// group fits. ASCII `/` and `-` remain literal so URLs stay contiguous.
 fn wrap_cells(cells: &[CellMetrics], width: u16) -> Vec<Vec<Range<usize>>> {
     let mut rows: Vec<Vec<Range<usize>>> = Vec::new();
     let mut cur: Vec<Range<usize>> = Vec::new();
@@ -379,14 +412,25 @@ fn wrap_cells(cells: &[CellMetrics], width: u16) -> Vec<Vec<Range<usize>>> {
             i += 1;
             continue;
         }
-        // Gather one word (a maximal run of non-whitespace).
+        // Gather an ASCII word or a CJK fragment with attached punctuation.
         let start = i;
         let mut word_w = 0u16;
         while i < n && !cells[i].is_break {
+            if i > start
+                && (cells[i - 1].cjk || cells[i].cjk)
+                && !cells[i - 1].opening
+                && !cells[i].closing
+            {
+                break;
+            }
             word_w = word_w.saturating_add(cells[i].cols);
             i += 1;
         }
-        let sep = u16::from(!cur.is_empty());
+        // Adjacent source fragments are CJK break opportunities, not spaces.
+        let sep = u16::from(
+            cur.last()
+                .is_some_and(|previous: &Range<usize>| previous.end < start),
+        );
         // Saturating throughout: `width` is `u16::MAX` for a max-content
         // measurement, so a paragraph long enough to fill a row at that width
         // would otherwise overflow the column counter and panic. Saturating
@@ -463,10 +507,12 @@ pub(crate) fn wrap_str(text: &str, width: u16) -> Vec<WrappedRow> {
                 text: String::new(),
                 words: Vec::new(),
             };
+            let mut previous_end = None;
             for word in row {
-                if !out.text.is_empty() {
+                if previous_end.is_some_and(|end| end < word.start) {
                     out.text.push(' ');
                 }
+                previous_end = Some(word.end);
                 let (last_offset, last) = cells[word.end - 1];
                 let start = cells[word.start].0;
                 let end = last_offset + last.len();
@@ -548,6 +594,42 @@ mod tests {
     /// Concatenated text of a line's spans.
     fn line_text(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn cjk_wrap_fills_mixed_rows_without_inserting_spaces() {
+        let lines = wrap_lines(&[Line::from("ab你好世界")], 6);
+        assert_eq!(
+            lines.iter().map(line_text).collect::<Vec<_>>(),
+            ["ab你好", "世界"]
+        );
+        let lines = wrap_lines(&[Line::from("你好，世界。")], 6);
+        assert_eq!(
+            lines.iter().map(line_text).collect::<Vec<_>>(),
+            ["你好，", "世界。"]
+        );
+        let lines = wrap_lines(&[Line::from("あいうえお")], 6);
+        assert_eq!(
+            lines.iter().map(line_text).collect::<Vec<_>>(),
+            ["あいう", "えお"]
+        );
+    }
+
+    #[test]
+    fn cjk_wrapping_keeps_brackets_and_style_boundaries() {
+        let style = Style::default().fg(Color::Red);
+        let line = Line::from(vec![Span::raw("你好「"), Span::styled("世界」", style)]);
+        let lines = wrap_lines(&[line], 8);
+        assert_eq!(
+            lines.iter().map(line_text).collect::<Vec<_>>(),
+            ["你好「世", "界」"]
+        );
+        assert!(
+            lines[0]
+                .spans
+                .iter()
+                .any(|span| span.content.contains('世') && span.style == style)
+        );
     }
 
     fn link_at(buffer: &crate::buffer::Buffer, area: Rect, col: u16, row: u16) -> Option<String> {

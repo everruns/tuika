@@ -112,6 +112,15 @@ means a host that renders no code pays nothing, and a host that renders code can
 choose its own highlighter. `tuika-codeformatters` is the batteries-included
 answer, published separately for exactly that reason.
 
+`CachedHighlighter` adds reusable performance policy around that same trait,
+without another grammar boundary: exact source, language, and theme identify a
+result, and both successes and declines are retained under byte and entry
+limits. An oversized request returns plain code without losing source. This
+bounds input and retained syntax data, not execution time inside host code.
+Hosts retain the wrapper across frames and clear it when syntax configuration
+changes. Measurement derives geometry directly from source; token colors cannot
+affect code dimensions and need not run during layout.
+
 ### Structured blocks share one parsing boundary
 
 Syntax highlighting must reconstruct the original source line-for-line, so it

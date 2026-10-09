@@ -203,6 +203,10 @@ name = "scroll"
 harness = false
 
 [[bench]]
+name = "input"
+harness = false
+
+[[bench]]
 name = "scroll_iai"
 harness = false
 

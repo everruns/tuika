@@ -1,5 +1,18 @@
 # Knowledge Log
 
+## 2026-10-09
+
+- **Bound work at existing ownership boundaries**
+  - Syntax limits and caching wrap the host highlighter trait; measurement
+    needs geometry alone. Paste splices once. Footer height changes keep the
+    terminal backend and scrollback, while resize input invalidates assumptions
+    about physical cells even at unchanged final geometry. Captured selection
+    expands by words/rows and copies on release. Clipboard transport framing
+    belongs beside the OSC encoder. See [Markdown](specs/markdown.md),
+    [Screen modes](specs/screen-modes.md),
+    [Architecture](specs/architecture.md), and
+    [Out-of-band escapes](specs/out-of-band.md).
+
 ## 2026-10-08
 
 - **One application-layout primitive, explicit host policy**

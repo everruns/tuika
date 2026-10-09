@@ -29,7 +29,7 @@
 pub use crate::anim::{Easing, Repeat, Timeline, Transition};
 pub use crate::components::*;
 pub use crate::focus::FocusRegistry;
-pub use crate::highlight::{CodeHighlighter, Highlighter, PlainHighlighter};
+pub use crate::highlight::{CachedHighlighter, CodeHighlighter, Highlighter, PlainHighlighter};
 #[cfg(feature = "ratatui")]
 pub use crate::interop::RatatuiView;
 pub use crate::keymap::{Binding, Chord, Dispatch, Hint, KeySequence, Keymap, Layer};
