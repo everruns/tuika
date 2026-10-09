@@ -599,8 +599,9 @@ impl Runner {
         }
     }
 
-    /// Requested split-footer height. Calling `set` on this shared value wakes
-    /// the runner and applies the latest height before publishing or painting.
+    /// Requested split-footer height. Calling `set` requests a redraw; the
+    /// runner applies it before publishing or painting on its next iteration.
+    /// A synchronous terminal poll can wait until the next event or tick.
     /// Rendered heights clamp to at least one row; alternate-screen mode ignores it.
     pub fn footer_height(&self) -> crate::live::Live<u16> {
         self.footer_height.clone()
