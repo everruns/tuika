@@ -64,7 +64,6 @@ exclude = [
     "/logo*.png",
     "/docs",
     "examples/codex/*.gif",
-    "examples/app_shell.gif",
     "examples/program_status.gif",
     "examples/workbench_demo/*.gif",
     "/benches/*.json",

@@ -10,7 +10,7 @@
 # them (the right pane, and the agents rail) changing together: working with
 # rising progress, blocked on a question, done after `y`, and gone after `q`.
 #
-# Like the codex and app_shell recordings it records a whole app, so it is
+# Like the codex recording it records a whole app, so it is
 # outside the `demo -- check` invariant and lives beside the example.
 #
 # Requirements: vhs (with ttyd and ffmpeg), jq, and tuios with OSC 7501 support

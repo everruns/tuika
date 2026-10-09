@@ -19,7 +19,6 @@
 //! flattened into a hand-prefixed alias.
 
 mod activity;
-mod app_shell;
 pub mod ascii_font;
 mod boxed;
 pub(crate) mod code_block;
@@ -62,7 +61,6 @@ mod viewport;
 mod virtualization;
 
 pub use activity::{ActivityItem, ActivityList, ActivityStatus};
-pub use app_shell::AppShell;
 pub use ascii_font::AsciiFont;
 pub use boxed::Boxed;
 pub use code_block::CodeBlock;

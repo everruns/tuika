@@ -329,14 +329,6 @@ const DEMOS: &[Demo] = &[
         scene_flex,
     ),
     filling_demo(
-        "app_shell",
-        "AppShell",
-        "responsive tool chrome around growing content",
-        15,
-        false,
-        scene_app_shell,
-    ),
-    filling_demo(
         "selection_screen",
         "SelectionScreen",
         "responsive borrowed action picker",
@@ -863,7 +855,6 @@ fn check_capture_theme(dir: &Path, errors: &mut Vec<String>) {
 
     for relative in [
         "scripts/gen-all-demos.sh",
-        "scripts/gen-app-shell-demo.sh",
         "scripts/gen-chart-demo.sh",
         "scripts/gen-codex-demo.sh",
         "scripts/gen-hero.sh",

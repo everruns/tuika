@@ -1,8 +1,4 @@
-//! AGF-shaped action picker before and after `SelectionScreen`.
-//!
-//! The marked caller expressions are counted as nonblank source lines:
-//! 8 before, 4 after. The new form also borrows `rows`; the old form clones
-//! them because `SelectList` is an owned standalone view.
+//! Action picker borrowing host-owned rows and selection state.
 
 use std::io;
 
@@ -14,26 +10,11 @@ fn hints() -> KeyHints {
     KeyHints::new([("↑/↓", "move"), ("enter", "select"), ("esc", "cancel")])
 }
 
-fn before(rows: &[Line<'static>], state: &SelectState) -> impl View {
-    // BEFORE CALLER START
-    let header = Text::new(vec![Line::from("Select an action")]);
-    let body = SelectList::new(rows.to_vec(), state);
-    AppShell::new(body)
-        .top_rule()
-        .header(header)
-        .top_rule()
-        .bottom_rule()
-        .footer(hints())
-    // BEFORE CALLER END
-}
-
-fn after<'rows>(rows: &'rows [Line<'static>], state: &SelectState) -> SelectionScreen<'rows> {
-    // AFTER CALLER START
+fn screen<'rows>(rows: &'rows [Line<'static>], state: &SelectState) -> SelectionScreen<'rows> {
     SelectionScreen::borrowed("Select an action", rows, state)
         .leading_rule()
         .trailing_rule()
         .footer(hints())
-    // AFTER CALLER END
 }
 
 fn main() -> io::Result<()> {
@@ -46,10 +27,9 @@ fn main() -> io::Result<()> {
     ];
     let mut state = SelectState::new();
     state.select(Some(2));
-    let _before_still_compiles = before(&rows, &state);
     write_once(
         &mut io::stdout(),
-        &after(&rows, &state),
+        &screen(&rows, &state),
         &cli.theme,
         OneShotOptions {
             width: 54,

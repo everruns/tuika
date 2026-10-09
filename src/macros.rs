@@ -26,6 +26,9 @@
 //! - `text( expr )` — a `Text::raw` line. `spacer()` — a `Spacer`.
 //! - `grow(n) { node }` / `fixed(n) { node }` — set a child's main-axis size
 //!   (default is auto).
+//! - `styled(style) { node }` — set a child's complete `FlexItemStyle`, including
+//!   basis, grow/shrink, min/max, and alignment. Like `grow`/`fixed`, this wraps
+//!   a direct child of `col` or `row`.
 //! - `when(condition) { node }` — include a child conditionally.
 //! - `for(pattern in iterable) { node }` — repeat a child for each value.
 //! - `node( expr )` — **escape hatch**: splice any `impl View`, including a
@@ -50,9 +53,30 @@
 /// `{ children }` block), `boxed` wraps a single child in a border (with
 /// `title`/`title_bottom`/`border`/`border_color`/`padding`/`background` attrs), `text(expr)` and `spacer()`
 /// emit leaves, `grow(n)`/`fixed(n)` set a child's main-axis size,
+/// `styled(style)` applies a complete [`FlexItemStyle`](crate::FlexItemStyle),
 /// `when(condition)` conditionally includes a node, `for(pattern in iterable)`
 /// repeats one, and `node(expr)` splices any `impl View`. Expands to plain
 /// builder calls with no runtime cost.
+///
+/// ```
+/// use tuika::prelude::*;
+///
+/// let screen = view! {
+///     col {
+///         styled(FlexItemStyle::default().shrink(10)) { text("header") }
+///         styled(FlexItemStyle::default().basis(Dimension::Flex(1)).grow(1).min_main(1)) {
+///             row {
+///                 fixed(12) { text("sidebar") }
+///                 grow(1) { text("content") }
+///             }
+///         }
+///         styled(FlexItemStyle::default().min_main(1)) {
+///             node(KeyHints::new([("q", "quit")]))
+///         }
+///     }
+/// };
+/// # let _ = tuika::testing::render(&screen, 40, 8, &Theme::default());
+/// ```
 #[macro_export]
 macro_rules! view {
     // ---- public entry: a single node -> Element -----------------------------
@@ -89,6 +113,9 @@ macro_rules! view {
 
     // ---- @kids: fold children onto a Flex builder ---------------------------
     (@kids $b:expr; ) => { $b };
+    (@kids $b:expr; styled ( $style:expr ) { $($node:tt)* } $($rest:tt)*) => {
+        $crate::view!(@kids $b.styled($style, $crate::view!(@one $($node)*)); $($rest)*)
+    };
     (@kids $b:expr; grow ( $n:expr ) { $($node:tt)* } $($rest:tt)*) => {
         $crate::view!(@kids $b.grow($n, $crate::view!(@one $($node)*)); $($rest)*)
     };
@@ -308,6 +335,95 @@ mod tests {
             crate::testing::grid(&rendered).contains("borrowed"),
             "a borrow must survive node -> Flex -> Boxed composition"
         );
+    }
+
+    #[test]
+    fn view_macro_styled_matches_builder_across_sizes() {
+        use crate::{Align, Dimension, FlexItemStyle};
+
+        fn output(view: &dyn View, width: u16, height: u16) -> String {
+            crate::testing::grid(&crate::testing::render(
+                view,
+                width,
+                height,
+                &crate::Theme::default(),
+            ))
+        }
+
+        let label = String::from("borrowed");
+        let sidebar = FlexItemStyle::default()
+            .basis(Dimension::Percent(40))
+            .grow(1)
+            .shrink(3)
+            .min_main(2)
+            .max_main(10)
+            .align_self(Align::End);
+        let main = FlexItemStyle::default()
+            .basis(Dimension::Flex(2))
+            .grow(2)
+            .min_main(1);
+        let built = element(
+            Flex::scoped_column().grow(
+                1,
+                element(
+                    Flex::scoped_row()
+                        .styled(sidebar, element(BorrowedLabel(&label)))
+                        .styled(main, element(Text::raw("body"))),
+                ),
+            ),
+        );
+        let macroed = crate::view! {
+            col {
+                grow(1) {
+                    row {
+                        styled(sidebar) { node(BorrowedLabel(&label)) }
+                        styled(main) { text("body") }
+                    }
+                }
+            }
+        };
+        for width in 0..=24 {
+            for height in 0..=6 {
+                assert_eq!(
+                    output(&built, width, height),
+                    output(&macroed, width, height),
+                    "styled item differs at {width}x{height}"
+                );
+            }
+        }
+        let text = output(&macroed, 24, 3);
+        let output: Vec<_> = text.lines().collect();
+        assert!(output[0].contains("body"), "{output:?}");
+        assert!(
+            output[2].contains("borrowed"),
+            "align_self was lost: {output:?}"
+        );
+    }
+
+    #[test]
+    fn view_macro_styled_preserves_growing_body_and_footer_minimums() {
+        use crate::probe::RectProbe;
+        use crate::{Dimension, FlexItemStyle};
+
+        let body = RectProbe::new();
+        let footer = RectProbe::new();
+        let tree = crate::view! {
+            col {
+                styled(FlexItemStyle::default().shrink(10)) { text("header") }
+                styled(FlexItemStyle::default().basis(Dimension::Flex(1)).grow(1).min_main(1)) {
+                    node(body.wrap(Text::raw("body")))
+                }
+                styled(FlexItemStyle::default().min_main(1)) {
+                    node(footer.wrap(Text::raw("footer")))
+                }
+            }
+        };
+        let _ = crate::testing::render(&tree, 20, 8, &crate::Theme::default());
+        assert_eq!(body.rect(), Rect::new(0, 1, 20, 6));
+        assert_eq!(footer.rect(), Rect::new(0, 7, 20, 1));
+        let _ = crate::testing::render(&tree, 20, 2, &crate::Theme::default());
+        assert_eq!(body.rect(), Rect::new(0, 0, 20, 1));
+        assert_eq!(footer.rect(), Rect::new(0, 1, 20, 1));
     }
 
     #[test]

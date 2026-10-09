@@ -34,7 +34,7 @@ Streaming Markdown, HTML, highlighted code, and diffs.
 
 Application shells, containers, focus scopes, and viewport structure.
 
-[`AppShell`](components/layout.md#appshell) · [`SelectionScreen`](components/layout.md#selectionscreen) · [`Flex`](components/layout.md#flex) · [`Flow`](components/layout.md#flow) · [`Grid`](components/layout.md#grid) · [`Boxed`](components/layout.md#boxed) · [`FocusScope`](components/layout.md#focusscope) · [`StatusBar`](components/layout.md#statusbar) · [`Scrollbar` + `VirtualWindow`](components/layout.md#scrollbar--virtualwindow)
+[`SelectionScreen`](components/layout.md#selectionscreen) · [`Flex`](components/layout.md#flex) · [`Flow`](components/layout.md#flow) · [`Grid`](components/layout.md#grid) · [`Boxed`](components/layout.md#boxed) · [`FocusScope`](components/layout.md#focusscope) · [`StatusBar`](components/layout.md#statusbar) · [`Scrollbar` + `VirtualWindow`](components/layout.md#scrollbar--virtualwindow)
 
 ## [Interactive](components/interactive.md)
 

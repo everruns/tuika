@@ -5,11 +5,12 @@ use crate::style::Style;
 use crate::text::Line;
 
 use super::select::SelectRows;
-use super::{AppShell, SelectState, VirtualWindow};
+use super::{Flex, Rule, SelectState, VirtualWindow};
 use crate::geometry::Size;
+use crate::layout::{Dimension, FlexItemStyle};
 use crate::style::Role;
 use crate::surface::Surface;
-use crate::view::{MeasureRequest, RenderCtx, ScopedElement, View, element};
+use crate::view::{MeasureRequest, RenderCtx, ScopedElement, View, element, view_fn};
 
 enum Rows<'items> {
     Owned(Vec<Line<'static>>),
@@ -87,7 +88,7 @@ impl View for ViewRef<'_> {
 
 /// A responsive selection page with conventional tool chrome.
 ///
-/// `SelectionScreen` composes [`AppShell`], the same borrowed row renderer as
+/// `SelectionScreen` composes [`Flex`], the same borrowed row renderer as
 /// [`SelectList`](super::SelectList), and an optional footer such as
 /// [`KeyHints`](super::KeyHints). Its list viewport follows the body rows that
 /// remain after chrome collapses, so the selected item stays visible even on a
@@ -214,44 +215,73 @@ impl<'view> SelectionScreen<'view> {
         self
     }
 
-    fn shell(&self) -> AppShell<'_> {
-        let body = match self.source_window {
+    fn body(&self) -> SelectRows<'_> {
+        match self.source_window {
             Some(window) => SelectRows::windowed(self.rows.as_slice(), window, &self.selected),
             None => SelectRows::borrowed(self.rows.as_slice(), &self.selected),
         }
         .scrollbar(self.scrollbar)
-        .selection_style(self.selection_style);
-        let mut shell = AppShell::new(body);
+        .selection_style(self.selection_style)
+    }
+
+    fn layout(&self) -> Flex<ScopedElement<'_>> {
+        let rule = || {
+            element(view_fn(
+                |available, _| Size::new(available.width, u16::from(available.height > 0)),
+                |area, surface, ctx| {
+                    Rule::new()
+                        .style(ctx.sheet.resolve(Role::Rule).to_style())
+                        .render(area, surface, ctx);
+                },
+            ))
+        };
+        let rule_style = FlexItemStyle::default().shrink(u16::MAX);
+        let mut layout = Flex::scoped_column();
         if self.leading_rule {
-            shell = shell.top_rule();
+            layout = layout.styled(rule_style, rule());
         }
-        shell = shell
-            .header(HeaderView {
-                header: &self.header,
-                style: self.header_style,
-            })
-            .top_rule();
+        layout = layout
+            .styled(
+                FlexItemStyle::default().shrink(10),
+                element(HeaderView {
+                    header: &self.header,
+                    style: self.header_style,
+                }),
+            )
+            .styled(rule_style, rule())
+            .styled(
+                // A Flex basis contributes the list's intrinsic height when
+                // measuring, but starts at zero when allocating its viewport.
+                FlexItemStyle::default()
+                    .basis(Dimension::Flex(1))
+                    .grow(1)
+                    .min_main(1),
+                element(self.body()),
+            );
         if self.trailing_rule {
-            shell = shell.bottom_rule();
+            layout = layout.styled(rule_style, rule());
         }
         if let Some(footer) = &self.footer {
-            shell = shell.footer(ViewRef(footer.as_ref()));
+            layout = layout.styled(
+                FlexItemStyle::default().shrink(1).min_main(1),
+                element(ViewRef(footer.as_ref())),
+            );
         }
-        shell
+        layout
     }
 }
 
 impl View for SelectionScreen<'_> {
     fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
-        self.shell().measure(available, ctx)
+        self.layout().measure(available, ctx)
     }
 
     fn measure_request(&self, request: MeasureRequest, ctx: &RenderCtx) -> Size {
-        self.shell().measure_request(request, ctx)
+        request.resolve(self.measure(request.fallback_available(), ctx))
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
-        self.shell().render(area, surface, ctx);
+        self.layout().render(area, surface, ctx);
     }
 }
 
@@ -449,28 +479,21 @@ mod tests {
     }
 
     #[test]
-    fn agf_shaped_example_keeps_exact_caller_loc_comparison() {
-        fn lines_between(source: &str, start: &str, end: &str) -> usize {
-            source
-                .split_once(start)
-                .unwrap()
-                .1
-                .split_once(end)
-                .unwrap()
-                .0
-                .lines()
-                .filter(|line| !line.trim().is_empty())
-                .count()
-        }
-
-        let source = include_str!("../../examples/selection_screen.rs");
-        assert_eq!(
-            lines_between(source, "// BEFORE CALLER START", "// BEFORE CALLER END"),
-            8
-        );
-        assert_eq!(
-            lines_between(source, "// AFTER CALLER START", "// AFTER CALLER END"),
-            4
-        );
+    fn measures_rows_as_well_as_chrome_when_nested_in_auto_layout() {
+        let theme = Theme::default();
+        let ctx = RenderCtx::new(&theme);
+        let state = SelectState::new();
+        let screen = SelectionScreen::new("Action", rows(3), &state)
+            .leading_rule()
+            .trailing_rule()
+            .footer(Text::raw("footer"));
+        assert_eq!(screen.measure(Size::new(20, 20), &ctx), Size::new(20, 8));
+        assert_eq!(screen.measure(Size::new(20, 3), &ctx), Size::new(20, 3));
+        let parent = Flex::column()
+            .auto(element(screen))
+            .auto(element(Text::raw("after")));
+        let text = grid(&render(&parent, 20, 12, &theme));
+        assert_eq!(text.lines().nth(7).unwrap().trim(), "footer");
+        assert_eq!(text.lines().nth(8).unwrap().trim(), "after");
     }
 }
