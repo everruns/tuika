@@ -861,6 +861,14 @@ fn split_footer_changes_height_while_publishing_and_releases_the_new_rows() {
     for row in history.lines().filter(|row| row.starts_with('[')) {
         assert!(row.contains("] build finished in "), "damaged row: {row:?}");
     }
+    for row in run.final_screen().screen().contents().lines() {
+        if !row.trim().is_empty() {
+            assert!(
+                row.starts_with('[') && row.contains("] build finished in "),
+                "unexpected output after releasing the footer: {row:?}"
+            );
+        }
+    }
     assert!(
         !run.final_screen()
             .screen()
