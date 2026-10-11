@@ -181,15 +181,21 @@ impl<'a> Builder<'a> {
     }
 
     /// Flush the current inline run as one prose line, attaching a pending list
-    /// marker to the item's first line.
+    /// marker to the item's first line. The marker's width becomes the hanging
+    /// indent so wrapped continuation rows hang under the item's text.
     fn flush(&mut self) {
         if self.inline.is_empty() && self.pending_marker.is_none() {
             return;
         }
         let indent = self.indent();
         let mut spans = self.pending_marker.take().unwrap_or_default();
+        let hanging = super::flatten::spans_cols(&spans) as u16;
         spans.append(&mut self.inline);
-        self.items.push(MdItem::Prose { spans, indent });
+        self.items.push(MdItem::Prose {
+            spans,
+            indent,
+            hanging,
+        });
     }
 
     fn push_text(&mut self, text: &str) {
@@ -386,6 +392,7 @@ impl<'a> Builder<'a> {
                         None,
                     )],
                     indent: self.indent(),
+                    hanging: 0,
                 });
             }
             Event::TaskListMarker(done) => {

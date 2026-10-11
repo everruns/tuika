@@ -411,7 +411,7 @@ mod tests {
         let out = plain("- outer\n  - inner", 40);
         let inner = out.iter().find(|l| l.contains("inner")).unwrap();
         assert!(
-            inner.starts_with("  "),
+            inner.starts_with("    "),
             "nested item should be indented: {inner:?}"
         );
     }
@@ -456,6 +456,38 @@ mod tests {
             out.iter().any(|l| l.trim() == "• inner"),
             "nested item keeps its own line: {out:?}"
         );
+    }
+
+    #[test]
+    fn nested_item_clears_its_parent_marker() {
+        // One indent unit must clear the widest single-level marker (`1. ` is
+        // three columns): with a two-column unit the nested bullet landed at
+        // column 2, visually flush with its ordered parent's text.
+        let out = plain("1. parent\n   - child", 40);
+        let child = out.iter().find(|l| l.contains("child")).unwrap();
+        assert!(
+            child.starts_with("    "),
+            "nested item clears the parent marker: {child:?}"
+        );
+    }
+
+    #[test]
+    fn ordered_item_continuation_aligns_under_text() {
+        // Wrapped item text must hang under the first line's text, not under
+        // the margin: the continuation of `1. ...` sits under the text at
+        // column 3 instead of restarting at column 0.
+        let out = plain("1. alpha beta gamma delta epsilon", 12);
+        assert!(out.len() > 1, "item wraps at this width: {out:?}");
+        for line in &out {
+            assert!(line.len() <= 12, "no overflow: {out:?}");
+        }
+        assert!(out[0].starts_with("1. "), "marker stays first: {out:?}");
+        for cont in &out[1..] {
+            assert!(
+                cont.starts_with("   "),
+                "continuation aligns under text: {out:?}"
+            );
+        }
     }
 
     #[test]
@@ -554,7 +586,7 @@ mod tests {
             .expect("language label");
 
         assert_eq!(crate::components::text::line_width(label), 12);
-        assert_eq!(label.spans[0].content.as_ref(), "  ");
+        assert_eq!(label.spans[0].content.as_ref(), "    ");
         assert_eq!(label.spans[0].style.bg, None);
         assert!(
             label.spans[1..]
@@ -1052,8 +1084,8 @@ mod tests {
             .iter()
             .find(|l| l.contains("<div>"))
             .unwrap_or_else(|| panic!("{out:?}"));
-        assert!(block.starts_with("  ["), "indented: {block:?}");
-        assert!(block.contains("[38]"), "width less the indent: {block:?}");
+        assert!(block.starts_with("    ["), "indented: {block:?}");
+        assert!(block.contains("[36]"), "width less the indent: {block:?}");
     }
 
     #[test]
