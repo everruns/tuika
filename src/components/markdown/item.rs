@@ -12,13 +12,23 @@ use crate::components::code_block::CodeRow;
 use crate::term::image::ImageData;
 
 /// Columns of indentation added per level of list / block-quote nesting.
-pub(super) const INDENT: u16 = 2;
+///
+/// One unit clears the widest single-level list marker (`[ ] ` and `10. ` are
+/// four columns), so a nested item always starts past its parent's text.
+pub(super) const INDENT: u16 = 4;
 
 /// A parsed, width-independent markdown block. Wrapping and table layout happen
 /// later, at [`flatten`] time, against a concrete width.
 pub(super) enum MdItem {
     /// Word-wrappable prose (a paragraph line, heading, list item, quote line).
-    Prose { spans: Vec<RichSpan>, indent: u16 },
+    /// `hanging` is the extra indent wrapped continuation rows carry so item
+    /// text hangs under the first line's text instead of the margin; it holds
+    /// the list marker's width and is zero for non-item prose.
+    Prose {
+        spans: Vec<RichSpan>,
+        indent: u16,
+        hanging: u16,
+    },
     /// A fenced or indented code block. The source stays width-independent so a
     /// [`MarkdownBlockRenderer`](super::MarkdownBlockRenderer) can lay it out for
     /// the current viewport; the ordinary themed presentation is the fallback.

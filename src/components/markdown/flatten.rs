@@ -84,18 +84,49 @@ pub(super) fn flatten_linked_into<R: MarkdownBlockRenderer + ?Sized>(
                     out.push(Line::default());
                 }
             }
-            MdItem::Prose { spans, indent } => {
-                let avail = width.saturating_sub(*indent).max(1);
-                for (row, row_links) in wrap_rich(spans, avail) {
+            MdItem::Prose {
+                spans,
+                indent,
+                hanging,
+            } => {
+                // The first row carries the marker and wraps to the indent
+                // width. Continuation rows hang under the item's text at
+                // `indent + hanging` and re-wrap to that narrower width, so
+                // they stay aligned and cannot overflow. Re-wrapping (rather
+                // than wrapping everything narrow) keeps short items like a
+                // nested `• child` on one row instead of orphaning the marker.
+                // Non-item prose has no hanging indent, so its continuation
+                // rows are already exact and skip the second wrap pass.
+                let cont = indent.saturating_add(*hanging);
+                let first_avail = width.saturating_sub(*indent).max(1);
+                let rest_avail = width.saturating_sub(cont).max(1);
+                let plain_wrap = *hanging == 0;
+                let push_row = |row,
+                                row_links: Vec<BufferLink>,
+                                prefix: u16,
+                                out: &mut Vec<Line>,
+                                links: &mut Vec<BufferLink>| {
                     let line_idx = out.len() as u16;
-                    let line = prefix_line(*indent, row);
+                    out.push(prefix_line(prefix, row));
                     for mut bl in row_links {
                         bl.line = line_idx;
-                        bl.start_col = bl.start_col.saturating_add(*indent);
-                        bl.end_col = bl.end_col.saturating_add(*indent);
+                        bl.start_col = bl.start_col.saturating_add(prefix);
+                        bl.end_col = bl.end_col.saturating_add(prefix);
                         links.push(bl);
                     }
-                    out.push(line);
+                };
+                let mut first = true;
+                for (row, row_links) in wrap_rich(spans, first_avail) {
+                    if first {
+                        first = false;
+                        push_row(row, row_links, *indent, &mut out, &mut links);
+                    } else if plain_wrap {
+                        push_row(row, row_links, *indent, &mut out, &mut links);
+                    } else {
+                        for (sub, sub_links) in wrap_rich(&row, rest_avail) {
+                            push_row(sub, sub_links, cont, &mut out, &mut links);
+                        }
+                    }
                 }
             }
             MdItem::CodeBlock {
