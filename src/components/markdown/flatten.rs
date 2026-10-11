@@ -95,9 +95,12 @@ pub(super) fn flatten_linked_into<R: MarkdownBlockRenderer + ?Sized>(
                 // they stay aligned and cannot overflow. Re-wrapping (rather
                 // than wrapping everything narrow) keeps short items like a
                 // nested `• child` on one row instead of orphaning the marker.
+                // Non-item prose has no hanging indent, so its continuation
+                // rows are already exact and skip the second wrap pass.
                 let cont = indent.saturating_add(*hanging);
                 let first_avail = width.saturating_sub(*indent).max(1);
                 let rest_avail = width.saturating_sub(cont).max(1);
+                let plain_wrap = *hanging == 0;
                 let push_row = |row,
                                 row_links: Vec<BufferLink>,
                                 prefix: u16,
@@ -116,6 +119,8 @@ pub(super) fn flatten_linked_into<R: MarkdownBlockRenderer + ?Sized>(
                 for (row, row_links) in wrap_rich(spans, first_avail) {
                     if first {
                         first = false;
+                        push_row(row, row_links, *indent, &mut out, &mut links);
+                    } else if plain_wrap {
                         push_row(row, row_links, *indent, &mut out, &mut links);
                     } else {
                         for (sub, sub_links) in wrap_rich(&row, rest_avail) {
