@@ -79,8 +79,8 @@ zig = ["dep:tree-sitter-zig"]
 
 [dependencies]
 tuika = { version = "0.13.0", path = "../.." }
-tree-sitter = "0.26"
-tree-sitter-highlight = "0.26"
+tree-sitter = "0.27"
+tree-sitter-highlight = "0.27"
 tree-sitter-c-sharp = { version = "0.23", optional = true }
 tree-sitter-css = { version = "0.25", optional = true }
 tree-sitter-go = { version = "0.25", optional = true }

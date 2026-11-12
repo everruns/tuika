@@ -10,7 +10,7 @@
 [![docs.rs](https://img.shields.io/docsrs/tuika)](https://docs.rs/tuika)
 [![downloads](https://img.shields.io/crates/d/tuika.svg)](https://crates.io/crates/tuika)
 [![license](https://img.shields.io/crates/l/tuika.svg)](https://github.com/everruns/tuika/blob/main/LICENSE)
-![msrv](https://img.shields.io/badge/rust-1.88%2B-blue.svg) \
+![msrv](https://img.shields.io/badge/rust-1.90%2B-blue.svg) \
 [Website](https://tuika.dev) · [Rust API](https://docs.rs/tuika) · [Getting started](https://github.com/everruns/tuika/blob/v0.13.0/docs/getting-started.md) · [Components](https://github.com/everruns/tuika/blob/v0.13.0/docs/components.md) · [Layout](https://github.com/everruns/tuika/blob/v0.13.0/docs/layout.md) ·
 [Markdown](https://github.com/everruns/tuika/blob/v0.13.0/docs/markdown.md) · [Charts](https://github.com/everruns/tuika/blob/v0.13.0/docs/charts.md) ·
 [Terminal features](https://github.com/everruns/tuika/blob/v0.13.0/docs/features.md) ·
@@ -1021,7 +1021,7 @@ something on tuika? Open a PR adding it here.
 
 ## Compatibility
 
-- Minimum supported Rust version: **1.88**, declared as `rust-version` and
+- Minimum supported Rust version: **1.90**, declared as `rust-version` and
   checked in CI.
 - Tuika 0.x follows Cargo semver: minor releases may make deliberate breaking
   API changes; patch releases do not.

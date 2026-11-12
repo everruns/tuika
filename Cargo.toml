@@ -21,7 +21,7 @@ members = [
 # *workspace* root, so a member would advertise tuika's README instead of its own.
 [workspace.package]
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.90"
 authors = ["Mykhailo Chalyi <mike@chaliy.name>", "Everruns <support@everruns.com>"]
 license = "MIT"
 homepage = "https://tuika.dev"
@@ -79,7 +79,7 @@ exclude = [
     "/CONTRIBUTING.md",
     "/SECURITY.md",
     # Pins the *development* toolchain (1.94), which would contradict the
-    # declared MSRV of 1.88 for anyone building from the unpacked crate.
+    # declared MSRV of 1.90 for anyone building from the unpacked crate.
     "/rust-toolchain.toml",
 ]
 
