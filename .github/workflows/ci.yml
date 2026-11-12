@@ -62,7 +62,7 @@ jobs:
               - '.github/workflows/ci.yml'
 
   msrv:
-    name: MSRV (1.88)
+    name: MSRV (1.90)
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
@@ -74,16 +74,16 @@ jobs:
     # and passed on code the MSRV cannot build. Only `RUSTUP_TOOLCHAIN` (or an
     # explicit `+toolchain`) outranks the file, so pin it for every step.
     env:
-      RUSTUP_TOOLCHAIN: 1.88.0
+      RUSTUP_TOOLCHAIN: 1.90.0
     steps:
       - uses: actions/checkout@v7
 
       # Every published workspace crate declares the same floor, so check them
       # together.
-      - name: Install Rust 1.88
+      - name: Install Rust 1.90
         uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
-          toolchain: 1.88.0
+          toolchain: 1.90.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2

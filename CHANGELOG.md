@@ -15,6 +15,15 @@ described in the release process begins with the entry below.
 
 ### Breaking
 
+- The minimum supported Rust version is now **1.90** (was 1.88) for every
+  workspace crate. `tuika-codeformatters` moved to tree-sitter 0.27, which
+  requires it, and the crates share one floor.
+- `tuika-codeformatters` depends on `tree-sitter` and `tree-sitter-highlight`
+  0.27 (was 0.26). The `tree-sitter` runtime links a native library, so a
+  binary can hold only one version of it: a host that uses tree-sitter itself,
+  or through another crate, must be on 0.27 too. Highlighting output is
+  unchanged.
+
 - Added `PointerShape` variants `Text`, `EwResize`, `NsResize`, `Grab`,
   `Grabbing`, and `NotAllowed`. Exhaustive matches must handle the new variants;
   this requires the next minor release.
