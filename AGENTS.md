@@ -69,7 +69,7 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 ```
 
-The MSRV is **1.88** (`rust-version` in `Cargo.toml`) and is enforced by a
+The MSRV is **1.90** (`rust-version` in `Cargo.toml`) and is enforced by a
 dedicated CI job; `rust-toolchain.toml` pins a newer toolchain for day-to-day
 development, so an MSRV break will not show up locally. If you reach for a newer
 language feature, either avoid it or raise the MSRV deliberately.

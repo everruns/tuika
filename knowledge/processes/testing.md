@@ -224,7 +224,7 @@ difference moves everything, while one bench family moving alone is the code.
 
 ## MSRV
 
-The MSRV (1.88) is compiled by its own CI job, because `rust-toolchain.toml`
+The MSRV (1.90) is compiled by its own CI job, because `rust-toolchain.toml`
 pins a newer toolchain for development and an MSRV break therefore never shows
 up locally. Raising the MSRV is a deliberate, changelog-worthy decision, not a
 side effect of reaching for a new language feature.

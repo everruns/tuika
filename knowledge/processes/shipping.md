@@ -117,7 +117,7 @@ Use the smallest set that gives high confidence.
 3. `cargo test --all-features`
 4. `cargo run --example demo -- check` when any component's appearance or the
    gallery documentation changed.
-5. `cargo +1.88 check -p tuika --all-targets` when reaching for newer language
+5. `cargo +1.90 check -p tuika --all-targets` when reaching for newer language
    features, to confirm the MSRV still holds.
 6. `cargo bench --bench <name> -- --baseline before` when the change touches a
    hot render path; the committed iai baseline is the CI gate.

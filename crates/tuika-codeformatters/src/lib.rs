@@ -305,7 +305,7 @@ fn highlight_lines(
 
     let mut highlighter = Highlighter::new();
     let events = highlighter
-        .highlight(&config, source.as_bytes(), None, |_| None)
+        .highlight(&config, source.as_bytes(), None, None, |_| None)
         .ok()?;
 
     let default_style = Style::default().fg(code.text);

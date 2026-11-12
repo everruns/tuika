@@ -31,9 +31,9 @@ cargo run --example demo -- list
 
 ### Minimum supported Rust version
 
-tuika supports Rust **1.88** and up. `rust-toolchain.toml` pins a newer
+tuika supports Rust **1.90** and up. `rust-toolchain.toml` pins a newer
 toolchain for development, so an accidental MSRV bump will not fail locally — a
-dedicated CI job compiles the crate on 1.88. Avoid newer language features
+dedicated CI job compiles the crate on 1.90. Avoid newer language features
 unless raising the MSRV is intentional and noted in the changelog.
 
 ### Benchmarks

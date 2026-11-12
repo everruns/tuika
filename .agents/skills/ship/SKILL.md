@@ -144,7 +144,7 @@ Pick only what matches the changed surface:
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo test --all-features`
 - `cargo run --example demo -- check` (gallery assets and references)
-- `cargo +1.88 check -p tuika --all-targets` (MSRV, when using newer language features)
+- `cargo +1.90 check -p tuika --all-targets` (MSRV, when using newer language features)
 - `cargo publish --dry-run -p tuika` (when the packaged file set or manifest metadata changed)
 - `cargo bench --bench <name> -- --baseline before` (hot render paths)
 - `cargo doc --all-features --no-deps` (when rustdoc or feature gating changed)
