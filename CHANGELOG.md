@@ -13,6 +13,11 @@ described in the release process begins with the entry below.
 
 ## Unreleased
 
+`tuika-codeformatters` 0.8.0 was published ahead of this release, from `main`
+against `tuika` 0.13.0. It carries the tree-sitter 0.27 move and the 1.90 MSRV
+listed under Breaking below; `tuika` itself is unchanged on crates.io until the
+next release.
+
 ### Breaking
 
 - The minimum supported Rust version is now **1.90** (was 1.88) for every
