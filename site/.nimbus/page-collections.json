@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "collections": [
+    "docs"
+  ],
+  "mdxFiles": [
+    "src/content/partials/example.mdx"
+  ]
+}

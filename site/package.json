@@ -23,7 +23,7 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@cloudflare/nimbus-docs": "^0.9.0",
+    "@cloudflare/nimbus-docs": "^0.20.0",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@iconify-json/ph": "^1.2.0",
@@ -44,10 +44,9 @@
   },
   "pnpm": {
     "overrides": {
-      "fast-uri@>=3.0.0 <3.1.6": "3.1.8",
+      "fast-uri@>=3.0.0 <3.1.9": "3.1.9",
       "js-yaml@>=4.0.0 <4.3.2": "4.3.2",
-      "svgo@>=4.0.0 <4.1.0": "4.1.0",
-      "sharp@>=0.35.0 <0.35.4": "0.35.4"
+      "svgo@>=4.0.0 <4.1.0": "4.1.0"
     }
   }
 }
