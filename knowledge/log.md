@@ -1,5 +1,12 @@
 # Knowledge Log
 
+## 2026-11-15
+
+- **Publish through crates.io trusted publishing**
+  - `publish.yml` now trades its GitHub OIDC token for a run-scoped crates.io
+    token instead of reading a stored `CARGO_REGISTRY_TOKEN`, after that secret
+    expired and failed a publish. See [Release](processes/release.md).
+
 ## 2026-10-09
 
 - **Bound work at existing ownership boundaries**

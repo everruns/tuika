@@ -18,6 +18,12 @@ jobs:
   publish:
     name: Publish crates to crates.io
     runs-on: ubuntu-latest
+    # crates.io trusted publishing: the job trades its GitHub OIDC token for a
+    # short-lived crates.io token, so no long-lived registry secret is stored.
+    # Each crate must list everruns/tuika + publish.yml as a trusted publisher.
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v7
 
@@ -53,9 +59,13 @@ jobs:
           fi
           echo "Version verified: $TAG_VERSION"
 
+      - name: Authenticate with crates.io
+        id: crates-io-auth
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+
       - name: Publish workspace crates
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
         run: |
           set -euo pipefail
 

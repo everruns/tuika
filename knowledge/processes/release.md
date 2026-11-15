@@ -190,7 +190,8 @@ When asked to release, the agent:
 - **Actions**: installs the pinned toolchain, verifies the tag matches the root
   `Cargo.toml`, publishes each crate in dependency order (skipping versions
   already live), then runs `scripts/verify_crates_publish.py`.
-- **Secret**: `CARGO_REGISTRY_TOKEN`.
+- **Auth**: crates.io trusted publishing (OIDC). No registry secret; see
+  [Authentication](#authentication).
 
 ## Pre-Release Checklist
 
@@ -396,11 +397,18 @@ supersede every affected version.
 
 ## Authentication
 
-**Repo secrets** (Settings → Secrets and variables → Actions):
+`publish.yml` uses crates.io **trusted publishing**: the job requests a GitHub
+OIDC token (`id-token: write`) and `rust-lang/crates-io-auth-action` exchanges it
+for a crates.io token that expires after the run. No long-lived registry token is
+stored in the repository, so nothing can silently expire or leak between
+releases — the long-lived `CARGO_REGISTRY_TOKEN` secret this replaced did both.
 
-| Secret | Used by | Source |
-| --- | --- | --- |
-| `CARGO_REGISTRY_TOKEN` | `publish.yml` | https://crates.io/settings/tokens — publish scope |
+Every published crate (`tuika` and each companion) must list a trusted publisher
+on crates.io (crate → Settings → Trusted Publishing): owner `everruns`,
+repository `tuika`, workflow `publish.yml`, no environment. A new workspace
+crate's **first** version cannot be published this way — crates.io only accepts
+trusted-publisher configuration on a crate that already exists — so publish it
+once by hand, then add the publisher before the next release.
 
 ## Related
 
