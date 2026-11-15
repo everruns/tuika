@@ -41,7 +41,7 @@ async function lastModified(source) {
 
 const sitemapPath = resolve(dist, "sitemap.xml");
 let sitemap = await readFile(sitemapPath, "utf8");
-for (const match of [...sitemap.matchAll(/<url><loc>([^<]+)<\/loc><\/url>/g)]) {
+for (const match of [...sitemap.matchAll(/<url><loc>([^<]+)<\/loc>(?:<lastmod>[^<]*<\/lastmod>)?<\/url>/g)]) {
   // A release page changes when its release does, not on every changelog edit.
   const modified =
     releaseDates.get(new URL(match[1]).pathname) ?? (await lastModified(sourceFor(match[1])));
