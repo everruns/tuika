@@ -377,7 +377,7 @@ Releases).
 
 ## Authentication
 
-Required repo secret — set up once, see
+No repo secret. `publish.yml` authenticates through crates.io trusted
+publishing (GitHub OIDC); each crate needs `everruns/tuika` + `publish.yml`
+configured as its trusted publisher on crates.io. See
 [`knowledge/processes/release.md`](../../../knowledge/processes/release.md) § Authentication.
-
-- `CARGO_REGISTRY_TOKEN` — crates.io publish scope.
