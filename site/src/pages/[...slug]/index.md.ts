@@ -9,7 +9,12 @@
  * generate conflicting `[...slug]` paths at root.
  */
 
-import { getIndexedEntries, renderEntryAsMarkdown, type IndexedEntry } from "@cloudflare/nimbus-docs";
+import { getIndexedEntries, type IndexedEntry } from "@cloudflare/nimbus-docs";
+import {
+  getMarkdownPayload,
+  getMarkdownStaticPaths,
+  type MarkdownEndpointReference,
+} from "@cloudflare/nimbus-docs/agent-endpoints";
 import { config } from "virtual:nimbus/config";
 import { normalizeMarkdownLinks } from "../../lib/docs-links";
 
@@ -19,26 +24,40 @@ const PRIMARY_COLLECTION = "docs";
 
 interface SlugProps {
   item: IndexedEntry;
+  reference: MarkdownEndpointReference;
 }
 
 export async function getStaticPaths() {
-  const indexed = await getIndexedEntries();
-  return indexed
-    .filter((item) => item.collection === PRIMARY_COLLECTION)
-    .map((item) => ({
-      // Root index (`entry.id === "index"`) emits at `/index.md`; Astro's
-      // rest-segment treats `undefined` as "no segment" so the URL is
-      // `/index.md` rather than `/index/index.md`. Every other entry emits
-      // at `/<entry.id>/index.md` — the convention `<page>/index.md`.
-      params: {
-        slug: item.entry.id === "index" ? undefined : item.entry.id,
-      },
-      props: { item } as SlugProps,
+  const [indexed, paths] = await Promise.all([
+    getIndexedEntries(),
+    getMarkdownStaticPaths({ collection: PRIMARY_COLLECTION, surface: "markdown" }),
+  ]);
+  const byId = new Map(
+    indexed
+      .filter((item) => item.collection === PRIMARY_COLLECTION)
+      .map((item) => [item.entry.id, item]),
+  );
+  return paths
+    .filter(({ props }) => byId.has(props.reference.id))
+    .map(({ params, props }) => ({
+      // The endpoint already normalizes the root index (`id === "index"`)
+      // to `slug: undefined`, so `/index.md` keeps working without the
+      // route synthesizing paths itself.
+      params,
+      props: { item: byId.get(props.reference.id), reference: props.reference } as SlugProps,
     }));
 }
 
 export async function GET({ props }: { props: SlugProps }) {
-  const { item } = props;
+  const { item, reference } = props;
+  const payload = await getMarkdownPayload({
+    collection: reference.collection,
+    surface: "markdown",
+    reference,
+  });
+  if (!payload) {
+    return new Response("Not found", { status: 404 });
+  }
   const { entry, title, description, markdownUrl, sourceUrl, version } = item;
   const data = (entry.data ?? {}) as Record<string, unknown>;
   const rawImage = data.socialImage;
@@ -47,7 +66,7 @@ export async function GET({ props }: { props: SlugProps }) {
       ? rawImage
       : config.socialImage;
 
-  const markdown = normalizeMarkdownLinks(renderEntryAsMarkdown(entry));
+  const markdown = normalizeMarkdownLinks(payload.content);
 
   const body = [
     "---",
@@ -68,8 +87,10 @@ export async function GET({ props }: { props: SlugProps }) {
     markdown,
     "",
     // Point at the authored source (`.mdx` twin) when it exists — the
-    // `.md` alternate referencing itself was a placeholder.
-    `Source: ${new URL(sourceUrl ?? markdownUrl, config.site).href}`,
+    // `.md` alternate referencing itself was a placeholder. `item.url`
+    // is an unreachable fallback: every entry this route serves has a
+    // `.md` URL by construction, and file-backed entries have a source.
+    `Source: ${new URL(sourceUrl ?? markdownUrl ?? item.url, config.site).href}`,
     "",
   ].join("\n");
 

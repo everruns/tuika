@@ -5,5 +5,11 @@
     "nimbus/internal-link": "error"
   },
   "collections": {},
-  "site": "https://tuika.dev"
+  "site": "https://tuika.dev",
+  "markdownFeatures": {
+    "gfm": true,
+    "smartPunctuation": true
+  },
+  "base": "",
+  "configHash": "c807850d7224badb439655a06ee3967f5a4237602839cfae43b68efc32a24db1"
 }

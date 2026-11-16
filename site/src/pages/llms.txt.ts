@@ -24,9 +24,11 @@ export async function GET() {
 
   for (const leaf of leaves) {
     const description = leaf.description ? ` — ${leaf.description}` : "";
+    // Every leaf has a `.md` alternate by construction; `leaf.url` is an
+    // unreachable fallback for the type-checker.
     rows.push({
       key: leaf.url,
-      line: `- [${leaf.title}](${new URL(leaf.markdownUrl, config.site).href})${description}`,
+      line: `- [${leaf.title}](${new URL(leaf.markdownUrl ?? leaf.url, config.site).href})${description}`,
     });
   }
 

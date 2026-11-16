@@ -13,6 +13,11 @@
  */
 
 import { getIndexedEntries, type IndexedEntry } from "@cloudflare/nimbus-docs";
+import {
+  getMarkdownPayload,
+  getMarkdownStaticPaths,
+  type MarkdownEndpointReference,
+} from "@cloudflare/nimbus-docs/agent-endpoints";
 import { config } from "virtual:nimbus/config";
 
 export const prerender = true;
@@ -21,27 +26,42 @@ const PRIMARY_COLLECTION = "docs";
 
 interface SlugProps {
   item: IndexedEntry;
+  reference: MarkdownEndpointReference;
 }
 
 export async function getStaticPaths() {
-  const indexed = await getIndexedEntries();
-  return indexed
-    .filter(
-      (item) =>
-        item.collection === PRIMARY_COLLECTION && item.sourceUrl !== undefined,
-    )
-    .map((item) => ({
-      // Same root-index shape as the `.md` twin: `entry.id === "index"`
-      // emits at `/index.mdx`, everything else at `/<entry.id>/index.mdx`.
-      params: {
-        slug: item.entry.id === "index" ? undefined : item.entry.id,
-      },
-      props: { item } as SlugProps,
+  const [indexed, paths] = await Promise.all([
+    getIndexedEntries(),
+    getMarkdownStaticPaths({ collection: PRIMARY_COLLECTION, surface: "source" }),
+  ]);
+  const byId = new Map(
+    indexed
+      .filter(
+        (item) =>
+          item.collection === PRIMARY_COLLECTION && item.sourceUrl !== undefined,
+      )
+      .map((item) => [item.entry.id, item]),
+  );
+  return paths
+    .filter(({ props }) => byId.has(props.reference.id))
+    .map(({ params, props }) => ({
+      // Same root-index shape as the `.md` twin; the endpoint normalizes
+      // `id === "index"` to `slug: undefined` (`/index.mdx`).
+      params,
+      props: { item: byId.get(props.reference.id), reference: props.reference } as SlugProps,
     }));
 }
 
 export async function GET({ props }: { props: SlugProps }) {
-  const { item } = props;
+  const { item, reference } = props;
+  const payload = await getMarkdownPayload({
+    collection: reference.collection,
+    surface: "source",
+    reference,
+  });
+  if (!payload) {
+    return new Response("Not found", { status: 404 });
+  }
   const { entry, title, description, version } = item;
   const data = (entry.data ?? {}) as Record<string, unknown>;
   const rawImage = data.socialImage;
@@ -60,7 +80,7 @@ export async function GET({ props }: { props: SlugProps }) {
     ...(version ? [`version: ${JSON.stringify(version)}`] : []),
     "---",
     "",
-    entry.body ?? "",
+    payload.content,
   ].join("\n");
 
   return new Response(body, {
