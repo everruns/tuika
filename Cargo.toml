@@ -151,7 +151,7 @@ proptest = "1"
 # OSC / truecolor / Braille protocol is asserted at the cell level. Both are
 # test-only; neither reaches a downstream consumer.
 portable-pty = "0.9.0"
-vt100 = "0.16"
+vt100 = "0.18"
 # The `ratatui` umbrella is a dev-dependency only: benches build `Vec<Line>`
 # corpora and paint into a `Buffer` directly, and the doc examples demonstrate
 # wrapping real ratatui *widgets* through `RatatuiView`/`Surface::render_ratatui`.
