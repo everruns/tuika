@@ -11,6 +11,7 @@ import {
   getLastUpdated,
   getTOC,
 } from "@cloudflare/nimbus-docs";
+import type { SidebarTransform } from "@cloudflare/nimbus-docs/types";
 import { components } from "../components";
 import { PageActions } from "../components/ui/page-actions";
 
@@ -23,8 +24,17 @@ const currentSlug = Astro.url.pathname.replace(/\/$/, "") || "/";
 
 const { sidebar: sidebarOn, tableOfContents: tocOn } = await getRouteFlags(entry);
 
+// The release notes grow by one page per version and would soon outweigh the
+// guides in the rail, so their group starts collapsed. On a release page the
+// group still opens: SidebarGroup keeps any group with the current page open.
+const collapseReleases: SidebarTransform = ({ tree }) =>
+  tree.map((item) =>
+    item.type === "group" && item.indexHref === "/releases/"
+      ? { ...item, collapsed: true }
+      : item,
+  );
 const sidebar = sidebarOn
-  ? await getSidebar(currentSlug, { collection: entry.collection })
+  ? await getSidebar(currentSlug, { collection: entry.collection, transform: collapseReleases })
   : false;
 const prevNext = await getPrevNext(currentSlug, {
   sidebarTree: sidebar === false ? [] : sidebar,

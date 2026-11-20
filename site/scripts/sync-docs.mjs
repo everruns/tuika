@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -5,6 +7,7 @@ import { GUIDE_SLUGS } from "../src/lib/routes.js";
 import { parseChangelog, releaseHighlights, releaseSlug } from "../src/lib/changelog.js";
 
 const siteRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = resolve(siteRoot, "..");
 const sourceDir = resolve(siteRoot, "../docs");
 const changelogPath = resolve(siteRoot, "../CHANGELOG.md");
 const targetDir = resolve(siteRoot, "src/content/docs");
@@ -86,6 +89,10 @@ function escapeDiagrams(markdown) {
 }
 
 function forSite(markdown) {
+  return sizeImages(rewriteLinks(markdown));
+}
+
+function rewriteLinks(markdown) {
   return escapeDiagrams(markdown)
     // Shiki accepts the language name, while rustdoc's comma-separated fence
     // attributes are meaningful only to rustdoc.
@@ -130,6 +137,125 @@ function forSite(markdown) {
       /\]\((?:\.\.\/){1,2}README\.md([^)]+)?\)/g,
       "](https://github.com/everruns/tuika/blob/main/README.md$1)",
     );
+}
+
+// Image dimensions. The guides embed their recordings as `<img width="880">`
+// or `![alt](src)` with no height, so the browser only learns how tall a
+// recording is once it has downloaded it, and everything below jumps down as
+// each one arrives — on every page load, which on this site is every sidebar
+// click. Stamping the intrinsic aspect ratio as `width`/`height` lets it
+// reserve the box up front (Tailwind's preflight keeps `height: auto`, so
+// the box still scales with the column). Only files that are in this
+// repository are measured; anything else is left as written.
+const RAW_PREFIX = "https://raw.githubusercontent.com/everruns/tuika/";
+const imageSizes = new Map();
+
+// The bytes of an image this repository holds: `/docs-assets/` is `docs/`,
+// a `main` raw URL is the working tree, and a tag-pinned raw URL (release
+// notes) is read from that tag when the checkout has it.
+function localImage(src) {
+  const clean = decodeURIComponent(src.split(/[?#]/)[0]);
+  if (clean.startsWith("/docs-assets/")) {
+    return readInside(resolve(repoRoot, "docs"), clean.slice("/docs-assets/".length));
+  }
+  if (!clean.startsWith(RAW_PREFIX)) return null;
+  const [ref, ...rest] = clean.slice(RAW_PREFIX.length).split("/");
+  const path = rest.join("/");
+  if (ref === "main") return readInside(repoRoot, path);
+  if (!/^v[\w.-]+$/.test(ref) || path.split("/").includes("..")) return null;
+  return execFileSync("git", ["show", `${ref}:${path}`], {
+    cwd: repoRoot,
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+}
+
+function readInside(dir, relative) {
+  const path = resolve(dir, relative);
+  return path.startsWith(`${dir}/`) ? readFileSync(path) : null;
+}
+
+function svgLength(value) {
+  const match = /^\s*([\d.]+)(px)?\s*$/.exec(value ?? "");
+  return match ? Number(match[1]) : null;
+}
+
+function imageSize(bytes) {
+  // PNG: width and height are the first two fields of the IHDR chunk.
+  if (bytes.length >= 24 && bytes.toString("latin1", 1, 4) === "PNG") {
+    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  }
+  // GIF: the logical screen descriptor follows the 6-byte signature.
+  if (bytes.length >= 10 && bytes.toString("latin1", 0, 3) === "GIF") {
+    return { width: bytes.readUInt16LE(6), height: bytes.readUInt16LE(8) };
+  }
+  const head = bytes.toString("utf8", 0, Math.min(bytes.length, 4096));
+  const svg = /<svg\b[^>]*>/.exec(head)?.[0];
+  if (svg) {
+    const attr = (name) => new RegExp(`\\s${name}="([^"]*)"`).exec(svg)?.[1];
+    const width = svgLength(attr("width"));
+    const height = svgLength(attr("height"));
+    if (width && height) return { width, height };
+    const box = attr("viewBox")?.trim().split(/[\s,]+/).map(Number);
+    if (box?.length === 4 && box[2] > 0 && box[3] > 0) return { width: box[2], height: box[3] };
+  }
+  return null;
+}
+
+function sizeOf(src) {
+  if (!imageSizes.has(src)) {
+    let size = null;
+    try {
+      const bytes = localImage(src);
+      size = bytes && imageSize(bytes);
+    } catch {
+      // A missing asset (or a tag this checkout lacks) keeps the image as
+      // written: reserving space is an improvement, not a requirement.
+    }
+    imageSizes.set(src, size);
+  }
+  return imageSizes.get(src);
+}
+
+function escapeAttr(text) {
+  return escapeHtml(text).replaceAll('"', "&quot;");
+}
+
+function sizeHtmlImage(tag) {
+  if (/\sheight=/.test(tag)) return tag;
+  const src = /\ssrc="([^"]+)"/.exec(tag)?.[1];
+  const size = src && sizeOf(src);
+  if (!size) return tag;
+  const declared = Number(/\swidth="(\d+)"/.exec(tag)?.[1]);
+  const width = declared || size.width;
+  const height = Math.round((width * size.height) / size.width);
+  const attrs = declared ? ` height="${height}"` : ` width="${width}" height="${height}"`;
+  return tag.replace(/\s*\/?>$/, (end) => `${attrs}${end}`);
+}
+
+function sizeImages(markdown) {
+  let inFence = false;
+  return markdown
+    .split("\n")
+    .map((line) => {
+      if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
+      if (inFence) return line;
+      // Inline code spans are left alone; only the text between them is sized.
+      return line
+        .split(/(`+[^`]*`+)/)
+        .map((part, index) => {
+          if (index % 2 === 1) return part;
+          return part
+            .replace(/<img\b[^>]*>/g, sizeHtmlImage)
+            .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (match, alt, src) => {
+              const size = sizeOf(src);
+              if (!size) return match;
+              return `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" width="${size.width}" height="${size.height}">`;
+            });
+        })
+        .join("");
+    })
+    .join("\n");
 }
 
 await rm(targetDir, { recursive: true, force: true });
