@@ -10,6 +10,11 @@ import { SearchDialog } from "@/components/ui/search";
 import NimbusHead from "@cloudflare/nimbus-docs/components/NimbusHead.astro";
 import type { BasePageProps } from "@cloudflare/nimbus-docs/types";
 import faviconUrl from "../../../logo.svg?url";
+// The same files the @fontsource imports above reference, so Vite emits one
+// hashed asset for both and the preload below is the request the stylesheet
+// later reuses.
+import interLatinUrl from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
+import monoLatinUrl from "@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2?url";
 
 type Props = BasePageProps;
 
@@ -47,6 +52,17 @@ const llmsUrl = Astro.site
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      Every sidebar click is a full page load. Without these, the fonts are
+      only requested once the stylesheet has been parsed and text has been
+      laid out, so `font-display: swap` paints the fallback face first and
+      every paragraph re-wraps when Inter arrives: the page visibly jumps on
+      each navigation. Preloading the Latin subsets (the faces nearly every
+      page uses) starts them with the document, from cache after the first
+      visit, so they are ready before the first paint.
+    -->
+    <link rel="preload" href={interLatinUrl} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={monoLatinUrl} as="font" type="font/woff2" crossorigin />
 
     <script is:inline>
       (() => {
