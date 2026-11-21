@@ -7,6 +7,12 @@
     cells are read back as text, and container nodes group what they hold.
     This is the base of the accessibility mode. See
     [Accessibility](specs/accessibility.md).
+- **Probe Kitty keyboard support**
+  - The startup probe also asks `CSI ? u`; its answer, not the environment,
+    decides `Capabilities::kitty_keyboard`. The fence is now DA1's CSI final
+    byte specifically, since the keyboard answer is a CSI frame too. See
+    [Out-of-band escapes](specs/out-of-band.md).
+
 - **Chart annotations join the portable grammar**
   - Bands, value/position reference lines, dashed strokes, grid lines, axis
     titles, and per-series legend visibility are now part of `tuika-charts`'

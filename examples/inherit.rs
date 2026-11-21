@@ -17,6 +17,10 @@
 //! this example enters raw mode itself, probes, leaves raw mode, and only then
 //! starts the runner.
 //!
+//! The same round-trip also asks whether the terminal speaks the Kitty keyboard
+//! protocol (`Capabilities::kitty_keyboard`), so the app knows whether chords
+//! such as Shift+Enter can reach it.
+//!
 //! `--probe` does just the query and prints what came back, without taking over
 //! the screen — the fastest way to see what your terminal actually answers:
 //!
@@ -69,14 +73,14 @@ impl Source {
 ///
 /// The raw-mode enable and disable are paired here rather than left to the
 /// runner: a probe that returns early must not strand the terminal.
-fn probe() -> io::Result<(Theme, Source)> {
+fn probe() -> io::Result<(Theme, Source, Capabilities)> {
     crossterm::terminal::enable_raw_mode()?;
-    let (_caps, palette) = Capabilities::query_with_palette(PROBE_TIMEOUT);
+    let (caps, palette) = Capabilities::query_with_palette(PROBE_TIMEOUT);
     crossterm::terminal::disable_raw_mode()?;
 
     Ok(match Theme::from_terminal(&palette) {
-        Some(theme) => (theme, Source::Probed),
-        None => (themes::TERMINAL, Source::AnsiSlots),
+        Some(theme) => (theme, Source::Probed, caps),
+        None => (themes::TERMINAL, Source::AnsiSlots, caps),
     })
 }
 
@@ -155,8 +159,8 @@ fn build(theme: &Theme, source: Source) -> tuika::Element {
 fn main() -> io::Result<()> {
     let cli = support::Cli::parse()?;
     let probe_only = cli.args.iter().any(|a| a == "--probe");
-    let (theme, source) = if cli.theme_name.is_some() {
-        (cli.theme, Source::Named)
+    let (theme, source, caps) = if cli.theme_name.is_some() {
+        (cli.theme, Source::Named, Capabilities::from_env())
     } else {
         probe()?
     };
@@ -164,6 +168,10 @@ fn main() -> io::Result<()> {
     if probe_only {
         // Plain text, no alternate screen: usable over a pipe and in a test.
         println!("source: {}", source.label());
+        println!(
+            "kitty keyboard: {}",
+            if caps.kitty_keyboard { "yes" } else { "no" }
+        );
         for (name, color) in slots(&theme) {
             println!("{name}: {}", describe(color));
         }

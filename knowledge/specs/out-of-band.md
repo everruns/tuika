@@ -30,7 +30,7 @@ Seven out-of-band capabilities, in three families:
 | Program status | OSC 7501 | `term::program_status` | host-initiated, any time |
 | Pointer shape | OSC 22 | `term::pointer` | host-initiated, any time |
 | Images | Kitty / iTerm2 / Sixel | `term::image` | after `terminal.draw()` returns |
-| Terminal queries | DA1, OSC 10 / 11 / 4 | `term::capabilities`, `term::palette` | host-initiated, once at startup, in raw mode |
+| Terminal queries | DA1, Kitty keyboard (`CSI ? u`), OSC 10 / 11 / 4 | `term::capabilities`, `term::palette` | host-initiated, once at startup, in raw mode |
 
 They live together under `term` because they are one kind of thing, and a reader
 who has understood one has understood the shape of all of them. Each exposes a
@@ -73,6 +73,14 @@ Device Attributes request, which every terminal answers, as a **fence**: its
 reply terminates the read, so an unsupported query costs one round-trip instead
 of one timeout. This is also why the capability probe and the palette probe are
 one request — the fence they need is the same byte sequence.
+
+The fence is DA1's *final byte*, not any `c` in the stream: palette answers are
+OSC strings full of hex `c`s, and the Kitty keyboard answer (`CSI ? flags u`) is
+itself a CSI frame. The reader therefore tracks CSI frames and stops only on one
+that closes with `c`, and the parsers look for their own frame anywhere in the
+reply rather than assuming theirs comes first. Kitty keyboard support has no
+reliable environment signal under multiplexers, so this probe is the
+authoritative answer to "is Shift+Enter real here?".
 
 The second is that a reply read late is a reply delivered to the application as
 input. A probe must therefore run once, at startup, after raw mode is entered and

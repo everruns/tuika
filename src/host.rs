@@ -316,6 +316,13 @@ impl KeyboardEnhancement {
     }
 
     fn for_terminal(iterm2: bool, in_tmux: bool, tmux_format: Option<&str>) -> Self {
+        // Associated text (flag 16) is deliberately not requested. It only
+        // applies together with "report all keys as escape codes" (flag 8),
+        // which moves ordinary typing into CSI u — and crossterm's decoder
+        // drops the text field, keeping only the key's codepoint. Text from a
+        // dead key or an IME would then arrive as the bare key. Ask for it once
+        // tuika decodes CSI u itself; until then a host can still learn whether
+        // the protocol is there from `Capabilities::query`.
         let mut flags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
             | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS;
         if !iterm2 && tmux_format != Some("xterm") {
