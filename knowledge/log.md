@@ -14,6 +14,12 @@
     invalidates it from the terminal's screen epoch. Replaces the
     "re-transmit every frame" design. See [Image rendering](specs/images.md).
 
+- **Shortcuts on non-Latin layouts**
+  - Unmatched Ctrl/Alt chords retry as the QWERTY key in the same position;
+    plain characters stay text and explicit bindings win. A built-in table
+    stands in for Kitty's base-layout key, which crossterm drops. See
+    [Keymap](specs/keymap.md).
+
 - **Chart annotations join the portable grammar**
   - Bands, value/position reference lines, dashed strokes, grid lines, axis
     titles, and per-series legend visibility are now part of `tuika-charts`'

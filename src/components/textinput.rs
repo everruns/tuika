@@ -620,7 +620,7 @@ impl TextInputState {
 
     fn handle_event(&mut self, event: &Event) -> Option<TextInputEvent> {
         match event {
-            Event::Key(k) if k.ctrl && !k.alt => match k.code {
+            Event::Key(k) if k.ctrl && !k.alt => match k.shortcut().code {
                 KeyCode::Char('a') => {
                     self.move_home();
                     Some(TextInputEvent::Changed)
@@ -673,7 +673,7 @@ impl TextInputState {
                 }
                 _ => None,
             },
-            Event::Key(k) if k.alt && !k.ctrl => match k.code {
+            Event::Key(k) if k.alt && !k.ctrl => match k.shortcut().code {
                 KeyCode::Char('f') => {
                     self.move_word_right();
                     Some(TextInputEvent::Changed)
@@ -1397,6 +1397,25 @@ mod tests {
         for ch in s.chars() {
             assert!(press(state, KeyCode::Char(ch)));
         }
+    }
+
+    #[test]
+    fn editing_shortcuts_work_on_a_cyrillic_layout() {
+        let mut state = TextInputState::from_text("one two");
+        // Ctrl+ф is Ctrl+A's key: line start.
+        assert!(press_ctrl(&mut state, KeyCode::Char('ф')));
+        assert_eq!(state.cursor(), (0, 0));
+        // Ctrl+у is Ctrl+E: line end. Alt+и is Alt+B: word left.
+        assert!(press_ctrl(&mut state, KeyCode::Char('у')));
+        assert_eq!(state.cursor(), (0, 7));
+        assert!(press_alt(&mut state, KeyCode::Char('и')));
+        assert_eq!(state.cursor(), (0, 4));
+        // Ctrl+ц is Ctrl+W: delete the word before the cursor.
+        assert!(press_ctrl(&mut state, KeyCode::Char('ц')));
+        assert_eq!(state.text(), "two");
+        // Plain Cyrillic is still text.
+        type_str(&mut state, "ф");
+        assert_eq!(state.text(), "фtwo");
     }
 
     #[test]
