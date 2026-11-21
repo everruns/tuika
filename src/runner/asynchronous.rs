@@ -215,6 +215,7 @@ pub struct AsyncRunner {
     session_config: Option<crate::TerminalSessionConfig>,
     text_selection: bool,
     hooks: super::hooks::FrameHooks,
+    color_depth: Option<crate::term::capabilities::ColorDepth>,
 }
 
 impl AsyncRunner {
@@ -237,6 +238,7 @@ impl AsyncRunner {
             session_config: None,
             text_selection: true,
             hooks: super::hooks::FrameHooks::default(),
+            color_depth: None,
         }
     }
 
@@ -288,6 +290,29 @@ impl AsyncRunner {
     pub fn with_text_selection(mut self, enabled: bool) -> Self {
         self.text_selection = enabled;
         self
+    }
+
+    /// Set how many colors the terminal can show, overriding the
+    /// environment-based guess.
+    ///
+    /// By default the run methods that own stdout detect it with
+    /// [`ColorDepth::from_env`](crate::term::capabilities::ColorDepth::from_env)
+    /// and map every truecolor cell to the nearest color the terminal has, so a
+    /// hex theme degrades to its closest 256- or 16-color rendering instead of
+    /// garbling. Pass [`ColorDepth::TrueColor`](crate::term::capabilities::ColorDepth::TrueColor)
+    /// to emit 24-bit color regardless. A caller-supplied backend
+    /// (`*_with_backend`, `run_driven_by`) is the caller's to configure, with
+    /// [`CrosstermBackend::with_color_depth`](crate::term::backend::CrosstermBackend::with_color_depth).
+    pub fn with_color_depth(mut self, depth: crate::term::capabilities::ColorDepth) -> Self {
+        self.color_depth = Some(depth);
+        self
+    }
+
+    fn stdout_backend(&self) -> CrosstermBackend<io::Stdout> {
+        let depth = self
+            .color_depth
+            .unwrap_or_else(crate::term::capabilities::ColorDepth::from_env);
+        CrosstermBackend::new(io::stdout()).with_color_depth(depth)
     }
 
     fn selects_text(&self) -> bool {
@@ -414,7 +439,7 @@ impl AsyncRunner {
             TerminalSession::enter_with(mode)?
         };
         let mut terminal = Terminal::with_options(
-            CrosstermBackend::new(io::stdout()),
+            self.stdout_backend(),
             TerminalOptions {
                 viewport: mode.viewport(),
             },
@@ -900,6 +925,26 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol())
             .collect()
+    }
+
+    #[test]
+    fn color_depth_override_reaches_the_stdout_backend() {
+        use crate::term::capabilities::ColorDepth;
+        for depth in [
+            ColorDepth::Ansi16,
+            ColorDepth::Ansi256,
+            ColorDepth::TrueColor,
+        ] {
+            let runner = AsyncRunner::new(RunnerConfig::default()).with_color_depth(depth);
+            assert_eq!(runner.stdout_backend().color_depth(), depth);
+        }
+        // Without an override the environment decides.
+        assert_eq!(
+            AsyncRunner::new(RunnerConfig::default())
+                .stdout_backend()
+                .color_depth(),
+            ColorDepth::from_env()
+        );
     }
 
     #[test]

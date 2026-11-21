@@ -584,6 +584,14 @@ impl<W: Write> HyperlinkBackend<W> {
         }
     }
 
+    /// Map every emitted color to the nearest one a terminal of `depth` can
+    /// show; see [`CrosstermBackend::with_color_depth`].
+    #[must_use = "returns the configured backend"]
+    pub fn with_color_depth(mut self, depth: crate::term::capabilities::ColorDepth) -> Self {
+        self.inner = self.inner.with_color_depth(depth);
+        self
+    }
+
     /// Emit one maximal contiguous run of cells, wrapping any URL sub-runs in
     /// OSC 8. Reuses the inner backend's `draw` for all SGR/cursor logic so
     /// styling is never written twice.

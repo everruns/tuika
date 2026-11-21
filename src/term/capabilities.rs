@@ -348,6 +348,74 @@ impl Capabilities {
     }
 }
 
+/// How many colors the terminal can show, which decides what the backends do
+/// with a [`Color::Rgb`](crate::style::Color::Rgb) before they emit it.
+///
+/// Ordered from fewest to most colors, so `depth >= ColorDepth::Ansi256` reads
+/// as "at least 256 colors". A theme written in hex is still correct on every
+/// terminal: below [`TrueColor`](Self::TrueColor) each cell's colors are
+/// mapped to the nearest one the terminal has (see
+/// [`Color::downsample`](crate::style::Color::downsample)) rather than sent as
+/// a 24-bit escape the terminal would misread.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ColorDepth {
+    /// The sixteen ANSI colors only: the Linux console, `vt100`-family and
+    /// `ansi` terminals.
+    Ansi16,
+    /// The xterm 256-color palette.
+    Ansi256,
+    /// 24-bit color. Nothing is converted. The default, so a backend built
+    /// without a depth emits exactly what the buffer holds.
+    #[default]
+    TrueColor,
+}
+
+impl ColorDepth {
+    /// Detect from the process environment only — instant, no terminal I/O.
+    ///
+    /// See [`detect`](Self::detect) for the rule; this feeds it `TERM`,
+    /// `TERM_PROGRAM`, and [`Capabilities::from_env`]'s `truecolor`. A host
+    /// that knows better overrides it, for instance with
+    /// [`Runner::with_color_depth`](crate::Runner::with_color_depth).
+    pub fn from_env() -> Self {
+        let env = |k: &str| std::env::var(k).ok();
+        Self::detect(
+            env("TERM").as_deref(),
+            env("TERM_PROGRAM").as_deref(),
+            Capabilities::from_env().truecolor,
+        )
+    }
+
+    /// The pure core of [`from_env`](Self::from_env): `term` is `TERM`,
+    /// `term_program` is `TERM_PROGRAM`, and `truecolor` is
+    /// [`Capabilities::truecolor`].
+    ///
+    /// Reduces only on positive evidence. A terminal *known* to be limited
+    /// reads as [`Ansi16`](Self::Ansi16) (`linux`, `vt…`, `ansi`, `cons25`,
+    /// `dumb`, `…-16color`) or [`Ansi256`](Self::Ansi256) (Apple Terminal);
+    /// anything else — including an `xterm-256color` without `COLORTERM`, which
+    /// is what most true-color terminals look like over SSH — stays
+    /// [`TrueColor`](Self::TrueColor). 24-bit color is near-universal, and
+    /// flattening a theme on a terminal that could have shown it is the worse
+    /// miss; a host that knows its terminal is limited says so explicitly.
+    pub fn detect(term: Option<&str>, term_program: Option<&str>, truecolor: bool) -> Self {
+        if truecolor {
+            return Self::TrueColor;
+        }
+        let term = term.unwrap_or_default().to_ascii_lowercase();
+        let limited = matches!(term.as_str(), "linux" | "ansi" | "cons25" | "dumb")
+            || term.starts_with("vt")
+            || term.ends_with("-16color");
+        if limited {
+            return Self::Ansi16;
+        }
+        if term_program.is_some_and(|p| p.eq_ignore_ascii_case("apple_terminal")) {
+            return Self::Ansi256;
+        }
+        Self::TrueColor
+    }
+}
+
 /// A parsed Primary Device Attributes (DA1) reply — the terminal's feature codes.
 ///
 /// The reply is `ESC [ ? <n> (; <n>)* c`; the numbers are VT feature codes, of
@@ -671,5 +739,56 @@ mod tests {
             assert!(!caps.with_multiplexer(true).kitty_keyboard);
             assert!(caps.with_multiplexer(false).kitty_keyboard);
         }
+    }
+
+    #[test]
+    fn color_depth_reduces_only_on_positive_evidence() {
+        // True color wins whatever TERM claims.
+        assert_eq!(
+            ColorDepth::detect(Some("linux"), None, true),
+            ColorDepth::TrueColor
+        );
+        for limited in [
+            "linux",
+            "vt100",
+            "vt220",
+            "ansi",
+            "cons25",
+            "dumb",
+            "xterm-16color",
+        ] {
+            assert_eq!(
+                ColorDepth::detect(Some(limited), None, false),
+                ColorDepth::Ansi16,
+                "{limited}"
+            );
+        }
+        assert_eq!(
+            ColorDepth::detect(Some("xterm-256color"), Some("Apple_Terminal"), false),
+            ColorDepth::Ansi256
+        );
+        // No evidence of a limit — an SSH session without COLORTERM, a bare or
+        // unknown TERM — keeps full color.
+        for plain in [
+            None,
+            Some(""),
+            Some("xterm"),
+            Some("xterm-256color"),
+            Some("screen"),
+            Some("tmux-256color"),
+        ] {
+            assert_eq!(
+                ColorDepth::detect(plain, None, false),
+                ColorDepth::TrueColor,
+                "{plain:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn color_depth_is_ordered_by_color_count_and_defaults_to_truecolor() {
+        assert!(ColorDepth::Ansi16 < ColorDepth::Ansi256);
+        assert!(ColorDepth::Ansi256 < ColorDepth::TrueColor);
+        assert_eq!(ColorDepth::default(), ColorDepth::TrueColor);
     }
 }
