@@ -13,6 +13,12 @@
     cells are read back as text, and container nodes group what they hold.
     This is the base of the accessibility mode. See
     [Accessibility](specs/accessibility.md).
+- **Follow the OS dark/light setting**
+  - The runners can switch between a light and a dark theme on the terminal's
+    mode 2031 reports. Because the reports arrive among keystrokes and
+    crossterm stalls on them, input goes through a tuika-owned decoder while
+    following. See [Out-of-band escapes](specs/out-of-band.md) and
+    [Theming and styling](specs/styling.md).
 - **Probe Kitty keyboard support**
   - The startup probe also asks `CSI ? u`; its answer, not the environment,
     decides `Capabilities::kitty_keyboard`. The fence is now DA1's CSI final

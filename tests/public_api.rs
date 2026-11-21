@@ -391,6 +391,12 @@ fn term_groups_the_out_of_band_escapes() {
     assert!(clipboard::write(&mut sink, "hi").expect("write"));
     assert!(pointer::write(&mut sink, pointer::PointerShape::Default).is_ok());
 
+    assert_eq!(
+        tuika::term::color_scheme::ColorScheme::parse_report(b"\x1b[?997;1n"),
+        Some(tuika::term::color_scheme::ColorScheme::Dark)
+    );
+    assert_eq!(tuika::term::color_scheme::SUBSCRIBE, "\x1b[?2031h");
+
     // The image protocol half is here; the view half is a component.
     assert!(image::ImageData::from_rgba(1, 1, vec![0, 0, 0, 255]).is_some());
     let _ = image::ImageLayer::new();

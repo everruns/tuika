@@ -24,6 +24,7 @@
 //! | [`text_size`] | OSC 66 | draws text two to seven cells tall |
 //! | [`capabilities`] | DA1 | answers what it supports |
 //! | [`palette`] | OSC 10 / 11 / 4 | reports the colors it was configured with |
+//! | [`color_scheme`] | mode 2031 | reports dark/light changes as they happen |
 //!
 //! Terminals silently swallow an OSC they do not understand, so emitting one is
 //! safe everywhere — except [`text_size`], whose escape carries the text itself,
@@ -38,8 +39,10 @@
 pub mod backend;
 pub mod capabilities;
 pub mod clipboard;
+pub mod color_scheme;
 pub mod hyperlink;
 pub mod image;
+pub(crate) mod input;
 pub mod palette;
 pub mod pointer;
 pub mod program_status;

@@ -844,6 +844,38 @@ proptest! {
         let _ = DeviceAttributes::parse(&bytes);
     }
 
+    /// Terminal input is untrusted: the decoder `Runner::follow_color_scheme`
+    /// uses sees whatever arrives on the tty. It must never panic, never hold
+    /// more than one sequence's worth of bytes outside a paste, and decode the
+    /// same events however the stream is split across reads.
+    #[test]
+    fn input_decoder_survives_any_bytes_and_any_split(
+        bytes in proptest::collection::vec(
+            prop_oneof![
+                any::<u8>(),
+                proptest::sample::select(&b"\x1b[?;0123456789<~uMmnABCDHFZO\r\t\x7f"[..]),
+            ],
+            0..96,
+        ),
+        split in any::<prop::sample::Index>(),
+    ) {
+        use crate::term::input::Decoder;
+
+        let mut whole = Decoder::default();
+        let mut expected = Vec::new();
+        whole.feed(&bytes, &mut expected);
+
+        let at = split.index(bytes.len() + 1);
+        let mut parts = Decoder::default();
+        let mut got = Vec::new();
+        parts.feed(&bytes[..at], &mut got);
+        parts.feed(&bytes[at..], &mut got);
+        prop_assert_eq!(&got, &expected);
+
+        whole.flush(&mut expected);
+        prop_assert!(!whole.is_pending() || bytes.windows(6).any(|w| w == b"\x1b[200~"));
+    }
+
     /// The same, on the byte shapes a real reply *nearly* has: a well-formed
     /// OSC frame with fuzzed digits, lengths, and terminators.
     #[test]

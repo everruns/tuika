@@ -2351,6 +2351,7 @@ dependencies = [
  "crossterm",
  "futures-core",
  "iai-callgrind",
+ "libc",
  "portable-pty",
  "proptest",
  "pulldown-cmark",
