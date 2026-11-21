@@ -2,6 +2,12 @@
 
 ## 2026-11-21
 
+- **Kitty images can be cells (Unicode placeholders)**
+  - On Kitty and Ghostty the `Image` view paints placeholder cells naming its
+    image id, so pictures scroll, clip, and sit under overlays like text, and
+    tmux works through passthrough. Ids are assigned at record time and
+    survive `invalidate`. See [Image rendering](specs/images.md).
+
 - **Probe Kitty keyboard support**
   - The startup probe also asks `CSI ? u`; its answer, not the environment,
     decides `Capabilities::kitty_keyboard`. The fence is now DA1's CSI final

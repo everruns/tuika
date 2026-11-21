@@ -152,10 +152,39 @@ ordinary redraw never shows a blank interval.
 The cache is only as good as the screen it describes. Anything that may have
 erased or moved images behind the layer — a resize, a clear, a scrollback
 publish in split-footer mode — has to call `ImageLayer::invalidate`, after which
-the next emit deletes everything it owned and starts again under fresh ids.
+the next emit deletes everything it owned and sends it all again under the same ids.
 `Runner` does this from the terminal's screen epoch, a counter its `Terminal`
 bumps on every clear, scroll, insert and invalidate; a custom host calls
 `invalidate` itself.
+
+### Unicode placeholders (Kitty)
+
+Direct placement leaves the picture outside the cell grid: it is placed at a
+screen position after the frame, so it cannot scroll with text, is drawn over
+whatever is painted on top of it, and — inside a `Viewport`, which renders its
+child into a scratch buffer — lands at the scratch position, not the screen one.
+Kitty 0.28+ and Ghostty can instead draw an image *into cells*: a virtual
+placement (`a=p,U=1,c,r`) declares the image's cell grid, and any cell holding
+`U+10EEEE` plus two diacritics from the protocol's row/column table, in a
+foreground color spelling the image id, shows that cell's piece of the picture.
+
+With `KittyPlacement::Placeholders` the `Image` view paints those cells itself,
+so the picture is ordinary text to everything else in tuika: a viewport copies
+the visible rows, a clip drops the rest, an overlay covers it, the diff writes it.
+That requires the id at paint time, so the layer assigns ids in `record` (the
+same image cache as direct placement), and `invalidate` re-sends under the
+*same* ids, since this frame's cells already name them. Cells carry only an
+image id, so one image at two sizes is two ids. Ids are kept to 24 bits so the
+color alone carries them. The picture is fit to its cells preserving aspect
+ratio, as the protocol specifies; past 297 rows or columns there are no
+diacritics, and those cells stay blank.
+
+Inside tmux, `TmuxPlaceholders` wraps every graphics command in tmux's DCS
+passthrough; placeholder cells pass through tmux as text. That needs
+`allow-passthrough` and a client with `RGB`, so `KittyPlacement::detect` asks
+tmux for both (running `tmux`, the only process tuika starts) and otherwise
+keeps direct placement. WezTerm speaks the Kitty protocol without placeholders
+and keeps direct placement too.
 
 iTerm2 and Sixel images live in the cells they cover, and a cell redraw erases
 that part of them, so they are still written in full every frame.

@@ -105,15 +105,25 @@ next release.
 - `ImageLayer::invalidate`, for a custom host to call after anything that may
   have erased or moved images on screen (a resize, a clear, scrolled output).
   `Runner` and `AsyncRunner` call it themselves.
+- Kitty images through Unicode placeholders: `KittyPlacement` (`Direct`,
+  `Placeholders`, `TmuxPlaceholders`) with `KittyPlacement::detect`, and
+  `ImageLayer::set_kitty_placement` / `kitty_placement`. Placeholder images are
+  cells, so they scroll in a `Viewport`, crop to their visible part, sit under
+  overlays, and work inside tmux with `allow-passthrough on`. `Runner` and
+  `AsyncRunner` pick them on Kitty and Ghostty.
 
 ### Changed
 
+- On Kitty and Ghostty, `Runner` now shows images through Unicode placeholders.
+  The picture is fit into its cells preserving aspect ratio, where direct
+  placement stretched it to fill them, so an image whose aspect differs from its
+  cell box is letterboxed rather than distorted. Set
+  `KittyPlacement::Direct` on the layer for the previous behaviour.
 - Kitty graphics send each image once and then only place, move, or delete it
   by id. A frame whose images did not change or move writes no graphics bytes,
   where every redraw used to re-upload every pixel. Equal pixels in a rebuilt
   `ImageData` (a chart redrawn each frame) count as the same image. iTerm2 and
   Sixel images are still repainted every frame.
-
 - Paste insertion splices lines in bulk instead of rebuilding per character.
   CodeBlock measurement no longer invokes syntax highlighting. Added paste and
   warm syntax-cache benchmarks.

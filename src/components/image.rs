@@ -12,7 +12,7 @@ use crate::style::{Modifier, Style};
 
 use crate::geometry::Size;
 use crate::surface::Surface;
-use crate::term::image::{ImageData, ImageLayer, ImageSupport};
+use crate::term::image::{ImageData, ImageLayer, ImageSupport, paint_placeholders};
 use crate::view::{RenderCtx, View};
 
 /// A view that displays a decoded image over the cells it reserves.
@@ -98,7 +98,12 @@ impl View for Image {
             // ratatui diff over the region is stable.
             surface.fill(Style::default().bg(ctx.theme.background));
             if let Some(layer) = layer {
-                layer.record(area, self.data.clone(), support);
+                // Under Kitty placeholders the picture *is* these cells, so it
+                // scrolls and clips with them; otherwise it is placed over them
+                // after the frame.
+                if let Some(id) = layer.record(area, self.data.clone(), support) {
+                    paint_placeholders(surface, area, id, ctx.theme.background);
+                }
             }
         } else {
             self.render_fallback(area, surface, ctx);

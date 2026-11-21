@@ -176,7 +176,7 @@ impl<'a> Surface<'a> {
 
     /// Set a cell to a whole grapheme cluster (may be several scalars, e.g. an
     /// emoji ZWJ sequence) and style, if it is inside the clip.
-    fn set_cluster(&mut self, x: u16, y: u16, cluster: &str, style: Style) {
+    pub(crate) fn set_cluster(&mut self, x: u16, y: u16, cluster: &str, style: Style) {
         if self.contains(x, y) {
             let cell = &mut self.buffer[(x, y)];
             cell.set_symbol(cluster);

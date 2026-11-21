@@ -549,6 +549,24 @@ resamples the pixels to an assumed cell geometry first):
 ESC P q "1;1;<px_w>;<px_h> <color registers> <band data> ESC \
 ```
 
+On Kitty and Ghostty the `Runner` shows Kitty images through **Unicode
+placeholders** instead (`KittyPlacement::Placeholders`, chosen by
+`KittyPlacement::detect`): the image's cells hold `U+10EEEE` with row and column
+diacritics, colored with the image id, and the terminal draws the matching piece
+of the picture in each one. The picture is then part of the cell grid: it scrolls
+inside a `Viewport`, crops to the part that is visible, and is covered by
+anything painted on top of it. It is fit into its cells preserving aspect ratio.
+Inside tmux (3.3+, with `set -g allow-passthrough on` and 24-bit color passed to
+the client) the graphics commands go through tmux's passthrough and the cells
+travel as ordinary text (`KittyPlacement::TmuxPlaceholders`). WezTerm and other
+terminals keep direct placement. A custom host chooses with
+`ImageLayer::set_kitty_placement`.
+
+```text
+ESC _ G a=p,U=1,i=<id>,c=<cols>,r=<rows>,q=2 ST
+U+10EEEE <row diacritic> <column diacritic>      (one per cell, fg = id as RGB)
+```
+
 **Supported terminals:** Kitty, Ghostty, WezTerm, Konsole (Kitty protocol);
 iTerm2 (its own protocol); foot, xterm +sixel, mlterm, contour (Sixel). Others
 show the alt-text fallback. Sixel has no reliable environment signal, so a host
