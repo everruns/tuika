@@ -80,8 +80,17 @@ next release.
 - `view!` supports `styled(style) { node }` for direct row/column children,
   exposing the complete `FlexItemStyle`: basis, grow/shrink, min/max, and
   per-item alignment.
+- `ImageLayer::invalidate`, for a custom host to call after anything that may
+  have erased or moved images on screen (a resize, a clear, scrolled output).
+  `Runner` and `AsyncRunner` call it themselves.
 
 ### Changed
+
+- Kitty graphics send each image once and then only place, move, or delete it
+  by id. A frame whose images did not change or move writes no graphics bytes,
+  where every redraw used to re-upload every pixel. Equal pixels in a rebuilt
+  `ImageData` (a chart redrawn each frame) count as the same image. iTerm2 and
+  Sixel images are still repainted every frame.
 
 - Paste insertion splices lines in bulk instead of rebuilding per character.
   CodeBlock measurement no longer invokes syntax highlighting. Added paste and
