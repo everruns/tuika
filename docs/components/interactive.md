@@ -125,7 +125,7 @@ other independent layers; `SceneOverlay::target` uses a `RectProbe` to follow a
 laid-out trigger for popovers, menus, and tooltips, with side selection,
 alignment, gap, edge-aware flipping, and screen clamping. `Dialog` builds a
 centered modal from ordinary Tuika elements, with optional action hints,
-min/max sizing, clear or dimmed backdrops, and top-layer focus ownership.
+min/max sizing, clear, dimmed, or tinted backdrops, and top-layer focus ownership.
 [Scene API](https://docs.rs/tuika/latest/tuika/scene/struct.Scene.html) ·
 [Dialog API](https://docs.rs/tuika/latest/tuika/components/struct.Dialog.html)
 
@@ -139,6 +139,29 @@ let scene = Scene::new(element(base)).dialog(
         .dim_backdrop(true)
         .focus_owner("confirm"),
 );
+```
+
+#### Translucent layers
+
+A backdrop can also *tint* the layers behind an overlay, blending a color over
+them at a chosen opacity instead of dimming them, and any overlay can itself be
+semi-transparent: its background blends with what it covers, and wherever it
+draws nothing the content beneath shows through, faded. Its own text stays at
+full strength. Blending works on RGB colors; on a theme built from ANSI palette
+slots, where there is nothing to blend, a tint falls back to dimming and a
+panel to opaque.
+[Backdrop API](https://docs.rs/tuika/latest/tuika/scene/enum.Backdrop.html)
+
+<img src="../demos/translucent.png" width="880" alt="A dialog over a code-like screen washed toward the background, beside a 65%-opacity stats panel the code shows through">
+
+```rust
+use tuika::prelude::*;
+let scene = Scene::new(element(base))
+    .dialog(
+        Dialog::new("Delete branch?", element(body))
+            .backdrop(Backdrop::tint(theme.background, 170)),
+    );
+let hud = SceneOverlay::new(element(stats), OverlaySpec::centered(40, 30)).opacity(166);
 ```
 
 ### Dialog presets

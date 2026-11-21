@@ -85,6 +85,7 @@ pub mod anim;
 pub mod buffer;
 mod clock;
 pub mod components;
+mod compose;
 pub mod dock;
 pub mod event;
 #[macro_use]
