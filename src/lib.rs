@@ -102,6 +102,7 @@ pub mod layout;
 pub mod live;
 mod macros;
 pub mod mouse;
+pub mod navigation;
 mod output;
 pub mod overlay;
 pub mod prelude;

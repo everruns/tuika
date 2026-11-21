@@ -32,7 +32,8 @@ Four levels, each with one job:
 | `screen` | which part of the terminal a frame owns, and publishing above a split footer | it decides or manipulates the reserved region |
 | `prelude` | the spine plus all components, in one glob | an application wants it without thinking |
 
-Everything else stays behind its own module path: `themes::by_name`,
+Everything else stays behind its own module path: `navigation::ScreenStack`
+(also in the prelude, because a multi-screen app names it constantly), `themes::by_name`,
 `probe::RectProbe`, `access::Semantic`, `width::str_cols`, `framebuffer::FrameBuffer`,
 `view::DrawView`, `mouse::paint_selection`. That is not a demotion — it is the
 point. A short path is a claim about frequency, so it is worth something only

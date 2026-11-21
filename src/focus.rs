@@ -16,6 +16,9 @@ pub struct FocusRegistry {
     focused: Option<String>,
     /// When set, this id owns all input (an open overlay).
     owner: Option<String>,
+    /// A focus request waiting for its id to register; `true` once a frame
+    /// has begun since the request, so an unmet request lapses after one frame.
+    pending: Option<(String, bool)>,
 }
 
 impl FocusRegistry {
@@ -27,6 +30,11 @@ impl FocusRegistry {
     /// Begin a frame: reconcile focus against the preceding frame, then clear
     /// the per-frame focus ring. Registrations for the new frame follow.
     pub fn begin_frame(&mut self) {
+        self.pending = match self.pending.take() {
+            Some((id, false)) => Some((id, true)),
+            // A whole frame registered without this id: the request lapses.
+            _ => None,
+        };
         if self.order.is_empty() {
             self.focused = None;
         } else if !self
@@ -42,7 +50,14 @@ impl FocusRegistry {
     /// Register a focusable region for this frame, in tab order.
     pub fn register(&mut self, id: impl Into<String>) {
         let id = id.into();
-        if self.focused.is_none() {
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|(pending, _)| *pending == id)
+        {
+            self.pending = None;
+            self.focused = Some(id.clone());
+        } else if self.focused.is_none() {
             self.focused = Some(id.clone());
         }
         self.order.push(id);
@@ -96,6 +111,32 @@ impl FocusRegistry {
         }
         self.focused = Some(id.to_owned());
         true
+    }
+
+    /// Focus `id` as soon as it is registered: immediately if it is in the
+    /// current ring, otherwise when the next frame registers it.
+    ///
+    /// This is how focus comes back to a screen that is not on screen yet —
+    /// after [`ScreenStack::pop`](crate::navigation::ScreenStack::pop), the
+    /// previous screen's regions register only when it next renders, so a
+    /// plain [`focus`](Self::focus) would be refused. A request the next frame
+    /// does not satisfy lapses, so a stale id cannot steal focus later. Unlike
+    /// [`focus`](Self::focus) it is accepted while an overlay owns input; it
+    /// sets the base ring underneath.
+    pub fn request_focus(&mut self, id: impl Into<String>) {
+        let id = id.into();
+        if self.order.contains(&id) {
+            self.focused = Some(id);
+            self.pending = None;
+        } else {
+            self.pending = Some((id, false));
+        }
+    }
+
+    /// The id holding focus in the base ring, ignoring overlay ownership:
+    /// what a screen saves before another covers it.
+    pub fn focused(&self) -> Option<&str> {
+        self.ring_focus()
     }
 
     fn advance(&mut self, delta: isize) {
@@ -191,6 +232,37 @@ mod tests {
         f.register("old");
         f.register("new");
         assert_eq!(f.active(), Some("new"));
+    }
+
+    #[test]
+    fn requested_focus_applies_when_the_id_registers_and_then_lapses() {
+        let mut f = FocusRegistry::new();
+        f.begin_frame();
+        f.register("dialog-ok");
+        // The id belongs to a screen that renders next frame.
+        f.request_focus("list");
+        assert_eq!(f.focused(), Some("dialog-ok"));
+
+        f.begin_frame();
+        f.register("search");
+        f.register("list");
+        assert_eq!(f.focused(), Some("list"));
+
+        // A request that the next frame does not satisfy lapses.
+        f.request_focus("gone");
+        f.begin_frame();
+        f.register("search");
+        f.register("list");
+        f.begin_frame();
+        f.register("gone");
+        f.register("list");
+        assert_eq!(f.focused(), Some("list"));
+
+        // A registered id is focused at once, even under an overlay owner.
+        f.set_owner("modal");
+        f.request_focus("gone");
+        assert_eq!(f.focused(), Some("gone"));
+        assert_eq!(f.active(), Some("modal"));
     }
 
     #[test]
