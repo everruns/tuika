@@ -24,6 +24,7 @@
 //! windowing, for prose that must both wrap and scroll.
 
 use crate::geometry::Rect;
+use crate::mouse::ContentWindow;
 use crate::text::Line;
 
 use crate::event::{Event, InputOutcome, KeyCode, MouseKind};
@@ -369,6 +370,15 @@ impl View for Scroll {
             self.offset
         };
 
+        let x_offset = if should_wrap {
+            0
+        } else {
+            self.x_offset.min(u16::MAX as usize) as u16
+        };
+        ctx.record_scrolled_content(
+            ContentWindow::new(Rect::new(area.x, area.y, text_width, area.height), offset)
+                .with_first_column(x_offset),
+        );
         for row in 0..area.height {
             // Map the content row (offset + row) to an index into `lines`, which
             // begins at `window_start` (0 in full mode, `offset` when windowed).

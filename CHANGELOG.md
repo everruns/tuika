@@ -63,6 +63,13 @@ next release.
   chord `"<leader> f"` specs start with. Every binding records the source line
   that declared it, which `Keymap::bindings` and the plain-text `Keymap::dump`
   report. `CommandInfo` joins the prelude.
+- Text selection survives scrolling. The runner's built-in selection anchors a
+  drag that starts in `Scroll`, `Viewport`, or `ItemScroll` to content rows, so
+  it stays on the same text while the view scrolls (instead of being cleared),
+  and one drag can span several screens; rows it passed over are still copied
+  after they scroll away. New: `mouse::{ContentSelection, ContentWindow,
+  ContentPoint, ContentRange}` for hosts with their own loop, and
+  `RenderCtx::record_scrolled_content` for custom scrolling views.
 - `term::capabilities` probes the Kitty keyboard protocol: `query` and
   `query_with_palette` also send `KITTY_KEYBOARD_QUERY` (`CSI ? u`) and set
   `Capabilities::kitty_keyboard` from the terminal's answer, so a host can tell
@@ -98,8 +105,17 @@ next release.
 - `view!` supports `styled(style) { node }` for direct row/column children,
   exposing the complete `FlexItemStyle`: basis, grow/shrink, min/max, and
   per-item alignment.
+- `ImageLayer::invalidate`, for a custom host to call after anything that may
+  have erased or moved images on screen (a resize, a clear, scrolled output).
+  `Runner` and `AsyncRunner` call it themselves.
 
 ### Changed
+
+- Kitty graphics send each image once and then only place, move, or delete it
+  by id. A frame whose images did not change or move writes no graphics bytes,
+  where every redraw used to re-upload every pixel. Equal pixels in a rebuilt
+  `ImageData` (a chart redrawn each frame) count as the same image. iTerm2 and
+  Sixel images are still repainted every frame.
 
 - Paste insertion splices lines in bulk instead of rebuilding per character.
   CodeBlock measurement no longer invokes syntax highlighting. Added paste and

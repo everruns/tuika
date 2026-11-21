@@ -101,6 +101,11 @@ pub struct Terminal<B: Backend> {
     last_known_cursor_pos: Position,
     frame_count: usize,
     force_redraw: bool,
+    /// Bumped whenever the physical screen may have been erased, scrolled, or
+    /// repainted wholesale. Out-of-band state that cells cannot redraw — the
+    /// Kitty images an `ImageLayer` placed — compares it across frames to
+    /// learn it has to be put back.
+    screen_epoch: u64,
 }
 
 impl<B: Backend> Terminal<B> {
@@ -154,6 +159,7 @@ impl<B: Backend> Terminal<B> {
             last_known_cursor_pos: cursor_pos,
             frame_count: 0,
             force_redraw: false,
+            screen_epoch: 0,
         })
     }
 
@@ -258,6 +264,18 @@ impl<B: Backend> Terminal<B> {
     /// without changing the dimensions observed by the renderer.
     pub fn invalidate(&mut self) {
         self.force_redraw = true;
+        self.disturb_screen();
+    }
+
+    /// Note that the physical screen may no longer hold what was drawn on it.
+    fn disturb_screen(&mut self) {
+        self.screen_epoch = self.screen_epoch.wrapping_add(1);
+    }
+
+    /// A counter that changes whenever the screen may have been erased,
+    /// scrolled, or invalidated since it was last read.
+    pub(crate) fn screen_epoch(&self) -> u64 {
+        self.screen_epoch
     }
 
     /// Resize a pinned inline footer without replacing its backend.
@@ -368,6 +386,7 @@ impl<B: Backend> Terminal<B> {
     /// diff would compare against rows no longer on screen and elide them as
     /// unchanged, leaving the viewport blank.
     pub fn clear(&mut self) -> Result<(), B::Error> {
+        self.disturb_screen();
         match self.viewport {
             Viewport::Fullscreen => self.backend.clear_region(ClearType::All)?,
             Viewport::Inline(_) => {
@@ -468,6 +487,7 @@ impl<B: Backend> Terminal<B> {
         if !matches!(self.viewport, Viewport::Inline(_)) {
             return Ok(());
         }
+        self.disturb_screen();
         #[cfg(feature = "scrolling-regions")]
         return self.insert_before_scrolling_regions(height, draw);
         #[cfg(not(feature = "scrolling-regions"))]
@@ -645,6 +665,7 @@ impl<B: Backend> Terminal<B> {
     /// Scroll the screen up by `lines`, pushing the top into scrollback.
     fn scroll_up(&mut self, lines: u16) -> Result<(), B::Error> {
         if lines > 0 {
+            self.disturb_screen();
             self.backend.set_cursor_position(Position::new(
                 0,
                 self.last_known_area.height.saturating_sub(1),

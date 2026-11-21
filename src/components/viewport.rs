@@ -2,6 +2,7 @@
 
 use crate::buffer::{Buffer, Cell};
 use crate::geometry::Rect;
+use crate::mouse::ContentWindow;
 
 use crate::geometry::Size;
 use crate::surface::Surface;
@@ -132,6 +133,13 @@ impl<V: View> View for Viewport<V> {
             self.child.render(content_area, &mut content_surface, ctx);
         }
 
+        ctx.record_scrolled_content(
+            ContentWindow::new(
+                Rect::new(area.x, area.y, viewport.width, viewport.height),
+                offset,
+            )
+            .with_first_column(x_offset.min(usize::from(u16::MAX)) as u16),
+        );
         let destination =
             Rect::new(area.x, area.y, viewport.width, viewport.height).intersection(surface.area());
         let buffer = surface.buffer_mut();

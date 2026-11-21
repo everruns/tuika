@@ -273,8 +273,14 @@ Dragging after the second or third press extends by whole words or rows.
 Selection is *per panel* — a drag
 that starts inside a bordered `Boxed` stays inside it, wrapping at that panel's
 edges rather than streaming across the panes beside it, so copying a sidebar
-entry never drags in the editor next to it. Wheel events continue to reach the
-application. Return
+entry never drags in the editor next to it. Inside a scrolled view (`Scroll`,
+`Viewport`, `ItemScroll`) the selection is anchored to *content rows* instead of
+screen rows: it stays on the same text while the view scrolls, scrolling back
+shows it where it was made, and a drag with the wheel turning underneath it can
+span any number of screens. Rows the drag passed over are remembered as they are
+painted, so the copy includes them after they scroll away. A custom scrolling
+view opts in by calling `RenderCtx::record_scrolled_content` from its `render`.
+Wheel events continue to reach the application. Return
 `UpdateResult::Consumed` for a handled gesture that needs no repaint, or
 `UpdateResult::Dirty` for one that does; either result keeps draggable controls
 from also becoming a text selection. `with_text_selection(false)` disables the
@@ -299,6 +305,12 @@ selection, copy, and hit-testing — from tuika's enriched event model
   restricts a gesture to one panel — positions clamp into the rect, and `region()`
   reports it back so `resolve`, `selected_text`, and `paint_selection` can be
   given the same bounds as their `area`.
+- `ContentSelection` is the same gesture kept in content space, for a host
+  that scrolls its own view. Each call takes the frame's `ContentWindow` (the
+  screen rect and the content row and column at its top-left); after painting,
+  `resolve` handles word and row clicks, `capture` remembers the selected rows
+  so they can still be copied once scrolled away, `paint` highlights the
+  visible part, and `text()` returns the selection.
 - `ctrl_click_url(event, buffer, area)` is an application-side fallback for a
   host that opted into capture. It returns the URL under a Ctrl+left-button
   release: first an OSC 8 target embedded in the cell run (labeled markdown
@@ -507,14 +519,21 @@ let _image = Image::new(data, 20, 10)      // 20×10 cells on screen
 
 Custom hosts keep the explicit boundary: install `ImageSupport` and an `ImageLayer`
 with `RenderCtx::with_image_graphics`, call `paint_with_context`, then emit and
-clear the layer after flushing the cell frame.
+clear the layer after flushing the cell frame. Keep one layer for the life of the
+screen, and call `ImageLayer::invalidate` after anything that may have erased or
+scrolled it (a resize, a clear): under Kitty the layer remembers what the
+terminal already holds.
 
 The emitted bytes per protocol (base64 payload; `ST` is `ESC \`, `BEL` is
 `0x07`). Kitty carries raw RGBA (`f=32`), chunked, with `q=2` suppressing the
-terminal's replies so they aren't read as input:
+terminal's replies so they aren't read as input. Each image is transmitted once
+under an id, then placed by id; a frame where no image changed or moved sends
+nothing, and an image no longer on screen is deleted:
 
 ```text
-ESC _ G f=32,s=<px_w>,v=<px_h>,a=T,c=<cols>,r=<rows>,q=2,m=<more> ; <base64> ST
+ESC _ G a=t,f=32,s=<px_w>,v=<px_h>,i=<id>,q=2,m=<more> ; <base64> ST
+ESC _ G a=p,i=<id>,p=<placement>,c=<cols>,r=<rows>,C=1,q=2 ST
+ESC _ G a=d,d=I,i=<id>,q=2 ST
 ```
 
 iTerm2 carries a PNG file sized in cells:
