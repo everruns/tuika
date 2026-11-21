@@ -3,13 +3,13 @@
   "tolerance_pct": 2.0,
   "benchmarks": {
     "frame_full.large": 95458340,
-    "frame_windowed.large": 821725,
+    "frame_windowed.large": 839035,
     "one_shot.large": 6526341,
     "one_shot.small": 272367,
     "paging.large": 252164,
     "reflow.mixed": 12398734,
-    "render.large": 804454,
-    "render.small": 804402,
+    "render.large": 821764,
+    "render.small": 821712,
     "streaming.mixed": 12535283
   }
 }
