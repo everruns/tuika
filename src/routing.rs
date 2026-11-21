@@ -146,6 +146,7 @@ impl_input_target!(
     crate::components::InputDialogState,
     crate::components::SingleLineInputState,
     crate::components::SliderState,
+    crate::components::TextAreaState,
     crate::components::TextInputState,
 );
 

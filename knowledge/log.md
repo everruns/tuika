@@ -25,6 +25,12 @@
     stands in for Kitty's base-layout key, which crossterm drops. See
     [Keymap](specs/keymap.md).
 
+- **A real editor beside the composer**
+  - `TextArea` adds selection, row-local undo, word and visual-row motion, and
+    mouse input over the shared `TextInputState` buffer; the view records its
+    frame into the state so input needs no host-supplied size. See
+    [Architecture](specs/architecture.md).
+
 - **Chart annotations join the portable grammar**
   - Bands, value/position reference lines, dashed strokes, grid lines, axis
     titles, and per-series legend visibility are now part of `tuika-charts`'

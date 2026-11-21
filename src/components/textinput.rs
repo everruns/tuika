@@ -29,14 +29,14 @@ use crate::width::grapheme_cols;
 #[derive(Clone, Debug)]
 pub struct TextInputState {
     /// Logical lines (split on `\n`); always at least one (possibly empty).
-    lines: Vec<String>,
+    pub(super) lines: Vec<String>,
     /// Cursor row (logical line index).
-    row: usize,
+    pub(super) row: usize,
     /// Cursor column (char index within `lines[row]`).
-    col: usize,
+    pub(super) col: usize,
     mode: TextInputMode,
     /// Monotonic marker for text mutations, used to classify handled no-ops.
-    revision: u64,
+    pub(super) revision: u64,
 }
 
 /// Controls which Enter chord submits a text input.
@@ -807,7 +807,10 @@ impl TextInputState {
         let mut next: String = chars[..start].iter().collect();
         next.push_str(replacement);
         next.extend(chars[end..].iter());
-        *line = next;
+        if *line != next {
+            *line = next;
+            self.revision = self.revision.wrapping_add(1);
+        }
         self.row = token.row;
         self.col = start + replacement.chars().count();
     }
@@ -848,7 +851,7 @@ impl TextInputState {
 }
 
 /// Char-index boundaries between grapheme clusters, including 0 and line end.
-fn grapheme_boundaries(line: &str) -> Vec<usize> {
+pub(super) fn grapheme_boundaries(line: &str) -> Vec<usize> {
     let mut boundaries = Vec::with_capacity(line.graphemes(true).count() + 1);
     boundaries.push(0);
     let mut col = 0;
@@ -859,7 +862,7 @@ fn grapheme_boundaries(line: &str) -> Vec<usize> {
     boundaries
 }
 
-fn grapheme_boundary_at_or_before(line: &str, col: usize) -> usize {
+pub(super) fn grapheme_boundary_at_or_before(line: &str, col: usize) -> usize {
     let col = col.min(line.chars().count());
     grapheme_boundaries(line)
         .into_iter()
@@ -868,7 +871,7 @@ fn grapheme_boundary_at_or_before(line: &str, col: usize) -> usize {
         .unwrap_or(0)
 }
 
-fn previous_grapheme_boundary(line: &str, col: usize) -> usize {
+pub(super) fn previous_grapheme_boundary(line: &str, col: usize) -> usize {
     grapheme_boundaries(line)
         .into_iter()
         .take_while(|boundary| *boundary < col)
@@ -876,7 +879,7 @@ fn previous_grapheme_boundary(line: &str, col: usize) -> usize {
         .unwrap_or(0)
 }
 
-fn next_grapheme_boundary(line: &str, col: usize) -> usize {
+pub(super) fn next_grapheme_boundary(line: &str, col: usize) -> usize {
     grapheme_boundaries(line)
         .into_iter()
         .find(|boundary| *boundary > col)
@@ -885,27 +888,27 @@ fn next_grapheme_boundary(line: &str, col: usize) -> usize {
 
 /// One terminal grapheme cell and its logical char-index range.
 #[derive(Clone, Copy)]
-struct VisualCell<'a> {
-    text: &'a str,
-    start: usize,
-    end: usize,
-    width: u16,
+pub(super) struct VisualCell<'a> {
+    pub(super) text: &'a str,
+    pub(super) start: usize,
+    pub(super) end: usize,
+    pub(super) width: u16,
 }
 
 /// One wrapped visual row: its logical line, char-index range, grapheme cells,
 /// and measured terminal-cell width.
-struct VisualRow<'a> {
-    logical: usize,
-    start: usize,
-    end: usize,
-    cells: Vec<VisualCell<'a>>,
-    width: u16,
+pub(super) struct VisualRow<'a> {
+    pub(super) logical: usize,
+    pub(super) start: usize,
+    pub(super) end: usize,
+    pub(super) cells: Vec<VisualCell<'a>>,
+    pub(super) width: u16,
 }
 
 /// The cursor's visual `(row, col)` for `lines` with the logical cursor at
 /// `(row, col)`, word-soft-wrapped to `width`. Reuses [`wrap_visual_rows`] so the
 /// rendered scroll offset and the placed cursor always agree with what's drawn.
-fn visual_cursor_at(lines: &[String], row: usize, col: usize, width: u16) -> (u16, u16) {
+pub(super) fn visual_cursor_at(lines: &[String], row: usize, col: usize, width: u16) -> (u16, u16) {
     let rows = wrap_visual_rows(lines, width);
     let mut last_on_line: Option<(usize, &VisualRow)> = None;
     for (vi, vr) in rows.iter().enumerate() {
@@ -943,7 +946,7 @@ fn visual_cursor_at(lines: &[String], row: usize, col: usize, width: u16) -> (u1
 /// A line whose final row fills the width exactly emits a trailing empty row so
 /// the cursor can rest on a fresh line. Shared by [`visual_cursor_at`] (cursor
 /// math) and [`TextInput`] (rendering) so both wrap identically.
-fn wrap_visual_rows<'a>(lines: &'a [String], width: u16) -> Vec<VisualRow<'a>> {
+pub(super) fn wrap_visual_rows<'a>(lines: &'a [String], width: u16) -> Vec<VisualRow<'a>> {
     let width = width.max(1);
     let mut rows = Vec::new();
     for (r, line) in lines.iter().enumerate() {

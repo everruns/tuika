@@ -384,6 +384,18 @@ the host computed rather than semantics tuika inferred. A toolkit that shipped
 "mentions" and "slash commands" as features would be encoding one host's product
 decisions; declaring the lexical rule and returning the spans is the boundary.
 
+`TextArea` layers an editor over `TextInputState` instead of growing the lean
+composer: selection, undo, and visual-row motion are state a one-line prompt
+does not want to carry, while sharing the buffer keeps wrap, grapheme, and token
+rules identical between the two. Undo records only the rows an edit touched (every
+edit is a local splice), so history costs what was edited rather than the buffer
+size times the depth, and typing groups by word. Because mouse placement, Page
+Up/Down, and wrapped-row motion depend on the last frame, the view writes the
+area it drew and its scroll row back into the state through a `Cell` — the one
+place a borrowed view mutates state, chosen so a host never has to thread a
+size into `handle`. The clipboard stays the host's: the state returns selected
+text and never writes to the terminal.
+
 `Viewport` follows the same host-state rule as `Scroll`: offsets live in
 `ScrollState`, while the view owns only an ephemeral child and declared content
 extent. Its scratch buffer covers only the visible source rectangle, even when

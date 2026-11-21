@@ -304,3 +304,160 @@ pub(crate) fn scene_textinput(frame: u64, theme: &Theme) -> Element {
         }
     }
 }
+
+/// A toy highlighter for the `TextArea` scene: keywords, strings, and macros.
+/// A real host plugs in `tuika-codeformatters` through the same trait.
+struct SceneRustHighlighter;
+
+impl Highlighter for SceneRustHighlighter {
+    fn highlight(
+        &self,
+        _lang: &str,
+        lines: &[&str],
+        theme: &Theme,
+    ) -> Option<Vec<Vec<Span<'static>>>> {
+        let code = theme.code;
+        Some(
+            lines
+                .iter()
+                .map(|line| {
+                    let mut spans = Vec::new();
+                    let mut in_string = false;
+                    for word in line.split_inclusive(|c: char| {
+                        !c.is_alphanumeric() && c != '_' && c != '!' && c != '"'
+                    }) {
+                        let (body, sep) = match word.char_indices().last() {
+                            Some((i, c))
+                                if !c.is_alphanumeric() && c != '_' && c != '!' && c != '"' =>
+                            {
+                                (&word[..i], &word[i..])
+                            }
+                            _ => (word, ""),
+                        };
+                        let mut style = Style::default().fg(code.text);
+                        if body.starts_with('"') || in_string {
+                            style = Style::default().fg(code.string);
+                            in_string = !(body.ends_with('"') && body.len() > 1
+                                || in_string && body.ends_with('"'));
+                        } else if matches!(body, "fn" | "let" | "pub" | "mut") {
+                            style = Style::default().fg(code.keyword);
+                        } else if body.ends_with('!') {
+                            style = Style::default().fg(code.function);
+                        } else if body == "str" {
+                            style = Style::default().fg(code.type_name);
+                        }
+                        spans.push(Span::styled(body.to_string(), style));
+                        let sep_style = if in_string {
+                            Style::default().fg(code.string)
+                        } else {
+                            Style::default().fg(code.punctuation)
+                        };
+                        spans.push(Span::styled(sep.to_string(), sep_style));
+                    }
+                    spans
+                })
+                .collect(),
+        )
+    }
+}
+
+/// The scripted session the `TextArea` scene replays: each step is an event and
+/// how many frames to hold after it.
+fn textarea_script() -> Vec<(Event, u64)> {
+    let key = |code| Event::Key(Key::new(code));
+    let with = |code, ctrl, shift| {
+        Event::Key(Key {
+            code,
+            ctrl,
+            alt: false,
+            shift,
+        })
+    };
+    let mut script = Vec::new();
+    let type_line = |script: &mut Vec<(Event, u64)>, text: &str| {
+        for ch in text.chars() {
+            script.push((key(KeyCode::Char(ch)), 1));
+        }
+    };
+    type_line(&mut script, "fn greet(name: &str) {");
+    script.push((with(KeyCode::Enter, false, true), 2));
+    type_line(&mut script, "    println!(\"hi {name}\");");
+    script.push((with(KeyCode::Enter, false, true), 2));
+    type_line(&mut script, "}");
+    script.push((key(KeyCode::Up), 6));
+    script.push((key(KeyCode::Home), 4));
+    // Ctrl+Right hops `println` and `!("`; Shift+Ctrl+Right then selects
+    // `hi {name}` a word at a time.
+    script.push((with(KeyCode::Right, true, false), 5));
+    script.push((with(KeyCode::Right, true, false), 5));
+    for _ in 0..3 {
+        script.push((with(KeyCode::Right, true, true), 5));
+    }
+    script.push((with(KeyCode::Right, false, true), 16));
+    type_line(&mut script, "hello, {name}!");
+    script.push((key(KeyCode::End), 14));
+    // Undo steps back a word at a time, and the last step brings the selected
+    // text back; redo replays it.
+    for hold in [10, 24] {
+        script.push((with(KeyCode::Char('z'), true, false), hold));
+    }
+    for hold in [8, 30] {
+        script.push((with(KeyCode::Char('y'), true, false), hold));
+    }
+    script
+}
+
+pub(crate) fn scene_textarea(frame: u64, theme: &Theme) -> Element {
+    let script = textarea_script();
+    let total: u64 = script.iter().map(|(_, hold)| hold).sum::<u64>() + 12;
+    let mut budget = frame % total;
+    let mut state = TextAreaState::new();
+    let mut last = "type";
+    for (event, hold) in &script {
+        if budget == 0 {
+            break;
+        }
+        let _ = state.handle(event);
+        if let Event::Key(k) = event {
+            last = match (k.ctrl, k.shift, k.code) {
+                (true, _, KeyCode::Char('z')) => "⌃Z undo",
+                (true, _, KeyCode::Char('y')) => "⌃Y redo",
+                (_, true, KeyCode::Left | KeyCode::Right) => "⇧ select",
+                (_, _, KeyCode::Char(_)) if state.can_undo() => "type",
+                _ => "move",
+            };
+        }
+        budget = budget.saturating_sub(*hold);
+    }
+    let (row, col) = state.cursor();
+    let selected = state
+        .selected_text()
+        .map(|text| format!(" · {} selected", text.chars().count()))
+        .unwrap_or_default();
+    let status = format!(" Ln {}, Col {}{selected} · {last}", row + 1, col + 1);
+    let cursor_style = Style::default().add_modifier(Modifier::REVERSED);
+    let editor = DrawView::new(
+        move |area, surface: &mut Surface<'_>, ctx: &RenderCtx<'_>| {
+            TextArea::new(&state)
+                .line_numbers(true)
+                .highlighter(&SceneRustHighlighter, "rust")
+                .placeholder("Write some code…", Style::default().fg(ctx.theme.dim))
+                .render(area, surface, ctx);
+            // The recording has no terminal cursor, so draw one.
+            if let Some((x, y)) = state.cursor_screen() {
+                let symbol = surface.buffer_mut()[(x, y)].symbol().to_string();
+                surface.set_string(x, y, &symbol, cursor_style);
+            }
+        },
+    );
+    view! {
+        col {
+            fixed(5) {
+                boxed(title = Line::from(Span::styled(" greet.rs ", theme.accent_style()))) {
+                    node(editor)
+                }
+            }
+            fixed(1) { node(Text::new(vec![Line::from(Span::styled(status, Style::default().fg(theme.muted)))])) }
+        }
+    }
+}

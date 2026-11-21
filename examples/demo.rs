@@ -161,6 +161,9 @@ struct Demo {
     /// whose whole point is that content runs past the bottom. Exempts it from
     /// the clipping check in [`check`].
     fills_frame: bool,
+    /// How long a motion scene records, in seconds. Most loops fit the default
+    /// four; a scripted interaction runs longer so each step stays readable.
+    seconds: u8,
     build: Build,
 }
 
@@ -189,7 +192,16 @@ const fn demo(
         rows,
         animated,
         fills_frame: false,
+        seconds: 4,
         build,
+    }
+}
+
+impl Demo {
+    /// Record a motion scene for `seconds` instead of the default four.
+    const fn recorded_for(mut self, seconds: u8) -> Demo {
+        self.seconds = seconds;
+        self
     }
 }
 
@@ -507,6 +519,15 @@ const DEMOS: &[Demo] = &[
         scene_textinput,
     ),
     demo(
+        "textarea",
+        "TextArea",
+        "selection, undo, word motions, syntax colour",
+        11,
+        true,
+        scene_textarea,
+    )
+    .recorded_for(18),
+    demo(
         "hyperlink",
         "Hyperlink",
         "OSC 8 links — clickable URLs in the transcript",
@@ -611,7 +632,7 @@ fn emit_tapes(dir: &Path) -> io::Result<()> {
         let (output, ending, fps) = if d.animated {
             (
                 format!("Output docs/demos/{}.gif", d.name),
-                "Sleep 4s".to_owned(),
+                format!("Sleep {}s", d.seconds),
                 24,
             )
         } else {

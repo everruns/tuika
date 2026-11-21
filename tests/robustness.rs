@@ -29,8 +29,8 @@ use tuika::components::{
     Grid, ItemScroll, KeyHints, Loader, Markdown, MarkdownState, Paragraph, ProgressBar, QrCode,
     QrEcc, Rule, Scroll, ScrollState, Scrollbar, SelectList, SelectState, SelectionScreen, Slider,
     SliderState, Spinner, StatusBar, TabSelect, TabSelectState, Table, Tabs, TabsState, Text,
-    TextInput, TextInputState, ToastLevel, ToastList, Toasts, TreeList, TreeRow, TreeState,
-    Viewport, VirtualWindow, Wrap,
+    TextArea, TextAreaState, TextInput, TextInputState, ToastLevel, ToastList, Toasts, TreeList,
+    TreeRow, TreeState, Viewport, VirtualWindow, Wrap,
 };
 use tuika::prelude::*;
 use tuika::style::StyleSheet;
@@ -277,6 +277,14 @@ fn for_each_component(text: &'static str, visit: &mut dyn FnMut(&str, &dyn View)
     visit(
         "text_input",
         &TextInput::new(&input).placeholder(text, theme.muted_style()),
+    );
+    let mut area_state = TextAreaState::from_text(text);
+    area_state.select_all();
+    visit(
+        "text_area",
+        &TextArea::new(&area_state)
+            .line_numbers(true)
+            .placeholder(text, theme.muted_style()),
     );
     let form_state = FormState::default();
     visit(
