@@ -41,6 +41,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::geometry::Rect;
+use crate::style::{Color, Style};
+use crate::surface::Surface;
 
 /// String terminator for an APC sequence: `ESC \`.
 const ST: &str = "\x1b\\";
@@ -167,6 +169,123 @@ impl ImageSupport {
     }
 }
 
+/// How Kitty-protocol images are put on screen.
+///
+/// Both modes send each image once and refer to it by id afterwards; they
+/// differ in what marks *where* it shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum KittyPlacement {
+    /// Place each image at its cell origin with a cursor move after the frame
+    /// is drawn. Works on every Kitty-protocol terminal, but the picture is
+    /// not part of the cell grid: it does not scroll with text, is drawn over
+    /// anything painted on top of it, and is scaled into whatever part of its
+    /// rect survived clipping.
+    #[default]
+    Direct,
+    /// Paint the image's cells with Unicode placeholders (`U+10EEEE` plus
+    /// row and column diacritics, the image id in the foreground color) and
+    /// let the terminal draw the picture in their place. The image is then
+    /// text as far as the screen is concerned: it scrolls, clips to the part
+    /// that is visible, and is covered by whatever is painted over it. The
+    /// picture is fit into its cells preserving aspect ratio. Needs Kitty
+    /// 0.28+ or Ghostty.
+    Placeholders,
+    /// [`Placeholders`](Self::Placeholders) inside tmux: every graphics
+    /// command is wrapped in tmux's DCS passthrough so it reaches the outer
+    /// terminal, while the placeholder cells travel through tmux as ordinary
+    /// text. Needs tmux 3.3+ with `allow-passthrough` on.
+    TmuxPlaceholders,
+}
+
+impl KittyPlacement {
+    /// Choose a mode for this process's terminal.
+    ///
+    /// Kitty and Ghostty get [`Placeholders`](Self::Placeholders). Inside tmux
+    /// with Kitty or Ghostty outside, this asks tmux (running `tmux`, the one
+    /// place tuika starts a process) whether `allow-passthrough` is on and
+    /// whether the client passes 24-bit color, and picks
+    /// [`TmuxPlaceholders`](Self::TmuxPlaceholders) only if both hold.
+    /// Everything else — WezTerm, an unknown terminal, tmux without either —
+    /// gets [`Direct`](Self::Direct).
+    pub fn detect() -> Self {
+        let var = |name| std::env::var(name).ok();
+        let tmux = var("TMUX");
+        let ask_tmux = |args: &[&str]| {
+            std::process::Command::new("tmux")
+                .args(args)
+                .stdin(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .output()
+                .ok()
+                .and_then(|out| String::from_utf8(out.stdout).ok())
+        };
+        let in_tmux = tmux.as_deref().is_some_and(|s| !s.is_empty());
+        let (passthrough, features) = if in_tmux {
+            (
+                ask_tmux(&["show-options", "-gv", "allow-passthrough"]),
+                ask_tmux(&["display-message", "-p", "#{client_termfeatures}"]),
+            )
+        } else {
+            (None, None)
+        };
+        Self::detect_from(
+            var("TERM").as_deref(),
+            var("TERM_PROGRAM").as_deref(),
+            var("KITTY_WINDOW_ID").as_deref(),
+            var("GHOSTTY_RESOURCES_DIR").as_deref(),
+            tmux.as_deref(),
+            passthrough.as_deref(),
+            features.as_deref(),
+        )
+    }
+
+    /// The pure core of [`detect`](Self::detect): the same environment as
+    /// [`ImageSupport::detect_from`], plus `TMUX`, tmux's `allow-passthrough`
+    /// option, and its `#{client_termfeatures}` (a placeholder cell carries
+    /// the image id as a 24-bit color, so tmux must pass `RGB` through).
+    pub fn detect_from(
+        term: Option<&str>,
+        term_program: Option<&str>,
+        kitty_window_id: Option<&str>,
+        ghostty_resources_dir: Option<&str>,
+        tmux: Option<&str>,
+        tmux_allow_passthrough: Option<&str>,
+        tmux_client_features: Option<&str>,
+    ) -> Self {
+        let set = |value: Option<&str>| value.is_some_and(|s| !s.is_empty());
+        let program = term_program.map(str::to_ascii_lowercase);
+        // Signals that hold for Kitty and Ghostty only — not WezTerm, which
+        // speaks the Kitty protocol without placeholders. Inside tmux the
+        // window id and resources marker are inherited from the outer
+        // terminal, which is the one that will draw.
+        let placeholders = set(kitty_window_id)
+            || set(ghostty_resources_dir)
+            || term.is_some_and(|t| t.contains("kitty") || t.contains("ghostty"))
+            || program.as_deref() == Some("ghostty");
+        if !placeholders {
+            return Self::Direct;
+        }
+        if set(tmux) {
+            let passthrough = tmux_allow_passthrough
+                .map(str::trim)
+                .is_some_and(|value| value == "on" || value == "all");
+            let rgb = tmux_client_features
+                .is_some_and(|features| features.trim().split(',').any(|f| f == "RGB"));
+            return if passthrough && rgb {
+                Self::TmuxPlaceholders
+            } else {
+                Self::Direct
+            };
+        }
+        Self::Placeholders
+    }
+
+    fn uses_placeholders(self) -> bool {
+        matches!(self, Self::Placeholders | Self::TmuxPlaceholders)
+    }
+}
+
 /// One image queued for emission this frame: where it landed, in cells, the
 /// pixels to paint there, and which protocol to paint them with.
 #[derive(Clone, Debug)]
@@ -192,8 +311,10 @@ enum Protocol {
     /// Repainted in full every frame (iTerm2, Sixel): the picture lives in
     /// the cells it covers, and a redraw of any of them erases that part.
     Cells(Encoder),
-    /// Transmitted once and placed by id; see [`KittyState`].
-    Kitty,
+    /// Kitty image `id`, placed at the rect after the frame.
+    Kitty { id: u32 },
+    /// Kitty image `id`, shown by placeholder cells painted into the frame.
+    KittyVirtual { id: u32 },
 }
 
 /// A cell-painting protocol encoder: writes one recorded placement's escape.
@@ -217,33 +338,43 @@ struct ImageLayerState {
     /// Installed by the first Kitty `record` and kept for the layer's life,
     /// since frames without Kitty images still have to retire earlier ones.
     kitty: Option<KittyEmitter>,
+    kitty_placement: KittyPlacement,
 }
 
 /// What the terminal holds for one layer under the Kitty protocol.
 ///
 /// Kitty stores transmitted pixels under an image id and draws them wherever
-/// a *placement* of that id says, until told otherwise. Writing cells over a
+/// a placement of that id says, until told otherwise; writing cells over a
 /// placement does not erase it. So the layer sends each distinct image once,
 /// places it once, and on a frame where nothing moved writes nothing at all —
 /// where re-sending `a=T` every frame base64-encoded and uploaded every pixel
 /// on every redraw, a spinner tick included.
 #[derive(Debug, Default)]
 struct KittyState {
-    /// Images the terminal holds for this layer, each under its own id.
+    /// Images the terminal holds (or is about to) for this layer.
     images: Vec<KittyImage>,
-    /// Placements on screen after the last emit.
+    /// Direct placements on screen after the last emit.
     shown: Vec<KittyShown>,
     /// Set by [`ImageLayer::invalidate`]: the screen may have been cleared or
-    /// scrolled, so nothing in `images` or `shown` can be trusted.
+    /// scrolled, so nothing the terminal held can be trusted.
     stale: bool,
 }
 
 #[derive(Debug)]
 struct KittyImage {
     id: u32,
-    /// Kept so the next frame can tell whether its image is this one, and so
+    /// Kept so a later record can tell whether its image is this one, and so
     /// the pixels stay alive exactly as long as the terminal holds them.
     data: ImageData,
+    /// The cell grid of this image's virtual placement. Placeholder cells
+    /// name only an image, so one image shown at two sizes is two ids.
+    grid: Option<(u16, u16)>,
+    /// Whether the pixels have been transmitted.
+    sent: bool,
+    /// Whether the virtual placement for `grid` exists.
+    virtual_placed: bool,
+    /// Whether this frame recorded it.
+    used: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -266,6 +397,11 @@ enum KittyOp {
         placement: u32,
         rect: Rect,
     },
+    PlaceVirtual {
+        image: u32,
+        cols: u16,
+        rows: u16,
+    },
     DeletePlacement {
         image: u32,
         placement: u32,
@@ -281,7 +417,7 @@ enum KittyOp {
 struct KittyEmitter {
     state: KittyState,
     plan: fn(&[Placement], &mut KittyState) -> Vec<KittyOp>,
-    write: fn(&mut dyn Write, &[KittyOp]) -> io::Result<()>,
+    write: fn(&mut dyn Write, &[KittyOp], bool) -> io::Result<()>,
 }
 
 impl KittyEmitter {
@@ -302,6 +438,33 @@ fn same_pixels(a: &ImageData, b: &ImageData) -> bool {
         || (a.pixel_width == b.pixel_width && a.pixel_height == b.pixel_height && a.rgba == b.rgba)
 }
 
+impl KittyState {
+    /// The id this layer holds `data` under (for a placeholder `grid`, at that
+    /// size), registering it to be sent if it is new.
+    fn image_id(&mut self, data: &ImageData, grid: Option<(u16, u16)>) -> u32 {
+        let image = match self
+            .images
+            .iter_mut()
+            .position(|image| image.grid == grid && same_pixels(&image.data, data))
+        {
+            Some(index) => &mut self.images[index],
+            None => {
+                self.images.push(KittyImage {
+                    id: next_kitty_image_id(),
+                    data: data.clone(),
+                    grid,
+                    sent: false,
+                    virtual_placed: false,
+                    used: false,
+                });
+                self.images.last_mut().expect("just pushed")
+            }
+        };
+        image.used = true;
+        image.id
+    }
+}
+
 /// Work out the Kitty commands that turn what the terminal shows into this
 /// frame, and record the result as what it shows now.
 ///
@@ -310,70 +473,75 @@ fn same_pixels(a: &ImageData, b: &ImageData) -> bool {
 /// ordinary redraw never shows a blank interval.
 fn plan_kitty(placements: &[Placement], state: &mut KittyState) -> Vec<KittyOp> {
     let mut ops = Vec::new();
-    let mut retire = Vec::new();
     if std::mem::take(&mut state.stale) {
-        // The terminal may have dropped any of these. Deleting what remains
-        // and sending afresh under new ids is correct whatever it dropped.
-        retire.extend(
-            state
-                .images
-                .drain(..)
-                .map(|image| KittyOp::DeleteImage { id: image.id }),
-        );
+        // The terminal may have dropped any of these. Ids stay — placeholder
+        // cells painted this frame already name them — so delete what remains
+        // and send it all again under the same ids.
+        for image in &mut state.images {
+            if image.sent {
+                ops.push(KittyOp::DeleteImage { id: image.id });
+            }
+            image.sent = false;
+            image.virtual_placed = false;
+        }
         state.shown.clear();
     }
-
-    let mut used = vec![false; state.images.len()];
-    let mut shown: Vec<KittyShown> = Vec::new();
-    for p in placements
-        .iter()
-        .filter(|p| matches!(p.protocol, Protocol::Kitty))
+    for image in state
+        .images
+        .iter_mut()
+        .filter(|image| image.used && !image.sent)
     {
-        let index = match state
-            .images
-            .iter()
-            .position(|image| same_pixels(&image.data, &p.data))
-        {
-            Some(index) => index,
-            None => {
-                let id = next_kitty_image_id();
-                ops.push(KittyOp::Transmit {
-                    id,
-                    data: p.data.clone(),
-                });
-                state.images.push(KittyImage {
-                    id,
-                    data: p.data.clone(),
-                });
-                used.push(false);
-                state.images.len() - 1
-            }
-        };
-        used[index] = true;
-        let image = state.images[index].id;
-        let placement = 1 + shown.iter().filter(|s| s.image == image).count() as u32;
-        let now = KittyShown {
-            image,
-            placement,
-            rect: p.rect,
-        };
-        // Placing an existing (image, placement) pair again moves it, so a
-        // moved image needs no separate delete.
-        if !state.shown.contains(&now) {
-            ops.push(KittyOp::Place {
-                image,
-                placement,
-                rect: p.rect,
-            });
-        }
-        shown.push(now);
+        ops.push(KittyOp::Transmit {
+            id: image.id,
+            data: image.data.clone(),
+        });
+        image.sent = true;
     }
 
-    let mut index = 0;
-    state.images.retain(|image| {
-        let keep = used[index];
-        index += 1;
-        if !keep {
+    let mut shown: Vec<KittyShown> = Vec::new();
+    for p in placements {
+        match p.protocol {
+            Protocol::Kitty { id } => {
+                let placement = 1 + shown.iter().filter(|s| s.image == id).count() as u32;
+                let now = KittyShown {
+                    image: id,
+                    placement,
+                    rect: p.rect,
+                };
+                // Placing an existing (image, placement) pair again moves it,
+                // so a moved image needs no separate delete.
+                if !state.shown.contains(&now) {
+                    ops.push(KittyOp::Place {
+                        image: id,
+                        placement,
+                        rect: p.rect,
+                    });
+                }
+                shown.push(now);
+            }
+            Protocol::KittyVirtual { id } => {
+                if let Some(image) = state
+                    .images
+                    .iter_mut()
+                    .find(|image| image.id == id && !image.virtual_placed)
+                {
+                    let (cols, rows) = image.grid.unwrap_or((p.rect.width, p.rect.height));
+                    ops.push(KittyOp::PlaceVirtual {
+                        image: id,
+                        cols,
+                        rows,
+                    });
+                    image.virtual_placed = true;
+                }
+            }
+            Protocol::Cells(_) => {}
+        }
+    }
+
+    let mut retire = Vec::new();
+    state.images.retain_mut(|image| {
+        let keep = std::mem::take(&mut image.used);
+        if !keep && image.sent {
             // Deleting the image takes all of its placements with it.
             retire.push(KittyOp::DeleteImage { id: image.id });
         }
@@ -396,7 +564,10 @@ fn plan_kitty(placements: &[Placement], state: &mut KittyState) -> Vec<KittyOp> 
     ops
 }
 
-fn write_kitty_ops(mut out: &mut dyn Write, ops: &[KittyOp]) -> io::Result<()> {
+/// Write `ops`; with `tmux`, each graphics command goes through tmux's
+/// passthrough to the outer terminal.
+fn write_kitty_ops(out: &mut dyn Write, ops: &[KittyOp], tmux: bool) -> io::Result<()> {
+    let mut out = Passthrough { out, tmux };
     for op in ops {
         match op {
             KittyOp::Transmit { id, data } => write_kitty_transmit(&mut out, data, *id)?,
@@ -406,20 +577,63 @@ fn write_kitty_ops(mut out: &mut dyn Write, ops: &[KittyOp]) -> io::Result<()> {
                 rect,
             } => {
                 // CUP is 1-based; the reserved rect is 0-based screen coordinates.
-                write!(out, "\x1b[{};{}H", rect.y + 1, rect.x + 1)?;
+                write!(out.out, "\x1b[{};{}H", rect.y + 1, rect.x + 1)?;
                 write_kitty_place(&mut out, *image, *placement, rect.width, rect.height)?;
             }
+            // `format!` then one `write_all`: a `write!` would reach the
+            // passthrough in pieces, and each piece would be wrapped alone.
+            KittyOp::PlaceVirtual { image, cols, rows } => out.write_all(
+                format!("\x1b_Ga=p,U=1,i={image},c={cols},r={rows},q=2{ST}").as_bytes(),
+            )?,
             KittyOp::DeletePlacement { image, placement } => {
-                write!(out, "\x1b_Ga=d,d=i,i={image},p={placement},q=2{ST}")?;
+                out.write_all(format!("\x1b_Ga=d,d=i,i={image},p={placement},q=2{ST}").as_bytes())?
             }
-            KittyOp::DeleteImage { id } => write!(out, "\x1b_Ga=d,d=I,i={id},q=2{ST}")?,
+            KittyOp::DeleteImage { id } => {
+                out.write_all(format!("\x1b_Ga=d,d=I,i={id},q=2{ST}").as_bytes())?
+            }
         }
     }
     Ok(())
 }
 
+/// A sink for complete graphics commands that, inside tmux, wraps each one in
+/// the DCS passthrough (`ESC P tmux; … ESC \`, every inner `ESC` doubled).
+///
+/// Every `write_all` call must carry whole commands (never `write!`, which
+/// writes in fragments) — the Kitty writers here
+/// always end a call on a command's `ST` — because the wrapping is per call.
+struct Passthrough<'a> {
+    out: &'a mut dyn Write,
+    tmux: bool,
+}
+
+impl Write for Passthrough<'_> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.write_all(buf)?;
+        Ok(buf.len())
+    }
+
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        if !self.tmux {
+            return self.out.write_all(buf);
+        }
+        self.out.write_all(b"\x1bPtmux;")?;
+        for part in buf.split_inclusive(|&b| b == 0x1b) {
+            self.out.write_all(part)?;
+            if part.last() == Some(&0x1b) {
+                self.out.write_all(b"\x1b")?;
+            }
+        }
+        self.out.write_all(b"\x1b\\")
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.out.flush()
+    }
+}
+
 /// Kitty image ids are kept to 24 bits: that is what a placeholder cell's
-/// foreground color can carry without an extra diacritic.
+/// foreground color carries without an extra diacritic.
 const KITTY_ID_MAX: u32 = 0x00FF_FFFF;
 
 static NEXT_KITTY_IMAGE_ID: AtomicU32 = AtomicU32::new(0);
@@ -444,6 +658,78 @@ fn next_kitty_image_id() -> u32 {
     step(previous)
 }
 
+/// The Kitty protocol's Unicode placeholder character.
+const PLACEHOLDER: char = '\u{10EEEE}';
+
+/// The row/column diacritics of the Kitty Unicode-placeholder protocol: the
+/// combining mark at index `n` names row or column `n`. Copied from the
+/// protocol's `rowcolumn-diacritics.txt`.
+#[rustfmt::skip]
+const DIACRITICS: [char; 297] = [
+    '\u{0305}', '\u{030D}', '\u{030E}', '\u{0310}', '\u{0312}', '\u{033D}', '\u{033E}', '\u{033F}',
+    '\u{0346}', '\u{034A}', '\u{034B}', '\u{034C}', '\u{0350}', '\u{0351}', '\u{0352}', '\u{0357}',
+    '\u{035B}', '\u{0363}', '\u{0364}', '\u{0365}', '\u{0366}', '\u{0367}', '\u{0368}', '\u{0369}',
+    '\u{036A}', '\u{036B}', '\u{036C}', '\u{036D}', '\u{036E}', '\u{036F}', '\u{0483}', '\u{0484}',
+    '\u{0485}', '\u{0486}', '\u{0487}', '\u{0592}', '\u{0593}', '\u{0594}', '\u{0595}', '\u{0597}',
+    '\u{0598}', '\u{0599}', '\u{059C}', '\u{059D}', '\u{059E}', '\u{059F}', '\u{05A0}', '\u{05A1}',
+    '\u{05A8}', '\u{05A9}', '\u{05AB}', '\u{05AC}', '\u{05AF}', '\u{05C4}', '\u{0610}', '\u{0611}',
+    '\u{0612}', '\u{0613}', '\u{0614}', '\u{0615}', '\u{0616}', '\u{0617}', '\u{0657}', '\u{0658}',
+    '\u{0659}', '\u{065A}', '\u{065B}', '\u{065D}', '\u{065E}', '\u{06D6}', '\u{06D7}', '\u{06D8}',
+    '\u{06D9}', '\u{06DA}', '\u{06DB}', '\u{06DC}', '\u{06DF}', '\u{06E0}', '\u{06E1}', '\u{06E2}',
+    '\u{06E4}', '\u{06E7}', '\u{06E8}', '\u{06EB}', '\u{06EC}', '\u{0730}', '\u{0732}', '\u{0733}',
+    '\u{0735}', '\u{0736}', '\u{073A}', '\u{073D}', '\u{073F}', '\u{0740}', '\u{0741}', '\u{0743}',
+    '\u{0745}', '\u{0747}', '\u{0749}', '\u{074A}', '\u{07EB}', '\u{07EC}', '\u{07ED}', '\u{07EE}',
+    '\u{07EF}', '\u{07F0}', '\u{07F1}', '\u{07F3}', '\u{0816}', '\u{0817}', '\u{0818}', '\u{0819}',
+    '\u{081B}', '\u{081C}', '\u{081D}', '\u{081E}', '\u{081F}', '\u{0820}', '\u{0821}', '\u{0822}',
+    '\u{0823}', '\u{0825}', '\u{0826}', '\u{0827}', '\u{0829}', '\u{082A}', '\u{082B}', '\u{082C}',
+    '\u{082D}', '\u{0951}', '\u{0953}', '\u{0954}', '\u{0F82}', '\u{0F83}', '\u{0F86}', '\u{0F87}',
+    '\u{135D}', '\u{135E}', '\u{135F}', '\u{17DD}', '\u{193A}', '\u{1A17}', '\u{1A75}', '\u{1A76}',
+    '\u{1A77}', '\u{1A78}', '\u{1A79}', '\u{1A7A}', '\u{1A7B}', '\u{1A7C}', '\u{1B6B}', '\u{1B6D}',
+    '\u{1B6E}', '\u{1B6F}', '\u{1B70}', '\u{1B71}', '\u{1B72}', '\u{1B73}', '\u{1CD0}', '\u{1CD1}',
+    '\u{1CD2}', '\u{1CDA}', '\u{1CDB}', '\u{1CE0}', '\u{1DC0}', '\u{1DC1}', '\u{1DC3}', '\u{1DC4}',
+    '\u{1DC5}', '\u{1DC6}', '\u{1DC7}', '\u{1DC8}', '\u{1DC9}', '\u{1DCB}', '\u{1DCC}', '\u{1DD1}',
+    '\u{1DD2}', '\u{1DD3}', '\u{1DD4}', '\u{1DD5}', '\u{1DD6}', '\u{1DD7}', '\u{1DD8}', '\u{1DD9}',
+    '\u{1DDA}', '\u{1DDB}', '\u{1DDC}', '\u{1DDD}', '\u{1DDE}', '\u{1DDF}', '\u{1DE0}', '\u{1DE1}',
+    '\u{1DE2}', '\u{1DE3}', '\u{1DE4}', '\u{1DE5}', '\u{1DE6}', '\u{1DFE}', '\u{20D0}', '\u{20D1}',
+    '\u{20D4}', '\u{20D5}', '\u{20D6}', '\u{20D7}', '\u{20DB}', '\u{20DC}', '\u{20E1}', '\u{20E7}',
+    '\u{20E9}', '\u{20F0}', '\u{2CEF}', '\u{2CF0}', '\u{2CF1}', '\u{2DE0}', '\u{2DE1}', '\u{2DE2}',
+    '\u{2DE3}', '\u{2DE4}', '\u{2DE5}', '\u{2DE6}', '\u{2DE7}', '\u{2DE8}', '\u{2DE9}', '\u{2DEA}',
+    '\u{2DEB}', '\u{2DEC}', '\u{2DED}', '\u{2DEE}', '\u{2DEF}', '\u{2DF0}', '\u{2DF1}', '\u{2DF2}',
+    '\u{2DF3}', '\u{2DF4}', '\u{2DF5}', '\u{2DF6}', '\u{2DF7}', '\u{2DF8}', '\u{2DF9}', '\u{2DFA}',
+    '\u{2DFB}', '\u{2DFC}', '\u{2DFD}', '\u{2DFE}', '\u{2DFF}', '\u{A66F}', '\u{A67C}', '\u{A67D}',
+    '\u{A6F0}', '\u{A6F1}', '\u{A8E0}', '\u{A8E1}', '\u{A8E2}', '\u{A8E3}', '\u{A8E4}', '\u{A8E5}',
+    '\u{A8E6}', '\u{A8E7}', '\u{A8E8}', '\u{A8E9}', '\u{A8EA}', '\u{A8EB}', '\u{A8EC}', '\u{A8ED}',
+    '\u{A8EE}', '\u{A8EF}', '\u{A8F0}', '\u{A8F1}', '\u{AAB0}', '\u{AAB2}', '\u{AAB3}', '\u{AAB7}',
+    '\u{AAB8}', '\u{AABE}', '\u{AABF}', '\u{AAC1}', '\u{FE20}', '\u{FE21}', '\u{FE22}', '\u{FE23}',
+    '\u{FE24}', '\u{FE25}', '\u{FE26}', '\u{10A0F}', '\u{10A38}', '\u{1D185}', '\u{1D186}', '\u{1D187}',
+    '\u{1D188}', '\u{1D189}', '\u{1D1AA}', '\u{1D1AB}', '\u{1D1AC}', '\u{1D1AD}', '\u{1D242}', '\u{1D243}',
+    '\u{1D244}',
+];
+
+/// The placeholder cell symbol for (`row`, `col`) of an image, or `None` past
+/// the 297 rows and columns the diacritics can name.
+fn placeholder_symbol(row: u16, col: u16) -> Option<String> {
+    let row = *DIACRITICS.get(usize::from(row))?;
+    let col = *DIACRITICS.get(usize::from(col))?;
+    Some([PLACEHOLDER, row, col].iter().collect())
+}
+
+/// Paint `rect`'s cells as placeholders for Kitty image `id`: each cell holds
+/// the placeholder plus its row and column diacritics, in a foreground color
+/// that spells the id. Cells outside the surface's clip are skipped, which is
+/// what crops the picture to its visible part.
+pub(crate) fn paint_placeholders(surface: &mut Surface, rect: Rect, id: u32, background: Color) {
+    let [_, r, g, b] = id.to_be_bytes();
+    let style = Style::default().fg(Color::Rgb(r, g, b)).bg(background);
+    for row in 0..rect.height {
+        for col in 0..rect.width {
+            if let Some(symbol) = placeholder_symbol(row, col) {
+                surface.set_cluster(rect.x + col, rect.y + row, &symbol, style);
+            }
+        }
+    }
+}
+
 /// A shared collector of the images placed during a frame, and the emitter that
 /// paints them after the frame is drawn.
 ///
@@ -456,33 +742,60 @@ fn next_kitty_image_id() -> u32 {
 /// between frames, so it sends each image once and writes nothing on a frame
 /// where no image changed or moved. Keep one layer for the life of a screen,
 /// and call [`invalidate`](Self::invalidate) whenever that screen is cleared
-/// or scrolled behind its back.
+/// or scrolled behind its back. How Kitty images are positioned is the
+/// layer's [`KittyPlacement`].
 #[derive(Clone, Debug, Default)]
 pub struct ImageLayer(Rc<RefCell<ImageLayerState>>);
 
 impl ImageLayer {
-    /// Create an empty layer.
+    /// Create an empty layer, placing Kitty images [directly](KittyPlacement::Direct).
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Choose how this layer positions Kitty-protocol images.
+    /// [`Runner`](crate::Runner) sets [`KittyPlacement::detect`]'s answer.
+    /// Change it between frames, not during one.
+    pub fn set_kitty_placement(&self, placement: KittyPlacement) {
+        self.0.borrow_mut().kitty_placement = placement;
+    }
+
+    /// How this layer positions Kitty-protocol images.
+    pub fn kitty_placement(&self) -> KittyPlacement {
+        self.0.borrow().kitty_placement
     }
 
     /// Record an image at its painted cell rect, to be painted with `support`.
     /// Zero-area rects are dropped — a clipped-away image has nothing to paint.
     ///
+    /// Returns the Kitty image id when the image is to be shown by placeholder
+    /// cells, which the caller then paints over `rect` with
+    /// [`paint_placeholders`].
+    ///
     /// Crate-internal: the only caller is [`Image`](crate::components::Image)'s
     /// `render`, which is the one place that knows a rect has been painted.
-    pub(crate) fn record(&self, rect: Rect, data: ImageData, support: ImageSupport) {
+    pub(crate) fn record(&self, rect: Rect, data: ImageData, support: ImageSupport) -> Option<u32> {
         if rect.width == 0 || rect.height == 0 {
-            return;
+            return None;
         }
-        let mut state = self.0.borrow_mut();
+        let mut guard = self.0.borrow_mut();
+        let state = &mut *guard;
         // `None` shouldn't record, but Kitty is the safe default encoding.
         let protocol = match support {
             ImageSupport::ITerm2 => Protocol::Cells(place_iterm2),
             ImageSupport::Sixel => Protocol::Cells(place_sixel),
             _ => {
-                state.kitty.get_or_insert_with(KittyEmitter::new);
-                Protocol::Kitty
+                let kitty = state.kitty.get_or_insert_with(KittyEmitter::new);
+                if state.kitty_placement.uses_placeholders() {
+                    let grid = (rect.width, rect.height);
+                    Protocol::KittyVirtual {
+                        id: kitty.state.image_id(&data, Some(grid)),
+                    }
+                } else {
+                    Protocol::Kitty {
+                        id: kitty.state.image_id(&data, None),
+                    }
+                }
             }
         };
         state.placements.push(Placement {
@@ -490,6 +803,10 @@ impl ImageLayer {
             data,
             protocol,
         });
+        match protocol {
+            Protocol::KittyVirtual { id } => Some(id),
+            _ => None,
+        }
     }
 
     /// Drop all recorded placements. Call once per frame, after [`emit`](Self::emit),
@@ -531,21 +848,25 @@ impl ImageLayer {
     /// whose images all stayed put writes no bytes at all.
     ///
     /// Whatever is written is wrapped in a cursor save/restore (`ESC 7` /
-    /// `ESC 8`), and each image is positioned with a CUP (`ESC [ row ; col H`,
-    /// 1-based) before its escape, so the cursor model of the terminal
-    /// renderer is left exactly as it was. Kitty placements additionally
-    /// suppress protocol cursor movement, which could otherwise scroll at the
-    /// last row.
+    /// `ESC 8`), and each directly placed image is positioned with a CUP
+    /// (`ESC [ row ; col H`, 1-based) before its escape, so the cursor model
+    /// of the terminal renderer is left exactly as it was. Kitty placements
+    /// additionally suppress protocol cursor movement, which could otherwise
+    /// scroll at the last row.
     pub fn emit(&self, out: &mut impl Write) -> io::Result<()> {
         let mut guard = self.0.borrow_mut();
-        let ImageLayerState { placements, kitty } = &mut *guard;
+        let ImageLayerState {
+            placements,
+            kitty,
+            kitty_placement,
+        } = &mut *guard;
         let kitty_ops = match kitty {
             Some(kitty) => (kitty.plan)(placements, &mut kitty.state),
             None => Vec::new(),
         };
         let mut cells = placements.iter().filter_map(|p| match p.protocol {
             Protocol::Cells(encode) => Some((p, encode)),
-            Protocol::Kitty => None,
+            _ => None,
         });
         let first_cells = cells.next();
         if kitty_ops.is_empty() && first_cells.is_none() {
@@ -560,7 +881,8 @@ impl ImageLayer {
             encode(out, p)?;
         }
         if let Some(kitty) = kitty {
-            (kitty.write)(out, &kitty_ops)?;
+            let tmux = *kitty_placement == KittyPlacement::TmuxPlaceholders;
+            (kitty.write)(out, &kitty_ops, tmux)?;
         }
         out.write_all(b"\x1b8")?;
         out.flush()
@@ -573,28 +895,30 @@ impl ImageLayer {
 /// The base64 payload is split into [`CHUNK`]-sized pieces with the `m`
 /// continuation key, and control keys ride only on the first. `q=2`
 /// suppresses the terminal's acknowledgement replies so they can't be read as
-/// input.
+/// input. Each chunk is one `write_all`, so a [`Passthrough`] wraps it whole.
 fn write_kitty_transmit(out: &mut impl Write, data: &ImageData, id: u32) -> io::Result<()> {
     // 3072 input bytes become exactly one 4096-byte base64 protocol chunk.
-    // Encoding one chunk at a time avoids two full-frame temporary strings.
     const RAW_CHUNK: usize = CHUNK / 4 * 3;
     let chunks = data.rgba.len().div_ceil(RAW_CHUNK);
+    let mut command = Vec::with_capacity(CHUNK + 64);
     for (i, raw) in data.rgba.chunks(RAW_CHUNK).enumerate() {
         // `m=1` on every chunk but the last signals "more data follows".
         let more = u8::from(i + 1 != chunks);
-        out.write_all(b"\x1b_G")?;
+        command.clear();
+        command.extend_from_slice(b"\x1b_G");
         if i == 0 {
             write!(
-                out,
+                command,
                 "a=t,f=32,s={},v={},i={id},q=2,m={more}",
                 data.pixel_width, data.pixel_height
             )?;
         } else {
-            write!(out, "m={more}")?;
+            write!(command, "m={more}")?;
         }
-        out.write_all(b";")?;
-        write_base64(out, raw)?;
-        out.write_all(ST.as_bytes())?;
+        command.push(b';');
+        write_base64(&mut command, raw)?;
+        command.extend_from_slice(ST.as_bytes());
+        out.write_all(&command)?;
     }
     Ok(())
 }
@@ -609,9 +933,8 @@ fn write_kitty_place(
     cols: u16,
     rows: u16,
 ) -> io::Result<()> {
-    write!(
-        out,
-        "\x1b_Ga=p,i={image},p={placement},c={cols},r={rows},C=1,q=2{ST}"
+    out.write_all(
+        format!("\x1b_Ga=p,i={image},p={placement},c={cols},r={rows},C=1,q=2{ST}").as_bytes(),
     )
 }
 
@@ -1095,20 +1418,218 @@ mod tests {
     }
 
     #[test]
-    fn kitty_invalidate_resends_under_a_fresh_id() {
+    fn kitty_invalidate_resends_under_the_same_id() {
         let layer = ImageLayer::new();
         let img = solid(1, 1, [1, 2, 3, 255]);
         let rect = Rect::new(0, 0, 8, 4);
         let first = frame(&layer, &[(rect, &img)]);
-        let old = kitty_key(&first, "i");
+        let id = kitty_key(&first, "i");
 
         layer.invalidate();
         let out = frame(&layer, &[(rect, &img)]);
-        let new = kitty_key(&out, "i");
-        assert_ne!(old, new);
-        assert!(out.contains("a=t,") && out.contains("a=p,"), "{out:?}");
-        assert!(out.contains(&format!("a=d,d=I,i={old},q=2")), "{out:?}");
+        // Placeholder cells already painted this frame name the id, so it is
+        // kept: whatever the terminal still holds goes first, then a resend.
+        let delete = out.find(&format!("a=d,d=I,i={id},q=2")).expect("deleted");
+        let send = out
+            .find(&format!("a=t,f=32,s=1,v=1,i={id},"))
+            .expect("resent");
+        let place = out.find(&format!("a=p,i={id},p=1,")).expect("re-placed");
+        assert!(delete < send && send < place, "{out:?}");
         assert!(frame(&layer, &[(rect, &img)]).is_empty());
+    }
+
+    /// One frame under `placement`, returning each record's placeholder id
+    /// and the bytes emitted.
+    fn virtual_frame(
+        layer: &ImageLayer,
+        placements: &[(Rect, &ImageData)],
+    ) -> (Vec<Option<u32>>, String) {
+        let ids = placements
+            .iter()
+            .map(|(rect, data)| layer.record(*rect, (*data).clone(), ImageSupport::Kitty))
+            .collect();
+        let mut out = Vec::new();
+        layer.emit(&mut out).expect("emit");
+        layer.clear();
+        (ids, String::from_utf8(out).expect("ASCII"))
+    }
+
+    #[test]
+    fn placeholders_send_once_and_create_one_virtual_placement() {
+        let layer = ImageLayer::new();
+        layer.set_kitty_placement(KittyPlacement::Placeholders);
+        let img = solid(4, 4, [1, 2, 3, 255]);
+        let rect = Rect::new(3, 2, 6, 3);
+
+        let (ids, out) = virtual_frame(&layer, &[(rect, &img)]);
+        let id = ids[0].expect("a placeholder id for the view to paint");
+        assert!(
+            out.contains(&format!("a=t,f=32,s=4,v=4,i={id},")),
+            "{out:?}"
+        );
+        assert!(
+            out.contains(&format!("\x1b_Ga=p,U=1,i={id},c=6,r=3,q=2\x1b\\")),
+            "{out:?}"
+        );
+        assert!(!out.contains("\x1b["), "no cursor positioning: {out:?}");
+
+        // Moving the view moves its cells, not the image: nothing to send.
+        let (again, out) = virtual_frame(&layer, &[(Rect::new(0, 9, 6, 3), &img)]);
+        assert_eq!(again, ids);
+        assert!(out.is_empty(), "{out:?}");
+
+        // Gone from the frame: deleted with its virtual placement.
+        let (_, out) = virtual_frame(&layer, &[]);
+        assert!(out.contains(&format!("a=d,d=I,i={id},q=2")), "{out:?}");
+    }
+
+    #[test]
+    fn placeholders_give_each_size_its_own_id() {
+        let layer = ImageLayer::new();
+        layer.set_kitty_placement(KittyPlacement::Placeholders);
+        let img = solid(4, 4, [1, 2, 3, 255]);
+        let (ids, out) = virtual_frame(
+            &layer,
+            &[(Rect::new(0, 0, 4, 2), &img), (Rect::new(0, 4, 8, 4), &img)],
+        );
+        assert_ne!(ids[0], ids[1], "cells name only an image, so sizes differ");
+        assert_eq!(out.matches("a=t,").count(), 2, "{out:?}");
+        assert_eq!(out.matches("U=1,").count(), 2, "{out:?}");
+    }
+
+    #[test]
+    fn placeholders_survive_invalidate_under_the_same_id() {
+        let layer = ImageLayer::new();
+        layer.set_kitty_placement(KittyPlacement::Placeholders);
+        let img = solid(1, 1, [1, 2, 3, 255]);
+        let rect = Rect::new(0, 0, 4, 2);
+        let (ids, _) = virtual_frame(&layer, &[(rect, &img)]);
+        layer.invalidate();
+        let (again, out) = virtual_frame(&layer, &[(rect, &img)]);
+        assert_eq!(again, ids);
+        let id = ids[0].expect("placeholder id");
+        assert!(out.contains(&format!("a=d,d=I,i={id},")), "{out:?}");
+        assert!(
+            out.contains(&format!("a=t,f=32,s=1,v=1,i={id},")),
+            "{out:?}"
+        );
+        assert!(out.contains(&format!("a=p,U=1,i={id},")), "{out:?}");
+    }
+
+    #[test]
+    fn tmux_placeholders_wrap_every_command_in_passthrough() {
+        let layer = ImageLayer::new();
+        layer.set_kitty_placement(KittyPlacement::TmuxPlaceholders);
+        let img = solid(64, 64, [9, 9, 9, 9]);
+        let (ids, out) = virtual_frame(&layer, &[(Rect::new(0, 0, 4, 2), &img)]);
+        let id = ids[0].expect("placeholder id");
+
+        let body = out
+            .strip_prefix("\x1b7")
+            .and_then(|s| s.strip_suffix("\x1b8"))
+            .expect("bracketed by save/restore");
+        let wrapped: Vec<&str> = body.split_inclusive("\x1b\x1b\\\x1b\\").collect();
+        assert!(
+            wrapped.len() > 2,
+            "several transmit chunks plus the placement"
+        );
+        for command in &wrapped {
+            let inner = command
+                .strip_prefix("\x1bPtmux;")
+                .and_then(|s| s.strip_suffix("\x1b\\"))
+                .unwrap_or_else(|| panic!("not a passthrough: {command:?}"));
+            // Every inner ESC is doubled: undoubling yields one APC command.
+            let apc = inner.replace("\x1b\x1b", "\x1b");
+            assert!(
+                apc.starts_with("\x1b_G") && apc.ends_with("\x1b\\"),
+                "{apc:?}"
+            );
+            assert_eq!(apc.matches('\x1b').count(), 2, "{apc:?}");
+        }
+        assert!(
+            wrapped
+                .last()
+                .expect("commands")
+                .contains(&format!("a=p,U=1,i={id},c=4,r=2,q=2"))
+        );
+    }
+
+    #[test]
+    fn placeholder_cells_spell_the_id_row_and_column() {
+        use crate::buffer::Buffer;
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 6, 4));
+        // Only the bottom-right 3×2 of a 4×3 image is visible.
+        let mut surface = Surface::new(&mut buffer, Rect::new(2, 2, 4, 2));
+        paint_placeholders(
+            &mut surface,
+            Rect::new(1, 1, 4, 3),
+            0x12_34_56,
+            Color::Black,
+        );
+
+        assert_eq!(buffer[(0, 0)].symbol(), " ", "outside the clip");
+        assert_eq!(buffer[(1, 1)].symbol(), " ", "clipped away");
+        // Screen (2,2) is image row 1, column 1.
+        let cell = &buffer[(2, 2)];
+        let chars: Vec<char> = cell.symbol().chars().collect();
+        assert_eq!(chars, [PLACEHOLDER, DIACRITICS[1], DIACRITICS[1]]);
+        assert_eq!(cell.fg, Color::Rgb(0x12, 0x34, 0x56));
+        // Screen (4,3) is image row 2, column 3.
+        let chars: Vec<char> = buffer[(4, 3)].symbol().chars().collect();
+        assert_eq!(chars, [PLACEHOLDER, DIACRITICS[2], DIACRITICS[3]]);
+        assert_eq!(crate::width::str_cols(buffer[(4, 3)].symbol()), 1);
+    }
+
+    #[test]
+    fn placeholder_symbols_stop_at_the_diacritic_table() {
+        assert!(placeholder_symbol(296, 296).is_some());
+        assert!(placeholder_symbol(297, 0).is_none());
+        assert!(placeholder_symbol(0, 297).is_none());
+        assert!(
+            DIACRITICS.windows(2).all(|w| w[0] < w[1]),
+            "sorted, distinct"
+        );
+        assert_eq!(DIACRITICS[0], '\u{305}');
+        assert_eq!(DIACRITICS[296], '\u{1D244}');
+    }
+
+    #[test]
+    fn kitty_placement_detection() {
+        use KittyPlacement::{Direct, Placeholders, TmuxPlaceholders};
+        let outside = |term, program, window, ghostty| {
+            KittyPlacement::detect_from(term, program, window, ghostty, None, None, None)
+        };
+        assert_eq!(
+            outside(Some("xterm-kitty"), None, Some("1"), None),
+            Placeholders
+        );
+        assert_eq!(
+            outside(None, Some("ghostty"), None, Some("/x")),
+            Placeholders
+        );
+        // WezTerm speaks the Kitty protocol without placeholders.
+        assert_eq!(outside(None, Some("WezTerm"), None, None), Direct);
+        assert_eq!(outside(Some("xterm-256color"), None, None, None), Direct);
+
+        // Inside tmux: only with passthrough allowed and 24-bit color.
+        let inside = |window, passthrough, features| {
+            KittyPlacement::detect_from(
+                Some("tmux-256color"),
+                Some("tmux"),
+                window,
+                None,
+                Some("/tmp/tmux-0/default,1,0"),
+                passthrough,
+                features,
+            )
+        };
+        let rgb = Some("256,RGB,title,usstyle\n");
+        assert_eq!(inside(Some("1"), Some("on\n"), rgb), TmuxPlaceholders);
+        assert_eq!(inside(Some("1"), Some("all"), rgb), TmuxPlaceholders);
+        assert_eq!(inside(Some("1"), Some("off"), rgb), Direct);
+        assert_eq!(inside(Some("1"), None, rgb), Direct);
+        assert_eq!(inside(Some("1"), Some("on"), Some("256,title")), Direct);
+        assert_eq!(inside(None, Some("on"), rgb), Direct);
     }
 
     #[test]

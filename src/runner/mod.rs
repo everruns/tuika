@@ -107,7 +107,7 @@ use crate::mouse::{
 };
 use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
 use crate::term::clipboard;
-use crate::term::image::{ImageLayer, ImageSupport};
+use crate::term::image::{ImageLayer, ImageSupport, KittyPlacement};
 use crate::view::SelectionFrame;
 use crate::{
     Clock, Element, Event, RenderCtx, ScopedElement, SystemClock, TerminalSession, Theme, View,
@@ -151,7 +151,11 @@ impl FrameGraphics {
     }
 
     fn detected() -> Self {
-        Self::new(ImageSupport::detect())
+        let graphics = Self::new(ImageSupport::detect());
+        if graphics.support == ImageSupport::Kitty {
+            graphics.layer.set_kitty_placement(KittyPlacement::detect());
+        }
+        graphics
     }
 
     /// Invalidate the layer if the screen was disturbed since the last frame.
