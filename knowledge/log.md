@@ -8,6 +8,11 @@
     overrides, a dispatch-time `<leader>`, and a source-located dump. See
     [Keymap engine](specs/keymap.md).
 
+- **Frames carry screen-reader semantics**
+  - Views may record role, label, value, and state while painting; unlabelled
+    cells are read back as text, and container nodes group what they hold.
+    This is the base of the accessibility mode. See
+    [Accessibility](specs/accessibility.md).
 - **Probe Kitty keyboard support**
   - The startup probe also asks `CSI ? u`; its answer, not the environment,
     decides `Capabilities::kitty_keyboard`. The fence is now DA1's CSI final
@@ -19,6 +24,12 @@
     frame where no image changed or moved writes nothing; the runner
     invalidates it from the terminal's screen epoch. Replaces the
     "re-transmit every frame" design. See [Image rendering](specs/images.md).
+
+- **Shortcuts on non-Latin layouts**
+  - Unmatched Ctrl/Alt chords retry as the QWERTY key in the same position;
+    plain characters stay text and explicit bindings win. A built-in table
+    stands in for Kitty's base-layout key, which crossterm drops. See
+    [Keymap](specs/keymap.md).
 
 - **Chart annotations join the portable grammar**
   - Bands, value/position reference lines, dashed strokes, grid lines, axis

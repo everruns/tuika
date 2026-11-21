@@ -56,3 +56,20 @@ fn physical_shift_character_specs_fail_fallibly() {
             .is_ok()
     );
 }
+
+#[test]
+fn shortcuts_match_on_non_latin_layouts() {
+    let mut keymap = Keymap::new().layer(Layer::new("global").bind("ctrl+r", Action::Lower));
+    // Ctrl+к is what a Ukrainian or Russian layout reports for Ctrl+R's key.
+    let cyrillic = Key {
+        code: KeyCode::Char('к'),
+        ctrl: true,
+        alt: false,
+        shift: false,
+    };
+    assert_eq!(
+        cyrillic.base_layout().map(|k| k.code),
+        Some(KeyCode::Char('r'))
+    );
+    assert_eq!(keymap.dispatch(cyrillic), Dispatch::Command(Action::Lower));
+}

@@ -354,6 +354,8 @@ fn render_scene<V: View + ?Sized>(
         }
         let overlay_area = overlay.resolve(area);
         let mut layer = surface.child(overlay_area);
+        // A dimmed backdrop is the modal signal: what it dims is inert.
+        ctx.begin_access_overlay(layer.area(), overlay.backdrop == Backdrop::Dim);
         if overlay.clear {
             layer.fill(Style::default().bg(ctx.theme.surface));
         }

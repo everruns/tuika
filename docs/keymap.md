@@ -113,6 +113,15 @@ Shift flag from character events because its effect is already present in the
 character. Parsed bindings and live events therefore share one layout-neutral
 identity.
 
+Shortcuts keep working on a non-Latin layout. With a Ukrainian, Russian,
+Belarusian, Greek, or Hebrew layout active, Ctrl+C's key arrives as Ctrl+`с`;
+when a Ctrl or Alt chord matches no binding, the keymap retries it as the US
+QWERTY key in the same position, so `ctrl+c` still fires. An explicit binding
+for the non-Latin chord wins, and plain characters are never translated, since
+they are text. `Key::base_layout` exposes the same mapping, and
+`Key::shortcut` applies it to Ctrl/Alt chords for code that matches keys by
+hand.
+
 ## Modes: layers gated on runtime data
 
 `set_data` drives which layers are active, mirroring an application's modes. A

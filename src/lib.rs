@@ -80,6 +80,7 @@
 // left 0.4.0 undocumented on docs.rs.
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod access;
 pub mod anim;
 pub mod buffer;
 mod clock;

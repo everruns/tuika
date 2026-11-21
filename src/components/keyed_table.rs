@@ -487,7 +487,7 @@ impl<K: Clone + PartialEq> KeyedSelectState<K> {
         });
         let page = viewport_rows.saturating_sub(1).max(1);
         let command = if navigation.ctrl_n_p && k.ctrl && !k.alt && !k.shift {
-            match k.code {
+            match k.shortcut().code {
                 KeyCode::Char('n') => Some(1isize),
                 KeyCode::Char('p') => Some(-1),
                 _ => None,

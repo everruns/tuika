@@ -76,6 +76,23 @@ actually delivers:
 Both the string parser and `Chord::from_key` apply the same normalization, so a
 parsed binding and a live event agree.
 
+### Shortcuts survive a non-Latin layout
+
+Logical text has one cost: on a Cyrillic, Greek, or Hebrew layout, Ctrl+C's key
+produces Ctrl+`с`, and a `ctrl+c` binding would miss until the user switched
+layout. So a Ctrl or Alt chord that resolves to nothing is retried as the US
+QWERTY key in the same position (`Key::base_layout`), stroke by stroke inside a
+sequence. The logical chord is always tried first, so an explicit `ctrl+с`
+binding still wins. Plain characters are never translated: they are text, and
+`й` must not fire a `q` binding. The built-in components' fixed Ctrl/Alt
+shortcuts (`TextInput` editing, `Ctrl+N`/`Ctrl+P` navigation) use the same rule
+through `Key::shortcut`.
+
+The Kitty keyboard protocol reports the true base-layout key for every layout,
+and tuika already asks for it (`REPORT_ALTERNATE_KEYS`), but crossterm's
+decoder discards that field. The built-in table stands in until tuika decodes
+`CSI u` itself; the matching rule does not change when it does.
+
 ### Sequence resolution: exact wins, dead-ends retry
 
 `dispatch` accumulates strokes into a pending buffer. On each key it resolves the

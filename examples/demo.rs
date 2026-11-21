@@ -9,6 +9,7 @@
 //! cargo run --example demo -- spinner          # interactive, records a GIF
 //! cargo run --example demo -- list              # list scene names
 //! cargo run --example demo -- check             # verify the docs assets
+//! cargo run --example demo -- select --screen-reader  # what a screen reader hears
 //! cargo run --example demo -- tapes <dir>       # emit VHS tapes (used by the generator)
 //! ```
 //!
@@ -557,7 +558,9 @@ fn main() -> io::Result<()> {
                 eprintln!("unknown scene {name:?}; run `list` to see the options");
                 std::process::exit(2);
             };
-            if args.iter().any(|a| a == "--dump") {
+            if args.iter().any(|a| a == "--screen-reader") {
+                dump_screen_reader(d, &cli.theme)
+            } else if args.iter().any(|a| a == "--dump") {
                 dump(d, &cli.theme)
             } else {
                 run(d, &cli.theme)
@@ -1007,6 +1010,16 @@ fn dump(d: &Demo, theme: &Theme) -> io::Result<()> {
     let root = framed(d.title, d.blurb, (d.build)(24, theme), theme);
     let buffer = tuika::testing::render(root.as_ref(), RECORD_COLS, d.rows, theme);
     println!("{}", tuika::testing::grid(&buffer));
+    Ok(())
+}
+
+/// Print what a screen reader would hear for one frame of the scene.
+fn dump_screen_reader(d: &Demo, theme: &Theme) -> io::Result<()> {
+    let root = framed(d.title, d.blurb, (d.build)(24, theme), theme);
+    println!(
+        "{}",
+        tuika::testing::screen_reader(root.as_ref(), RECORD_COLS, d.rows, theme)
+    );
     Ok(())
 }
 

@@ -267,7 +267,7 @@ impl Cell {
     }
 
     /// Whether the diff must leave this cell alone.
-    const fn is_skipped(&self) -> bool {
+    pub(crate) const fn is_skipped(&self) -> bool {
         matches!(self.diff_option, CellDiffOption::Skip)
     }
 }

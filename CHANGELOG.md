@@ -63,6 +63,12 @@ next release.
   chord `"<leader> f"` specs start with. Every binding records the source line
   that declared it, which `Keymap::bindings` and the plain-text `Keymap::dump`
   report. `CommandInfo` joins the prelude.
+- Screen-reader semantics, the first part of an accessibility mode: the new
+  `access` module (`Role`, `Node`, `AccessFrame`, `Document`, and the
+  `Semantic` wrapper), `RenderCtx::with_access` / `access` / `record_access`,
+  and `testing::screen_reader`, which reads a frame back as linear plain text.
+  Unlabelled views are read from their cells with decoration dropped. `demo --
+  <scene> --screen-reader` prints a scene's spoken text.
 - Text selection survives scrolling. The runner's built-in selection anchors a
   drag that starts in `Scroll`, `Viewport`, or `ItemScroll` to content rows, so
   it stays on the same text while the view scrolls (instead of being cleared),
@@ -86,6 +92,13 @@ next release.
   `ClickAction` chooses between highlight-then-confirm and one-click choice,
   and `ClickConfirm` holds a one-click choice for a short highlight before the
   host acts on it.
+- Shortcuts work on non-Latin keyboard layouts. A Ctrl or Alt chord that
+  matches no binding is retried as the US QWERTY key in the same position, so
+  Ctrl+`с` on a Ukrainian or Russian layout fires `ctrl+c` (Cyrillic, Greek, and
+  Hebrew layouts). Explicit bindings for the non-Latin chord still win, and
+  plain characters are never translated. `TextInput`'s editing shortcuts and
+  the `Ctrl+N`/`Ctrl+P` navigation of `SelectState` and `KeyedTableState`
+  follow the same rule. New: `Key::base_layout` and `Key::shortcut`.
 - `tuika-charts`: `Series::band` fills between two edges (percentile ranges,
   confidence intervals); `Chart::reference` with `Reference::value` /
   `Reference::position` draws labelled, optionally dashed threshold and event
