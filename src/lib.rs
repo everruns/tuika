@@ -88,7 +88,7 @@ pub mod components;
 pub mod dock;
 pub mod event;
 #[macro_use]
-mod macros;
+mod fuzzy;
 pub mod focus;
 pub mod framebuffer;
 pub mod geometry;
@@ -100,6 +100,7 @@ pub mod interop;
 pub mod keymap;
 pub mod layout;
 pub mod live;
+mod macros;
 pub mod mouse;
 mod output;
 pub mod overlay;

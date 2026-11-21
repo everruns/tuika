@@ -2,6 +2,12 @@
 
 ## 2026-11-21
 
+- **Keymap catalog, diagnostics, leader, and dump**
+  - The keymap gains a command catalog searched with the shared fuzzy
+    ranking, static diagnostics that separate dead bindings from intended
+    overrides, a dispatch-time `<leader>`, and a source-located dump. See
+    [Keymap engine](specs/keymap.md).
+
 - **Frames carry screen-reader semantics**
   - Views may record role, label, value, and state while painting; unlabelled
     cells are read back as text, and container nodes group what they hold.
