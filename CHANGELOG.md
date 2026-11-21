@@ -53,6 +53,13 @@ next release.
 
 ### Added
 
+- Text selection survives scrolling. The runner's built-in selection anchors a
+  drag that starts in `Scroll`, `Viewport`, or `ItemScroll` to content rows, so
+  it stays on the same text while the view scrolls (instead of being cleared),
+  and one drag can span several screens; rows it passed over are still copied
+  after they scroll away. New: `mouse::{ContentSelection, ContentWindow,
+  ContentPoint, ContentRange}` for hosts with their own loop, and
+  `RenderCtx::record_scrolled_content` for custom scrolling views.
 - `term::capabilities` probes the Kitty keyboard protocol: `query` and
   `query_with_palette` also send `KITTY_KEYBOARD_QUERY` (`CSI ? u`) and set
   `Capabilities::kitty_keyboard` from the terminal's answer, so a host can tell
