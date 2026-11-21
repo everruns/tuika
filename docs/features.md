@@ -39,7 +39,8 @@ never blocks. Because the OSC features above degrade harmlessly, you emit them
 regardless; the flag only decides whether to *show an affordance* (a "copy" hint,
 a link underline) the terminal can't act on, so those flags lean conservative.
 OSC 8 detection also recognizes VS Code, Zed, mintty, Konsole, and
-`VTE_VERSION >= 5202`. Under tmux / GNU Screen the outer terminal's environment
+`VTE_VERSION >= 5202`. `rex` is set inside a [Rex](https://www.superlogical.com/rex/docs)
+pane, from the `REX_BLOCK` variable Rex gives the programs it runs. Under tmux / GNU Screen the outer terminal's environment
 does not prove OSC 8 passthrough, so the hyperlink flag stays conservative.
 
 For accuracy — mainly to confirm **Sixel**, which has no reliable environment
@@ -452,6 +453,29 @@ ESC ] 9 ; 4 ; <state> ; <percent> BEL
 Terminal and ConEmu (taskbar), WezTerm, Konsole, mintty. Others swallow the
 unknown OSC. Writes are best-effort — a failed progress write never disrupts the
 session.
+
+## Window titles (OSC 2)
+
+Name the window or tab after what the program is doing, and give the old name
+back when it leaves. [API](https://docs.rs/tuika/latest/tuika/term/title/index.html)
+
+```rust,no_run
+use tuika::prelude::*;
+
+let runner = Runner::new(RunnerConfig::default());
+runner.window_title().set(Some("build: compiling".to_string()));
+```
+
+The runner saves the terminal's own title on the xterm title stack before the
+first change (`CSI 22 ; 0 t`) and restores it on exit (`CSI 23 ; 0 t`), or as
+soon as the title is set back to `None`. It sends a title only when it changes.
+Control characters are replaced and long titles are cut, so host text can't
+end the sequence early. Outside the runner, `term::title::WindowTitle` does the
+same, and `term::title::encode` builds one sequence.
+
+Terminals without a title stack ignore the save and restore, so the worst case
+is that the program's last title stays. Renaming a tab through a terminal's own
+CLI, such as Rex's `rex`, is up to the app.
 
 ## Program status (OSC 7501)
 

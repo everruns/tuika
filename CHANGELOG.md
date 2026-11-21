@@ -45,6 +45,15 @@ described in the release process begins with the entry below.
 - `testing::StatusRecorder` records the OSC 7501 reports an app sends, so tests
   assert status changes the way they assert cells; `Report::decode` reads a
   report back from its wire form.
+- Window titles: `term::title` encodes OSC 2 and the xterm title stack, and
+  `WindowTitle` sets a title on change and restores the terminal's own at the
+  end. `Runner`/`AsyncRunner::window_title()` own one per run. Rex is detected
+  from `REX_BLOCK` as `Capabilities::rex` (`Capabilities::with_rex`).
+
+### Breaking Changes
+
+- `Capabilities` gained the public field `rex`. Struct-literal construction
+  must set it; `from_env`, `from_env_parts`, and `query` fill it.
 
 ## [0.14.0] - 2026-11-24
 

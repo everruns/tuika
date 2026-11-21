@@ -717,6 +717,18 @@ impl Runner {
         self.status.tasks()
     }
 
+    /// The window (and tab) title, as OSC 2. `None`, the default, leaves the
+    /// terminal's title alone.
+    ///
+    /// The first title saves the terminal's own on the xterm title stack, and
+    /// the run restores it on exit — or as soon as this is set back to `None`
+    /// — so the user's tab is not left named after a program that has ended.
+    /// Titles are sent only on change; control characters are replaced. It
+    /// goes wherever [`program_status`](Self::program_status) reports go.
+    pub fn window_title(&self) -> crate::live::Live<Option<String>> {
+        self.status.title()
+    }
+
     /// Also drive the terminal's OSC 9;4 progress indicator from
     /// [`program_status`](Self::program_status), mapped by
     /// [`Report::native_progress`], so the two never disagree. Off by default.
@@ -2533,6 +2545,45 @@ mod tests {
                 "7501;state=clear:id=agent-1",
             ],
             "changes only, vanished tasks cleared, live tasks cleared on exit"
+        );
+    }
+
+    #[test]
+    fn window_title_is_set_on_change_and_restored_on_exit() {
+        let out = SharedBytes::default();
+        let runner = quiet_runner().with_status_output(out.clone());
+        let title = runner.window_title();
+        let mut terminal = terminal(8, 1);
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut (),
+                    |(), _frame| element(Text::raw("x")),
+                    |(), signal| match signal {
+                        Signal::Event(Event::Key(key)) => match key.code {
+                            KeyCode::Char(c) => {
+                                title.set(Some(format!("job {c}")));
+                                UpdateResult::Clean
+                            }
+                            _ => UpdateResult::Exit,
+                        },
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                scripted_events([
+                    key_event(KeyCode::Char('a')),
+                    key_event(KeyCode::Char('a')),
+                    key_event(KeyCode::Char('b')),
+                    key_event(KeyCode::Esc),
+                ]),
+            )
+            .expect("run");
+        let bytes = String::from_utf8(out.0.lock().unwrap().clone()).unwrap();
+        assert_eq!(
+            bytes, "\x1b[22;0t\x1b]2;job a\x1b\\\x1b]2;job b\x1b\\\x1b[23;0t",
+            "saved once, set on change, restored on exit"
         );
     }
 }

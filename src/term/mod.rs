@@ -24,6 +24,7 @@
 //! | [`program_resume`] | OSC `7577` | records the command that would resume the program after a restart (signed with a per-pty token) |
 //! | [`mod@pointer`] | OSC 22 | changes the mouse pointer shape |
 //! | [`text_size`] | OSC 66 | draws text two to seven cells tall |
+//! | [`title`] | OSC 2, CSI 22/23 t | names the window or tab, and restores the old name |
 //! | [`capabilities`] | DA1 | answers what it supports |
 //! | [`palette`] | OSC 10 / 11 / 4 | reports the colors it was configured with |
 //!
@@ -51,4 +52,5 @@ pub mod progress;
 pub mod terminal;
 pub mod testbackend;
 pub mod text_size;
+pub mod title;
 pub mod traits;
