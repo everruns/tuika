@@ -51,6 +51,12 @@ next release.
 
 ### Added
 
+- Screen-reader semantics, the first part of an accessibility mode: the new
+  `access` module (`Role`, `Node`, `AccessFrame`, `Document`, and the
+  `Semantic` wrapper), `RenderCtx::with_access` / `access` / `record_access`,
+  and `testing::screen_reader`, which reads a frame back as linear plain text.
+  Unlabelled views are read from their cells with decoration dropped. `demo --
+  <scene> --screen-reader` prints a scene's spoken text.
 - `tuika-charts`: `Series::band` fills between two edges (percentile ranges,
   confidence intervals); `Chart::reference` with `Reference::value` /
   `Reference::position` draws labelled, optionally dashed threshold and event

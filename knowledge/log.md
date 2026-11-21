@@ -2,6 +2,11 @@
 
 ## 2026-11-21
 
+- **Frames carry screen-reader semantics**
+  - Views may record role, label, value, and state while painting; unlabelled
+    cells are read back as text, and container nodes group what they hold.
+    This is the base of the accessibility mode. See
+    [Accessibility](specs/accessibility.md).
 - **Chart annotations join the portable grammar**
   - Bands, value/position reference lines, dashed strokes, grid lines, axis
     titles, and per-series legend visibility are now part of `tuika-charts`'

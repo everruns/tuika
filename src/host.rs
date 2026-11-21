@@ -464,6 +464,7 @@ pub(crate) fn paint_with_context_and_selection(
         root.render(area, &mut surface, &ctx);
     }
     for overlay in overlays {
+        ctx.begin_access_overlay(overlay.area.intersection(area), false);
         let mut surface = Surface::new(buffer, overlay.area);
         if overlay.clear {
             surface.fill(Style::default().bg(ctx.theme.surface));

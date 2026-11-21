@@ -127,6 +127,7 @@ fn resolve_axis(known: Option<u16>, available: AvailableSpace, measured: u16) ->
     })
 }
 use super::surface::Surface;
+use crate::access::{AccessFrame, Node};
 use crate::term::image::{ImageLayer, ImageSupport};
 
 /// Original text rendered in a frame, used to preserve source line breaks when copying.
@@ -192,6 +193,8 @@ pub struct RenderCtx<'a> {
     /// Graphics protocol and per-frame placement collector supplied by a host.
     image_graphics: Option<(ImageSupport, &'a ImageLayer)>,
     selection: Option<&'a SelectionFrame>,
+    /// Screen-reader collector supplied by a host; `None` on an ordinary paint.
+    access: Option<&'a AccessFrame>,
     /// Whether the focused component of the frame is this one. Containers pass
     /// this down unchanged; focus-aware leaves use it to highlight borders.
     pub focused: bool,
@@ -206,6 +209,7 @@ impl<'a> RenderCtx<'a> {
             style_resolver: None,
             image_graphics: None,
             selection: None,
+            access: None,
             focused: false,
         }
     }
@@ -231,6 +235,46 @@ impl<'a> RenderCtx<'a> {
     pub fn with_image_graphics(mut self, support: ImageSupport, layer: &'a ImageLayer) -> Self {
         self.image_graphics = Some((support, layer));
         self
+    }
+
+    /// Install a screen-reader collector for this frame.
+    ///
+    /// Views then record [`Node`]s into it through
+    /// [`record_access`](Self::record_access); read the frame back with
+    /// [`AccessFrame::document`] once it is painted. See [`crate::access`].
+    pub fn with_access(mut self, frame: &'a AccessFrame) -> Self {
+        self.access = Some(frame);
+        self
+    }
+
+    /// The screen-reader collector installed for this frame, if any.
+    pub fn access(&self) -> Option<&'a AccessFrame> {
+        self.access
+    }
+
+    /// Record a screen-reader [`Node`] built by `node`.
+    ///
+    /// `node` runs only when a collector is installed, so an ordinary paint
+    /// pays nothing for labels it would never read. Give the node the area it
+    /// covers clipped to the surface (`area.intersection(surface.area())`).
+    pub fn record_access(&self, node: impl FnOnce() -> Node) {
+        if let Some(frame) = self.access {
+            frame.record(node());
+        }
+    }
+
+    /// This context with no screen-reader collector, for decoration.
+    pub(crate) fn without_access(&self) -> RenderCtx<'a> {
+        let mut ctx = self.clone();
+        ctx.access = None;
+        ctx
+    }
+
+    /// Tell the collector an overlay is about to paint over `area`.
+    pub(crate) fn begin_access_overlay(&self, area: Rect, modal: bool) {
+        if let Some(frame) = self.access {
+            frame.begin_overlay(area, modal);
+        }
     }
 
     pub(crate) fn with_selection(mut self, selection: &'a SelectionFrame) -> Self {
@@ -283,6 +327,7 @@ impl<'a> RenderCtx<'a> {
             style_resolver: self.style_resolver,
             image_graphics: self.image_graphics,
             selection: self.selection,
+            access: self.access,
             focused,
         }
     }
