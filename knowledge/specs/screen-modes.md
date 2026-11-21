@@ -110,6 +110,24 @@ same commit without the queue, taking a `&RenderCtx` so a host publishes in its
 own stylesheet. Neither is a shortcut for the other: one crosses a thread
 boundary, one crosses none.
 
+### Publishing is decided against the footer's own layout
+
+A footer that shows the newest transcript rows has to publish the rows it
+cannot show, and publishing scrolls the terminal and clears the viewport, so it
+happens before the paint. But the number of rows the footer shows is an output
+of the footer's layout, which a view tree only computes while painting.
+Without a way to ask first, a host re-derives that geometry by hand beside its
+tree, and the two drift: this is what kept yolop's split-footer renderer on
+hand-written layouts while its alternate-screen renderer became a view tree.
+
+`probe::resolve_layout` is the answer: the same layout, run into a discarded
+scratch buffer, so `RectProbe`s report the rects the paint will assign. It is a
+second traversal rather than a cached layout because views are ephemeral and
+the tree is rebuilt after publishing anyway; a footer-sized pass is cheap, and
+views that cache work (markdown, wrapping) warm the cache the paint reuses. A
+layout pass must not leak side effects towards the terminal, so it is visible to
+views as `RenderCtx::is_layout_pass`, and `Image` records no placement in it.
+
 ### Scrolling regions look like the obvious optimization and are the wrong trade
 
 The portable path for inserting above an inline viewport clears the

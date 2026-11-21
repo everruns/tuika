@@ -97,7 +97,11 @@ impl View for Image {
             // them blank so nothing shows through at the image's edges and the
             // ratatui diff over the region is stable.
             surface.fill(Style::default().bg(ctx.theme.background));
-            if let Some(layer) = layer {
+            // A layout-only pass discards its cells; recording here would emit
+            // the image twice once the real paint records it again.
+            if let Some(layer) = layer
+                && !ctx.is_layout_pass()
+            {
                 layer.record(area, self.data.clone(), support);
             }
         } else {
