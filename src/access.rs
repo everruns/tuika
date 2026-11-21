@@ -36,6 +36,7 @@
 
 use std::cell::RefCell;
 use std::fmt;
+use std::io::{self, Write};
 
 use crate::buffer::Buffer;
 use crate::geometry::{Position, Rect, Size};
@@ -152,7 +153,8 @@ pub struct Node {
     pub label: String,
     /// Its current value: an input's text, a progress percentage, a selection.
     pub value: Option<String>,
-    /// Heading level, `1` for the most important.
+    /// Heading level, `1` for the most important; for a tree item, its depth
+    /// from `1` at the root.
     pub level: Option<u8>,
     /// 1-based position within its set, and the size of the set.
     pub position: Option<(usize, usize)>,
@@ -263,6 +265,9 @@ impl Node {
         match (self.role, self.level) {
             (Role::Heading, Some(level)) => parts.push(format!("heading level {level}")),
             (role, _) => parts.extend(role.name().map(str::to_owned)),
+        }
+        if let (Role::TreeItem, Some(level)) = (self.role, self.level) {
+            parts.push(format!("level {level}"));
         }
         if let Some(value) = &self.value {
             let value = collapse_whitespace(value);
@@ -380,10 +385,23 @@ impl AccessFrame {
             .iter()
             .filter_map(|node| {
                 let area = node.area.intersection(buffer.area);
-                (!area.is_empty()).then(|| Node {
+                if area.is_empty() {
+                    return None;
+                }
+                let mut node = Node {
                     area,
                     ..node.clone()
-                })
+                };
+                // A leaf with no label of its own is named by what it painted,
+                // so `Semantic::new(view).role(Role::Button)` still says
+                // something.
+                if !node.role.is_container()
+                    && node.value.is_none()
+                    && collapse_whitespace(&node.label).is_empty()
+                {
+                    node.label = cells_text(buffer, area);
+                }
+                Some(node)
             })
             .collect();
         let hidden = self.hidden.borrow();
@@ -481,8 +499,13 @@ impl AccessFrame {
         }
 
         let mut lines = Vec::new();
-        let mut stack: Vec<usize> = children[nodes.len()].iter().rev().copied().collect();
-        while let Some(index) = stack.pop() {
+        // (item, label of the container it sits in)
+        let mut stack: Vec<(usize, Option<&str>)> = children[nodes.len()]
+            .iter()
+            .rev()
+            .map(|&index| (index, None))
+            .collect();
+        while let Some((index, enclosing)) = stack.pop() {
             match &items[index].content {
                 Content::Text(text) => lines.push(Line {
                     text: text.clone(),
@@ -491,14 +514,26 @@ impl AccessFrame {
                 Content::Node(node_index) => {
                     let node = &nodes[*node_index];
                     let text = node.describe();
-                    if !text.is_empty() {
+                    // A titled panel inside a dialog of the same name would
+                    // otherwise announce the title twice.
+                    let repeats = node.role == Role::Group
+                        && enclosing.is_some_and(|outer| {
+                            collapse_whitespace(outer) == collapse_whitespace(&node.label)
+                        });
+                    if !text.is_empty() && !repeats {
                         lines.push(Line {
                             text,
                             node: Some(node.clone()),
                         });
                     }
                     if node.role.is_container() {
-                        stack.extend(children[*node_index].iter().rev().copied());
+                        let label = Some(node.label.as_str());
+                        stack.extend(
+                            children[*node_index]
+                                .iter()
+                                .rev()
+                                .map(|&child| (child, label)),
+                        );
                     }
                 }
             }
@@ -632,6 +667,37 @@ fn is_decorative(symbol: &str) -> bool {
         )
 }
 
+/// The text painted in `area`, row by row, with decoration dropped.
+fn cells_text(buffer: &Buffer, area: Rect) -> String {
+    let mut text = String::new();
+    for y in area.top()..area.bottom() {
+        let mut covered_until = 0u16;
+        for x in area.left()..area.right() {
+            let cell = &buffer[(x, y)];
+            if x < covered_until || cell.raw_symbol().is_empty() {
+                continue;
+            }
+            covered_until = x.saturating_add(cell.cell_width().max(1));
+            let symbol = cell.symbol();
+            if cell.is_skipped() || is_decorative(symbol) {
+                text.push(' ');
+            } else {
+                text.push_str(symbol);
+            }
+        }
+        text.push(' ');
+    }
+    collapse_whitespace(&text)
+}
+
+/// The plain text of a styled line, for a node label.
+pub(crate) fn line_text(line: &crate::text::Line) -> String {
+    line.spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect()
+}
+
 fn collapse_whitespace(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for word in text.split_whitespace() {
@@ -686,6 +752,241 @@ pub struct Line {
     pub text: String,
     /// The node the line describes, or `None` for text read from cells.
     pub node: Option<Node>,
+}
+
+/// The environment variable that turns screen-reader output on for any tuika
+/// app whose runner is left at [`ScreenReader::Auto`].
+pub const SCREEN_READER_ENV: &str = "TUIKA_SCREEN_READER";
+
+/// Whether a runner speaks to a screen reader instead of painting cells.
+///
+/// In screen-reader mode a [`Runner`](crate::Runner) or
+/// [`AsyncRunner`](crate::AsyncRunner) stays on the main screen with the cursor
+/// visible and no mouse capture, paints each frame off screen, and writes only
+/// what changed as plain lines through a [`Narrator`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ScreenReader {
+    /// On when [`SCREEN_READER_ENV`] is set to anything but empty, `0`,
+    /// `false`, `no`, or `off`. The default, so a user can turn the mode on
+    /// for any tuika app without the app doing anything.
+    #[default]
+    Auto,
+    /// Always on.
+    On,
+    /// Always off, even when the environment asks for it.
+    Off,
+}
+
+impl ScreenReader {
+    /// Whether the mode is on for this process.
+    pub fn is_active(self) -> bool {
+        match self {
+            Self::On => true,
+            Self::Off => false,
+            Self::Auto => {
+                std::env::var(SCREEN_READER_ENV).is_ok_and(|value| Self::env_value_enables(&value))
+            }
+        }
+    }
+
+    fn env_value_enables(value: &str) -> bool {
+        let value = value.trim();
+        !value.is_empty()
+            && !["0", "false", "no", "off"]
+                .iter()
+                .any(|off| value.eq_ignore_ascii_case(off))
+    }
+}
+
+/// Turns successive [`Document`]s into the lines a screen reader should speak.
+///
+/// A screen reader speaks text as it arrives, so repainting a frame would make
+/// it read the whole screen on every keystroke. A narrator remembers the
+/// previous document and writes only:
+///
+/// 1. new alerts, first;
+/// 2. the focused node, when focus moved to a different one;
+/// 3. every other line that is new or changed, in reading order.
+///
+/// A focused [`Role::TextInput`] is the exception: its line is rewritten in
+/// place (carriage return, clear line) as the user types, and committed with a
+/// newline when focus leaves it. Lines end in `\r\n` so the output is right
+/// in raw mode too.
+///
+/// ```
+/// use tuika::access::{Narrator, Role, Semantic};
+/// use tuika::components::Text;
+/// use tuika::Theme;
+///
+/// let theme = Theme::default();
+/// let mut narrator = Narrator::new();
+/// let mut out = Vec::new();
+/// let status = |text| Semantic::new(Text::raw(text)).role(Role::Status);
+/// let first = tuika::access::read(&status("Building"), 20, 1, &theme);
+/// narrator.narrate(&first, &mut out).unwrap();
+/// let same = tuika::access::read(&status("Building"), 20, 1, &theme);
+/// narrator.narrate(&same, &mut out).unwrap();
+/// let done = tuika::access::read(&status("Done"), 20, 1, &theme);
+/// narrator.narrate(&done, &mut out).unwrap();
+/// assert_eq!(String::from_utf8(out).unwrap(), "Building\r\nDone\r\n");
+/// ```
+#[derive(Debug, Default)]
+pub struct Narrator {
+    previous: Vec<String>,
+    /// Role and label of the node that held focus.
+    focus: Option<(Role, String)>,
+    /// The text input line currently shown without a newline.
+    editing: Option<String>,
+}
+
+impl Narrator {
+    /// A narrator that has spoken nothing yet: the first document is written
+    /// whole.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Write what changed between the previous document and `document`.
+    pub fn narrate(
+        &mut self,
+        document: &Document,
+        out: &mut (impl Write + ?Sized),
+    ) -> io::Result<()> {
+        let focused = document.focused();
+        let focus = focused.map(|node| (node.role, node.label.clone()));
+        let focus_moved = focus.is_some() && focus != self.focus;
+        let editing_index = document.lines.iter().position(|line| {
+            line.node
+                .as_ref()
+                .is_some_and(|node| node.focused && node.role == Role::TextInput)
+        });
+        let editing = editing_index.map(|index| document.lines[index].text.clone());
+
+        // Lines not in the previous document, counted as a multiset so a
+        // repeated line is new only as often as it is added.
+        let mut remaining: std::collections::HashMap<&str, usize> =
+            std::collections::HashMap::new();
+        for line in &self.previous {
+            *remaining.entry(line.as_str()).or_default() += 1;
+        }
+        let mut fresh: Vec<usize> = Vec::new();
+        for (index, line) in document.lines.iter().enumerate() {
+            match remaining.get_mut(line.text.as_str()) {
+                Some(count) if *count > 0 => *count -= 1,
+                _ if Some(index) == editing_index => {}
+                _ => fresh.push(index),
+            }
+        }
+
+        let mut spoken: Vec<&str> = Vec::new();
+        let is_alert = |index: &usize| {
+            document.lines[*index]
+                .node
+                .as_ref()
+                .is_some_and(|node| node.role == Role::Alert)
+        };
+        spoken.extend(
+            fresh
+                .iter()
+                .filter(|i| is_alert(i))
+                .map(|&i| document.lines[i].text.as_str()),
+        );
+        if focus_moved
+            && editing_index.is_none()
+            && let Some(index) = document
+                .lines
+                .iter()
+                .position(|line| line.node.as_ref().is_some_and(|node| node.focused))
+            && !is_alert(&index)
+        {
+            spoken.push(document.lines[index].text.as_str());
+            fresh.retain(|&i| i != index);
+        }
+        spoken.extend(
+            fresh
+                .iter()
+                .filter(|i| !is_alert(i))
+                .map(|&i| document.lines[i].text.as_str()),
+        );
+
+        let editing_changed = editing != self.editing;
+        if self.editing.is_some() && (!spoken.is_empty() || editing_changed) {
+            if editing.is_some() {
+                // Still typing: take the line back, speak, then redraw it.
+                out.write_all(b"\r\x1b[2K")?;
+            } else {
+                // Focus left the input: its last state stays on screen.
+                out.write_all(b"\r\n")?;
+            }
+        }
+        for line in &spoken {
+            out.write_all(line.as_bytes())?;
+            out.write_all(b"\r\n")?;
+        }
+        if let Some(text) = &editing
+            && (editing_changed || !spoken.is_empty() || self.editing.is_none())
+        {
+            out.write_all(text.as_bytes())?;
+        }
+        out.flush()?;
+
+        self.previous = document
+            .lines
+            .iter()
+            .map(|line| line.text.clone())
+            .collect();
+        self.focus = focus.or(self.focus.take().filter(|_| focused.is_some()));
+        self.editing = editing;
+        Ok(())
+    }
+
+    /// Write every line of `document`, unconditionally: output that is
+    /// published once, such as a block committed to scrollback, rather than a
+    /// frame that is repainted. An open text input line is taken back first
+    /// and redrawn after, so the announcement never lands mid-line.
+    pub fn announce(
+        &mut self,
+        document: &Document,
+        out: &mut (impl Write + ?Sized),
+    ) -> io::Result<()> {
+        if document.lines.is_empty() {
+            return Ok(());
+        }
+        if self.editing.is_some() {
+            out.write_all(b"\r\x1b[2K")?;
+        }
+        for line in &document.lines {
+            out.write_all(line.text.as_bytes())?;
+            out.write_all(b"\r\n")?;
+        }
+        if let Some(text) = &self.editing {
+            out.write_all(text.as_bytes())?;
+        }
+        out.flush()
+    }
+
+    /// End the session: commit a text input line left open, so the shell
+    /// prompt starts on a line of its own.
+    pub fn finish(&mut self, out: &mut (impl Write + ?Sized)) -> io::Result<()> {
+        if self.editing.take().is_some() {
+            out.write_all(b"\r\n")?;
+            out.flush()?;
+        }
+        Ok(())
+    }
+}
+
+/// Paint `view` at `width × height` and read it back as a [`Document`].
+///
+/// The one-call form of installing an [`AccessFrame`], painting, and calling
+/// [`AccessFrame::document`]. [`testing::screen_reader`](crate::testing::screen_reader)
+/// is the same, as text.
+pub fn read(view: &dyn View, width: u16, height: u16, theme: &crate::Theme) -> Document {
+    let frame = AccessFrame::new();
+    let ctx = RenderCtx::new(theme).with_access(&frame);
+    let buffer = crate::testing::render_with_context(view, width, height, &ctx);
+    frame.document(&buffer)
 }
 
 /// Give a view screen-reader semantics without changing how it looks.
@@ -926,6 +1227,132 @@ mod tests {
         frame.begin_overlay(Rect::new(0, 0, 4, 1), false);
         let buffer = Buffer::empty(Rect::new(0, 0, 8, 1));
         assert_eq!(frame.document(&buffer).to_string(), "Beside, button");
+    }
+
+    fn narrate(narrator: &mut Narrator, view: &dyn View) -> String {
+        let document = super::read(view, 30, 4, &Theme::default());
+        let mut out = Vec::new();
+        narrator.narrate(&document, &mut out).unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    fn list(selected: usize) -> impl View {
+        let items = ["Haiku", "Sonnet", "Opus"];
+        view_fn(
+            |_, _| Size::new(10, 3),
+            move |area, surface, ctx| {
+                for (index, item) in items.iter().enumerate() {
+                    let row = Rect::new(area.x, area.y + index as u16, area.width, 1);
+                    surface.set_string(row.x, row.y, item, crate::style::Style::default());
+                    ctx.record_access(|| {
+                        Node::new(Role::ListItem, *item)
+                            .area(row)
+                            .position(index + 1, items.len())
+                            .selected(index == selected)
+                            .focused(index == selected)
+                    });
+                }
+            },
+        )
+    }
+
+    #[test]
+    fn a_narrator_speaks_the_first_frame_whole_then_only_changes() {
+        let mut narrator = Narrator::new();
+        assert_eq!(
+            narrate(&mut narrator, &list(0)),
+            "Haiku, 1 of 3, selected\r\nSonnet, 2 of 3\r\nOpus, 3 of 3\r\n"
+        );
+        assert_eq!(narrate(&mut narrator, &list(0)), "");
+        // Moving the selection announces the newly focused item first, then
+        // the item that lost its selection.
+        assert_eq!(
+            narrate(&mut narrator, &list(1)),
+            "Sonnet, 2 of 3, selected\r\nHaiku, 1 of 3\r\n"
+        );
+    }
+
+    #[test]
+    fn a_narrator_speaks_alerts_before_everything_else() {
+        let mut narrator = Narrator::new();
+        narrate(&mut narrator, &rows(&["status: ok"]));
+        let alert = view_fn(
+            |_, _| Size::new(10, 2),
+            |area, surface, ctx| {
+                surface.set_string(
+                    area.x,
+                    area.y,
+                    "status: bad",
+                    crate::style::Style::default(),
+                );
+                ctx.record_access(|| {
+                    Node::new(Role::Alert, "Disk full").area(Rect::new(area.x, area.y + 1, 9, 1))
+                });
+            },
+        );
+        assert_eq!(
+            narrate(&mut narrator, &alert),
+            "Disk full, alert\r\nstatus: bad\r\n"
+        );
+    }
+
+    #[test]
+    fn a_focused_text_input_is_rewritten_in_place_then_committed() {
+        let input = |value: &'static str, focused: bool| {
+            view_fn(
+                |_, _| Size::new(10, 1),
+                move |area, _, ctx| {
+                    ctx.record_access(|| {
+                        Node::new(Role::TextInput, "Prompt")
+                            .value(value)
+                            .area(area)
+                            .focused(focused)
+                    });
+                },
+            )
+        };
+        let mut narrator = Narrator::new();
+        assert_eq!(
+            narrate(&mut narrator, &input("", true)),
+            "Prompt, text input, blank"
+        );
+        assert_eq!(
+            narrate(&mut narrator, &input("h", true)),
+            "\r\x1b[2KPrompt, text input, h"
+        );
+        assert_eq!(narrate(&mut narrator, &input("h", true)), "");
+        // Focus leaves: the last state is committed and nothing repeats.
+        assert_eq!(narrate(&mut narrator, &input("h", false)), "\r\n");
+        let mut out = Vec::new();
+        narrator.finish(&mut out).unwrap();
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn finishing_commits_an_open_input_line() {
+        let input = view_fn(
+            |_, _| Size::new(10, 1),
+            |area, _, ctx| {
+                ctx.record_access(|| Node::new(Role::TextInput, "").area(area).focused(true));
+            },
+        );
+        let mut narrator = Narrator::new();
+        narrate(&mut narrator, &input);
+        let mut out = Vec::new();
+        narrator.finish(&mut out).unwrap();
+        assert_eq!(out, b"\r\n");
+    }
+
+    #[test]
+    fn the_environment_switch_reads_common_spellings() {
+        for on in ["1", "true", "yes", "ON"] {
+            assert!(ScreenReader::env_value_enables(on), "{on}");
+        }
+        for off in ["", " ", "0", "false", "No", "off"] {
+            assert!(!ScreenReader::env_value_enables(off), "{off:?}");
+        }
+        assert!(ScreenReader::On.is_active());
+        assert!(!ScreenReader::Off.is_active());
     }
 
     #[test]

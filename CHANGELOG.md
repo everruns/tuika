@@ -66,6 +66,15 @@ next release.
   after they scroll away. New: `mouse::{ContentSelection, ContentWindow,
   ContentPoint, ContentRange}` for hosts with their own loop, and
   `RenderCtx::record_scrolled_content` for custom scrolling views.
+- Built-in components record screen-reader semantics: `SelectList`, `Tabs`,
+  `TabSelect`, `TextInput`, `ProgressBar`, `ToastList`, `TreeList`, `Table`,
+  `KeyedTable`, titled `Boxed` panels, `Form` fields, and `Dialog`; spinners
+  are marked as decoration.
+- Screen-reader mode: `Runner::with_screen_reader` /
+  `AsyncRunner::with_screen_reader` with `access::ScreenReader` (`Auto` by
+  default, following `TUIKA_SCREEN_READER`). The run stays on the main screen,
+  paints off screen, and speaks only what changed through `access::Narrator`;
+  `access::read` paints a view and returns its `Document`.
 - `term::capabilities` probes the Kitty keyboard protocol: `query` and
   `query_with_palette` also send `KITTY_KEYBOARD_QUERY` (`CSI ? u`) and set
   `Capabilities::kitty_keyboard` from the terminal's answer, so a host can tell

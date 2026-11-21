@@ -283,6 +283,25 @@ impl Scrollback {
         Ok(true)
     }
 
+    /// Drain every queued block, reading each as a screen reader would, at
+    /// `width` columns. Screen-reader mode speaks published blocks instead of
+    /// committing them: they are still once-only output, just as text.
+    pub(crate) fn take_documents(&self, width: u16, theme: &Theme) -> Vec<crate::access::Document> {
+        let entries = std::mem::take(&mut *self.lock());
+        if width == 0 {
+            return Vec::new();
+        }
+        let ctx = RenderCtx::new(theme);
+        entries
+            .into_iter()
+            .map(|entry| {
+                let view = (entry.build)(width);
+                let rows = block_rows(entry.rows, view.as_ref(), width, &ctx);
+                crate::access::read(view.as_ref(), width, rows, theme)
+            })
+            .collect()
+    }
+
     fn push(&self, entry: Entry) {
         self.lock().push(entry);
     }

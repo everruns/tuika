@@ -33,6 +33,19 @@ can say what a frame *means* without each host writing a second UI.
   overlay with a dimmed backdrop is modal: everything outside it is inert.
 - **Apps label their own views** with `access::Semantic`, a layout-transparent
   wrapper in the shape of `probe::Probe`; `Semantic::hidden` marks decoration.
+- **Screen-reader mode.** `Runner` and `AsyncRunner` speak instead of
+  painting when `with_screen_reader` is active — by default
+  `ScreenReader::Auto`, which follows `TUIKA_SCREEN_READER`, so a user turns it
+  on for any app without the app's help. The loop is the same one (ticks,
+  events, redraw scheduling, `update`); only its terminal differs: an
+  off-screen sink at the real size, a session with raw input, no alternate
+  screen, no mouse capture, and a visible cursor. Published scrollback blocks
+  are spoken whole, in the order a split footer would commit them.
+- **Narration speaks only changes.** `access::Narrator` keeps the previous
+  document and writes new alerts first, then the newly focused node when focus
+  moved, then every other new or changed line. A focused text input is
+  rewritten in place (carriage return, clear line) while typing and committed
+  with a newline when focus leaves. Lines end in `\r\n` for raw mode.
 - **Testing.** `testing::screen_reader` returns a frame's spoken text, so hosts
   assert it the way they assert cells; `demo -- <scene> --screen-reader` prints
   it for a gallery scene.
@@ -47,6 +60,11 @@ can say what a frame *means* without each host writing a second UI.
   terminal application cannot reach them; the emulator owns that bridge.
 - The `access` module stays behind its own path, like `probe`: hosts name it
   when they opt in, not on every frame.
+- The switch is a runner builder method, not a `RunnerConfig` field: hosts
+  build that struct literally, so a new field would break them for a setting
+  most never touch.
+- The only escape the mode writes itself is clear-line, for the input line;
+  no cursor addressing and no colour reach the terminal.
 
 ## Related
 

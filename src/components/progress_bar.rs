@@ -4,6 +4,7 @@
 //! bar shows 160 distinct levels. Indeterminate bars slide a bright segment
 //! across a dim track, driven by the host frame counter (see [`crate::anim`]).
 
+use crate::access::{Node, Role};
 use crate::geometry::Rect;
 use crate::style::Style;
 
@@ -208,6 +209,14 @@ impl View for ProgressBar {
             None => self.render_indeterminate(row, surface, ctx),
         }
         self.draw_label(row, surface, ctx);
+        ctx.record_access(|| {
+            let node = Node::new(Role::ProgressBar, self.label.clone().unwrap_or_default())
+                .area(row.intersection(surface.area()));
+            match self.percent_value() {
+                Some(percent) => node.value(format!("{percent}%")),
+                None => node.busy(true),
+            }
+        });
     }
 }
 

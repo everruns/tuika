@@ -15,6 +15,7 @@
 //! `set_cursor_position`. Hosts can configure whether Enter or Shift+Enter
 //! submits via [`TextInputMode`]; the other chord inserts a newline.
 
+use crate::access::{Node, Role};
 use crate::geometry::Rect;
 use crate::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
@@ -1234,10 +1235,17 @@ impl View for TextInput {
         Size::new(available.width, height)
     }
 
-    fn render(&self, area: Rect, surface: &mut Surface, _ctx: &RenderCtx) {
+    fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
         if area.width == 0 || area.height == 0 {
             return;
         }
+        ctx.record_access(|| {
+            let label = self.placeholder.as_ref().map(|(text, _)| text.clone());
+            Node::new(Role::TextInput, label.unwrap_or_default())
+                .value(self.lines.join("\n"))
+                .area(area.intersection(surface.area()))
+                .focused(ctx.focused)
+        });
         if let Some((text, style)) = &self.placeholder
             && self.is_empty()
         {

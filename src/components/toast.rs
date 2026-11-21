@@ -9,6 +9,7 @@
 //! corner. This is the notification analog of OpenTUI's toast system, without a
 //! scheduler.
 
+use crate::access::{Node as AccessNode, Role as AccessRole};
 use crate::geometry::Rect;
 use crate::style::{Color, Modifier};
 
@@ -209,6 +210,14 @@ impl View for ToastList<'_> {
             x = surface.set_string(x, y, "▌", accent.add_modifier(Modifier::BOLD));
             x = surface.set_string(x, y, &format!("{} ", toast.level.glyph()), accent);
             surface.set_string(x, y, &toast.message, fill);
+            ctx.record_access(|| {
+                let role = match toast.level {
+                    ToastLevel::Warning | ToastLevel::Error => AccessRole::Alert,
+                    ToastLevel::Info | ToastLevel::Success => AccessRole::Status,
+                };
+                let row = Rect::new(area.x, y, area.width, 1).intersection(surface.area());
+                AccessNode::new(role, toast.message.clone()).area(row)
+            });
         }
     }
 }

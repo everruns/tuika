@@ -122,6 +122,8 @@ struct Script {
     /// Bytes to type after the settle, each followed by a pause.
     keys: Vec<(&'static [u8], Duration)>,
     quit: &'static [u8],
+    /// Extra environment for the child.
+    env: Vec<(&'static str, &'static str)>,
 }
 
 impl Script {
@@ -136,7 +138,13 @@ impl Script {
             resize_to: None,
             keys: Vec::new(),
             quit: b"q",
+            env: Vec::new(),
         }
+    }
+
+    fn env(mut self, key: &'static str, value: &'static str) -> Self {
+        self.env.push((key, value));
+        self
     }
 
     fn size(mut self, rows: u16, cols: u16) -> Self {
@@ -214,6 +222,10 @@ impl Script {
             "TMUX_PANE",
         ] {
             cmd.env_remove(inherited);
+        }
+        cmd.env_remove("TUIKA_SCREEN_READER");
+        for (key, value) in &self.env {
+            cmd.env(key, value);
         }
 
         let mut child = pair.slave.spawn_command(cmd).expect("spawn example");
@@ -1011,5 +1023,77 @@ fn codex_leaves_the_session_in_the_scrollback_after_exit() {
     assert!(
         !contents.contains("Ask Codex"),
         "the composer's rows should be released:\n{contents}"
+    );
+}
+
+/// Every CSI sequence's final byte in `bytes`, in order.
+fn csi_finals(bytes: &[u8]) -> Vec<(Vec<u8>, u8)> {
+    let mut found = Vec::new();
+    let mut index = 0;
+    while index + 1 < bytes.len() {
+        if bytes[index] == 0x1b && bytes[index + 1] == b'[' {
+            let start = index + 2;
+            let mut end = start;
+            while end < bytes.len() && !(0x40..=0x7e).contains(&bytes[end]) {
+                end += 1;
+            }
+            if end < bytes.len() {
+                found.push((bytes[start..end].to_vec(), bytes[end]));
+            }
+            index = end;
+        }
+        index += 1;
+    }
+    found
+}
+
+#[test]
+fn screen_reader_mode_speaks_plain_lines_without_painting() {
+    let run = Script::new("select")
+        .size(20, 60)
+        .env("TUIKA_SCREEN_READER", "1")
+        .key(b"\x1b[B", Duration::from_millis(400))
+        .quit_with(b"\x1b")
+        .run();
+    let out = &run.output;
+    let text = String::from_utf8_lossy(out);
+    assert!(run.exited_ok, "select should exit cleanly: {text}");
+    assert!(
+        !contains(out, b"\x1b[?1049h"),
+        "no alternate screen: {text:?}"
+    );
+    assert!(!contains(out, b"\x1b[?1000h"), "no mouse capture: {text:?}");
+    assert!(
+        !contains(out, b"\x1b[?25l"),
+        "the cursor stays visible: {text:?}"
+    );
+    // No cursor addressing and no colour: a screen reader would read either as
+    // noise. Clear-line (`K`) is the one sequence the mode writes itself, and
+    // keyboard-protocol negotiation is not output a reader speaks.
+    for (params, final_byte) in csi_finals(out) {
+        // Private-parameter sequences (`>`, `<`, `?`, `=`) negotiate keyboard
+        // and mode state; they are never painted.
+        if params.first().is_some_and(|byte| b"<=>?".contains(byte)) {
+            continue;
+        }
+        assert!(
+            !matches!(
+                final_byte,
+                b'H' | b'f' | b'm' | b'A' | b'B' | b'C' | b'D' | b'J'
+            ),
+            "unexpected CSI {:?}{} in {text:?}",
+            String::from_utf8_lossy(&params),
+            final_byte as char
+        );
+    }
+    // The first frame is spoken, then only what the key press changed.
+    assert!(
+        text.contains(", 1 of "),
+        "items are spoken with positions: {text:?}"
+    );
+    let first = text.find("1 of").expect("first frame");
+    assert!(
+        text[first..].contains("2 of"),
+        "the moved selection is spoken: {text:?}"
     );
 }

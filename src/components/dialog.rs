@@ -1,5 +1,6 @@
 //! Modal dialog composition from existing Tuika primitives.
 
+use crate::access::{Role as AccessRole, Semantic};
 use crate::geometry::Padding;
 use crate::overlay::{Extent, OverlaySpec};
 use crate::scene::{Backdrop, SceneOverlay};
@@ -123,6 +124,9 @@ impl Dialog {
             .title(format!(" {} ", self.title))
             .border(self.border)
             .padding(self.padding);
+        let panel = Semantic::new(panel)
+            .role(AccessRole::Dialog)
+            .label(self.title);
         let mut overlay = SceneOverlay::new(element(panel), self.spec)
             .clear(self.clear)
             .backdrop(if self.dim {

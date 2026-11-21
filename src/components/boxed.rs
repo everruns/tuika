@@ -4,6 +4,7 @@
 //! explicit color for semantic frames (accent/danger modals, per-pane colors).
 //! This is `tuika`'s framing primitive (Pi's `DynamicBorder` / `Box`).
 
+use crate::access::{Node as AccessNode, Role as AccessRole, line_text};
 use crate::geometry::Rect;
 use crate::style::{Color, Style};
 use crate::text::Alignment;
@@ -223,6 +224,14 @@ impl<V: View> View for Boxed<V> {
             surface.draw_border(area, self.border.glyphs(), border_style);
             if let Some(title) = &self.title {
                 draw_title(surface, area, area.y, title, Alignment::Left);
+                // A titled panel is a labelled group: its title is spoken
+                // once as the header, not read again from the border row.
+                if let Some(frame) = ctx.access() {
+                    let visible = area.intersection(surface.area());
+                    frame
+                        .record(AccessNode::new(AccessRole::Group, line_text(title)).area(visible));
+                    frame.hide(Rect::new(area.x, area.y, area.width, 1).intersection(visible));
+                }
             }
             if let Some(title) = &self.title_bottom {
                 let bottom = area.bottom().saturating_sub(1);

@@ -77,6 +77,7 @@
 
 #[cfg(feature = "async")]
 mod asynchronous;
+mod screen_reader;
 #[cfg(feature = "async")]
 mod stream;
 
@@ -113,6 +114,7 @@ use crate::{
     Clock, Element, Event, RenderCtx, ScopedElement, SystemClock, TerminalSession, Theme, View,
     translate_event,
 };
+use screen_reader::{ScreenReaderSink, SinkBackend};
 
 /// Receives a frame's root view for painting.
 ///
@@ -582,6 +584,7 @@ pub struct Runner {
     scrollback: Scrollback,
     session_config: Option<crate::host::TerminalSessionConfig>,
     text_selection: bool,
+    screen_reader: crate::access::ScreenReader,
 }
 
 impl Runner {
@@ -613,6 +616,7 @@ impl Runner {
             scrollback: Scrollback::new(),
             session_config: None,
             text_selection: true,
+            screen_reader: crate::access::ScreenReader::default(),
         }
     }
 
@@ -665,6 +669,19 @@ impl Runner {
     /// [`UpdateResult::Consumed`] or [`UpdateResult::Dirty`] for its events.
     pub fn with_text_selection(mut self, enabled: bool) -> Self {
         self.text_selection = enabled;
+        self
+    }
+
+    /// Choose whether to speak to a screen reader instead of painting cells.
+    ///
+    /// The default, [`ScreenReader::Auto`](crate::access::ScreenReader::Auto),
+    /// follows the `TUIKA_SCREEN_READER` environment variable, so a user can
+    /// turn the mode on for any app. While it is active the configured screen
+    /// mode and session policy are set aside: the run stays on the main
+    /// screen with the cursor visible, paints off screen, and writes only what
+    /// changed as plain lines. See [`crate::access`].
+    pub fn with_screen_reader(mut self, screen_reader: crate::access::ScreenReader) -> Self {
+        self.screen_reader = screen_reader;
         self
     }
 
@@ -754,7 +771,15 @@ impl Runner {
         B: Backend<Error = Er>,
         E: EventSource<Er>,
     {
-        self.drive(terminal, theme, &mut frames, &mut events, None, |_| Ok(()))
+        self.drive(
+            terminal,
+            theme,
+            &mut frames,
+            &mut events,
+            None,
+            None,
+            |_| Ok(()),
+        )
     }
 
     fn run_inner<F, B>(
@@ -768,6 +793,9 @@ impl Runner {
         F: FrameSource,
         B: Backend<Error = io::Error>,
     {
+        if self.screen_reader.is_active() {
+            return self.run_screen_reader(theme, frames);
+        }
         let mode = self.config.screen_mode;
         let split = !mode.is_alternate();
         let _session = if let Some(config) = self.session_config {
@@ -792,6 +820,7 @@ impl Runner {
             frames,
             &mut CrosstermEvents,
             graphics,
+            None,
             |copied| {
                 if let Some(graphics) = graphics {
                     graphics.finish_frame()?;
@@ -815,8 +844,34 @@ impl Runner {
         result
     }
 
+    /// Screen-reader mode: the same loop over an off-screen terminal, with
+    /// each frame's changes spoken to stdout. No graphics and no clipboard
+    /// copy — neither means anything as speech.
+    fn run_screen_reader<F: FrameSource>(&self, theme: &Theme, frames: &mut F) -> io::Result<()> {
+        let _session = TerminalSession::enter_config(screen_reader::session_config())?;
+        let mut terminal = Terminal::with_options(
+            SinkBackend,
+            TerminalOptions {
+                viewport: crate::term::terminal::Viewport::Fullscreen,
+            },
+        )?;
+        let reader = ScreenReaderSink::new(io::stdout());
+        let result = self.drive(
+            &mut terminal,
+            theme,
+            frames,
+            &mut CrosstermEvents,
+            None,
+            Some(&reader),
+            |_| Ok(()),
+        );
+        let finished = reader.finish();
+        result.and(finished)
+    }
+
     /// The loop shared by every entry point: no session, no terminal
     /// construction, no cleanup — those belong to whoever owns the terminal.
+    #[allow(clippy::too_many_arguments)]
     fn drive<F, B, E, Er, Finish>(
         &self,
         terminal: &mut Terminal<B>,
@@ -824,6 +879,7 @@ impl Runner {
         frames: &mut F,
         events: &mut E,
         graphics: Option<&FrameGraphics>,
+        reader: Option<&ScreenReaderSink>,
         mut finish_frame: Finish,
     ) -> Result<(), Er>
     where
@@ -832,9 +888,10 @@ impl Runner {
         E: EventSource<Er>,
         Finish: FnMut(Option<String>) -> Result<(), Er>,
     {
-        let split = !self.config.screen_mode.is_alternate();
+        // A screen-reader run never pins a footer: nothing is painted on screen.
+        let split = reader.is_none() && !self.config.screen_mode.is_alternate();
         let mut core = RunnerCore::new();
-        let mut selection = RunnerSelection::new(self.selects_text());
+        let mut selection = RunnerSelection::new(reader.is_none() && self.selects_text());
         let mut last_tick = self.clock.now();
 
         if split {
@@ -846,7 +903,15 @@ impl Runner {
             pin_footer(terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
-            let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+            let copied = draw(
+                terminal,
+                theme,
+                frames,
+                frame,
+                graphics,
+                reader,
+                &mut selection,
+            )?;
             finish_frame(copied)?;
         }
         let mut last_frame = self.clock.now();
@@ -873,6 +938,13 @@ impl Runner {
                     core.request_redraw();
                     schedule_redraw(&mut redraw_at, now);
                 }
+            } else if let Some(reader) = reader {
+                // Published blocks are spoken whole, once, as they would have
+                // been committed above a footer.
+                if !self.scrollback.is_empty() {
+                    let width = terminal.size()?.width;
+                    reader.announce(&self.scrollback.take_documents(width, theme));
+                }
             } else {
                 self.scrollback.clear();
             }
@@ -896,7 +968,15 @@ impl Runner {
                         terminal.set_footer_height(self.footer_height.with(|height| *height))?;
                         pin_footer(terminal)?;
                     }
-                    let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+                    let copied = draw(
+                        terminal,
+                        theme,
+                        frames,
+                        frame,
+                        graphics,
+                        reader,
+                        &mut selection,
+                    )?;
                     finish_frame(copied)?;
                     last_frame = self.clock.now();
                 }
@@ -956,6 +1036,7 @@ fn draw<F, B, Er>(
     frames: &mut F,
     frame: u64,
     graphics: Option<&FrameGraphics>,
+    reader: Option<&ScreenReaderSink>,
     selection: &mut RunnerSelection,
 ) -> Result<Option<String>, Er>
 where
@@ -967,6 +1048,10 @@ where
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
         let ctx = graphics.map_or_else(|| RenderCtx::new(theme), |g| g.render_context(theme));
+        let ctx = match reader {
+            Some(reader) => reader.install(ctx),
+            None => ctx,
+        };
         frames.frame(frame, &mut |root| {
             paint_with_context_and_selection(
                 terminal_frame.buffer_mut(),
@@ -977,6 +1062,9 @@ where
                 &selection_frame,
             );
         });
+        if let Some(reader) = reader {
+            reader.capture(terminal_frame.buffer_mut());
+        }
         copied = selection.finish_frame(terminal_frame.buffer_mut(), area, theme, &selection_frame);
     })?;
     if let Some(graphics) = graphics {
@@ -1266,6 +1354,7 @@ mod tests {
                 &mut frames,
                 n,
                 Some(&graphics),
+                None,
                 &mut selection,
             )
             .unwrap();
@@ -1422,6 +1511,76 @@ mod tests {
             .unwrap();
         assert_eq!(terminal.viewport(), Viewport::Inline(4));
         assert_eq!(frames.get(), 2);
+    }
+
+    #[derive(Clone, Default)]
+    struct SharedOut(std::rc::Rc<std::cell::RefCell<Vec<u8>>>);
+
+    impl Write for SharedOut {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0.borrow_mut().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_screen_reader_run_speaks_changes_and_published_blocks_only() {
+        let runner = Runner::new(RunnerConfig {
+            screen_mode: ScreenMode::split_footer(2),
+            ..RunnerConfig::default()
+        });
+        let scrollback = runner.scrollback();
+        let mut terminal = Terminal::with_options(
+            TestBackend::new(20, 4),
+            TerminalOptions {
+                viewport: Viewport::Fullscreen,
+            },
+        )
+        .unwrap();
+        let out = SharedOut::default();
+        let reader = ScreenReaderSink::new(out.clone());
+        let mut count = 0u32;
+        runner
+            .drive(
+                &mut terminal,
+                &Theme::default(),
+                &mut from_fn(
+                    &mut count,
+                    |count, _| element(Text::raw(format!("count {count}"))),
+                    |count, signal| match signal {
+                        Signal::Event(Event::Key(key)) if key.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        Signal::Event(Event::Key(_)) => {
+                            *count += 1;
+                            scrollback.write_lines(vec![crate::text::Line::from("published")]);
+                            UpdateResult::Dirty
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                &mut scripted_events([
+                    key_event(KeyCode::Char('+')),
+                    key_event(KeyCode::Char('+')),
+                    key_event(KeyCode::Esc),
+                ]),
+                None,
+                Some(&reader),
+                |_: Option<String>| Ok::<(), std::convert::Infallible>(()),
+            )
+            .unwrap();
+        reader.finish().unwrap();
+        // A published block is spoken before the frame that follows it, the
+        // order a split footer commits them in.
+        let spoken = String::from_utf8(out.0.borrow().clone()).unwrap();
+        assert_eq!(
+            spoken,
+            "count 0\r\npublished\r\ncount 1\r\npublished\r\ncount 2\r\n"
+        );
     }
 
     /// Two bordered panels side by side, each with its own text.

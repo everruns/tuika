@@ -6,6 +6,7 @@
 //! Enter is surfaced as [`InputOutcome::Submitted`] so the caller decides what
 //! "confirm" means.
 
+use crate::access::{Node, Role, line_text};
 use crate::geometry::Rect;
 use crate::style::Style;
 use crate::text::Line;
@@ -704,6 +705,7 @@ impl View for SelectRows<'_> {
             .selection_style
             .unwrap_or_else(|| ctx.theme.selection_style());
         let items_start = self.source_window.map_or(0, VirtualWindow::start);
+        ctx.record_access(|| Node::new(Role::List, "").area(area.intersection(surface.area())));
         for i in 0..rows {
             let idx = start + i;
             let Some(local) = idx.checked_sub(items_start) else {
@@ -720,6 +722,14 @@ impl View for SelectRows<'_> {
                 hits.record(Rect::new(area.x, y, row_width, 1), surface.area(), idx);
             }
             let selected = self.selected == Some(idx);
+            ctx.record_access(|| {
+                let row = Rect::new(area.x, y, row_width, 1).intersection(surface.area());
+                Node::new(Role::ListItem, line_text(item))
+                    .area(row)
+                    .position(idx + 1, window.total())
+                    .selected(selected)
+                    .focused(selected && ctx.focused)
+            });
             if selected {
                 let mut line = surface.child(Rect::new(area.x, y, row_width, 1));
                 line.fill(selection_style);
