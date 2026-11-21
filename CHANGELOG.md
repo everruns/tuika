@@ -193,6 +193,17 @@ original text, while keeping the selection anchored to content.
 - `ImageLayer::invalidate`, for a custom host to call after anything that may
   have erased or moved images on screen (a resize, a clear, scrolled output).
   `Runner` and `AsyncRunner` call it themselves.
+- Runner-owned program status: `Runner::program_status()` /
+  `AsyncRunner::program_status()` hold one OSC 7501 `Report`; the runner reports
+  it only when it changes and, on exit, clears it only if it was `working` or
+  `blocked`, so `done` and `error` stay for the user. `with_native_progress`
+  drives OSC 9;4 from the same value; `with_status_output` redirects the
+  reports (and enables them in `run_driven_by`). For custom loops,
+  `term::program_status::StatusReporter` is the same logic.
+  `Report::cancelled` builds the spec's `idle` for a cancelled program, and
+  `Report::native_progress` maps a report to its OSC 9;4 state. `Report` gains
+  read accessors (`state`, `record_id`, `block_kind`, `percent`, `app_name`,
+  `record_title`, `message`). The `program_status` example now uses the runner.
 
 ### Changed
 
