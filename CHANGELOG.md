@@ -49,6 +49,10 @@ described in the release process begins with the entry below.
   `WindowTitle` sets a title on change and restores the terminal's own at the
   end. `Runner`/`AsyncRunner::window_title()` own one per run. Rex is detected
   from `REX_BLOCK` as `Capabilities::rex` (`Capabilities::with_rex`).
+- Status badges: `components::StatusBadge` and `BadgeState` mark idle,
+  working (a spinner), done, blocked, and error — the OSC 7501 states — and
+  `Tabs::badges` / `TreeList::badges` (with `frame`) draw them beside labels.
+  `BadgeState` converts into `program_status::State` and from `ActivityStatus`.
 
 ### Breaking Changes
 

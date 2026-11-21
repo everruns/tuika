@@ -76,6 +76,26 @@ let tasks = vec![
 view! { node(ActivityList::new(tasks).frame(frame).gap(1)) }
 ```
 
+### `StatusBadge`
+
+A one-cell mark for what a session, task, or tab is doing, in the same five
+states as OSC 7501 program status: idle, working (an animated spinner), done,
+blocked, and error. `Tabs::badges` and `TreeList::badges` draw the same mark
+beside their labels, so an app's own sessions look the way a terminal like Rex
+shows its tabs. `BadgeState` converts into the program-status `State`, so one
+value can drive both the badge and the report.
+[API](https://docs.rs/tuika/latest/tuika/components/struct.StatusBadge.html)
+
+<img src="../demos/status_badge.gif" width="880" alt="StatusBadge demo: a tab strip whose tabs carry working, blocked, and done marks, above a legend of all five states.">
+
+```rust
+use tuika::prelude::*;
+let tabs = Tabs::new(labels, &state)
+    .badges(vec![Some(BadgeState::Working), Some(BadgeState::Blocked), None])
+    .frame(frame);
+let tree = TreeList::new(&rows, &tree_state).badges(&|id| badge_for(id));
+```
+
 ### `Loader`
 
 A spinner, a message, and an optional trailing hint on one row.

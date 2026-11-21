@@ -253,6 +253,14 @@ const DEMOS: &[Demo] = &[
         scene_activity_list,
     ),
     demo(
+        "status_badge",
+        "StatusBadge",
+        "OSC 7501 states as marks for tabs and trees",
+        13,
+        true,
+        scene_status_badge,
+    ),
+    demo(
         "loader",
         "Loader",
         "spinner + message + hint row",
