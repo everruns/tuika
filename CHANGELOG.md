@@ -76,6 +76,13 @@ next release.
   `ClickAction` chooses between highlight-then-confirm and one-click choice,
   and `ClickConfirm` holds a one-click choice for a short highlight before the
   host acts on it.
+- Shortcuts work on non-Latin keyboard layouts. A Ctrl or Alt chord that
+  matches no binding is retried as the US QWERTY key in the same position, so
+  Ctrl+`с` on a Ukrainian or Russian layout fires `ctrl+c` (Cyrillic, Greek, and
+  Hebrew layouts). Explicit bindings for the non-Latin chord still win, and
+  plain characters are never translated. `TextInput`'s editing shortcuts and
+  the `Ctrl+N`/`Ctrl+P` navigation of `SelectState` and `KeyedTableState`
+  follow the same rule. New: `Key::base_layout` and `Key::shortcut`.
 - `tuika-charts`: `Series::band` fills between two edges (percentile ranges,
   confidence intervals); `Chart::reference` with `Reference::value` /
   `Reference::position` draws labelled, optionally dashed threshold and event

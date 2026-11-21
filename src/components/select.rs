@@ -293,7 +293,7 @@ impl SelectState {
         };
 
         if navigation.ctrl_n_p && k.ctrl && !k.alt && !k.shift {
-            return match k.code {
+            return match k.shortcut().code {
                 KeyCode::Char('n') => self.step_down(len),
                 KeyCode::Char('p') => self.step_up(len),
                 _ => InputOutcome::Ignored,
@@ -891,6 +891,36 @@ mod tests {
         assert_eq!(s.handle(&enter, 3), InputOutcome::Submitted);
         let esc = Event::Key(Key::new(KeyCode::Esc));
         assert_eq!(s.handle(&esc, 3), InputOutcome::Cancelled);
+    }
+
+    #[test]
+    fn ctrl_n_p_work_on_a_cyrillic_layout() {
+        let policy = SelectNavigation::common();
+        let mut state = SelectState::new();
+        let ctrl = |c| {
+            Event::Key(Key {
+                code: KeyCode::Char(c),
+                ctrl: true,
+                alt: false,
+                shift: false,
+            })
+        };
+        // Ctrl+т and Ctrl+з sit on N and P.
+        assert_eq!(
+            state.handle_with(&ctrl('т'), 4, policy),
+            InputOutcome::Changed
+        );
+        let after_down = state.selected().expect("a row is selected");
+        assert_eq!(
+            state.handle_with(&ctrl('т'), 4, policy),
+            InputOutcome::Changed
+        );
+        assert_eq!(state.selected(), Some(after_down + 1));
+        assert_eq!(
+            state.handle_with(&ctrl('з'), 4, policy),
+            InputOutcome::Changed
+        );
+        assert_eq!(state.selected(), Some(after_down));
     }
 
     #[test]

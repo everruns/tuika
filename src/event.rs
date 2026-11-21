@@ -52,6 +52,205 @@ impl Key {
     pub fn plain(&self) -> bool {
         !self.ctrl && !self.alt
     }
+
+    /// The same key on the US QWERTY layout, when its character comes from a
+    /// known non-Latin layout: Ctrl+`с` on a Ukrainian or Russian keyboard
+    /// becomes Ctrl+`c`, the key in the same position.
+    ///
+    /// Shortcuts are written against Latin letters, but a [`KeyCode::Char`] is
+    /// the logical character the active layout produced. With enhanced keyboard
+    /// reporting a terminal sends Ctrl+`с` as exactly that, so a `ctrl+c`
+    /// binding misses unless the user switches layout first. The [`Keymap`]
+    /// and the built-in components therefore retry an unmatched Ctrl or Alt
+    /// chord with this key. Plain characters are text and are never translated
+    /// by them.
+    ///
+    /// Covers the Cyrillic layouts (Ukrainian, Russian, Belarusian), Greek, and
+    /// Hebrew; returns `None` for any other character or key. Modifiers are
+    /// kept, and case follows the character (`С` becomes `C`).
+    ///
+    /// The Kitty keyboard protocol can report the base-layout key directly, for
+    /// every layout, but crossterm discards that field; this table stands in
+    /// for it.
+    ///
+    /// [`Keymap`]: crate::keymap::Keymap
+    pub fn base_layout(self) -> Option<Key> {
+        let KeyCode::Char(c) = self.code else {
+            return None;
+        };
+        let latin = qwerty_equivalent(c)?;
+        Some(Key {
+            code: KeyCode::Char(latin),
+            ..self
+        })
+    }
+
+    /// [`base_layout`](Self::base_layout) for a Ctrl or Alt chord, otherwise
+    /// the key unchanged — what a component matching fixed Latin shortcuts
+    /// compares against.
+    pub fn shortcut(self) -> Key {
+        if self.plain() {
+            self
+        } else {
+            self.base_layout().unwrap_or(self)
+        }
+    }
+}
+
+/// The US QWERTY character at the physical position that produces `c` on the
+/// standard (PC) Cyrillic, Greek, or Hebrew layouts. Shifted letters map to
+/// shifted Latin; positions whose layouts disagree (Ukrainian `ґ`) are left out.
+fn qwerty_equivalent(c: char) -> Option<char> {
+    let latin = match c {
+        // Cyrillic, ЙЦУКЕН. Ukrainian і/ї/є and Belarusian і/ў share the keys
+        // of Russian ы/ъ/э and щ.
+        'й' => 'q',
+        'ц' => 'w',
+        'у' => 'e',
+        'к' => 'r',
+        'е' => 't',
+        'н' => 'y',
+        'г' => 'u',
+        'ш' => 'i',
+        'щ' | 'ў' => 'o',
+        'з' => 'p',
+        'х' => '[',
+        'ъ' | 'ї' => ']',
+        'ф' => 'a',
+        'ы' | 'і' => 's',
+        'в' => 'd',
+        'а' => 'f',
+        'п' => 'g',
+        'р' => 'h',
+        'о' => 'j',
+        'л' => 'k',
+        'д' => 'l',
+        'ж' => ';',
+        'э' | 'є' => '\'',
+        'я' => 'z',
+        'ч' => 'x',
+        'с' => 'c',
+        'м' => 'v',
+        'и' => 'b',
+        'т' => 'n',
+        'ь' => 'm',
+        'б' => ',',
+        'ю' => '.',
+        'ё' => '`',
+        'Й' => 'Q',
+        'Ц' => 'W',
+        'У' => 'E',
+        'К' => 'R',
+        'Е' => 'T',
+        'Н' => 'Y',
+        'Г' => 'U',
+        'Ш' => 'I',
+        'Щ' | 'Ў' => 'O',
+        'З' => 'P',
+        'Х' => '{',
+        'Ъ' | 'Ї' => '}',
+        'Ф' => 'A',
+        'Ы' | 'І' => 'S',
+        'В' => 'D',
+        'А' => 'F',
+        'П' => 'G',
+        'Р' => 'H',
+        'О' => 'J',
+        'Л' => 'K',
+        'Д' => 'L',
+        'Ж' => ':',
+        'Э' | 'Є' => '"',
+        'Я' => 'Z',
+        'Ч' => 'X',
+        'С' => 'C',
+        'М' => 'V',
+        'И' => 'B',
+        'Т' => 'N',
+        'Ь' => 'M',
+        'Б' => '<',
+        'Ю' => '>',
+        'Ё' => '~',
+        // Greek.
+        'ς' => 'w',
+        'ε' => 'e',
+        'ρ' => 'r',
+        'τ' => 't',
+        'υ' => 'y',
+        'θ' => 'u',
+        'ι' => 'i',
+        'ο' => 'o',
+        'π' => 'p',
+        'α' => 'a',
+        'σ' => 's',
+        'δ' => 'd',
+        'φ' => 'f',
+        'γ' => 'g',
+        'η' => 'h',
+        'ξ' => 'j',
+        'κ' => 'k',
+        'λ' => 'l',
+        'ζ' => 'z',
+        'χ' => 'x',
+        'ψ' => 'c',
+        'ω' => 'v',
+        'β' => 'b',
+        'ν' => 'n',
+        'μ' => 'm',
+        'Ε' => 'E',
+        'Ρ' => 'R',
+        'Τ' => 'T',
+        'Υ' => 'Y',
+        'Θ' => 'U',
+        'Ι' => 'I',
+        'Ο' => 'O',
+        'Π' => 'P',
+        'Α' => 'A',
+        'Σ' => 'S',
+        'Δ' => 'D',
+        'Φ' => 'F',
+        'Γ' => 'G',
+        'Η' => 'H',
+        'Ξ' => 'J',
+        'Κ' => 'K',
+        'Λ' => 'L',
+        'Ζ' => 'Z',
+        'Χ' => 'X',
+        'Ψ' => 'C',
+        'Ω' => 'V',
+        'Β' => 'B',
+        'Ν' => 'N',
+        'Μ' => 'M',
+        // Hebrew (SI-1452). Hebrew has no case, so these are the unshifted keys.
+        'ק' => 'e',
+        'ר' => 'r',
+        'א' => 't',
+        'ט' => 'y',
+        'ו' => 'u',
+        'ן' => 'i',
+        'ם' => 'o',
+        'פ' => 'p',
+        'ש' => 'a',
+        'ד' => 's',
+        'ג' => 'd',
+        'כ' => 'f',
+        'ע' => 'g',
+        'י' => 'h',
+        'ח' => 'j',
+        'ל' => 'k',
+        'ך' => 'l',
+        'ף' => ';',
+        'ז' => 'z',
+        'ס' => 'x',
+        'ב' => 'c',
+        'ה' => 'v',
+        'נ' => 'b',
+        'מ' => 'n',
+        'צ' => 'm',
+        'ת' => ',',
+        'ץ' => '.',
+        _ => return None,
+    };
+    Some(latin)
 }
 
 /// A logical key value, independent of the separately reported modifier state.
@@ -224,5 +423,69 @@ impl EventFlow {
     /// True for [`EventFlow::Consumed`].
     pub fn consumed(self) -> bool {
         matches!(self, EventFlow::Consumed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chord(c: char, ctrl: bool, alt: bool) -> Key {
+        Key {
+            code: KeyCode::Char(c),
+            ctrl,
+            alt,
+            shift: false,
+        }
+    }
+
+    #[test]
+    fn base_layout_maps_non_latin_letters_to_their_qwerty_key() {
+        for (layout, latin) in [
+            ('с', 'c'), // Cyrillic es, Ctrl+C's key
+            ('і', 's'), // Ukrainian
+            ('ы', 's'), // Russian, same key
+            ('ў', 'o'), // Belarusian
+            ('ї', ']'),
+            ('С', 'C'),
+            ('ψ', 'c'), // Greek
+            ('Σ', 'S'),
+            ('ב', 'c'), // Hebrew
+        ] {
+            let key = chord(layout, true, false).base_layout();
+            assert_eq!(key, Some(chord(latin, true, false)), "{layout}");
+        }
+        for unmapped in ['c', 'é', 'ґ', '中', '1'] {
+            assert_eq!(
+                chord(unmapped, true, false).base_layout(),
+                None,
+                "{unmapped}"
+            );
+        }
+        assert_eq!(Key::new(KeyCode::Enter).base_layout(), None);
+    }
+
+    #[test]
+    fn shortcut_translates_only_modified_chords() {
+        assert_eq!(chord('с', true, false).shortcut(), chord('c', true, false));
+        assert_eq!(chord('с', false, true).shortcut(), chord('c', false, true));
+        // Plain text stays text.
+        assert_eq!(
+            chord('с', false, false).shortcut(),
+            chord('с', false, false)
+        );
+        assert_eq!(chord('x', true, false).shortcut(), chord('x', true, false));
+    }
+
+    #[test]
+    fn every_base_layout_target_is_ascii() {
+        for c in ('\u{370}'..='\u{3ff}')
+            .chain('\u{400}'..='\u{4ff}')
+            .chain('\u{590}'..='\u{5ff}')
+        {
+            if let Some(latin) = qwerty_equivalent(c) {
+                assert!(latin.is_ascii_graphic(), "{c} -> {latin:?}");
+            }
+        }
     }
 }

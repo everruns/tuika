@@ -526,26 +526,45 @@ impl<C: Clone> Keymap<C> {
     /// follows). Author overlapping bindings accordingly.
     pub fn dispatch(&mut self, key: Key) -> Dispatch<C> {
         let chord = Chord::from_key(key);
-        self.pending.push(chord);
-        let (exact, prefix) = self.resolve(&self.pending);
-        if let Some(command) = exact {
-            self.pending.clear();
-            return Dispatch::Command(command);
-        }
-        if prefix {
-            return Dispatch::Pending;
+        // A Ctrl or Alt chord typed on a non-Latin layout (Ctrl+`с`) is retried
+        // as its QWERTY key (Ctrl+`c`) wherever the logical chord resolves to
+        // nothing, so shortcuts work without switching layout. The logical
+        // chord always wins, so an explicit `ctrl+с` binding still applies.
+        let base = (!key.plain())
+            .then(|| key.base_layout())
+            .flatten()
+            .map(Chord::from_key);
+
+        let mut candidate = self.pending.clone();
+        for stroke in std::iter::once(chord).chain(base) {
+            candidate.push(stroke);
+            let (exact, prefix) = self.resolve(&candidate);
+            if let Some(command) = exact {
+                self.pending.clear();
+                return Dispatch::Command(command);
+            }
+            if prefix {
+                self.pending = candidate;
+                return Dispatch::Pending;
+            }
+            candidate.pop();
         }
         // The accumulated strokes dead-ended. Drop them and give this final
         // stroke a fresh chance to start its own sequence.
+        let retry = !self.pending.is_empty();
         self.pending.clear();
-        let single = [chord];
-        let (exact, prefix) = self.resolve(&single);
-        if let Some(command) = exact {
-            return Dispatch::Command(command);
-        }
-        if prefix {
-            self.pending.push(chord);
-            return Dispatch::Pending;
+        if retry {
+            for stroke in std::iter::once(chord).chain(base) {
+                let single = [stroke];
+                let (exact, prefix) = self.resolve(&single);
+                if let Some(command) = exact {
+                    return Dispatch::Command(command);
+                }
+                if prefix {
+                    self.pending.push(stroke);
+                    return Dispatch::Pending;
+                }
+            }
         }
         Dispatch::Unmatched
     }
@@ -872,5 +891,65 @@ mod tests {
         assert_eq!(hints.len(), 2);
         assert_eq!(hints[0].command, Action::Close);
         assert_eq!(hints[1].command, Action::Search);
+    }
+
+    #[test]
+    fn non_latin_layout_chords_fall_back_to_the_qwerty_key() {
+        let mut keymap = Keymap::new().layer(
+            Layer::new("global")
+                .bind("ctrl+r", Action::Search)
+                .bind("q", Action::Quit)
+                .bind("ctrl+x ctrl+b", Action::Bottom),
+        );
+        // Ctrl+к is Ctrl+R's key on a Ukrainian/Russian layout.
+        assert_eq!(
+            keymap.dispatch(ctrl('к')),
+            Dispatch::Command(Action::Search)
+        );
+        // Sequences fall back stroke by stroke.
+        assert_eq!(keymap.dispatch(ctrl('ч')), Dispatch::Pending);
+        assert_eq!(
+            keymap.dispatch(ctrl('и')),
+            Dispatch::Command(Action::Bottom)
+        );
+        // Plain characters are text: `й` must not quit through `q`.
+        assert_eq!(
+            keymap.dispatch(key(KeyCode::Char('й'))),
+            Dispatch::Unmatched
+        );
+        // Greek too.
+        assert_eq!(
+            keymap.dispatch(ctrl('ρ')),
+            Dispatch::Command(Action::Search)
+        );
+    }
+
+    #[test]
+    fn an_explicit_non_latin_binding_wins_over_the_fallback() {
+        let mut keymap = Keymap::new().layer(
+            Layer::new("global")
+                .bind("ctrl+r", Action::Search)
+                .bind("ctrl+к", Action::Close),
+        );
+        assert_eq!(keymap.dispatch(ctrl('к')), Dispatch::Command(Action::Close));
+        assert_eq!(
+            keymap.dispatch(ctrl('r')),
+            Dispatch::Command(Action::Search)
+        );
+    }
+
+    #[test]
+    fn a_dead_end_sequence_retries_the_final_stroke_on_its_base_key() {
+        let mut keymap = Keymap::new().layer(
+            Layer::new("global")
+                .bind("g g", Action::Top)
+                .bind("ctrl+r", Action::Search),
+        );
+        assert_eq!(keymap.dispatch(key(KeyCode::Char('g'))), Dispatch::Pending);
+        assert_eq!(
+            keymap.dispatch(ctrl('к')),
+            Dispatch::Command(Action::Search)
+        );
+        assert!(keymap.pending().is_empty());
     }
 }
