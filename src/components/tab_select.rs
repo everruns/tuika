@@ -12,6 +12,7 @@ use crate::style::{Modifier, Style};
 use crate::text::Line;
 
 use crate::components::text::line_width;
+use crate::components::{ClickAction, OptionHits};
 use crate::event::{Event, InputOutcome, KeyCode};
 use crate::geometry::Size;
 use crate::surface::Surface;
@@ -80,6 +81,31 @@ impl TabSelectState {
             InputOutcome::Changed
         }
     }
+
+    /// Resolve a click against the pills a [`TabSelect`] painted into `hits`.
+    ///
+    /// A click on another pill selects it ([`Changed`](InputOutcome::Changed)),
+    /// or selects and activates it under [`ClickAction::Choose`]
+    /// ([`Submitted`](InputOutcome::Submitted)); a click on the selected pill
+    /// activates it. Anything else is [`Ignored`](InputOutcome::Ignored).
+    pub fn handle_click(
+        &mut self,
+        event: &Event,
+        len: usize,
+        hits: &OptionHits,
+        action: ClickAction,
+    ) -> InputOutcome {
+        let Some(index) = hits.hit(event).filter(|&index| index < len) else {
+            return InputOutcome::Ignored;
+        };
+        let activate = action == ClickAction::Choose || self.selected == index;
+        self.selected = index;
+        if activate {
+            InputOutcome::Submitted
+        } else {
+            InputOutcome::Changed
+        }
+    }
 }
 
 /// A one-row segmented control derived from a [`TabSelectState`]: each option is
@@ -96,6 +122,7 @@ impl TabSelectState {
 pub struct TabSelect {
     labels: Vec<Line<'static>>,
     selected: usize,
+    hits: Option<OptionHits>,
 }
 
 impl TabSelect {
@@ -104,7 +131,14 @@ impl TabSelect {
         Self {
             labels,
             selected: state.selected(),
+            hits: None,
         }
+    }
+
+    /// Record where each pill is painted, for [`TabSelectState::handle_click`].
+    pub fn hits(mut self, hits: &OptionHits) -> Self {
+        self.hits = Some(hits.clone());
+        self
     }
 }
 
@@ -124,14 +158,19 @@ impl View for TabSelect {
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
+        if let Some(hits) = &self.hits {
+            hits.clear();
+        }
         if area.is_empty() {
             return;
         }
+        let clip = surface.area().intersection(area);
         let mut x = area.x;
         for (index, label) in self.labels.iter().enumerate() {
             if x >= area.right() {
                 break;
             }
+            let start = x;
             let selected = index == self.selected;
             let base = if selected {
                 ctx.theme.selection_style()
@@ -153,6 +192,9 @@ impl View for TabSelect {
             }
             // Trailing pad.
             x = surface.set_string(x, area.y, " ", base);
+            if let Some(hits) = &self.hits {
+                hits.record(Rect::new(start, area.y, x - start, 1), clip, index);
+            }
         }
     }
 }

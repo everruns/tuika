@@ -5,7 +5,7 @@ use crate::style::Style;
 use crate::text::Line;
 
 use super::select::SelectRows;
-use super::{Flex, Rule, SelectState, VirtualWindow};
+use super::{Flex, OptionHits, Rule, SelectState, VirtualWindow};
 use crate::geometry::Size;
 use crate::layout::{Dimension, FlexItemStyle};
 use crate::style::Role;
@@ -119,6 +119,7 @@ pub struct SelectionScreen<'view> {
     scrollbar: bool,
     header_style: Option<Style>,
     selection_style: Option<Style>,
+    hits: Option<OptionHits>,
 }
 
 impl SelectionScreen<'static> {
@@ -170,6 +171,7 @@ impl<'view> SelectionScreen<'view> {
             scrollbar: true,
             header_style: None,
             selection_style: None,
+            hits: None,
         }
     }
 
@@ -215,6 +217,14 @@ impl<'view> SelectionScreen<'view> {
         self
     }
 
+    /// Record where each visible option row is painted, for
+    /// [`SelectState::handle_click`]. Header, rules and footer are not
+    /// recorded, so clicks on the chrome resolve to nothing.
+    pub fn hits(mut self, hits: &OptionHits) -> Self {
+        self.hits = Some(hits.clone());
+        self
+    }
+
     fn body(&self) -> SelectRows<'_> {
         match self.source_window {
             Some(window) => SelectRows::windowed(self.rows.as_slice(), window, &self.selected),
@@ -222,6 +232,7 @@ impl<'view> SelectionScreen<'view> {
         }
         .scrollbar(self.scrollbar)
         .selection_style(self.selection_style)
+        .hits(self.hits.clone())
     }
 
     fn layout(&self) -> Flex<ScopedElement<'_>> {

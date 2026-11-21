@@ -210,6 +210,33 @@ resize or collection refresh, call `resolve` again to clamp both selection and
 window. Existing `.viewport(rows)` remains selection-centered for compatibility;
 migrate when the host needs stable scroll position or precise post-render mouse
 mapping.
+
+#### Click to choose
+
+A picker records where it painted each option into an `OptionHits` handle, so
+the host resolves clicks without restating the list's position, border,
+header, or scroll window. Pass the same handle to the view with `.hits(&hits)`
+(`SelectList`, `SelectionScreen`, and `TabSelect` all take one) and to the
+state's `handle_click`. Only rows that were actually visible are recorded; the
+chrome, the scrollbar, and rows clipped by a parent resolve to nothing.
+`ClickAction::Highlight` (the default) moves the highlight on the first click
+and confirms on a click on the highlighted row; `ClickAction::Choose` confirms
+in one click. `ClickConfirm` holds a one-click choice for a short highlight
+(150 ms by default) so the user sees the row they hit before the picker closes:
+arm it on `Submitted`, repaint, and poll it on each tick.
+
+```rust
+let hits = OptionHits::new(); // kept beside the state
+let list = SelectList::new(items, &state).hits(&hits);
+// In update:
+if state.handle_click(&event, item_count, &hits, ClickAction::Choose)
+    == InputOutcome::Submitted
+{
+    confirm.arm(state.selected().unwrap(), clock.now());
+}
+// On Signal::Tick:
+if let Some(index) = confirm.poll(clock.now()) { /* act on index */ }
+```
 [API](https://docs.rs/tuika/latest/tuika/components/struct.SelectList.html)
 
 <img src="../demos/select.gif" width="880" alt="SelectList demo">
