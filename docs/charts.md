@@ -172,6 +172,33 @@ to right — a narrow chart shows fewer labels, never overlapping ones.
 Both renderers draw tick labels as cells, because the graphics image covers the
 plot only. The same numbers therefore appear in the same places in both modes.
 
+The graphics image maps its data range onto the centres of the same cells the
+portable renderer plots into, so a tick label sits level with the pixel it names
+rather than drifting toward the edge of the image.
+
+### Grid lines and axis titles
+
+`Axis::grid` draws a faint dotted line across the plot at every labelled tick,
+and `Axis::title` names the axis — usually its unit.
+
+```rust
+use tuika_charts::{Axis, Chart};
+
+let chart = Chart::new()
+    .y_axis(Axis::new().grid().title("ms"))
+    .x_axis(Axis::new().grid().title("day"));
+```
+
+Grid lines follow the labels rather than the raw tick values: a label thinned
+away for space takes its line with it, so the grid never disagrees with the
+numbers beside it. They sit beneath every series in both renderers, and a value
+or reference label may be printed over them.
+
+A terminal cannot rotate text, so the vertical axis' title sits on its own row
+above the plot, left-aligned over the tick labels, and the horizontal axis'
+title is centred on a row below its tick labels. Each costs the plot one row,
+and only when it is set.
+
 ### Categories
 
 Most bar and area charts are not measuring a numeric x axis, they are naming
@@ -218,6 +245,73 @@ A label annotates a reading and must never cover one: each is tried in a few
 positions around its mark and dropped if none is clear. Losing a label is a
 smaller loss than obscuring the value it describes.
 
+The `latency_dashboard` example combines them: percentile lines over a shaded
+p50–p95 band, a dashed SLO, an incident marker, grid lines, and axis titles,
+beside labelled per-service bars.
+
+```bash
+cargo run -p tuika-charts --example latency_dashboard
+```
+
+| Portable cells | Terminal graphics |
+| --- | --- |
+| <img src="charts/latency-dashboard-cells.png" alt="Latency dashboard rendered with terminal cells" width="560"> | <img src="charts/latency-dashboard-graphics.png" alt="The same latency dashboard rendered with terminal graphics" width="560"> |
+
+### Bands
+
+`Series::band` fills the region between two edges — a percentile range, a
+confidence interval, a min/max envelope. The edges are absolute values paired by
+index, so a band ignores stacking.
+
+```rust
+use tuika_charts::{Chart, Point, Series};
+
+let p50 = [Point::new(0.0, 42.0), Point::new(1.0, 46.0)];
+let p95 = [Point::new(0.0, 82.0), Point::new(1.0, 91.0)];
+let chart = Chart::new()
+    .series(Series::band("p50–p95", p50, p95).legend(false))
+    .series(Series::line("p50", p50))
+    .series(Series::line("p95", p95));
+```
+
+A band is fill only, painted in its color as given by both renderers. Choose a
+muted color and draw the edges as line series on top; a line crossing a filled
+cell keeps the fill as its background in the portable renderer, so the band
+stays continuous behind it.
+
+### Reference lines
+
+`Chart::reference` draws a straight line that annotates the plot rather than
+plotting data: a threshold, a target, an incident. `Reference::value` runs
+through every position at one value; `Reference::position` runs through every
+value at one position. Naming the axis rather than a screen direction keeps the
+annotation correct when the chart is horizontal.
+
+```rust
+use tuika_charts::{Chart, Reference};
+
+let chart = Chart::new()
+    .reference(Reference::value(250.0).label("SLO").dashed())
+    .reference(Reference::position(19.0).label("incident"));
+```
+
+References sit beneath every series. An automatic domain grows to keep them
+visible; an explicit domain clips them like data, instead of pinning an
+off-scale threshold to the frame where it would read as a real value. A label
+goes just above a value line's right end, or beside the top of a position line,
+and is dropped when it would cover a mark.
+
+### Dashed lines and hidden series
+
+`Series::dashed` strokes a line or step series with a dash pattern, the usual
+way to tell a forecast or target from a measurement. The dash phase carries
+across samples, so a dash bends around a corner instead of restarting.
+
+`Series::legend(false)` keeps a series out of the legend and the focus readout
+while still drawing it — for helper geometry, like a band whose edges are
+already named by their own lines. When every series is hidden the legend row is
+given back to the plot.
+
 `Chart::focus` marks one position: a rule through the plot, and a row beneath it
 naming that position and every series' value there. The chart stays a pure view
 — the host owns the index and moves it in response to keys — so the same
@@ -232,9 +326,13 @@ The shared grammar deliberately includes only features both paths can preserve:
 - multiple named and colored series;
 - automatic or explicit numeric x/y domains;
 - numeric or categorical axis tick labels, with an optional format hook;
+- grid lines and axis titles;
+- filled bands between two edges;
+- value and position reference lines, with labels;
+- solid or dashed strokes;
 - stacking, bar grouping, and horizontal orientation;
 - sample markers, value labels, and a focused-position readout;
-- an optional title and legend.
+- an optional title and legend, with per-series visibility.
 
 Smooth curves, filled pie and radar geometry, gradients, icon marks, HTML/SVG
 marks, and renderer-specific styling are outside this portable model.

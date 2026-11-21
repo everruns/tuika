@@ -5,7 +5,10 @@ use tuika::{RenderCtx, Surface};
 
 use crate::axis::AxisLayout;
 use crate::plan::{ChartPlan, Geometry, Mark};
-use crate::{Chart, PlotModel, Point, chart_color, draw_line, trim_number};
+use crate::reference::{Reference, ReferenceAt};
+use crate::{
+    Chart, PlotModel, Point, chart_color, draw_dashed, draw_line, fill_polygon, trim_number,
+};
 
 pub(super) fn render_cells(
     plot: Rect,
@@ -40,7 +43,20 @@ pub(super) fn render_cells(
     if data_width == 0 || data_height == 0 {
         return;
     }
+    // Reference geometry first, so every mark lands on top of it.
+    render_grid(plot, surface, chart, layout, ctx);
     render_zero_rule(plot, surface, model, data_width, data_height, ctx);
+    for reference in chart.references.iter().filter(|r| r.finite()) {
+        render_reference_line(
+            plot,
+            surface,
+            model,
+            reference,
+            data_width,
+            data_height,
+            ctx,
+        );
+    }
 
     for mark in &plan.marks {
         let style = Style::default().fg(mark.color);
@@ -48,7 +64,24 @@ pub(super) fn render_cells(
             Geometry::Path { points, stepped } => {
                 let mapped = map_all(points, model, data_width * 2, data_height * 2);
                 let mut quadrants = QuadrantGrid::new(data_width, data_height);
-                draw_quadrant_polyline(&mut quadrants, &mapped, *stepped);
+                if mark.dashed {
+                    let path = if *stepped {
+                        stepped_path(&mapped)
+                    } else {
+                        mapped
+                    };
+                    // Subcells: three on, two off reads as a dash at any slope.
+                    draw_dashed(&path, 3, 2, |x, y| quadrants.set(x, y));
+                } else {
+                    draw_quadrant_polyline(&mut quadrants, &mapped, *stepped);
+                }
+                quadrants.render(surface, plot, style);
+            }
+            Geometry::Fill { upper, lower } => {
+                let upper = map_all(upper, model, data_width * 2, data_height * 2);
+                let lower = map_all(lower, model, data_width * 2, data_height * 2);
+                let mut quadrants = QuadrantGrid::new(data_width, data_height);
+                fill_polygon(&upper, &lower, |x, y| quadrants.set(x, y));
                 quadrants.render(surface, plot, style);
             }
             Geometry::Points(points) => {
@@ -93,6 +126,216 @@ pub(super) fn render_cells(
         }
     }
     render_overlays(plot, surface, chart, plan, ctx, true);
+}
+
+/// Insert the corner of every horizontal-then-vertical step, so a stepped path
+/// can be walked as an ordinary polyline.
+pub(crate) fn stepped_path(points: &[(i32, i32)]) -> Vec<(i32, i32)> {
+    let mut path = Vec::with_capacity(points.len() * 2);
+    for pair in points.windows(2) {
+        if path.is_empty() {
+            path.push(pair[0]);
+        }
+        path.push((pair[1].0, pair[0].1));
+        path.push(pair[1]);
+    }
+    if path.is_empty() {
+        path.extend(points.first());
+    }
+    path
+}
+
+/// Grid lines at every labelled tick of an axis that asked for them.
+///
+/// Drawn from the resolved ticks rather than recomputed, so a thinned label
+/// takes its line with it and the grid can never disagree with the labels.
+fn render_grid(
+    plot: Rect,
+    surface: &mut Surface,
+    chart: &Chart,
+    layout: &AxisLayout,
+    ctx: &RenderCtx,
+) {
+    let (across, up) = crate::axis::screen_axes(chart);
+    let style = Style::default().fg(ctx.theme.dim);
+    let (left, right) = (plot.x + 1, plot.right());
+    let bottom = plot.bottom() - 1;
+    if up.grid {
+        for tick in layout.y.iter().filter(|tick| tick.at < bottom) {
+            for x in left..right {
+                surface.set(x, tick.at, '┈', style);
+            }
+        }
+    }
+    if across.grid {
+        for tick in layout.x.iter().filter(|tick| tick.at >= left) {
+            for y in plot.y..bottom {
+                let crossing = up.grid && layout.y.iter().any(|t| t.at == y);
+                surface.set(tick.at, y, if crossing { '┼' } else { '┊' }, style);
+            }
+        }
+    }
+}
+
+/// The screen line a reference runs along, in plot-local cells: `true` and a
+/// row for a line across the plot, `false` and a column for one up it.
+fn reference_track(
+    model: &PlotModel,
+    reference: &Reference,
+    data_width: u32,
+    data_height: u32,
+) -> (bool, i32) {
+    // A value line runs along the category axis, which is the screen's x axis
+    // unless the chart is horizontal.
+    let across = matches!(reference.at, ReferenceAt::Value(_)) != model.horizontal;
+    let point = match reference.at {
+        ReferenceAt::Value(v) => model.value_point(v),
+        ReferenceAt::Position(p) => model.position_point(p),
+    };
+    let (x, y) = model.map(point, data_width, data_height);
+    (across, if across { y } else { x })
+}
+
+/// Whether a reference coordinate is inside its axis' domain. Explicit
+/// domains clip references the way they clip data, rather than pinning an
+/// off-scale threshold to the frame where it would read as a real value.
+pub(crate) fn reference_visible(model: &PlotModel, reference: &Reference) -> bool {
+    match reference.at {
+        ReferenceAt::Value(v) => (model.y.min..=model.y.max).contains(&v),
+        ReferenceAt::Position(p) => (model.x.min..=model.x.max).contains(&p),
+    }
+}
+
+fn reference_style(reference: &Reference, ctx: &RenderCtx) -> Style {
+    Style::default().fg(reference.color.unwrap_or(ctx.theme.border))
+}
+
+fn render_reference_line(
+    plot: Rect,
+    surface: &mut Surface,
+    model: &PlotModel,
+    reference: &Reference,
+    data_width: u32,
+    data_height: u32,
+    ctx: &RenderCtx,
+) {
+    if !reference_visible(model, reference) {
+        return;
+    }
+    let style = reference_style(reference, ctx);
+    let (across, at) = reference_track(model, reference, data_width, data_height);
+    // Where two references cross, a `┼` keeps both lines continuous instead
+    // of the later one cutting the earlier.
+    let crosses = |surface: &mut Surface, x: i32, y: i32, other: [&str; 2]| {
+        let (col, row) = (plot.x as i32 + 1 + x, plot.y as i32 + y);
+        let (Ok(col), Ok(row)) = (u16::try_from(col), u16::try_from(row)) else {
+            return false;
+        };
+        let buffer = surface.buffer_mut();
+        let area = buffer.area;
+        col >= area.x
+            && row >= area.y
+            && col < area.right()
+            && row < area.bottom()
+            && other.contains(&buffer[(col, row)].symbol())
+    };
+    if across {
+        let glyph = if reference.dashed { '╌' } else { '─' };
+        for column in 0..data_width as i32 {
+            let glyph = if crosses(surface, column, at, ["│", "╎"]) {
+                '┼'
+            } else {
+                glyph
+            };
+            set_plot(surface, plot, column, at, glyph, style);
+        }
+    } else {
+        let glyph = if reference.dashed { '╎' } else { '│' };
+        for row in 0..data_height as i32 {
+            let glyph = if crosses(surface, at, row, ["─", "╌"]) {
+                '┼'
+            } else {
+                glyph
+            };
+            set_plot(surface, plot, at, row, glyph, style);
+        }
+    }
+}
+
+/// Reference labels, placed after every mark so they can avoid them: a value
+/// line's label sits just above its right end, a position line's at the top of
+/// the plot beside it. A label with no clear cell is dropped.
+fn render_reference_labels(
+    plot: Rect,
+    surface: &mut Surface,
+    chart: &Chart,
+    model: &PlotModel,
+    ctx: &RenderCtx,
+) {
+    let data_width = plot.width.saturating_sub(1) as u32;
+    let data_height = plot.height.saturating_sub(1) as u32;
+    if data_width == 0 || data_height == 0 {
+        return;
+    }
+    for reference in &chart.references {
+        let Some(label) = reference.label.as_deref().filter(|label| !label.is_empty()) else {
+            continue;
+        };
+        if !reference.finite() || !reference_visible(model, reference) {
+            continue;
+        }
+        let Ok(len) = u16::try_from(label.chars().count()) else {
+            continue;
+        };
+        let style = reference_style(reference, ctx);
+        let (across, at) = reference_track(model, reference, data_width, data_height);
+        let Ok(at) = u16::try_from(at) else {
+            continue;
+        };
+        // Above the line's end first; on the line itself when that row is
+        // taken or off the plot (a threshold at the top of the domain); then
+        // below it.
+        let candidates: [Option<(u16, u16)>; 3] = if across {
+            let row = plot.y + at;
+            let col = plot.right().saturating_sub(len);
+            [
+                row.checked_sub(1).map(|row| (col, row)),
+                Some((col, row)),
+                Some((col, row + 1)),
+            ]
+        } else {
+            let col = plot.x + 1 + at;
+            [
+                Some((col + 1, plot.y)),
+                col.checked_sub(len).map(|col| (col, plot.y)),
+                None,
+            ]
+        };
+        for (col, row) in candidates.into_iter().flatten() {
+            if col <= plot.x || col + len > plot.right() || row < plot.y || row >= plot.bottom() - 1
+            {
+                continue;
+            }
+            if (col..col + len).all(|x| is_blank(surface, x, row) || is_rule(surface, x, row)) {
+                surface.set_string(col, row, label, style);
+                break;
+            }
+        }
+    }
+}
+
+/// Whether a cell holds only reference geometry — a grid or rule glyph a label
+/// may replace without hiding data.
+fn is_rule(surface: &mut Surface, x: u16, y: u16) -> bool {
+    let buffer = surface.buffer_mut();
+    let area = buffer.area;
+    if x < area.x || y < area.y || x >= area.right() || y >= area.bottom() {
+        return false;
+    }
+    matches!(
+        buffer[(x, y)].symbol(),
+        "┈" | "┊" | "┼" | "─" | "│" | "╌" | "╎"
+    )
 }
 
 /// Draw a rule along zero when the value domain straddles it, so negative
@@ -160,6 +403,7 @@ pub(super) fn render_overlays(
     for mark in plan.marks.iter().filter(|mark| mark.labelled) {
         render_value_labels(plot, surface, model, mark, data_width, data_height, ctx);
     }
+    render_reference_labels(plot, surface, chart, model, ctx);
 }
 
 /// Print each sample's value beside its mark.
@@ -220,7 +464,9 @@ fn render_value_labels(
             {
                 continue;
             }
-            if (col..col + len).any(|x| !is_blank(surface, x, row)) {
+            // Grid and rule glyphs are reference geometry, not readings, so
+            // a label may sit on them.
+            if (col..col + len).any(|x| !is_blank(surface, x, row) && !is_rule(surface, x, row)) {
                 continue;
             }
             taken.push((row, col, col + len));
@@ -326,14 +572,39 @@ fn map_all(points: &[Point], model: &PlotModel, width: u32, height: u32) -> Vec<
         .collect()
 }
 
-fn set_plot(surface: &mut Surface, plot: Rect, x: i32, y: i32, ch: char, style: Style) {
+fn set_plot(surface: &mut Surface, plot: Rect, x: i32, y: i32, ch: char, mut style: Style) {
     if x >= 0
         && y >= 0
         && x < plot.width.saturating_sub(1) as i32
         && y < plot.height.saturating_sub(1) as i32
     {
-        surface.set(plot.x + 1 + x as u16, plot.y + y as u16, ch, style);
+        let (col, row) = (plot.x + 1 + x as u16, plot.y + y as u16);
+        // A partial glyph over a solid fill cell would punch a background-
+        // colored hole in a band or bar. Carry the fill into the new glyph's
+        // background instead, so a line drawn over a band stays on the band.
+        if ch != '█'
+            && style.bg.is_none()
+            && let Some(fill) = solid_fill(surface, col, row)
+        {
+            style = style.bg(fill);
+        }
+        surface.set(col, row, ch, style);
     }
+}
+
+/// The color of a solid fill cell at `(x, y)`, if that is what it holds.
+fn solid_fill(surface: &mut Surface, x: u16, y: u16) -> Option<tuika::ui::Color> {
+    let clip = surface.area();
+    if x < clip.x || y < clip.y || x >= clip.right() || y >= clip.bottom() {
+        return None;
+    }
+    let buffer = surface.buffer_mut();
+    let area = buffer.area;
+    if x < area.x || y < area.y || x >= area.right() || y >= area.bottom() {
+        return None;
+    }
+    let cell = &buffer[(x, y)];
+    (cell.symbol() == "█").then_some(cell.fg)
 }
 
 /// Like [`set_plot`] but never paints over data already drawn there.
@@ -495,12 +766,15 @@ fn draw_quadrant_polyline(grid: &mut QuadrantGrid, points: &[(i32, i32)], steppe
 }
 
 pub(super) fn render_legend(area: Rect, surface: &mut Surface, chart: &Chart, ctx: &RenderCtx) {
-    if !chart.legend || chart.series.is_empty() || area.height == 0 {
+    if !chart.has_legend() || area.height == 0 {
         return;
     }
     let mut x = area.x;
     let y = area.bottom() - 1;
     for (index, series) in chart.series.iter().enumerate() {
+        if !series.legend {
+            continue;
+        }
         let color = chart_color(series, index, ctx);
         surface.set(x, y, '■', Style::default().fg(color));
         x = x.saturating_add(2);

@@ -52,12 +52,35 @@ let chart = Chart::new()
     ]));
 ```
 
+Dashboards need annotation as much as data. `Series::band` shades the range
+between two edges, `Chart::reference` draws a labelled threshold or event line,
+`Series::dashed` marks a target or forecast, `Axis::grid` and `Axis::title` add
+grid lines and a unit, and `Series::legend(false)` keeps helper geometry out of
+the legend:
+
+```rust
+use tuika_charts::{Axis, Chart, Point, Reference, Series};
+
+let p50 = [Point::new(1.0, 42.0), Point::new(2.0, 46.0), Point::new(3.0, 45.0)];
+let p95 = [Point::new(1.0, 82.0), Point::new(2.0, 91.0), Point::new(3.0, 94.0)];
+let chart = Chart::new()
+    .title("Request latency")
+    .y_axis(Axis::new().grid().title("ms"))
+    .reference(Reference::value(250.0).label("SLO").dashed())
+    .reference(Reference::position(2.0).label("deploy"))
+    .series(Series::band("p50–p95", p50, p95).legend(false))
+    .series(Series::line("p50", p50))
+    .series(Series::line("p95", p95));
+```
+
 `Chart` is a normal tuika `View`. Return it from `Application::view` and run the
-application normally. To try the complete gallery (`q` or `Esc` quits):
+application normally. To try the complete gallery, or a matplotlib-style latency
+dashboard that uses every annotation (`q` or `Esc` quits):
 
 ```bash
 cargo run -p tuika-charts --example charts
 cargo run -p tuika-charts --example charts -- --theme gruvbox-dark
+cargo run -p tuika-charts --example latency_dashboard
 ```
 
 ## Every series, both ways

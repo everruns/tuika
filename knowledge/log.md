@@ -1,5 +1,14 @@
 # Knowledge Log
 
+## 2026-11-21
+
+- **Chart annotations join the portable grammar**
+  - Bands, value/position reference lines, dashed strokes, grid lines, axis
+    titles, and per-series legend visibility are now part of `tuika-charts`'
+    shared grammar, each with a parity rule for both renderers; grid lines
+    leave the non-goals. Graphics plots map onto cell centres so tick labels
+    sit level with their pixels. See [Adaptive charts](specs/charts.md).
+
 ## 2026-11-15
 
 - **Publish through crates.io trusted publishing**

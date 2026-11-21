@@ -16,8 +16,10 @@ Charts live in the separately published `tuika-charts` companion, not core.
 The companion exposes one renderer-independent grammar: line, bar, filled-area,
 scatter, stepped-line, and donut series; finite `(x, y)` points; automatic or
 explicit domains; series colors; title; legend; numeric or categorical axis tick
-labels; stacking and bar grouping; horizontal orientation; sample markers, value
-labels, and a focused-position readout.
+labels; grid lines and axis titles; filled bands between two edges; value and
+position reference lines; solid or dashed strokes; per-series legend visibility;
+stacking and bar grouping; horizontal orientation; sample markers, value labels,
+and a focused-position readout.
 
 Every series resolves to renderer-independent geometry — paths, bands, bar
 rectangles, arcs — in data coordinates before either renderer runs. Stacking,
@@ -43,11 +45,38 @@ above it. The graphics renderer retains distinct dim fill and bright edge colors
 Quadrants deliberately trade some vertical resolution for continuous strokes
 across terminal fonts; separated Braille dots are reserved for discrete marks.
 
+A band (`Series::band`) is the one fill painted in its color as given by both
+renderers, with no edge: it exists to shade a range behind lines that already
+name its edges, so a renderer-specific dim fill or bright stroke would make the
+two paths disagree about what the shaded region looks like. In the portable
+renderer a partial glyph drawn over a solid fill cell takes the fill color as its
+background, so a line crossing a band or a bar does not punch a hole in it.
+
+Grid lines, reference lines, and the zero rule are reference geometry. They are
+drawn before every series in both renderers, so data always lands on top; value
+and reference labels may replace grid and rule glyphs, never marks. Grid lines
+come from the resolved, possibly thinned, tick labels rather than from the raw
+tick values, so a grid line never appears without its label. Grid lines are
+dotted in both renderers (`┈`/`┊` glyphs, a 1-on-2-off pixel pattern) so they
+weigh less than the data. References name the axis they mark — a value or a
+position — rather than a screen direction, so horizontal orientation needs no
+second annotation. They widen an automatic domain on their own axis only, and an
+explicit domain clips them like data rather than pinning an off-scale threshold
+to the frame. Dashes keep their phase across vertices in both renderers.
+
+Axis titles cost a row each, and only when set: terminal text cannot be rotated,
+so the vertical axis' title sits above the plot over the tick gutter and the
+horizontal axis' title below its tick labels.
+
 The title, legend, and axis tick labels remain cells even in graphics mode,
 preserving readable text and consistent semantics while only plot geometry
 becomes pixel-dense. Because the labels sit outside the image, both renderers
 plot into the *same* cells: the graphics path carries no internal margin of its
-own, or a label would point at a different value than the pixel beside it.
+own, or a label would point at a different value than the pixel beside it. Within those cells the image maps the data range onto the cell *centres* the
+cell renderer plots into, not edge to edge, and draws its axis lines through the
+centres of the axis column and row where `│` and `─` sit; fills and bars on the
+domain's low edge extend to that axis line. Stretched edge to edge, a value near
+the top of the domain drifted up to a whole row from its label.
 
 Bars occupy a slice of the band their position owns, and are half-open across
 the category axis: a band's gutter can be narrower than a cell, and two bars
@@ -113,7 +142,7 @@ lifecycle.
 
 ## Non-goals
 
-Smooth curves, filled pie and radar geometry, gradients, icon marks, grid lines,
+Smooth curves, filled pie and radar geometry, gradients, icon marks,
 HTML/SVG configuration, and renderer-specific escape hatches are not part of the
 portable grammar. Radar is excluded on the same ground the pie is: diagonal webs
 and around-the-circle labels look right in graphics and wrong in cells, and a

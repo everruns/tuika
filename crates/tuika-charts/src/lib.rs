@@ -19,6 +19,7 @@ mod cells;
 mod graphics;
 mod model;
 mod plan;
+mod reference;
 
 pub use axis::Axis;
 use axis::AxisLayout;
@@ -28,6 +29,7 @@ use model::PlotModel;
 pub use model::{Domain, Point, Series, SeriesKind};
 use plan::ChartPlan;
 pub use plan::Stack;
+pub use reference::{Reference, ReferenceAt};
 
 /// Which rendering path a chart used.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +52,7 @@ pub enum RenderMode {
 pub struct Chart {
     title: String,
     series: Vec<Series>,
+    references: Vec<Reference>,
     x_domain: Option<Domain>,
     y_domain: Option<Domain>,
     x_axis: Axis,
@@ -69,6 +72,7 @@ impl Chart {
         Self {
             title: String::new(),
             series: Vec::new(),
+            references: Vec::new(),
             x_domain: None,
             y_domain: None,
             x_axis: Axis::new(),
@@ -92,6 +96,13 @@ impl Chart {
     /// Append a series.
     pub fn series(mut self, series: Series) -> Self {
         self.series.push(series);
+        self
+    }
+
+    /// Add a reference line: a threshold, target, or event marker drawn
+    /// beneath the series. See [`Reference`].
+    pub fn reference(mut self, reference: Reference) -> Self {
+        self.references.push(reference);
         self
     }
 
@@ -190,6 +201,28 @@ impl Chart {
         }
     }
 
+    /// Whether the legend row is drawn: enabled, and something to list.
+    fn has_legend(&self) -> bool {
+        self.legend && self.series.iter().any(|series| series.legend)
+    }
+
+    /// Rows the chrome claims above and below the plot rect.
+    ///
+    /// Above: the title, then the vertical axis' title. Below: the x tick
+    /// labels (always reserved, see [`plot_rect`]), the horizontal axis'
+    /// title, the focus readout, and the legend, in that order from the plot
+    /// down.
+    fn chrome(&self) -> Chrome {
+        let (across, up) = axis::screen_axes(self);
+        Chrome {
+            title: u16::from(!self.title.is_empty()),
+            up_title: u16::from(up.title.is_some()),
+            across_title: u16::from(across.title.is_some()),
+            readout: u16::from(self.focus.is_some()),
+            legend: u16::from(self.has_legend()),
+        }
+    }
+
     fn graphics<'a>(&'a self, ctx: &'a RenderCtx<'_>) -> (ImageSupport, Option<&'a ImageLayer>) {
         let inherited = ctx.image_graphics();
         let support = self
@@ -201,6 +234,26 @@ impl Chart {
             .as_ref()
             .or_else(|| inherited.map(|(_, layer)| layer));
         (support, layer)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Chrome {
+    title: u16,
+    up_title: u16,
+    across_title: u16,
+    readout: u16,
+    legend: u16,
+}
+
+impl Chrome {
+    fn top(self) -> u16 {
+        self.title + self.up_title
+    }
+
+    /// Everything below the plot rect, including the x tick label row.
+    fn bottom(self) -> u16 {
+        1 + self.across_title + self.readout + self.legend
     }
 }
 
@@ -255,7 +308,7 @@ impl View for Chart {
         layout.resolve(plot, area, self, &model);
         // Labels are cells in both modes: the graphics image covers the plot
         // only, so the same text lands beside it either way.
-        layout.render(plot, surface, ctx);
+        layout.render(plot, area, self, surface, ctx);
         render_readout(area, surface, self, &plan, ctx);
 
         let (support, layer) = self.graphics(ctx);
@@ -281,13 +334,12 @@ impl View for Chart {
 
 /// The area left for a chart body once the title and legend have taken theirs.
 fn body_rect(area: Rect, chart: &Chart) -> Rect {
-    let title = u16::from(!chart.title.is_empty());
-    let legend = u16::from(chart.legend && !chart.series.is_empty());
+    let chrome = chart.chrome();
     Rect::new(
         area.x,
-        area.y.saturating_add(title),
+        area.y.saturating_add(chrome.title),
         area.width,
-        area.height.saturating_sub(title + legend),
+        area.height.saturating_sub(chrome.title + chrome.legend),
     )
 }
 
@@ -303,15 +355,15 @@ fn render_readout(
     let Some(focus) = chart.focus else {
         return;
     };
-    let legend = u16::from(chart.legend && !chart.series.is_empty());
-    if area.height < legend + 3 {
+    let chrome = chart.chrome();
+    if area.height < chrome.top() + chrome.bottom() + 2 {
         return;
     }
-    // The row plot_rect reserved for it, below the x tick labels.
-    let row = area.bottom() - legend - 1;
+    // The row plot_rect reserved for it, between the axis title and legend.
+    let row = area.bottom() - chrome.legend - 1;
     let mut x = area.x;
     x = surface.set_string(x, row, &focus_label(chart, focus), ctx.theme.accent_style());
-    for mark in &plan.marks {
+    for mark in plan.marks.iter().filter(|mark| mark.legend) {
         if x >= area.right() {
             break;
         }
@@ -380,15 +432,76 @@ fn chart_color(series: &Series, index: usize, ctx: &RenderCtx) -> Color {
 /// The trailing row it always leaves below the plot is where x tick labels go,
 /// so labelling that axis costs no plot height.
 fn plot_rect(area: Rect, chart: &Chart, layout: &AxisLayout) -> Rect {
-    let title = u16::from(!chart.title.is_empty());
-    let legend = u16::from(chart.legend && !chart.series.is_empty());
-    let readout = u16::from(chart.focus.is_some());
+    let chrome = chart.chrome();
     Rect::new(
         area.x.saturating_add(layout.gutter),
-        area.y.saturating_add(title),
+        area.y.saturating_add(chrome.top()),
         area.width.saturating_sub(layout.gutter + 1),
-        area.height.saturating_sub(title + legend + readout + 1),
+        area.height.saturating_sub(chrome.top() + chrome.bottom()),
     )
+}
+
+/// Walk a polyline, calling `draw` only on the "on" steps of an
+/// `on`/`off` dash pattern. The phase carries across vertices, so a dash bends
+/// around a corner instead of restarting at every sample.
+fn draw_dashed(points: &[(i32, i32)], on: u32, off: u32, mut draw: impl FnMut(i32, i32)) {
+    let period = (on + off).max(1);
+    let mut step = 0u32;
+    for pair in points.windows(2) {
+        let mut first = true;
+        draw_line(pair[0], pair[1], |x, y| {
+            // Each segment starts on the previous one's last point; skip it
+            // so the shared vertex does not advance the phase twice.
+            if std::mem::take(&mut first) && step > 0 {
+                return;
+            }
+            if step % period < on {
+                draw(x, y);
+            }
+            step = step.wrapping_add(1);
+        });
+    }
+}
+
+/// Fill the closed polygon `upper` followed by `lower` reversed, then stroke
+/// its outline so a band thinner than one grid step still shows.
+///
+/// Scanline with the even-odd rule at integer rows; each edge is half-open in
+/// y so a vertex shared by two edges is counted once.
+fn fill_polygon(upper: &[(i32, i32)], lower: &[(i32, i32)], mut draw: impl FnMut(i32, i32)) {
+    let polygon: Vec<(i32, i32)> = upper.iter().chain(lower.iter().rev()).copied().collect();
+    if polygon.len() < 2 {
+        if let Some(&(x, y)) = polygon.first() {
+            draw(x, y);
+        }
+        return;
+    }
+    let (top, bottom) = polygon
+        .iter()
+        .fold((i32::MAX, i32::MIN), |(lo, hi), &(_, y)| {
+            (lo.min(y), hi.max(y))
+        });
+    let mut crossings = Vec::new();
+    for y in top..=bottom {
+        crossings.clear();
+        for (index, &(x0, y0)) in polygon.iter().enumerate() {
+            let (x1, y1) = polygon[(index + 1) % polygon.len()];
+            if (y0 <= y) == (y1 <= y) {
+                continue;
+            }
+            let t = f64::from(y - y0) / f64::from(y1 - y0);
+            crossings.push(f64::from(x0) + t * f64::from(x1 - x0));
+        }
+        crossings.sort_by(f64::total_cmp);
+        for pair in crossings.chunks_exact(2) {
+            for x in pair[0].round() as i32..=pair[1].round() as i32 {
+                draw(x, y);
+            }
+        }
+    }
+    for (index, &from) in polygon.iter().enumerate() {
+        draw_line(from, polygon[(index + 1) % polygon.len()], &mut draw);
+    }
 }
 
 fn draw_line(mut from: (i32, i32), to: (i32, i32), mut draw: impl FnMut(i32, i32)) {
@@ -413,6 +526,9 @@ fn draw_line(mut from: (i32, i32), to: (i32, i32), mut draw: impl FnMut(i32, i32
         }
     }
 }
+
+#[cfg(test)]
+mod annotation_tests;
 
 #[cfg(test)]
 mod tests {

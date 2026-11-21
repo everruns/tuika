@@ -20,6 +20,15 @@ next release.
 
 ### Breaking
 
+- `tuika-charts`: `SeriesKind` gained a `Band { lower }` variant, and `Series`
+  gained the public fields `dashed` and `legend`. Exhaustive matches on
+  `SeriesKind` and struct-literal `Series` construction must be updated; the
+  builder constructors are unaffected. This requires the next `tuika-charts`
+  minor release.
+- `tuika-charts`: graphics-mode plots map data onto the centres of the cells
+  the cell renderer uses, instead of stretching edge to edge, so tick labels sit
+  level with their pixels. Images of existing charts shift by up to half a cell;
+  regenerate any recorded screenshots.
 - The minimum supported Rust version is now **1.90** (was 1.88) for every
   workspace crate. `tuika-codeformatters` moved to tree-sitter 0.27, which
   requires it, and the crates share one floor.
@@ -42,6 +51,14 @@ next release.
 
 ### Added
 
+- `tuika-charts`: `Series::band` fills between two edges (percentile ranges,
+  confidence intervals); `Chart::reference` with `Reference::value` /
+  `Reference::position` draws labelled, optionally dashed threshold and event
+  lines; `Series::dashed` strokes line and step series with a dash pattern;
+  `Series::legend(false)` hides helper series from the legend and focus
+  readout; `Axis::grid` draws dotted grid lines at the labelled ticks; and
+  `Axis::title` names an axis. All render in both the cell and graphics paths.
+  The `latency_dashboard` example shows them together.
 - Bounded `highlight::CachedHighlighter`: exact source/language/theme caching,
   configurable input/storage limits, plain-text fallback above the input limit.
 - Runtime split-footer height changes through `Runner::footer_height()` /
