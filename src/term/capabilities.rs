@@ -12,7 +12,10 @@
 //! - A **Device Attributes probe** for accuracy: emit [`DA1_REQUEST`], read the
 //!   reply, parse it with [`DeviceAttributes::parse`], and fold it in with
 //!   [`Capabilities::with_device_attributes`] — which *confirms* Sixel (DA1
-//!   feature `4`). [`Capabilities::query`] wraps that round-trip on Unix ttys.
+//!   feature `4`). The same round-trip carries [`KITTY_KEYBOARD_QUERY`], whose
+//!   answer ([`KittyKeyboardFlags::parse`]) settles whether the terminal speaks
+//!   the Kitty keyboard protocol. [`Capabilities::query`] wraps that round-trip
+//!   on Unix ttys.
 //!
 //! The `graphics` field reuses [`ImageSupport`], so image support is just
 //! `caps.graphics` (or [`supports_images`](Capabilities::supports_images)). The
@@ -47,6 +50,96 @@ use crate::term::palette::TerminalPalette;
 /// `ESC [ ? <codes> c`; feed that reply to [`DeviceAttributes::parse`].
 pub const DA1_REQUEST: &str = "\x1b[c";
 
+/// The Kitty keyboard protocol's progressive-enhancement query (`CSI ? u`).
+///
+/// A terminal that implements the protocol answers `CSI ? <flags> u` with the
+/// enhancement flags currently in effect; one that does not ignores it. Because
+/// silence is the negative answer, send it *before* [`DA1_REQUEST`], which every
+/// terminal answers: a DA1 reply with no keyboard reply ahead of it means "no".
+/// [`Capabilities::query`] does exactly that.
+pub const KITTY_KEYBOARD_QUERY: &str = "\x1b[?u";
+
+/// The Kitty keyboard enhancement flags a terminal reported in answer to
+/// [`KITTY_KEYBOARD_QUERY`].
+///
+/// The flags are the ones in effect *when the query was answered* — normally
+/// none, since the probe runs before a session pushes its own. Their presence
+/// is the useful signal: it proves the terminal implements the protocol, so
+/// chords such as Shift+Enter, Ctrl+I versus Tab, and key releases can be
+/// reported distinctly once a session asks for them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KittyKeyboardFlags(u8);
+
+impl KittyKeyboardFlags {
+    /// Disambiguate escape codes (flag `1`).
+    pub const DISAMBIGUATE: u8 = 0b1;
+    /// Report press, repeat, and release event types (flag `2`).
+    pub const EVENT_TYPES: u8 = 0b10;
+    /// Report the shifted and base-layout alternates of a key (flag `4`).
+    pub const ALTERNATE_KEYS: u8 = 0b100;
+    /// Report every key, text included, as an escape code (flag `8`).
+    pub const ALL_KEYS_AS_ESCAPES: u8 = 0b1000;
+    /// Embed the text a key produces in its escape code (flag `16`).
+    pub const ASSOCIATED_TEXT: u8 = 0b1_0000;
+
+    /// Flags from their wire bits. Bits above the five the protocol defines are
+    /// kept, so a newer terminal's report round-trips unchanged.
+    pub const fn from_bits(bits: u8) -> Self {
+        Self(bits)
+    }
+
+    /// The raw flag bits.
+    pub const fn bits(self) -> u8 {
+        self.0
+    }
+
+    /// Whether every bit of `flag` (one of the associated constants) is set.
+    pub const fn contains(self, flag: u8) -> bool {
+        self.0 & flag == flag
+    }
+
+    /// Find a `CSI ? <flags> u` answer in `response`, or `None` if it holds none.
+    ///
+    /// Scans every CSI frame rather than the first, so the answer still parses
+    /// when it arrives beside the DA1 reply or palette replies of the same
+    /// probe. A frame whose number does not fit the flag byte is rejected.
+    pub fn parse(response: &[u8]) -> Option<Self> {
+        csi_frames(response).find_map(|(params, final_byte)| {
+            let digits = params.strip_prefix(b"?")?;
+            if final_byte != b'u' || digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
+                return None;
+            }
+            std::str::from_utf8(digits)
+                .ok()?
+                .parse::<u8>()
+                .ok()
+                .map(Self)
+        })
+    }
+}
+
+/// Every complete `ESC [ <params> <final>` frame in `bytes`, as
+/// `(params, final)`. Parameter and intermediate bytes are `0x20..=0x3f`; the
+/// final byte is `0x40..=0x7e`. A frame interrupted by anything else is skipped.
+fn csi_frames(bytes: &[u8]) -> impl Iterator<Item = (&[u8], u8)> {
+    let mut rest = bytes;
+    std::iter::from_fn(move || {
+        loop {
+            let start = rest.windows(2).position(|w| w == b"\x1b[")? + 2;
+            let body = &rest[start..];
+            let len = body.iter().position(|b| !(0x20..=0x3f).contains(b));
+            match len {
+                Some(len) if (0x40..=0x7e).contains(&body[len]) => {
+                    rest = &body[len + 1..];
+                    return Some((&body[..len], body[len]));
+                }
+                Some(len) => rest = &body[len..],
+                None => return None,
+            }
+        }
+    })
+}
+
 /// A snapshot of what the terminal is believed to support.
 ///
 /// Build it with [`from_env`](Self::from_env) (advisory) or
@@ -63,6 +156,11 @@ pub struct Capabilities {
     pub progress: bool,
     /// 24-bit "true color" (advisory; from `COLORTERM` and known terminals).
     pub truecolor: bool,
+    /// The Kitty keyboard protocol: modified keys such as Shift+Enter, and key
+    /// releases, can be told apart. Advisory from the environment (known
+    /// terminals, never inside tmux or screen, which do not forward it);
+    /// authoritative after [`query`](Self::query), which asks the terminal.
+    pub kitty_keyboard: bool,
 }
 
 impl Capabilities {
@@ -85,6 +183,7 @@ impl Capabilities {
             env("VTE_VERSION").as_deref(),
             env("TMUX").is_some() || env("STY").is_some(),
         )
+        .with_multiplexer(env("TMUX").is_some() || env("STY").is_some())
     }
 
     /// The pure core of [`from_env`](Self::from_env), taking the environment
@@ -123,7 +222,26 @@ impl Capabilities {
             // OSC 9;4 has a narrower support set than the OSC 8/52 features.
             progress: is("ghostty") || is("wezterm") || is("konsole") || term_has("konsole"),
             truecolor: modern || colorterm == "truecolor" || colorterm == "24bit",
+            // Terminals that implement the Kitty keyboard protocol and set an
+            // identifying variable. Others (iTerm2 3.5+, recent foot forks) may
+            // too; the probe in `query` is what settles it.
+            kitty_keyboard: is("ghostty")
+                || is("wezterm")
+                || term_has("kitty")
+                || term_has("foot")
+                || term_has("alacritty"),
         }
+    }
+
+    /// Drop the advisory features a terminal multiplexer does not pass through
+    /// from the outer terminal. tmux and screen answer keyboard queries
+    /// themselves and do not forward the Kitty keyboard protocol, so an outer
+    /// terminal's support says nothing about what reaches the application.
+    pub fn with_multiplexer(mut self, multiplexed: bool) -> Self {
+        if multiplexed {
+            self.kitty_keyboard = false;
+        }
+        self
     }
 
     /// Refine OSC 8 support using terminal identity and VTE's version.
@@ -149,20 +267,37 @@ impl Capabilities {
 
     /// Detect from the environment, then refine with a Device Attributes probe.
     ///
-    /// On a Unix tty this writes [`DA1_REQUEST`] and reads the reply (up to
-    /// `timeout`), upgrading `graphics` to Sixel when the terminal reports it —
-    /// the accuracy the env-only path can't reach. **Call once at startup, after
-    /// entering raw mode and before the event loop reads stdin.** On non-ttys and
-    /// non-Unix platforms it is exactly [`from_env`](Self::from_env).
+    /// On a Unix tty this writes [`KITTY_KEYBOARD_QUERY`] and [`DA1_REQUEST`]
+    /// and reads the replies (up to `timeout`): Sixel is upgraded when the
+    /// terminal reports it, and `kitty_keyboard` is replaced by the terminal's
+    /// own answer — the accuracy the env-only path can't reach. **Call once at
+    /// startup, after entering raw mode and before the event loop reads stdin**,
+    /// and before a [`TerminalSession`](crate::TerminalSession) pushes its
+    /// keyboard flags. On non-ttys and non-Unix platforms it is exactly
+    /// [`from_env`](Self::from_env).
     pub fn query(timeout: std::time::Duration) -> Self {
         let caps = Self::from_env();
-        match probe_terminal(DA1_REQUEST, timeout)
-            .as_deref()
-            .and_then(DeviceAttributes::parse)
-        {
-            Some(da) => caps.with_device_attributes(&da),
+        let request = format!("{KITTY_KEYBOARD_QUERY}{DA1_REQUEST}");
+        match probe_terminal(&request, timeout) {
+            Some(reply) => caps.with_probe_reply(&reply),
             None => caps,
         }
+    }
+
+    /// Fold a whole probe reply — the answers to [`KITTY_KEYBOARD_QUERY`] and a
+    /// fencing [`DA1_REQUEST`] — into these capabilities.
+    ///
+    /// Without a DA1 frame the reply proves nothing (the read was cut short), so
+    /// the capabilities are returned unchanged. With one, `kitty_keyboard`
+    /// becomes exactly whether a keyboard answer came with it: a terminal
+    /// answers in order, so its silence before the fence is a "no".
+    pub fn with_probe_reply(self, reply: &[u8]) -> Self {
+        let Some(da) = DeviceAttributes::parse(reply) else {
+            return self;
+        };
+        let mut caps = self.with_device_attributes(&da);
+        caps.kitty_keyboard = KittyKeyboardFlags::parse(reply).is_some();
+        caps
     }
 
     /// Detect capabilities *and* read the terminal's palette in a single
@@ -181,14 +316,19 @@ impl Capabilities {
     /// and the palette is empty.
     pub fn query_with_palette(timeout: std::time::Duration) -> (Self, TerminalPalette) {
         let caps = Self::from_env();
-        let Some(reply) = probe_terminal(&crate::term::palette::query_sequence(), timeout) else {
+        // The palette sequence already ends with the DA1 fence; the keyboard
+        // query goes in front of it so one round-trip answers all three.
+        let request = format!(
+            "{KITTY_KEYBOARD_QUERY}{}",
+            crate::term::palette::query_sequence()
+        );
+        let Some(reply) = probe_terminal(&request, timeout) else {
             return (caps, TerminalPalette::default());
         };
-        let caps = match DeviceAttributes::parse(&reply) {
-            Some(da) => caps.with_device_attributes(&da),
-            None => caps,
-        };
-        (caps, TerminalPalette::parse(&reply))
+        (
+            caps.with_probe_reply(&reply),
+            TerminalPalette::parse(&reply),
+        )
     }
 
     /// Fold a parsed Device Attributes reply into these capabilities: a reported
@@ -222,19 +362,19 @@ impl DeviceAttributes {
     /// numeric code. Ignores anything before the frame and any non-numeric
     /// parameters, so a reply mixed with other terminal chatter still parses.
     pub fn parse(response: &[u8]) -> Option<Self> {
-        let start = response.windows(2).position(|w| w == b"\x1b[")? + 2;
-        let rest = &response[start..];
-        let rest = rest.strip_prefix(b"?").unwrap_or(rest);
-        let end = rest.iter().position(|&b| b == b'c')?;
-        let mut codes = Vec::new();
-        for part in rest[..end].split(|&b| b == b';') {
-            if let Ok(s) = std::str::from_utf8(part)
-                && let Ok(n) = s.parse::<u16>()
-            {
-                codes.push(n);
+        // The first `c`-terminated CSI frame: a probe that also asked other
+        // questions (the Kitty keyboard query) gets their CSI answers first.
+        csi_frames(response).find_map(|(params, final_byte)| {
+            if final_byte != b'c' {
+                return None;
             }
-        }
-        (!codes.is_empty()).then_some(Self { codes })
+            let params = params.strip_prefix(b"?").unwrap_or(params);
+            let codes: Vec<u16> = params
+                .split(|&b| b == b';')
+                .filter_map(|part| std::str::from_utf8(part).ok()?.parse::<u16>().ok())
+                .collect();
+            (!codes.is_empty()).then_some(Self { codes })
+        })
     }
 
     /// Whether the reply lists VT feature `code`.
@@ -316,8 +456,14 @@ pub(crate) fn probe_terminal(request: &str, timeout: std::time::Duration) -> Opt
                     buf.push(b);
                     if b == b'[' && buf.len() >= 2 && buf[buf.len() - 2] == 0x1b {
                         in_csi = true;
-                    } else if b == b'c' && in_csi {
-                        break;
+                    } else if in_csi && (0x40..=0x7e).contains(&b) {
+                        // A CSI final byte closes the frame. Only DA1's `c` is
+                        // the fence; another answer (the Kitty keyboard
+                        // query's `u`) closes its frame and reading goes on.
+                        if b == b'c' {
+                            break;
+                        }
+                        in_csi = false;
                     }
                 }
                 _ => break,
@@ -451,5 +597,79 @@ mod tests {
             kitty.with_device_attributes(&no_sixel).graphics,
             ImageSupport::Kitty
         );
+    }
+
+    #[test]
+    fn kitty_keyboard_reply_parses_beside_other_answers() {
+        let flags = KittyKeyboardFlags::parse(b"\x1b[?5u").expect("parses");
+        assert_eq!(flags.bits(), 5);
+        assert!(flags.contains(KittyKeyboardFlags::DISAMBIGUATE));
+        assert!(flags.contains(KittyKeyboardFlags::ALTERNATE_KEYS));
+        assert!(!flags.contains(KittyKeyboardFlags::EVENT_TYPES));
+        // A probe's whole reply: palette OSC (with hex `c`s), the keyboard
+        // answer, then the DA1 fence.
+        let reply = b"\x1b]11;rgb:cccc/cccc/cccc\x1b\\\x1b[?0u\x1b[?62;4c";
+        assert_eq!(
+            KittyKeyboardFlags::parse(reply),
+            Some(KittyKeyboardFlags::default())
+        );
+        let da = DeviceAttributes::parse(reply).expect("DA1 after the keyboard answer");
+        assert!(da.has(62) && da.sixel());
+    }
+
+    #[test]
+    fn kitty_keyboard_reply_rejects_other_frames() {
+        for bytes in [
+            &b"\x1b[?62;4c"[..],
+            b"\x1b[?u",
+            b"\x1b[5u",
+            b"\x1b[?1;2u",
+            b"\x1b[?999u",
+            b"\x1b[?1",
+            b"?1u",
+        ] {
+            assert_eq!(KittyKeyboardFlags::parse(bytes), None, "{bytes:?}");
+        }
+    }
+
+    #[test]
+    fn probe_reply_settles_kitty_keyboard_support() {
+        let unknown = Capabilities::from_env_parts(Some("xterm-256color"), None, None, None, None);
+        assert!(
+            !unknown.kitty_keyboard,
+            "an unplaced terminal is not assumed"
+        );
+        assert!(
+            unknown
+                .with_probe_reply(b"\x1b[?0u\x1b[?62c")
+                .kitty_keyboard,
+            "an answer to CSI ? u proves support"
+        );
+        let kitty = Capabilities::from_env_parts(Some("xterm-kitty"), None, None, None, None);
+        assert!(kitty.kitty_keyboard);
+        assert!(
+            !kitty.with_probe_reply(b"\x1b[?62c").kitty_keyboard,
+            "silence before the DA1 fence is a no"
+        );
+        assert!(
+            kitty.with_probe_reply(b"\x1b[?0").kitty_keyboard,
+            "a cut-short read without the fence proves nothing"
+        );
+    }
+
+    #[test]
+    fn env_kitty_keyboard_is_dropped_under_a_multiplexer() {
+        for (term, program) in [
+            (Some("xterm-kitty"), None),
+            (None, Some("ghostty")),
+            (None, Some("WezTerm")),
+            (Some("foot"), None),
+            (Some("alacritty"), None),
+        ] {
+            let caps = Capabilities::from_env_parts(term, program, None, None, None);
+            assert!(caps.kitty_keyboard, "{term:?} {program:?}");
+            assert!(!caps.with_multiplexer(true).kitty_keyboard);
+            assert!(caps.with_multiplexer(false).kitty_keyboard);
+        }
     }
 }
