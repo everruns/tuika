@@ -62,6 +62,9 @@ minor release for the accumulated public API changes.
     the nearest meaning.
 - **Task trees report as OSC 7501 child records**
   - The runner diffs a host's task tree into `parent/child` records.
+- **Program status is assertable in tests**
+  - `testing::StatusRecorder` reads reports back as values; see
+    [Testing](processes/testing.md).
 
 - **Shortcuts on non-Latin layouts**
   - Unmatched Ctrl/Alt chords retry as the QWERTY key in the same position;

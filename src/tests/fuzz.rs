@@ -843,6 +843,16 @@ proptest! {
         prop_assert!(theme.is_none() || !palette.is_empty());
         let _ = DeviceAttributes::parse(&bytes);
         let _ = crate::term::program_status::StatusSupport::parse(&bytes);
+        // Reading a report back never panics, and whatever it accepts
+        // re-encodes to something that reads back the same.
+        if let Some(report) = crate::term::program_status::Report::decode(&bytes)
+            && let Some(encoded) = report.encode()
+        {
+            prop_assert_eq!(
+                crate::term::program_status::Report::decode(encoded.as_bytes()),
+                Some(report)
+            );
+        }
     }
 
     /// OSC 7501 detection replies with fuzzed lists: parsing never panics, and

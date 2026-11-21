@@ -311,6 +311,124 @@ impl Report {
     }
 }
 
+impl Report {
+    /// Read one report back from its wire form — what a terminal does — so
+    /// tests and tools can inspect what a program sent. Accepts the body
+    /// (`state=working:id=a`) or a whole sequence (`ESC ] 7501 ; … ST`, with
+    /// either ST or BEL).
+    ///
+    /// Follows the spec's reading rules: whitespace around keys and values is
+    /// ignored, a malformed pair is skipped, unknown keys are ignored, and a
+    /// repeated key keeps its last value. Returns `None` where a terminal
+    /// would discard the report: a missing or unknown `state`, an invalid
+    /// `id` or `app`, or `title`/`msg` that is not base64 of control-free
+    /// UTF-8.
+    ///
+    /// ```
+    /// use tuika::term::program_status::{Report, State};
+    ///
+    /// let sent = Report::new(State::Working).id("build").progress(40).msg("Compiling");
+    /// let read = Report::decode(sent.encode().unwrap().as_bytes()).unwrap();
+    /// assert_eq!(read, sent);
+    /// ```
+    pub fn decode(bytes: &[u8]) -> Option<Report> {
+        let body = bytes.strip_prefix(b"\x1b]7501;").unwrap_or(bytes);
+        let body = body
+            .strip_suffix(b"\x1b\\")
+            .or_else(|| body.strip_suffix(b"\x07"))
+            .unwrap_or(body);
+        let body = std::str::from_utf8(body).ok()?;
+        let mut state = None;
+        let mut report = Report::new(State::Idle);
+        for pair in body.split(':') {
+            let Some((key, value)) = pair.split_once('=') else {
+                continue;
+            };
+            let value = value.trim();
+            match key.trim() {
+                "state" => {
+                    state = Some(match value {
+                        "idle" => State::Idle,
+                        "working" => State::Working,
+                        "done" => State::Done,
+                        "blocked" => State::Blocked,
+                        "error" => State::Error,
+                        "clear" => State::Clear,
+                        _ => return None,
+                    });
+                }
+                "id" => report.id = Some(value.to_string()),
+                "kind" => {
+                    report.kind = match value {
+                        "permission" => Some(BlockKind::Permission),
+                        "question" => Some(BlockKind::Question),
+                        "auth" => Some(BlockKind::Auth),
+                        _ => None,
+                    }
+                }
+                "progress" => report.progress = value.parse::<u8>().ok().filter(|p| *p <= 100),
+                "app" => report.app = Some(value.to_string()),
+                "title" => report.title = Some(decode_text(value)?),
+                "msg" => report.msg = Some(decode_text(value)?),
+                _ => {}
+            }
+        }
+        report.state = state?;
+        if report.id.as_deref().is_some_and(|id| !is_valid_id(id))
+            || report
+                .app
+                .as_deref()
+                .is_some_and(|app| !is_valid_segment(app))
+        {
+            return None;
+        }
+        // Keys the spec ignores in this state are absent, as they would be
+        // had the report been built and encoded here.
+        if report.state != State::Blocked {
+            report.kind = None;
+        }
+        if !matches!(report.state, State::Working | State::Blocked) {
+            report.progress = None;
+        }
+        Some(report)
+    }
+}
+
+fn decode_text(value: &str) -> Option<String> {
+    let bytes = base64_decode(value)?;
+    let text = String::from_utf8(bytes).ok()?;
+    (!text
+        .chars()
+        .any(|c| c <= '\u{1f}' || ('\u{7f}'..='\u{9f}').contains(&c)))
+    .then_some(text)
+}
+
+/// Standard alphabet; padding optional, as the spec allows.
+fn base64_decode(input: &str) -> Option<Vec<u8>> {
+    let input = input.trim_end_matches('=');
+    let mut out = Vec::with_capacity(input.len() * 3 / 4);
+    let mut acc = 0u32;
+    let mut bits = 0u32;
+    for b in input.bytes() {
+        let v = match b {
+            b'A'..=b'Z' => b - b'A',
+            b'a'..=b'z' => b - b'a' + 26,
+            b'0'..=b'9' => b - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        } as u32;
+        acc = (acc << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
+        }
+    }
+    Some(out)
+}
+
 /// Encode the `OSC 7501 ; ? ST` feature-detection query.
 pub fn encode_query() -> String {
     "\x1b]7501;?\x1b\\".to_string()
@@ -1487,5 +1605,42 @@ mod tests {
         out.clear();
         reporter.finish(&mut out).unwrap();
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn decode_round_trips_every_field() {
+        let report = Report::new(State::Blocked)
+            .id("a/b")
+            .kind(BlockKind::Auth)
+            .progress(7)
+            .app("cargo")
+            .title("Sign in")
+            .msg("caf\u{e9} needs a token");
+        assert_eq!(
+            Report::decode(report.encode().unwrap().as_bytes()),
+            Some(report)
+        );
+        assert_eq!(
+            Report::decode(b"\x1b]7501;state=clear\x07"),
+            Some(Report::clear(None))
+        );
+    }
+
+    #[test]
+    fn decode_follows_the_spec_reading_rules() {
+        // Whitespace, unpadded base64, a malformed pair, an unknown key, and a
+        // repeated key.
+        let read = Report::decode(b" state = done :junk:zz=1:title=SGk:state=error").unwrap();
+        assert_eq!(read.state(), State::Error);
+        assert_eq!(read.record_title(), Some("Hi"));
+        assert_eq!(Report::decode(b"id=a"), None, "no state");
+        assert_eq!(Report::decode(b"state=sleeping"), None);
+        assert_eq!(Report::decode(b"state=idle:id=bad id"), None);
+        assert_eq!(Report::decode(b"state=idle:msg=@@@"), None);
+        // "a\nb" in base64: a control character discards the report.
+        assert_eq!(Report::decode(b"state=idle:msg=YQpi"), None);
+        // Keys the state ignores read as absent.
+        let read = Report::decode(b"state=done:kind=auth:progress=50").unwrap();
+        assert_eq!((read.block_kind(), read.percent()), (None, None));
     }
 }
