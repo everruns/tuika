@@ -723,8 +723,20 @@ pub(crate) fn paint_placeholders(surface: &mut Surface, rect: Rect, id: u32, bac
     let style = Style::default().fg(Color::Rgb(r, g, b)).bg(background);
     for row in 0..rect.height {
         for col in 0..rect.width {
+            let (x, y) = (rect.x.saturating_add(col), rect.y.saturating_add(row));
+            if !surface
+                .area()
+                .contains(crate::geometry::Position::new(x, y))
+            {
+                continue;
+            }
             if let Some(symbol) = placeholder_symbol(row, col) {
-                surface.set_cluster(rect.x + col, rect.y + row, &symbol, style);
+                // Through `buffer_mut`, not a `Surface` cell setter: a second
+                // caller of the shared grapheme setter de-inlines it from the
+                // text paint hot path (the scroll iai benches catch it).
+                let cell = &mut surface.buffer_mut()[(x, y)];
+                cell.set_symbol(&symbol);
+                cell.set_style(style);
             }
         }
     }
