@@ -128,6 +128,7 @@ fn resolve_axis(known: Option<u16>, available: AvailableSpace, measured: u16) ->
 }
 use super::surface::Surface;
 use crate::access::{AccessFrame, Node};
+use crate::mouse::ContentWindow;
 use crate::term::image::{ImageLayer, ImageSupport};
 
 /// Original text rendered in a frame, used to preserve source line breaks when copying.
@@ -144,12 +145,14 @@ pub(crate) struct SelectionSource {
 pub(crate) struct SelectionFrame {
     sources: RefCell<Vec<SelectionSource>>,
     regions: RefCell<Vec<Rect>>,
+    windows: RefCell<Vec<ContentWindow>>,
 }
 
 impl SelectionFrame {
     pub(crate) fn clear(&self) {
         self.sources.borrow_mut().clear();
         self.regions.borrow_mut().clear();
+        self.windows.borrow_mut().clear();
     }
 
     pub(crate) fn push_source(&self, area: Rect, text: String) {
@@ -162,6 +165,17 @@ impl SelectionFrame {
     /// the *last* one containing a cell is the innermost panel there.
     pub(crate) fn push_region(&self, area: Rect) {
         self.regions.borrow_mut().push(area);
+    }
+
+    /// Record a scrolled view's content mapping (and its panel region).
+    pub(crate) fn push_window(&self, window: ContentWindow) {
+        self.regions.borrow_mut().push(window.area);
+        self.windows.borrow_mut().push(window);
+    }
+
+    /// Take the frame's scrolled-content windows, leaving it empty.
+    pub(crate) fn take_windows(&self) -> Vec<ContentWindow> {
+        std::mem::take(&mut self.windows.borrow_mut())
     }
 
     /// Take the frame's text sources, leaving it empty (the next paint clears
@@ -293,6 +307,25 @@ impl<'a> RenderCtx<'a> {
     pub(crate) fn record_selection_region(&self, area: Rect) {
         if let Some(selection) = self.selection {
             selection.push_region(area);
+        }
+    }
+
+    /// Report that `window.area` shows scrolled content starting at
+    /// `window.first_row`.
+    ///
+    /// The runner's built-in text selection anchors a drag that starts here to
+    /// content rows rather than screen rows, so the selection survives the
+    /// view scrolling and can span more than one screen (see
+    /// [`ContentSelection`](crate::mouse::ContentSelection)). The area also
+    /// becomes a selectable panel, like a bordered box. `Scroll`, `Viewport`,
+    /// and `ItemScroll` call this themselves; a custom scrolling view calls it
+    /// from [`View::render`] with the rect its content occupies (scrollbar
+    /// excluded). Outside a runner with text selection it does nothing.
+    pub fn record_scrolled_content(&self, window: ContentWindow) {
+        if let Some(selection) = self.selection
+            && !window.area.is_empty()
+        {
+            selection.push_window(window);
         }
     }
 

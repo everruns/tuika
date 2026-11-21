@@ -69,6 +69,16 @@ rather than adding a second layer above it.
   `TreeState` extends the same host-owned model with stable node identity,
   expansion, and remembered ancestry while domain traversal remains outside the
   toolkit.
+- **Pickers report their own click geometry.** A host gets a click one frame
+  after the picker painted, and re-deriving where each option landed (borders,
+  padding, headers, the scroll window) duplicates the renderer and drifts from
+  it. So `SelectList`, `SelectionScreen`, and `TabSelect` record each visible
+  option's rect into a shared `OptionHits` handle while they render, the same
+  read-back shape as `RectProbe`, and the host-owned state resolves clicks
+  against it. Indices are absolute, so the window needs no restating. A
+  one-click choice is held briefly by `ClickConfirm`, driven by host time,
+  because confirming in the same frame closes the picker before the user sees
+  what they hit.
 - **Key bindings are the help source of truth**: active labeled bindings expose
   layer priority, and component adapters derive responsive footer hints and
   complete help rows from the same declarations used for dispatch.
@@ -128,6 +138,19 @@ rather than adding a second layer above it.
   pointer was actually aimed at; a range is always resolved against the area it
   is given, so geometry that changed underneath it can only narrow the
   selection, never reach a cell outside.
+- **Inside a scrolled view, a selection belongs to the content, not the
+  screen.** Screen cells under a scrolled view change meaning every time it
+  scrolls, so a screen-space selection there has to be dropped and can never
+  outgrow one screen. `Scroll`, `Viewport`, and `ItemScroll` report a
+  `ContentWindow` (their rect plus the content row and column at its corner)
+  while rendering, and a drag that starts inside one is kept as a
+  `ContentSelection` in content rows. The view, not a panel drawn inside it,
+  owns the gesture, because only its rows hold still as it scrolls. The view is
+  identified across frames by its screen rect; if no window with that rect is
+  painted, the mapping no longer holds and the selection is dropped. No frame
+  holds rows that scrolled away, so the selection records each selected row as
+  it is painted, bounded by the selection itself; rows it never saw copy empty
+  rather than being invented.
 - **Runners own application state directly**: `Application` (and its awaiting
   counterpart `AsyncApplication`) receives signals through `&mut self` and
   builds a `ScopedElement<'_>` through `&self`, so a frame can borrow
