@@ -530,6 +530,31 @@ status.set(Some(Report::new(State::Done).app("build")));
 
 A host with its own loop gets the same behavior from `StatusReporter`.
 
+### Child records from a task tree
+
+An agent with sub-agents, or a pipeline with jobs, can report each one as its
+own record under the program, so a terminal that groups records (Rex shows them
+in its session picker) lists them by name. Build a tree of `StatusTask`s from
+the one you already have and set it on the runner:
+
+```rust,no_run
+use tuika::prelude::*;
+use tuika::term::program_status::{Report, State, StatusTask};
+
+let runner = Runner::new(RunnerConfig::default());
+runner.task_status().set(vec![
+    StatusTask::new("agent 1", Report::new(State::Working).title("Planner"))
+        .child(StatusTask::new("search", Report::new(State::Blocked).title("Web search"))),
+]);
+// Reported as id=agent-1 and id=agent-1/search, each with its title.
+```
+
+Keys are made valid id segments for you, so host ids can be passed as they are.
+The runner sends only the records that changed, clears tasks that leave the
+tree, and on exit clears the ones still `working` or `blocked`. Outside the
+runner, `task_reports` flattens a tree into reports and `TaskReporter` keeps
+them in step with the terminal.
+
 ### Detecting support
 
 Reports are safe to send blind, since terminals that don't know OSC 7501
