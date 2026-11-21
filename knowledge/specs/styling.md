@@ -110,6 +110,33 @@ fail, so it is also the fallback when a terminal answers nothing. What it cannot
 do is express a tone *between* two slots, which is exactly what the derived
 theme exists to supply.
 
+### Themes are written once, at full depth
+
+A theme states the colors it wants; it does not carry a 256- or 16-color variant.
+What the terminal can show is decided at the last moment, in the backend, which
+maps each emitted color to the nearest one at the detected `ColorDepth`. Keeping
+the reduction out of the cell grid is the point: the buffer, snapshots, and every
+test that reads cells see the theme's own colors at every depth, and a component
+never branches on the terminal.
+
+The mapping targets the 256-color cube and gray ramp, never slots 0–15, because
+those are the user's theme rather than fixed values; only a terminal limited to
+sixteen colors gets named ANSI colors, written as classic `30`–`37`/`90`–`97`
+SGR codes since such a terminal may not parse the `38;5;n` form. The 256-color
+match is nearest by the cheap "redmean" distance rather than a perceptual space,
+for the same no-color-science-dependency reason as blending. The 16-color match
+is deliberately *not* nearest-distance: against sixteen saturated candidates,
+distance sends every muted theme color to gray and a warm theme comes out
+monochrome, so hue and lightness are judged separately — low-chroma colors pick
+a gray by lightness, the rest keep their hue.
+
+Detection reduces only on positive evidence. Downsampling a theme on a terminal
+that could have shown it is a worse miss than the reverse, and true color is
+near-universal, so only terminals known to be limited (16-color `TERM` names,
+Apple Terminal) are reduced. The absence of `COLORTERM` is deliberately *not*
+evidence: SSH does not forward it, and treating it as a limit would flatten
+every remote session on a modern terminal.
+
 ### Open roles remain flat
 
 Open roles are stable identifiers, not CSS selectors or terminal content. They
