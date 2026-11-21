@@ -230,6 +230,16 @@ style through the `StyleSheet` roles rather than reading colors directly, so a
 host that restyles headings restyles them in markdown too. See
 [styling.md](./styling.md).
 
+### Large headings are opt-in layout
+
+`Markdown::large_headings` / `MarkdownState::with_large_headings` lay a level-one
+heading out for OSC 66 at twice the cell height: wrapped to half the width, each
+row followed by a reserved row, with a `SizedRun` reported beside the links. The
+row paints at normal size first, so a host that skips the runs, or a heading the
+viewport cuts, still reads correctly. It is opt-in because the reserved rows
+change the layout, and one level only because a second scale would halve the
+width again for little hierarchy gain.
+
 ## Constraints
 
 - Parsing uses `pulldown-cmark` with default features off: the bundled HTML

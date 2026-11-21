@@ -74,6 +74,12 @@ fn glyph(ch: char) -> Option<[&'static str; 5]> {
     })
 }
 
+/// Whether the bundled font has a glyph for every character of `text`, so a
+/// caller choosing it as a fallback knows nothing would render blank.
+pub(crate) fn covers(text: &str) -> bool {
+    text.chars().all(|ch| glyph(ch).is_some())
+}
+
 /// The pixel width of `ch`'s glyph (0 for an unknown character).
 fn glyph_width(ch: char) -> u16 {
     glyph(ch).map(|g| g[0].len() as u16).unwrap_or(0)

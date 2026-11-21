@@ -26,10 +26,10 @@
 use tuika::components::{
     ActivityItem, ActivityList, ActivityStatus, AsciiFont, Boxed, CodeBlock, CompletionItem,
     CompletionPalette, CompletionState, Console, ConsoleLog, Diff, Flow, FormField, FormState,
-    Grid, ItemScroll, KeyHints, Loader, Markdown, MarkdownState, Paragraph, ProgressBar, QrCode,
-    QrEcc, Rule, Scroll, ScrollState, Scrollbar, SelectList, SelectState, SelectionScreen, Slider,
-    SliderState, Spinner, StatusBar, TabSelect, TabSelectState, Table, Tabs, TabsState, Text,
-    TextInput, TextInputState, ToastLevel, ToastList, Toasts, TreeList, TreeRow, TreeState,
+    Grid, ItemScroll, KeyHints, LargeText, Loader, Markdown, MarkdownState, Paragraph, ProgressBar,
+    QrCode, QrEcc, Rule, Scroll, ScrollState, Scrollbar, SelectList, SelectState, SelectionScreen,
+    Slider, SliderState, Spinner, StatusBar, TabSelect, TabSelectState, Table, Tabs, TabsState,
+    Text, TextInput, TextInputState, ToastLevel, ToastList, Toasts, TreeList, TreeRow, TreeState,
     Viewport, VirtualWindow, Wrap,
 };
 use tuika::prelude::*;
@@ -121,6 +121,7 @@ fn for_each_component(text: &'static str, visit: &mut dyn FnMut(&str, &dyn View)
         &Diff::new(text, &format!("{text}\nchanged")).line_numbers(true),
     );
     visit("ascii_font", &AsciiFont::new(text));
+    visit("large_text", &LargeText::new(text).scale(3));
 
     // Streamed markdown, fed one chunk at a time like a host does.
     let mut md = MarkdownState::new();

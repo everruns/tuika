@@ -372,6 +372,23 @@ paints each `MarkdownImage` at its `rect(area)`. See
 [Images](features.md#images-kitty-iterm2--sixel-graphics-protocols) for the
 protocols and the alt-text fallback.
 
+## Large headings
+
+On kitty, level-one headings can be drawn at twice the cell height with the
+text sizing protocol (OSC 66). It is opt-in, and takes effect only where the
+terminal supports it; elsewhere headings render as usual.
+
+```rust
+use tuika::prelude::*;
+view! { node(Markdown::new(source).large_headings(true)) }
+```
+
+A host driving `MarkdownState` turns it on with `with_large_headings` (only when
+`TextSizing::detect()` says the terminal supports it, since the layout reserves
+the extra rows either way), then after painting the lines passes
+`MarkdownState::sized_runs()` to `term::text_size::apply_sized_runs_in` for the
+same area, before applying links.
+
 ## Styling
 
 Every markdown element resolves its look through the active `StyleSheet` —

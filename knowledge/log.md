@@ -30,7 +30,13 @@
     plain characters stay text and explicit bindings win. A built-in table
     stands in for Kitty's base-layout key, which crossterm drops. See
     [Keymap](specs/keymap.md).
-
+- **Sized text through OSC 66**
+  - Kitty's text sizing protocol joins the out-of-band set as the first escape
+    that carries its own text, so it is detection-gated with a normal-size
+    fallback, and it lives in the cell grid (origin cell plus `Skip` block)
+    rather than in a post-frame layer. Markdown can lay level-one headings out
+    for it. See [Out-of-band escapes](specs/out-of-band.md) and
+    [Markdown](specs/markdown.md).
 - **Chart annotations join the portable grammar**
   - Bands, value/position reference lines, dashed strokes, grid lines, axis
     titles, and per-series legend visibility are now part of `tuika-charts`'

@@ -20,7 +20,7 @@ the renderer did not expect.
 
 ## What
 
-Seven out-of-band capabilities, in three families:
+Eight out-of-band capabilities, in three families:
 
 | Capability | Sequence | Module | Emission point |
 | --- | --- | --- | --- |
@@ -30,6 +30,7 @@ Seven out-of-band capabilities, in three families:
 | Program status | OSC 7501 | `term::program_status` | host-initiated, any time |
 | Pointer shape | OSC 22 | `term::pointer` | host-initiated, any time |
 | Images | Kitty / iTerm2 / Sixel | `term::image` | after `terminal.draw()` returns |
+| Sized text | OSC 66 | `term::text_size` | embedded in cells by `apply_sized_runs_in` |
 | Terminal queries | DA1, Kitty keyboard (`CSI ? u`), OSC 10 / 11 / 4 | `term::capabilities`, `term::palette` | host-initiated, once at startup, in raw mode |
 
 They live together under `term` because they are one kind of thing, and a reader
@@ -101,6 +102,25 @@ worst case is that nothing happens.
 Graphics protocols break that assumption: an unsupported terminal may render the
 payload as visible garbage. Images are therefore the one capability gated on
 detection, defaulting to a text fallback when unsure.
+
+Sized text (OSC 66) breaks it the other way: the escape carries the text
+itself, so a terminal that swallows it shows *less* than nothing — the words are
+gone. It is gated on `TextSizing` detection (kitty only, never under a
+multiplexer, since tmux would parse the stream rather than kitty) and every
+sized view keeps a normal-size fallback.
+
+### Sized text lives in the cell grid, not after it
+
+OSC 66 moves the cursor and covers a `scale × cols` by `scale` block the
+terminal then owns, which looks like the graphics case. It is handled the OSC 8
+way instead: the escape sits in each glyph's origin cell with a `ForcedWidth`
+of the scaled width, and every other cell of the block is `Skip`, because a
+write to any of them makes the terminal erase the whole glyph. Keeping it in the
+grid means the diff, split-footer scrollback, and one-shot output carry it with
+no emission step, and the terminal scrolls and clips it like text. The text is
+read back from cells already painted at normal size, so the unsized paint is
+both the fallback and the source, and a block the clip would cut is simply left
+unsized.
 
 Any *new* out-of-band feature must be classified against this rule before it
 ships: if an unsupporting terminal would show garbage rather than nothing, it

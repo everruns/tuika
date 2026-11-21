@@ -50,9 +50,9 @@ Transient notifications and structured console output.
 
 ## [Banners, codes & pixels](components/banners-codes-pixels.md)
 
-ASCII lettering, QR codes, framebuffers, and key hints.
+Large text, ASCII lettering, QR codes, framebuffers, and key hints.
 
-[`AsciiFont`](components/banners-codes-pixels.md#asciifont) · [`QrCode`](components/banners-codes-pixels.md#qrcode) · [`FrameBuffer` + `FrameBufferView`](components/banners-codes-pixels.md#framebuffer--framebufferview) · [`KeyHints`](components/banners-codes-pixels.md#keyhints) · [`KeymapHelp`](components/banners-codes-pixels.md#keymaphelp)
+[`AsciiFont`](components/banners-codes-pixels.md#asciifont) · [`LargeText`](components/banners-codes-pixels.md#largetext) · [`QrCode`](components/banners-codes-pixels.md#qrcode) · [`FrameBuffer` + `FrameBufferView`](components/banners-codes-pixels.md#framebuffer--framebufferview) · [`KeyHints`](components/banners-codes-pixels.md#keyhints) · [`KeymapHelp`](components/banners-codes-pixels.md#keymaphelp)
 
 ## See also
 

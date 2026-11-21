@@ -144,9 +144,9 @@ fn components_are_reachable_flat() {
         ChoiceDialogState, CompletionItem, CompletionPalette, CompletionState, ConfirmDialog,
         ConfirmDialogState, Console, Dialog, Diff, Form, FormField, FormState, Image, InputDialog,
         InputDialogState, KeyedColumn, KeyedMultiSelectState, KeyedRowSource, KeyedSelectState,
-        KeyedTable, Markdown, MultiChoiceDialog, MultiChoiceDialogState, NavigableKeyedRowSource,
-        QrCode, SelectViewportState, SelectionAnchor, Toasts, TreeList, TreeRow, TreeState,
-        Viewport,
+        KeyedTable, LargeText, Markdown, MultiChoiceDialog, MultiChoiceDialogState,
+        NavigableKeyedRowSource, QrCode, SelectViewportState, SelectionAnchor, Toasts, TreeList,
+        TreeRow, TreeState, Viewport,
     };
 
     let theme = Theme::default();
@@ -159,6 +159,7 @@ fn components_are_reachable_flat() {
     // Named only to pin the paths; constructing each is the component's own
     // test's job.
     let _ = AsciiFont::new("hi");
+    let _ = LargeText::new("hi");
     let _ = Console::new;
     let _ = Diff::new;
     let _ = Image::new;
