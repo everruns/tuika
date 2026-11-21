@@ -530,6 +530,22 @@ status.set(Some(Report::new(State::Done).app("build")));
 
 A host with its own loop gets the same behavior from `StatusReporter`.
 
+### Detecting support
+
+Reports are safe to send blind, since terminals that don't know OSC 7501
+ignore it. To find out what a terminal accepts, call
+`program_status::query(timeout)` once at startup, in raw mode. It sends the
+`OSC 7501 ; ?` query fenced by a Device Attributes request, so a terminal
+without the protocol costs one round-trip rather than a timeout. The answer is
+a `StatusSupport`, or `None` when the protocol is unsupported. Use
+`StatusSupport::parse` on reply bytes you read yourself.
+
+Hand the result to `Runner::with_status_support` (or
+`StatusReporter::with_support`) and a state the terminal lacks goes out as its
+nearest supported one, rather than being dropped: `blocked` becomes `working`,
+`error` becomes `done`, and either becomes `idle` as a last resort. An
+unsupported `kind` is dropped.
+
 The [`program_status`](../examples/program_status.rs) example walks a scripted
 build through every state and prints the exact reports it sends; run it in a
 terminal that reads OSC 7501 to watch the pane's status follow along. The

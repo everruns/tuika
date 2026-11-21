@@ -316,6 +316,181 @@ pub fn encode_query() -> String {
     "\x1b]7501;?\x1b\\".to_string()
 }
 
+/// What a terminal said it accepts, from its reply to [`encode_query`].
+///
+/// A terminal that implements the protocol answers
+/// `OSC 7501 ; ? : states=… : kinds=… ST`. Either list may be missing, which
+/// means the spec's fixed defaults: every state and every kind. A host that
+/// probed adapts reports with [`adapt`](Self::adapt) (or hands the support to
+/// [`StatusReporter::with_support`]) so a terminal that lacks a state gets the
+/// nearest one it has rather than a report it drops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StatusSupport {
+    states: u8,
+    kinds: u8,
+}
+
+impl Default for StatusSupport {
+    /// The spec's defaults: all five states and all three kinds.
+    fn default() -> Self {
+        Self::ALL
+    }
+}
+
+impl StatusSupport {
+    /// Every state and every kind, the spec's default when a list is absent.
+    pub const ALL: Self = Self {
+        states: 0b1_1111,
+        kinds: 0b111,
+    };
+
+    /// Parse a probe reply. `None` when it holds no `OSC 7501 ; ?` reply, or
+    /// when the Device Attributes reply came first — the spec's fence: every
+    /// terminal answers DA1, so a DA1 answer ahead of any 7501 answer means
+    /// the protocol is unsupported, with no timeout to wait out.
+    ///
+    /// Unknown pairs and unknown values are ignored, as the spec requires.
+    /// Bounded by the input: no allocation proportional to it.
+    ///
+    /// ```
+    /// use tuika::term::program_status::{BlockKind, State, StatusSupport};
+    ///
+    /// let reply = b"\x1b]7501;?:states=idle,working,done\x1b\\\x1b[?62;22c";
+    /// let support = StatusSupport::parse(reply).unwrap();
+    /// assert!(support.supports(State::Done));
+    /// assert!(!support.supports(State::Blocked));
+    /// assert!(support.supports_kind(BlockKind::Auth)); // `kinds` absent: all
+    ///
+    /// assert_eq!(StatusSupport::parse(b"\x1b[?62;22c"), None);
+    /// ```
+    pub fn parse(reply: &[u8]) -> Option<Self> {
+        const INTRO: &[u8] = b"\x1b]7501;?";
+        let start = reply.windows(INTRO.len()).position(|w| w == INTRO)?;
+        if da1_position(reply).is_some_and(|da1| da1 < start) {
+            return None;
+        }
+        let body = &reply[start + INTRO.len()..];
+        // ST is `ESC \`, or BEL; a reply cut off before either still yields
+        // what arrived, since every complete pair is unambiguous.
+        let end = body
+            .iter()
+            .position(|&b| b == 0x1b || b == 0x07)
+            .unwrap_or(body.len());
+        let body = std::str::from_utf8(&body[..end]).ok()?;
+
+        let mut support = Self::ALL;
+        for pair in body.split(':') {
+            let Some((key, value)) = pair.split_once('=') else {
+                continue;
+            };
+            let values = value.split(',').map(str::trim).filter(|v| !v.is_empty());
+            match key.trim() {
+                "states" => {
+                    support.states = values.filter_map(state_bit).fold(0, |acc, bit| acc | bit);
+                }
+                "kinds" => {
+                    support.kinds = values.filter_map(kind_bit).fold(0, |acc, bit| acc | bit);
+                }
+                _ => {}
+            }
+        }
+        Some(support)
+    }
+
+    /// Whether the terminal accepts `state`. `clear` is not a state and is
+    /// always accepted.
+    pub fn supports(&self, state: State) -> bool {
+        state == State::Clear || state_bit(state.as_str()).is_some_and(|bit| self.states & bit != 0)
+    }
+
+    /// Whether the terminal accepts `kind`.
+    pub fn supports_kind(&self, kind: BlockKind) -> bool {
+        kind_bit(kind.as_str()).is_some_and(|bit| self.kinds & bit != 0)
+    }
+
+    /// `report` as this terminal can take it, or `None` when it accepts
+    /// nothing close enough.
+    ///
+    /// A missing state falls back along the nearest meaning: `blocked` to
+    /// `working` (both mean "not finished"), then `idle`; `error` to `done`
+    /// (both mean "finished, look at me"), then `idle`; `done` and `working`
+    /// to `idle`. An unsupported `kind` is dropped, which the spec reads as a
+    /// generic block.
+    pub fn adapt(&self, report: &Report) -> Option<Report> {
+        let fallbacks: &[State] = match report.state {
+            State::Blocked => &[State::Working, State::Idle],
+            State::Error => &[State::Done, State::Idle],
+            State::Done | State::Working => &[State::Idle],
+            State::Idle | State::Clear => &[],
+        };
+        let state = std::iter::once(report.state)
+            .chain(fallbacks.iter().copied())
+            .find(|state| self.supports(*state))?;
+        let mut adapted = report.clone();
+        adapted.state = state;
+        if adapted.kind.is_some_and(|kind| !self.supports_kind(kind)) {
+            adapted.kind = None;
+        }
+        Some(adapted)
+    }
+}
+
+/// Where the Device Attributes reply (`CSI ? <params> c`) starts. Other CSI
+/// `?` answers — the Kitty keyboard reply is `CSI ? <flags> u` — are not the
+/// fence, so the final byte decides.
+fn da1_position(reply: &[u8]) -> Option<usize> {
+    (0..reply.len()).find(|&i| {
+        reply[i..].starts_with(b"\x1b[?")
+            && reply[i + 3..]
+                .iter()
+                .find(|b| !(b.is_ascii_digit() || **b == b';'))
+                == Some(&b'c')
+    })
+}
+
+fn state_bit(name: &str) -> Option<u8> {
+    Some(match name {
+        "idle" => 1,
+        "working" => 1 << 1,
+        "done" => 1 << 2,
+        "blocked" => 1 << 3,
+        "error" => 1 << 4,
+        _ => return None,
+    })
+}
+
+fn kind_bit(name: &str) -> Option<u8> {
+    Some(match name {
+        "permission" => 1,
+        "question" => 1 << 1,
+        "auth" => 1 << 2,
+        _ => return None,
+    })
+}
+
+/// Ask the terminal whether it reads OSC 7501, and what it accepts.
+///
+/// Sends [`encode_query`] followed by the Device Attributes request, which
+/// every terminal answers — so an unsupporting terminal costs one round-trip,
+/// not a timeout. `None` means unsupported, not a tty, or no answer within
+/// `timeout`.
+///
+/// Same rules as [`Capabilities::query`](crate::term::capabilities::Capabilities::query):
+/// **call once at startup, in raw mode, before the event loop reads stdin**.
+/// Unix only; elsewhere it returns `None`. Reports are safe to send without
+/// probing — unknown OSCs are swallowed — so probe only to adapt reports or
+/// to decide whether to show status-related UI.
+pub fn query(timeout: std::time::Duration) -> Option<StatusSupport> {
+    let request = format!(
+        "{}{}",
+        encode_query(),
+        crate::term::capabilities::DA1_REQUEST
+    );
+    crate::term::capabilities::probe_terminal(&request, timeout)
+        .as_deref()
+        .and_then(StatusSupport::parse)
+}
+
 /// Write one report. Invalid reports emit nothing and still succeed, so a
 /// host can fire-and-forget without branching on validation.
 pub fn write(out: &mut impl Write, report: &Report) -> std::io::Result<()> {
@@ -358,10 +533,14 @@ pub fn write(out: &mut impl Write, report: &Report) -> std::io::Result<()> {
 pub struct StatusReporter {
     /// The value last passed to `update`, to skip unchanged ones.
     seen: Option<Report>,
-    /// The last report that was valid and written.
+    /// The last report that was valid and written, and its bytes: two values
+    /// can encode alike once adapted (progress is dropped from `idle`), and
+    /// the terminal needs only one.
     sent: Option<Report>,
+    sent_bytes: Option<String>,
     native_progress: bool,
     native_active: bool,
+    support: StatusSupport,
 }
 
 impl StatusReporter {
@@ -373,6 +552,13 @@ impl StatusReporter {
     /// Also drive the terminal's OSC 9;4 indicator from the same value.
     pub fn with_native_progress(mut self, enabled: bool) -> Self {
         self.native_progress = enabled;
+        self
+    }
+
+    /// Adapt every report to what the terminal said it accepts — see
+    /// [`StatusSupport::adapt`]. Defaults to [`StatusSupport::ALL`].
+    pub fn with_support(mut self, support: StatusSupport) -> Self {
+        self.support = support;
         self
     }
 
@@ -397,9 +583,15 @@ impl StatusReporter {
                 None => return Ok(false),
             },
         };
+        let Some(report) = self.support.adapt(&report) else {
+            return Ok(false);
+        };
         let Some(bytes) = report.encode() else {
             return Ok(false);
         };
+        if self.sent_bytes.as_deref() == Some(bytes.as_str()) {
+            return Ok(false);
+        }
         // A record moved to a different id leaves the old one behind unless
         // it is cleared: one status value is one record.
         if let Some(previous) = &self.sent
@@ -418,6 +610,7 @@ impl StatusReporter {
             self.native_active = state != ProgressState::Clear;
         }
         self.sent = (report.state != State::Clear).then_some(report);
+        self.sent_bytes = self.sent.is_some().then_some(bytes);
         out.flush()?;
         Ok(true)
     }
@@ -429,6 +622,7 @@ impl StatusReporter {
         if let Some(previous) = self.sent.take() {
             if matches!(previous.state, State::Working | State::Blocked) {
                 write(out, &Report::clear(previous.id.as_deref()))?;
+                self.sent_bytes = None;
             } else {
                 self.sent = Some(previous);
             }
@@ -831,5 +1025,145 @@ mod tests {
         assert_eq!(cancelled.block_kind(), None);
         assert_eq!(cancelled.percent(), None);
         assert_eq!(cancelled.message(), None);
+    }
+
+    #[test]
+    fn support_parses_both_terminators_and_whitespace() {
+        let st = StatusSupport::parse(
+            b"\x1b]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\x1b\\",
+        )
+        .unwrap();
+        assert_eq!(st, StatusSupport::ALL);
+        let bel = StatusSupport::parse(b"\x1b]7501;? : states = idle , done \x07").unwrap();
+        assert!(bel.supports(State::Idle) && bel.supports(State::Done));
+        assert!(!bel.supports(State::Working));
+        assert!(bel.supports(State::Clear), "clear is always accepted");
+    }
+
+    #[test]
+    fn support_defaults_when_lists_are_absent() {
+        assert_eq!(
+            StatusSupport::parse(b"\x1b]7501;?\x1b\\"),
+            Some(StatusSupport::ALL)
+        );
+        let kinds_only = StatusSupport::parse(b"\x1b]7501;?:kinds=auth\x1b\\").unwrap();
+        assert!(kinds_only.supports(State::Blocked));
+        assert!(kinds_only.supports_kind(BlockKind::Auth));
+        assert!(!kinds_only.supports_kind(BlockKind::Question));
+    }
+
+    #[test]
+    fn support_ignores_unknown_pairs_and_values() {
+        let st = StatusSupport::parse(
+            b"\x1b]7501;?:version=9:states=working,sleeping,idle:junk:kinds=\x1b\\",
+        )
+        .unwrap();
+        assert!(st.supports(State::Working) && st.supports(State::Idle));
+        assert!(!st.supports(State::Done));
+        assert!(
+            !st.supports_kind(BlockKind::Permission),
+            "an empty list is empty"
+        );
+    }
+
+    #[test]
+    fn support_uses_the_da1_fence() {
+        // DA1 first: the terminal did not answer 7501.
+        assert_eq!(StatusSupport::parse(b"\x1b[?62;4c\x1b]7501;?\x1b\\"), None);
+        assert_eq!(StatusSupport::parse(b"\x1b[?62;4c"), None);
+        assert_eq!(StatusSupport::parse(b""), None);
+        // 7501 first, then the fence: supported.
+        assert!(StatusSupport::parse(b"\x1b]7501;?\x1b\\\x1b[?62;4c").is_some());
+        // A Kitty keyboard answer is a CSI `?` frame but not the fence.
+        assert!(StatusSupport::parse(b"\x1b[?1u\x1b]7501;?\x1b\\\x1b[?62c").is_some());
+        // Other replies (a palette answer) ahead of both are fine.
+        assert!(
+            StatusSupport::parse(b"\x1b]11;rgb:0000/0000/0000\x1b\\\x1b]7501;?\x07\x1b[?1c")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn support_parse_survives_garbage() {
+        for input in [
+            &b"\x1b]7501;?\xff\xfe"[..],
+            b"\x1b]7501;?:states=::::",
+            b"\x1b]7501;?states",
+            b"\x1b]7501",
+        ] {
+            let _ = StatusSupport::parse(input);
+        }
+    }
+
+    #[test]
+    fn adapt_falls_back_along_meaning() {
+        let only_idle_working =
+            StatusSupport::parse(b"\x1b]7501;?:states=idle,working\x1b\\").unwrap();
+        let blocked = Report::new(State::Blocked)
+            .kind(BlockKind::Question)
+            .progress(40)
+            .msg("Continue?");
+        let adapted = only_idle_working.adapt(&blocked).unwrap();
+        assert_eq!(adapted.state(), State::Working);
+        assert_eq!(adapted.percent(), Some(40));
+        assert_eq!(
+            only_idle_working
+                .adapt(&Report::new(State::Error))
+                .unwrap()
+                .state(),
+            State::Idle
+        );
+        let no_error = StatusSupport::parse(b"\x1b]7501;?:states=idle,done\x1b\\").unwrap();
+        assert_eq!(
+            no_error.adapt(&Report::new(State::Error)).unwrap().state(),
+            State::Done
+        );
+        let nothing = StatusSupport::parse(b"\x1b]7501;?:states=\x1b\\").unwrap();
+        assert_eq!(nothing.adapt(&Report::new(State::Working)), None);
+        assert!(nothing.adapt(&Report::clear(None)).is_some());
+    }
+
+    #[test]
+    fn adapt_drops_unsupported_kinds() {
+        let st = StatusSupport::parse(b"\x1b]7501;?:kinds=permission\x1b\\").unwrap();
+        let report = Report::new(State::Blocked).kind(BlockKind::Auth);
+        assert_eq!(st.adapt(&report).unwrap().block_kind(), None);
+        let report = Report::new(State::Blocked).kind(BlockKind::Permission);
+        assert_eq!(
+            st.adapt(&report).unwrap().block_kind(),
+            Some(BlockKind::Permission)
+        );
+    }
+
+    #[test]
+    fn reporter_adapts_to_support() {
+        let support = StatusSupport::parse(b"\x1b]7501;?:states=idle,working\x1b\\").unwrap();
+        let mut out = Vec::new();
+        let mut reporter = StatusReporter::new().with_support(support);
+        reporter
+            .update(&mut out, Some(&Report::new(State::Blocked)))
+            .unwrap();
+        reporter.finish(&mut out).unwrap();
+        assert_eq!(
+            reports(&out),
+            ["7501;state=working", "7501;state=clear"],
+            "blocked went out as working, and working is cleared on exit"
+        );
+    }
+
+    #[test]
+    fn reporter_skips_values_that_encode_alike() {
+        let mut out = Vec::new();
+        let support = StatusSupport::parse(b"\x1b]7501;?:states=idle\x1b\\").unwrap();
+        let mut reporter = StatusReporter::new().with_support(support);
+        for percent in [10, 20, 30] {
+            reporter
+                .update(
+                    &mut out,
+                    Some(&Report::new(State::Working).progress(percent)),
+                )
+                .unwrap();
+        }
+        assert_eq!(reports(&out), ["7501;state=idle"]);
     }
 }

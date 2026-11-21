@@ -842,6 +842,34 @@ proptest! {
         let theme = Theme::from_terminal(&palette);
         prop_assert!(theme.is_none() || !palette.is_empty());
         let _ = DeviceAttributes::parse(&bytes);
+        let _ = crate::term::program_status::StatusSupport::parse(&bytes);
+    }
+
+    /// OSC 7501 detection replies with fuzzed lists: parsing never panics, and
+    /// whatever support it finds, adapting a report never yields one the
+    /// terminal said it does not take.
+    #[test]
+    fn program_status_replies_parse_and_adapt_consistently(
+        body in proptest::collection::vec(
+            proptest::sample::select(&b"states=kinds,idle:working done blocked error permission auth question x"[..]),
+            0..64,
+        ),
+        state in 0usize..6,
+    ) {
+        use crate::term::program_status::{Report, State, StatusSupport};
+
+        let mut reply = b"\x1b]7501;?".to_vec();
+        reply.extend_from_slice(&body);
+        reply.extend_from_slice(b"\x1b\\");
+        let Some(support) = StatusSupport::parse(&reply) else {
+            return Ok(());
+        };
+        let state = [
+            State::Idle, State::Working, State::Done, State::Blocked, State::Error, State::Clear,
+        ][state];
+        if let Some(adapted) = support.adapt(&Report::new(state)) {
+            prop_assert!(support.supports(adapted.state()));
+        }
     }
 
     /// The same, on the byte shapes a real reply *nearly* has: a well-formed

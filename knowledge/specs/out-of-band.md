@@ -34,7 +34,7 @@ Out-of-band capabilities, in three families:
 | Pointer shape | OSC 22 | `term::pointer` | host-initiated, any time |
 | Images | Kitty / iTerm2 / Sixel | `term::image` | after `terminal.draw()` returns |
 | Sized text | OSC 66 | `term::text_size` | embedded in cells by `apply_sized_runs_in` |
-| Terminal queries | DA1, Kitty keyboard (`CSI ? u`), OSC 10 / 11 / 4 | `term::capabilities`, `term::palette` | host-initiated, once at startup, in raw mode |
+| Terminal queries | DA1, Kitty keyboard (`CSI ? u`), OSC 10 / 11 / 4, OSC 7501 `?` | `term::capabilities`, `term::palette`, `term::program_status` | host-initiated, once at startup, in raw mode |
 
 They live together under `term` because they are one kind of thing, and a reader
 who has understood one has understood the shape of all of them. Each exposes a
@@ -217,6 +217,11 @@ on change, clear on exit only what is still live, and leave finished records
 alone. OSC 9;4 can be driven from the same value so the two indicators cannot
 disagree. The logic lives in `term::program_status::StatusReporter` so a host
 with its own loop gets the same rules.
+
+A terminal may accept only some states. The detection reply lists them, and a
+report in a missing state is dropped whole, so a host that probed adapts each
+report to the nearest state with the same meaning (`blocked` → `working`,
+`error` → `done`, then `idle`) rather than going silent.
 
 ## Constraints
 

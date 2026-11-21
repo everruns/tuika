@@ -57,6 +57,9 @@ minor release for the accumulated public API changes.
   - A host sets one status value and the runner reports it on change, clears
     only `working`/`blocked` on exit, and can mirror OSC 9;4 from it. See
     [Out-of-band terminal escapes](specs/out-of-band.md).
+- **OSC 7501 detection is read, and reports adapt to it**
+  - The `?` reply is parsed behind the DA1 fence; missing states fall back to
+    the nearest meaning.
 
 - **Shortcuts on non-Latin layouts**
   - Unmatched Ctrl/Alt chords retry as the QWERTY key in the same position;

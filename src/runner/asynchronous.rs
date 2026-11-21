@@ -301,6 +301,21 @@ impl AsyncRunner {
         self
     }
 
+    /// Adapt [`program_status`](Self::program_status) reports to what the
+    /// terminal said it accepts — from [`program_status::query`] or a parsed
+    /// [`StatusSupport::parse`] reply — so a missing state is sent as its
+    /// nearest supported one rather than dropped by the terminal.
+    ///
+    /// [`program_status::query`]: crate::term::program_status::query
+    /// [`StatusSupport::parse`]: crate::term::program_status::StatusSupport::parse
+    pub fn with_status_support(
+        mut self,
+        support: crate::term::program_status::StatusSupport,
+    ) -> Self {
+        self.status.set_support(support);
+        self
+    }
+
     /// Override terminal lifecycle policy while retaining the async loop.
     pub fn with_session_config(mut self, config: crate::TerminalSessionConfig) -> Self {
         self.config.screen_mode = config.screen_mode;
