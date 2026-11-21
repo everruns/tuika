@@ -214,6 +214,7 @@ pub struct AsyncRunner {
     scrollback: Scrollback,
     session_config: Option<crate::TerminalSessionConfig>,
     text_selection: bool,
+    hooks: super::hooks::FrameHooks,
 }
 
 impl AsyncRunner {
@@ -235,7 +236,17 @@ impl AsyncRunner {
             scrollback: Scrollback::new(),
             session_config: None,
             text_selection: true,
+            hooks: super::hooks::FrameHooks::default(),
         }
+    }
+
+    /// Attach a devtools [`Inspector`](crate::devtools::Inspector), exactly as
+    /// [`Runner::with_inspector`](crate::Runner::with_inspector) does.
+    #[cfg(feature = "devtools")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "devtools")))]
+    pub fn with_inspector(mut self, inspector: crate::devtools::Inspector) -> Self {
+        self.hooks.inspector = Some(inspector);
+        self
     }
 
     /// Requested split-footer height. Calling `set` on this shared value wakes
@@ -632,7 +643,15 @@ impl AsyncRunner {
             pin_footer(terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
-            let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+            let copied = draw(
+                terminal,
+                theme,
+                frames,
+                frame,
+                graphics,
+                &mut selection,
+                &self.hooks,
+            )?;
             finish_frame(copied.as_deref())?;
         }
         let mut last_frame = TokioInstant::now();
@@ -690,7 +709,15 @@ impl AsyncRunner {
                         terminal.set_footer_height(self.footer_height.with(|height| *height))?;
                         pin_footer(terminal)?;
                     }
-                    let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+                    let copied = draw(
+                        terminal,
+                        theme,
+                        frames,
+                        frame,
+                        graphics,
+                        &mut selection,
+                        &self.hooks,
+                    )?;
                     finish_frame(copied.as_deref())?;
                     last_frame = TokioInstant::now();
                 }
@@ -701,6 +728,12 @@ impl AsyncRunner {
             let (signal, selection_event) = match wake {
                 Wake::Tick => (Signal::Tick, None),
                 Wake::Event(event) => {
+                    if self.hooks.intercept(&event) {
+                        core.request_redraw();
+                        let now = TokioInstant::now();
+                        redraw_at = Some(redraw_at.map_or(now, |current| current.min(now)));
+                        continue;
+                    }
                     let selection = Some(event.clone());
                     (Signal::Event(event), selection)
                 }
@@ -716,9 +749,12 @@ impl AsyncRunner {
             if core.is_exited() {
                 break;
             }
+            let inspected = selection_event
+                .as_ref()
+                .is_some_and(|event| self.hooks.delivered(event, result));
             let selection_changed = selection_event
                 .is_some_and(|event| selection.handle_event(&event, result, &SystemClock));
-            if requires_redraw || result == UpdateResult::Dirty || selection_changed {
+            if requires_redraw || result == UpdateResult::Dirty || selection_changed || inspected {
                 core.request_redraw();
                 let now = TokioInstant::now();
                 let deadline = if requires_redraw {
@@ -754,7 +790,15 @@ impl AsyncRunner {
                         terminal.set_footer_height(self.footer_height.with(|height| *height))?;
                         pin_footer(terminal)?;
                     }
-                    let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+                    let copied = draw(
+                        terminal,
+                        theme,
+                        frames,
+                        frame,
+                        graphics,
+                        &mut selection,
+                        &self.hooks,
+                    )?;
                     finish_frame(copied.as_deref())?;
                     last_frame = TokioInstant::now();
                 }
@@ -774,16 +818,19 @@ fn draw<M, S, B, Er>(
     frame: u64,
     graphics: Option<&FrameGraphics>,
     selection: &mut RunnerSelection,
+    hooks: &super::hooks::FrameHooks,
 ) -> Result<Option<String>, Er>
 where
     B: Backend<Error = Er>,
     S: AsyncFrameSource<M>,
 {
     let mut copied = None;
+    let mut paint = Duration::ZERO;
     let selection_frame = SelectionFrame::default();
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
         let ctx = graphics.map_or_else(|| RenderCtx::new(theme), |g| g.render_context(theme));
+        let started = hooks.begin_frame();
         frames.frame(frame, &mut |root| {
             paint_with_context_and_selection(
                 terminal_frame.buffer_mut(),
@@ -794,8 +841,11 @@ where
                 &selection_frame,
             );
         });
+        paint = started.elapsed();
         copied = selection.finish_frame(terminal_frame.buffer_mut(), area, theme, &selection_frame);
+        hooks.paint(terminal_frame.buffer_mut(), area, theme);
     })?;
+    hooks.finish_frame(paint, terminal.last_damage());
     Ok(copied)
 }
 
@@ -1868,5 +1918,61 @@ mod tests {
             "the requested repaint shows the producer's data: {:?}",
             buffer_text(&terminal)
         );
+    }
+
+    #[cfg(feature = "devtools")]
+    #[tokio::test]
+    async fn an_attached_inspector_owns_its_chord_and_paints_last() {
+        use crate::devtools::{Inspector, InspectorMode};
+
+        let inspector = Inspector::new();
+        let runner = AsyncRunner::new(RunnerConfig {
+            tick_rate: Duration::from_secs(3600),
+            ..RunnerConfig::default()
+        })
+        .with_inspector(inspector.clone());
+        let mut terminal = terminal(80, 20);
+        let mut seen = Vec::new();
+        let alt_i = Ok(Event::Key(Key {
+            code: KeyCode::Char('i'),
+            ctrl: false,
+            alt: true,
+            shift: false,
+        }));
+
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                async_from_fn(
+                    &mut seen,
+                    |_, _frame| element(Text::raw("app")),
+                    async |seen, signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        Signal::Event(event) => {
+                            seen.push(event);
+                            UpdateResult::Clean
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                stream::iter([alt_i, key(KeyCode::Char('x')), key(KeyCode::Esc)]),
+                no_messages(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            seen.len(),
+            1,
+            "the toggle chord never reaches the application"
+        );
+        assert_eq!(inspector.mode(), InspectorMode::Panel);
+        let screen = buffer_text(&terminal);
+        assert!(screen.contains("inspector"), "{screen}");
+        assert!(screen.contains("x clean"), "{screen}");
+        assert!(inspector.last_frame().damage > 0);
     }
 }

@@ -116,6 +116,12 @@ async = ["dep:tokio", "dep:futures-core", "crossterm/event-stream"]
 
 ratatui = ["dep:ratatui-core"]
 
+# The devtools inspector (`tuika::devtools`): an overlay showing traced layout
+# rects, focus and routing, the keymap's pending sequence, frame time, damaged
+# cells, and an event log. No dependencies; gated so a release build of a host
+# compiles none of it and cannot ship it switched on by accident.
+devtools = []
+
 scrolling-regions = []
 
 [dependencies]
@@ -217,6 +223,10 @@ harness = false
 [[example]]
 name = "async_dashboard"
 required-features = ["async"]
+
+[[example]]
+name = "devtools"
+required-features = ["devtools"]
 
 # Demonstrates wrapping real ratatui widgets, so it needs the interop feature.
 [[example]]

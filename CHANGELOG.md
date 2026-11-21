@@ -91,6 +91,15 @@ next release.
   and `Capabilities::with_multiplexer` (tmux and screen do not forward the
   protocol). `DeviceAttributes::parse` now finds the DA1 frame among other CSI
   answers instead of reading the first frame.
+- `devtools` feature: `tuika::devtools::Inspector` paints an overlay showing
+  traced layout rects (with an outline mode), the focus owner and ring, the route
+  of the event being handled, the keymap's pending sequence, paint time with a
+  sparkline, damaged cells, and a bounded event log. Attach it with
+  `Runner::with_inspector` / `AsyncRunner::with_inspector`; `alt+i` cycles it.
+  New public items: `devtools::{Inspector, InspectorMode, FrameStats,
+  DEFAULT_TOGGLE, DEFAULT_EVENT_CAPACITY}` and the two `with_inspector` methods.
+  See the [devtools guide](docs/devtools.md).
+- `Terminal::last_damage` reports how many cells the last flush wrote.
 - Click to choose in pickers: `SelectList`, `SelectionScreen`, and `TabSelect`
   take `.hits(&OptionHits)` and record where each visible option was painted,
   and `SelectState`, `SelectViewportState`, `MultiSelectState`, and

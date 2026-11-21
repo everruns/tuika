@@ -71,6 +71,10 @@
 //! optional host-side lifecycle helpers; with `feature = "async"`,
 //! [`runner::AsyncRunner`] is the same loop for hosts that already
 //! run on Tokio.
+//!
+//! With `feature = "devtools"`, `devtools::Inspector` draws traced layout
+//! rects, focus and routing, pending keys, frame cost, and an event log over a
+//! running application.
 
 #![warn(missing_docs)]
 // On docs.rs (nightly, `--cfg docsrs`) annotate feature-gated items with the
@@ -85,6 +89,9 @@ pub mod anim;
 pub mod buffer;
 mod clock;
 pub mod components;
+#[cfg(feature = "devtools")]
+#[cfg_attr(docsrs, doc(cfg(feature = "devtools")))]
+pub mod devtools;
 pub mod dock;
 pub mod event;
 #[macro_use]

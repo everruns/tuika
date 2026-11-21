@@ -51,6 +51,7 @@ the reason for a decision is cheapest to write down while it is still at hand.
 - [Styling](specs/styling.md) — themes as tokens, stylesheets as rules.
 - [Screen modes](specs/screen-modes.md) — the alternate screen, and a split footer over live scrollback.
 - [Out-of-band escapes](specs/out-of-band.md) — hyperlinks, clipboard, and native progress.
+- [Devtools inspector](specs/devtools.md) — the feature-gated overlay showing layout, focus, routing, keys, and frame cost.
 - [Accessibility](specs/accessibility.md) — screen-reader semantics recorded during paint, read back as linear text.
 
 ## Engineering processes

@@ -73,6 +73,18 @@ impl FocusRegistry {
         self.owner = None;
     }
 
+    /// The overlay holding exclusive input, if any.
+    #[cfg_attr(not(feature = "devtools"), allow(dead_code))]
+    pub(crate) fn owner(&self) -> Option<&str> {
+        self.owner.as_deref()
+    }
+
+    /// This frame's registrations, in tab order.
+    #[cfg_attr(not(feature = "devtools"), allow(dead_code))]
+    pub(crate) fn ring(&self) -> &[String] {
+        &self.order
+    }
+
     fn ring_focus(&self) -> Option<&str> {
         self.focused
             .as_deref()

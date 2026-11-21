@@ -575,6 +575,7 @@ palette, for example `cargo run --example gallery -- --theme gruvbox-dark`.
 | [`ratatui_dashboard`](examples/ratatui_dashboard.rs) | `cargo run --example ratatui_dashboard` | mixed Ratatui widgets + responsive live data |
 | [`workbench_demo`](examples/workbench_demo) | `cargo run --example workbench_demo` | native tuika editor/dashboard shell with keyboard and mouse navigation |
 | [`async_dashboard`](examples/async_dashboard.rs) | `cargo run --example async_dashboard --features async` | typed background messages waking `AsyncRunner`, no shared mutable state |
+| [`devtools`](examples/devtools.rs) | `cargo run --example devtools --features devtools` | the devtools inspector: traced layout outlines, focus and routing, pending keys, frame cost, event log |
 | [`mouse`](examples/mouse.rs)     | `cargo run --example mouse`      | drag-to-select + highlight + OSC 52 copy, clickable buttons |
 | [`image`](examples/image.rs)     | `cargo run --example image`      | `Image` over reserved cells (Kitty/iTerm2/Sixel), alt-text fallback |
 | [`inherit`](examples/inherit.rs) | `cargo run --example inherit`    | adopting the terminal's own palette — probe, derive, and the no-I/O fallback |

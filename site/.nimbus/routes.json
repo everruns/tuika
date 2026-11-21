@@ -13,6 +13,7 @@
     "/components/motion",
     "/components/notifications-console",
     "/components/text",
+    "/devtools",
     "/features",
     "/getting-started",
     "/keymap",

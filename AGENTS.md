@@ -206,6 +206,10 @@ tuika's own suite covers more:
   fork under `target/` with its Ghostty renderer and requires Go 1.26,
   pkg-config, and Zig 0.15.2 in addition to VHS's normal dependencies.
 
+  The devtools guide's two screenshots (`docs/devtools/{inspector,outlines}.png`)
+  come from the real `devtools` example, recorded by
+  `scripts/gen-devtools-demo.sh`.
+
   `tuika-html` has two, one per example — the markdown boundary
   (`examples/html_markdown/html.png`) and the standalone `Html` component
   (`examples/html_view/html_view.png`) — both regenerated with

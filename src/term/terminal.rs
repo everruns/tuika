@@ -100,6 +100,8 @@ pub struct Terminal<B: Backend> {
     /// re-anchor itself across a resize.
     last_known_cursor_pos: Position,
     frame_count: usize,
+    /// How many cells the last [`flush`](Terminal::flush) wrote.
+    last_damage: usize,
     force_redraw: bool,
     /// Bumped whenever the physical screen may have been erased, scrolled, or
     /// repainted wholesale. Out-of-band state that cells cannot redraw — the
@@ -158,6 +160,7 @@ impl<B: Backend> Terminal<B> {
             last_known_area: area,
             last_known_cursor_pos: cursor_pos,
             frame_count: 0,
+            last_damage: 0,
             force_redraw: false,
             screen_epoch: 0,
         })
@@ -191,6 +194,13 @@ impl<B: Backend> Terminal<B> {
             cursor_position: None,
             count,
         }
+    }
+
+    /// How many cells the last flush wrote to the backend — the frame's
+    /// damage after the diff. Zero for a frame identical to the one before it;
+    /// every owned cell after an [`invalidate`](Self::invalidate) or a resize.
+    pub fn last_damage(&self) -> usize {
+        self.last_damage
     }
 
     /// The current back buffer.
@@ -251,6 +261,7 @@ impl<B: Backend> Terminal<B> {
         let previous = &self.buffers[1 - self.current];
         let current = &self.buffers[self.current];
         let updates = previous.diff_frame(current, self.force_redraw);
+        self.last_damage = updates.len();
         if let Some((x, y, _)) = updates.last() {
             self.last_known_cursor_pos = Position { x: *x, y: *y };
         }
