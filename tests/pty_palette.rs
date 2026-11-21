@@ -183,7 +183,33 @@ fn the_probe_asks_for_the_palette_and_fences_with_device_attributes() {
         let q = format!("\x1b]4;{i};?");
         assert!(has(q.as_bytes()), "asked for ANSI slot {i}");
     }
+    assert!(has(b"\x1b[?u"), "asked for Kitty keyboard support");
     assert!(has(b"\x1b[c"), "fenced the queries with Device Attributes");
+}
+
+/// The Kitty keyboard answer is a CSI frame of its own. It must be read past —
+/// its final `u` is not the fence — and it must flip the capability on, while
+/// leaving the palette answers around it intact.
+#[test]
+fn a_kitty_keyboard_answer_is_read_and_recorded() {
+    let mut answer = b"\x1b[?0u".to_vec();
+    answer.extend(replies());
+    answer.push(b'q');
+    let run = run_inherit(&["--probe"], Some(answer));
+    let text = run.text();
+    assert!(run.exited_ok, "clean exit; got:\n{text}");
+    assert!(text.contains("kitty keyboard: yes"), "got:\n{text}");
+    assert!(
+        text.contains(&format!("background: {BACKGROUND}")),
+        "the palette still parsed beside the keyboard answer; got:\n{text}"
+    );
+
+    let run = run_inherit(&["--probe"], Some(replies()));
+    let text = run.text();
+    assert!(
+        text.contains("kitty keyboard: no"),
+        "no answer before the fence means no support; got:\n{text}"
+    );
 }
 
 #[test]
@@ -227,7 +253,8 @@ fn a_terminals_answer_becomes_the_theme() {
 /// exiting.
 #[test]
 fn the_probe_leaves_input_after_the_fence_for_the_application() {
-    let mut answer = replies();
+    let mut answer = b"\x1b[?1u".to_vec();
+    answer.extend(replies());
     answer.push(b'q');
     let run = run_inherit(&[], Some(answer));
     assert!(
