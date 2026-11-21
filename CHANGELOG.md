@@ -171,6 +171,15 @@ original text, while keeping the selection anchored to content.
   drew nothing. `Dialog` gains matching `backdrop` and `opacity` builders.
   Colors without an RGB value (an ANSI-palette theme) fall back to dimming and
   an opaque layer.
+- Higher-resolution blitters. `framebuffer::Blitter` selects how pixels pack
+  into glyphs: `HalfBlock` (the default), `Quadrant`, `Sextant` (2×3),
+  `Octant` (2×4, Unicode 16), or `Braille`, with the new `SEXTANTS` and
+  `OCTANTS` glyph tables beside `QUADRANTS`. `FrameBufferView::blitter` uses
+  it, and `Image::mosaic(blitter)` draws the picture from cells instead of the
+  alt text when the terminal has no graphics protocol.
+- `tuika-charts`: `Chart::blitter` packs cell-mode lines, areas, and bands into
+  sextant or octant sub-cells instead of quadrants. This uses tuika's new
+  `Blitter`, so the next `tuika-charts` release needs the next `tuika`.
 - `tuika-charts`: `Series::band` fills between two edges (percentile ranges,
   confidence intervals); `Chart::reference` with `Reference::value` /
   `Reference::position` draws labelled, optionally dashed threshold and event

@@ -44,6 +44,9 @@ once, while the shared mask preserves the exact boundary without gaps or fill
 above it. The graphics renderer retains distinct dim fill and bright edge colors.
 Quadrants deliberately trade some vertical resolution for continuous strokes
 across terminal fonts; separated Braille dots are reserved for discrete marks.
+`Chart::blitter` lets a host whose terminal draws them opt into sextant (2×3)
+or octant (2×4) sub-cells for the same connected geometry. Quadrants stay the
+default because they are in every font; the finer sets are not.
 
 A band (`Series::band`) is the one fill painted in its color as given by both
 renderers, with no edge: it exists to shade a range behind lines that already

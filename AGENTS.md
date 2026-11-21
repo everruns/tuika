@@ -285,6 +285,12 @@ scripts/gen-demos.sh              # all scenes
 scripts/gen-demos.sh spinner tabs # just these
 ```
 
+A scene declared with `ghostty_demo` (today `blitters`, whose Unicode 16
+octants xterm.js cannot draw) records through the Ghostty VHS fork instead;
+the generator builds it with `scripts/build-vhs-ghostty.sh` when missing. Its
+patch draws block mosaics — quadrants, sextants, octants — edge to edge as
+real terminals do, so the capture does not depend on a font carrying them.
+
 Recordings are captured at exactly 1760 px and displayed at `width="880"`
 (rustdoc uses its own `max-width`). The integer 2× scale keeps terminal glyphs
 crisp instead of asking the browser to resample fractional source pixels.

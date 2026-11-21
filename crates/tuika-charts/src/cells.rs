@@ -1,4 +1,4 @@
-use tuika::framebuffer::QUADRANTS;
+use tuika::framebuffer::Blitter;
 use tuika::ui::Rect;
 use tuika::ui::Style;
 use tuika::{RenderCtx, Surface};
@@ -58,12 +58,16 @@ pub(super) fn render_cells(
         );
     }
 
+    // Connected geometry packs into the chart's blitter; scatter points stay
+    // Braille, whose separated dots read as samples rather than a stroke.
+    let blitter = chart.blitter;
+    let (sub_w, sub_h) = blitter.subcells();
     for mark in &plan.marks {
         let style = Style::default().fg(mark.color);
         match &mark.geometry {
             Geometry::Path { points, stepped } => {
-                let mapped = map_all(points, model, data_width * 2, data_height * 2);
-                let mut quadrants = QuadrantGrid::new(data_width, data_height);
+                let mapped = map_all(points, model, data_width * sub_w, data_height * sub_h);
+                let mut quadrants = SubcellGrid::new(blitter, data_width, data_height);
                 if mark.dashed {
                     let path = if *stepped {
                         stepped_path(&mapped)
@@ -78,9 +82,9 @@ pub(super) fn render_cells(
                 quadrants.render(surface, plot, style);
             }
             Geometry::Fill { upper, lower } => {
-                let upper = map_all(upper, model, data_width * 2, data_height * 2);
-                let lower = map_all(lower, model, data_width * 2, data_height * 2);
-                let mut quadrants = QuadrantGrid::new(data_width, data_height);
+                let upper = map_all(upper, model, data_width * sub_w, data_height * sub_h);
+                let lower = map_all(lower, model, data_width * sub_w, data_height * sub_h);
+                let mut quadrants = SubcellGrid::new(blitter, data_width, data_height);
                 fill_polygon(&upper, &lower, |x, y| quadrants.set(x, y));
                 quadrants.render(surface, plot, style);
             }
@@ -93,9 +97,9 @@ pub(super) fn render_cells(
                 braille.render(surface, plot, style);
             }
             Geometry::Band { upper, lower } => {
-                let edge = map_all(upper, model, data_width * 2, data_height * 2);
-                let floor = map_all(lower, model, data_width * 2, data_height * 2);
-                let mut quadrants = QuadrantGrid::new(data_width, data_height);
+                let edge = map_all(upper, model, data_width * sub_w, data_height * sub_h);
+                let floor = map_all(lower, model, data_width * sub_w, data_height * sub_h);
+                let mut quadrants = SubcellGrid::new(blitter, data_width, data_height);
                 draw_quadrant_band(&mut quadrants, &edge, &floor);
                 quadrants.render(surface, plot, style);
             }
@@ -641,7 +645,7 @@ fn is_blank(surface: &mut Surface, x: u16, y: u16) -> bool {
 
 /// Fill between an upper edge and the floor it rests on.
 pub(crate) fn draw_quadrant_band(
-    grid: &mut QuadrantGrid,
+    grid: &mut SubcellGrid,
     upper: &[(i32, i32)],
     lower: &[(i32, i32)],
 ) {
@@ -706,15 +710,19 @@ impl BrailleGrid {
     }
 }
 
-pub(crate) struct QuadrantGrid {
+/// Occupancy masks for connected geometry, one per plot cell, packed into
+/// glyphs by a [`Blitter`] (2×2 quadrants by default).
+pub(crate) struct SubcellGrid {
+    blitter: Blitter,
     cols: u32,
     rows: u32,
     pub(crate) masks: Vec<u8>,
 }
 
-impl QuadrantGrid {
-    pub(crate) fn new(cols: u32, rows: u32) -> Self {
+impl SubcellGrid {
+    pub(crate) fn new(blitter: Blitter, cols: u32, rows: u32) -> Self {
         Self {
+            blitter,
             cols,
             rows,
             masks: vec![0; (cols as usize).saturating_mul(rows as usize)],
@@ -722,13 +730,13 @@ impl QuadrantGrid {
     }
 
     pub(crate) fn set(&mut self, x: i32, y: i32) {
-        if x < 0 || y < 0 || x >= (self.cols * 2) as i32 || y >= (self.rows * 2) as i32 {
+        let (sw, sh) = self.blitter.subcells();
+        if x < 0 || y < 0 || x >= (self.cols * sw) as i32 || y >= (self.rows * sh) as i32 {
             return;
         }
-        let cell_x = x as u32 / 2;
-        let cell_y = y as u32 / 2;
-        let index = (cell_y * self.cols + cell_x) as usize;
-        self.masks[index] |= 1 << ((x as usize % 2) + 2 * (y as usize % 2));
+        let (x, y) = (x as u32, y as u32);
+        let index = ((y / sh) * self.cols + x / sw) as usize;
+        self.masks[index] |= 1 << ((x % sw) + sw * (y % sh));
     }
 
     fn render(self, surface: &mut Surface, plot: Rect, style: Style) {
@@ -738,19 +746,13 @@ impl QuadrantGrid {
             }
             let x = index as u32 % self.cols;
             let y = index as u32 / self.cols;
-            set_plot(
-                surface,
-                plot,
-                x as i32,
-                y as i32,
-                QUADRANTS[mask as usize],
-                style,
-            );
+            let glyph = self.blitter.glyph(mask);
+            set_plot(surface, plot, x as i32, y as i32, glyph, style);
         }
     }
 }
 
-fn draw_quadrant_polyline(grid: &mut QuadrantGrid, points: &[(i32, i32)], stepped: bool) {
+fn draw_quadrant_polyline(grid: &mut SubcellGrid, points: &[(i32, i32)], stepped: bool) {
     for pair in points.windows(2) {
         if stepped {
             let corner = (pair[1].0, pair[0].1);

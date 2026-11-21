@@ -93,6 +93,17 @@ impl ImageData {
     pub fn pixel_height(&self) -> u32 {
         self.pixel_height
     }
+
+    /// The `[r, g, b, a]` pixel at `(x, y)`, which must be in bounds.
+    pub(crate) fn pixel(&self, x: u32, y: u32) -> [u8; 4] {
+        let i = ((y as usize) * (self.pixel_width as usize) + x as usize) * 4;
+        [
+            self.rgba[i],
+            self.rgba[i + 1],
+            self.rgba[i + 2],
+            self.rgba[i + 3],
+        ]
+    }
 }
 
 /// Which graphics protocol a terminal is believed to speak.
