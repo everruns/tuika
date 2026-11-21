@@ -544,6 +544,45 @@ let spans = state.tokens(&triggers).iter().map(|t| t.span(mention_style)).collec
 view! { node(TextInput::new(&state).highlights(spans)) }
 ```
 
+### `TextArea` + `TextAreaState`
+
+A full editor over the same buffer, for inputs people draft real text in: a chat
+composer, a commit message, a config file. On top of `TextInputState` it adds:
+
+- **Selection.** Shift with any motion selects; typing, pasting, or deleting
+  replaces the selection. `selected_text` and `cut` hand text to the host, which
+  owns the clipboard (`term::clipboard` writes OSC 52).
+- **Undo and redo.** `Ctrl+Z`, and `Ctrl+Y` or `Ctrl+Shift+Z`. Typing undoes a
+  word at a time, and undoing a replacement brings the selection back.
+- **Word motions.** `Ctrl`/`Alt` + arrows stop at word, punctuation, and line
+  boundaries; with `Backspace`/`Delete` they delete by word.
+- **Visual movement.** Up and Down move by wrapped row and remember the column
+  they started from; Page Up/Down move a screen; `Ctrl+Home`/`Ctrl+End` jump to
+  either end.
+- **Mouse.** Click places the cursor, drag selects, Shift+click extends, and the
+  wheel scrolls without moving the cursor.
+
+The readline keys `TextInputState` handles work too, and so do `Trigger` tokens
+and `TextInputMode`. The view numbers lines with `line_numbers(true)` and colours
+syntax through the same `Highlighter` trait `CodeBlock` uses. It records where it
+drew, so mouse input and `cursor_screen` need no area from the host.
+[API](https://docs.rs/tuika/latest/tuika/components/struct.TextArea.html)
+
+<img src="../demos/textarea.gif" width="880" alt="TextArea demo">
+
+```rust
+use tuika::{TextArea, TextAreaState, view};
+let mut state = TextAreaState::new();
+state.handle(&event);
+view! {
+    boxed(title = " draft ") {
+        node(TextArea::new(&state).line_numbers(true).highlighter(&highlighter, "rust"))
+    }
+}
+// After painting:
+if let Some((x, y)) = state.cursor_screen() { /* place the terminal cursor */ }
+```
+
 ---
 
 [All components](../components.md)

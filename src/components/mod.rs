@@ -55,6 +55,7 @@ mod tab_select;
 mod table;
 mod tabs;
 pub mod text;
+mod textarea;
 mod textinput;
 pub mod toast;
 mod tree_list;
@@ -109,6 +110,7 @@ pub use tab_select::{TabSelect, TabSelectState};
 pub use table::{Column, Table};
 pub use tabs::{Tabs, TabsState};
 pub use text::{Paragraph, Text, Wrap};
+pub use textarea::{TextArea, TextAreaState, TextPos};
 pub use textinput::{
     SingleLineInputState, TextInput, TextInputMode, TextInputState, TextSpan, Token, Trigger,
     TriggerAnchor,

@@ -89,6 +89,14 @@ next release.
   plain characters are never translated. `TextInput`'s editing shortcuts and
   the `Ctrl+N`/`Ctrl+P` navigation of `SelectState` and `KeyedTableState`
   follow the same rule. New: `Key::base_layout` and `Key::shortcut`.
+- `TextArea` + `TextAreaState`: a multi-line editor on the `TextInputState`
+  buffer, with Shift-extended selection (`selection`, `selected_text`, `cut`,
+  `select_all`), undo and redo that group typing by word and restore the
+  selection an edit replaced, word motions that stop at punctuation and line
+  boundaries, Up/Down by wrapped row with a remembered column, Page Up/Down,
+  mouse click/drag/Shift+click selection and wheel scrolling, optional line
+  numbers, and syntax colouring through the `Highlighter` trait.
+  `TextAreaState` implements `InputTarget`. New `TextPos` alias.
 - `tuika-charts`: `Series::band` fills between two edges (percentile ranges,
   confidence intervals); `Chart::reference` with `Reference::value` /
   `Reference::position` draws labelled, optionally dashed threshold and event
@@ -130,6 +138,8 @@ next release.
 
 ### Fixed
 
+- `TextInputState::replace_token` now counts as a text change, so `handle`
+  callers and revision-based checks see the edit.
 - Resize events invalidate the physical screen even when a shrink and restore
   happen between frames and the final geometry matches the diff baseline.
 

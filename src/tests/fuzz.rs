@@ -484,6 +484,30 @@ proptest! {
         prop_assert_eq!(TextInputState::from_text(&text).text(), text);
     }
 
+    /// The same for the full editor, which also takes mouse input against its
+    /// last render and keeps an undo history that must replay to the seed.
+    #[test]
+    fn text_area_cursor_stays_addressable_and_undo_replays(
+        events in fuzz_events(),
+        seed in fuzz_text(),
+    ) {
+        use crate::components::{TextArea, TextAreaState};
+        let theme = crate::style::Theme::default();
+        let mut state = TextAreaState::from_text(&seed);
+        let _ = crate::testing::render(&TextArea::new(&state).line_numbers(true), 9, 4, &theme);
+        for event in &events {
+            let _ = state.handle(event);
+            let (row, col) = state.cursor();
+            prop_assert!(row < state.line_count(), "cursor row {} of {}", row, state.line_count());
+            let text = state.text();
+            let line = text.split('\n').nth(row).expect("the cursor row exists in the text");
+            prop_assert!(col <= line.chars().count(), "cursor col {} past {:?}", col, line);
+            let _ = crate::testing::render(&TextArea::new(&state).line_numbers(true), 9, 4, &theme);
+        }
+        while state.undo() {}
+        prop_assert_eq!(state.text(), TextAreaState::from_text(&seed).text());
+    }
+
     /// A slider's value never leaves its declared range, whatever is pressed or
     /// dragged — a host reads it back as a ratio and multiplies by a length.
     #[test]
