@@ -33,6 +33,9 @@ use crate::event::{Mouse, MouseButton, MouseKind};
 use crate::view::SelectionSource;
 use crate::{Clock, SystemClock};
 
+mod content;
+pub use content::{ContentPoint, ContentRange, ContentSelection, ContentWindow};
+
 /// A normalized text selection in reading order: `start` is at or before `end`
 /// ordered by `(row, column)`. Both endpoints are inclusive cells.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

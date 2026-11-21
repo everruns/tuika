@@ -273,8 +273,14 @@ Dragging after the second or third press extends by whole words or rows.
 Selection is *per panel* — a drag
 that starts inside a bordered `Boxed` stays inside it, wrapping at that panel's
 edges rather than streaming across the panes beside it, so copying a sidebar
-entry never drags in the editor next to it. Wheel events continue to reach the
-application. Return
+entry never drags in the editor next to it. Inside a scrolled view (`Scroll`,
+`Viewport`, `ItemScroll`) the selection is anchored to *content rows* instead of
+screen rows: it stays on the same text while the view scrolls, scrolling back
+shows it where it was made, and a drag with the wheel turning underneath it can
+span any number of screens. Rows the drag passed over are remembered as they are
+painted, so the copy includes them after they scroll away. A custom scrolling
+view opts in by calling `RenderCtx::record_scrolled_content` from its `render`.
+Wheel events continue to reach the application. Return
 `UpdateResult::Consumed` for a handled gesture that needs no repaint, or
 `UpdateResult::Dirty` for one that does; either result keeps draggable controls
 from also becoming a text selection. `with_text_selection(false)` disables the
@@ -299,6 +305,12 @@ selection, copy, and hit-testing — from tuika's enriched event model
   restricts a gesture to one panel — positions clamp into the rect, and `region()`
   reports it back so `resolve`, `selected_text`, and `paint_selection` can be
   given the same bounds as their `area`.
+- `ContentSelection` is the same gesture kept in content space, for a host
+  that scrolls its own view. Each call takes the frame's `ContentWindow` (the
+  screen rect and the content row and column at its top-left); after painting,
+  `resolve` handles word and row clicks, `capture` remembers the selected rows
+  so they can still be copied once scrolled away, `paint` highlights the
+  visible part, and `text()` returns the selection.
 - `ctrl_click_url(event, buffer, area)` is an application-side fallback for a
   host that opted into capture. It returns the URL under a Ctrl+left-button
   release: first an OSC 8 target embedded in the cell run (labeled markdown

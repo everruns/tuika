@@ -24,6 +24,7 @@ use std::cell::RefCell;
 
 use crate::buffer::Buffer;
 use crate::geometry::Rect;
+use crate::mouse::ContentWindow;
 
 use crate::geometry::Size;
 use crate::style::{StyleSheet, Theme};
@@ -272,6 +273,10 @@ impl<V: View> View for ItemScroll<V> {
         let content_h = self.content_height(text_width, ctx);
         let overflow = content_h > area.height as usize;
 
+        ctx.record_scrolled_content(ContentWindow::new(
+            Rect::new(area.x, area.y, text_width, area.height),
+            self.offset,
+        ));
         let viewport_top = self.offset;
         let viewport_bottom = self.offset + area.height as usize;
         self.with_heights(text_width, ctx, |heights| {

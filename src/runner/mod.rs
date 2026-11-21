@@ -102,7 +102,9 @@ use crossterm::event;
 
 use crate::host::paint_with_context_and_selection;
 use crate::live::RedrawHandle;
-use crate::mouse::{SelectionState, paint_selection, selected_text_from_sources};
+use crate::mouse::{
+    ContentSelection, ContentWindow, SelectionState, paint_selection, selected_text_from_sources,
+};
 use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
 use crate::term::clipboard;
 use crate::term::image::{ImageLayer, ImageSupport};
@@ -971,6 +973,12 @@ struct RunnerSelection {
     pending_copy: bool,
     /// Panel regions from the last painted frame, resolved on the next `Down`.
     regions: Vec<Rect>,
+    /// Scrolled-content windows from the last painted frame.
+    windows: Vec<ContentWindow>,
+    /// A gesture that started in a scrolled view: kept in content rows so it
+    /// survives scrolling, keyed by the view's screen rect (stable while the
+    /// view scrolls, which is what identifies it from one frame to the next).
+    content: Option<(Rect, ContentSelection)>,
 }
 
 impl RunnerSelection {
@@ -980,6 +988,8 @@ impl RunnerSelection {
             state: SelectionState::new(),
             pending_copy: false,
             regions: Vec::new(),
+            windows: Vec::new(),
+            content: None,
         }
     }
 
@@ -1005,6 +1015,11 @@ impl RunnerSelection {
                 | crate::MouseKind::ScrollRight
         ) && result == UpdateResult::Dirty
         {
+            // A content-anchored selection is the point of scrolling under
+            // it; a screen-space one would now cover different text.
+            if self.content.is_some() {
+                return false;
+            }
             return self.clear();
         }
 
@@ -1023,11 +1038,48 @@ impl RunnerSelection {
 
         if matches!(mouse.kind, crate::MouseKind::Down(crate::MouseButton::Left)) {
             // A gesture belongs to the panel it starts in, for its whole life.
-            self.state.confine(crate::mouse::region_at(
-                &self.regions,
-                mouse.column,
-                mouse.row,
-            ));
+            let region = crate::mouse::region_at(&self.regions, mouse.column, mouse.row);
+            // Inside a scrolled view, anchor to its content. The view wins over
+            // panels drawn inside it (a transcript of boxed entries), because
+            // only the view's rows stay put as it scrolls.
+            let window = self
+                .windows
+                .iter()
+                .rev()
+                .find(|window| {
+                    window
+                        .area
+                        .contains(crate::geometry::Position::new(mouse.column, mouse.row))
+                })
+                .copied();
+            if let Some(window) = window {
+                let had = self.state.is_active()
+                    || self.content.as_ref().is_some_and(|(_, c)| c.is_active());
+                self.state.clear();
+                // Keep multi-click history only within one scrolled view.
+                if self
+                    .content
+                    .as_ref()
+                    .is_none_or(|(area, _)| *area != window.area)
+                {
+                    self.content = Some((window.area, ContentSelection::new()));
+                }
+                let (_, content) = self.content.as_mut().expect("set above");
+                return content.handle_with_clock(mouse, window, clock) || had;
+            }
+            let had = self.content.take().is_some_and(|(_, c)| c.is_active());
+            self.state.confine(region);
+            return self.state.handle_with_clock(mouse, clock) || had;
+        }
+        if let Some((area, content)) = &mut self.content {
+            let Some(window) = self.windows.iter().rev().find(|w| w.area == *area).copied() else {
+                return self.clear();
+            };
+            let changed = content.handle_with_clock(mouse, window, clock);
+            if changed && matches!(mouse.kind, crate::MouseKind::Up(crate::MouseButton::Left)) {
+                self.pending_copy = true;
+            }
+            return changed;
         }
         let changed = self.state.handle_with_clock(mouse, clock);
         if changed && matches!(mouse.kind, crate::MouseKind::Up(crate::MouseButton::Left)) {
@@ -1047,7 +1099,36 @@ impl RunnerSelection {
             return None;
         }
         self.regions = frame.take_regions();
+        self.windows = frame.take_windows();
         let sources = frame.take_sources();
+        if let Some((view_area, content)) = &mut self.content {
+            // The scrolled view must still be on screen in the same place; a
+            // layout change means the content mapping no longer holds.
+            let Some(window) = self
+                .windows
+                .iter()
+                .rev()
+                .find(|window| window.area == *view_area)
+                .map(|window| window.clip(area))
+            else {
+                self.clear();
+                return None;
+            };
+            content.resolve(buffer, window);
+            content.capture(buffer, window);
+            if !content.is_active() {
+                self.pending_copy = false;
+                return None;
+            }
+            let copied = if self.pending_copy {
+                content.text()
+            } else {
+                None
+            };
+            self.pending_copy = false;
+            content.paint(buffer, window, theme.selection_style());
+            return copied;
+        }
         // A confined gesture reads, wraps, and paints inside its panel. The
         // region was recorded by the previous frame, so intersect it with this
         // one: a layout change between the press and this paint must not point
@@ -1072,8 +1153,10 @@ impl RunnerSelection {
     }
 
     fn clear(&mut self) -> bool {
-        let changed = self.state.is_active();
+        let changed =
+            self.state.is_active() || self.content.as_ref().is_some_and(|(_, c)| c.is_active());
         self.state.clear();
+        self.content = None;
         self.pending_copy = false;
         changed
     }
@@ -1348,6 +1431,84 @@ mod tests {
                 "cell {column} outside the panel is untouched"
             );
         }
+    }
+
+    fn paint_log(
+        selection: &mut RunnerSelection,
+        theme: &Theme,
+        offset: usize,
+    ) -> (Buffer, Option<String>) {
+        let area = Rect::new(0, 0, 12, 3);
+        let mut buffer = Buffer::empty(area);
+        let frame = crate::view::SelectionFrame::default();
+        let lines = (0..30)
+            .map(|index| crate::text::Line::from(format!("entry {index:02}")))
+            .collect();
+        let mut state = crate::components::ScrollState::new();
+        state.set_offset(offset);
+        let log = crate::components::Scroll::new(lines, &state);
+        crate::host::paint_with_context_and_selection(
+            &mut buffer,
+            area,
+            &crate::RenderCtx::new(theme),
+            &log,
+            &[],
+            &frame,
+        );
+        let copied = selection.finish_frame(&mut buffer, area, theme, &frame);
+        (buffer, copied)
+    }
+
+    #[test]
+    fn selection_in_a_scrolled_view_survives_scrolling_and_spans_screens() {
+        let clock = FixedClock(Instant::now());
+        let theme = Theme::default();
+        let mut selection = RunnerSelection::new(true);
+        paint_log(&mut selection, &theme, 0);
+
+        let left = |kind| crate::Mouse::at(kind, 0, 0);
+        let down = crate::MouseKind::Down(crate::MouseButton::Left);
+        let drag = crate::MouseKind::Drag(crate::MouseButton::Left);
+        let up = crate::MouseKind::Up(crate::MouseButton::Left);
+        // Press on "entry 01" (screen row 1, column 6) and drag down a row.
+        let mut press = left(down);
+        (press.column, press.row) = (6, 1);
+        selection.handle_event(&Event::Mouse(press), UpdateResult::Clean, &clock);
+        let mut moved = left(drag);
+        (moved.column, moved.row) = (7, 2);
+        selection.handle_event(&Event::Mouse(moved), UpdateResult::Clean, &clock);
+        let (buffer, _) = paint_log(&mut selection, &theme, 0);
+        assert_eq!(buffer[(6, 1)].bg, theme.selection_bg);
+
+        // The app scrolls the log ten rows; the selection is kept, not cleared.
+        let wheel = crate::Mouse::at(crate::MouseKind::ScrollDown, 4, 1);
+        assert!(!selection.handle_event(&Event::Mouse(wheel), UpdateResult::Dirty, &clock));
+        let (buffer, _) = paint_log(&mut selection, &theme, 10);
+        // Content rows 1..=2 are off screen now, so nothing on screen is painted.
+        for row in 0..3 {
+            for column in 0..12 {
+                assert_ne!(buffer[(column, row)].bg, theme.selection_bg);
+            }
+        }
+
+        // Releasing on "entry 11" extends the same selection across screens.
+        let mut release = left(up);
+        (release.column, release.row) = (7, 1);
+        selection.handle_event(&Event::Mouse(release), UpdateResult::Clean, &clock);
+        let (buffer, copied) = paint_log(&mut selection, &theme, 10);
+        assert_eq!(buffer[(0, 0)].bg, theme.selection_bg, "pinned to the top");
+        assert_eq!(buffer[(7, 1)].bg, theme.selection_bg);
+        assert_ne!(buffer[(8, 1)].bg, theme.selection_bg);
+        // Rows 3..=9 were never on screen while selected, so they copy empty.
+        assert_eq!(
+            copied.as_deref(),
+            Some("01\nentry 02\n\n\n\n\n\n\n\nentry 10\nentry 11")
+        );
+
+        // Scrolling back shows the start of the selection where it was made.
+        let (buffer, _) = paint_log(&mut selection, &theme, 0);
+        assert_eq!(buffer[(6, 1)].bg, theme.selection_bg);
+        assert_ne!(buffer[(5, 1)].bg, theme.selection_bg);
     }
 
     #[test]

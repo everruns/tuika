@@ -949,7 +949,8 @@ Hosts with their own loop use the `mouse` module to build the same affordances:
   terminal's own, wide glyphs intact — and `mouse::paint_selection(buffer, area, range,
   style)` paints it in. A same-cell double click selects a word, a third a row;
   `handle_with_clock` accepts a virtual monotonic `Clock`, while `handle` uses
-  `SystemClock`.
+  `SystemClock`. `ContentSelection` is the same gesture anchored to content
+  rows of a scrolled view, so it survives scrolling and can span screens.
 - **Application link fallback.** `ctrl_click_url` resolves an OSC 8 target or
   bare URL under a captured Ctrl-click. The host must open it itself. This is
   opt-in fallback behavior for an app that chose capture, not a replacement for
