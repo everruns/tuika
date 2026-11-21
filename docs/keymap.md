@@ -77,6 +77,7 @@ match keymap.dispatch(ctrl_r) {
     Dispatch::Command(action) => { /* run it */ }
     Dispatch::Pending         => { /* a multi-stroke sequence is mid-flight */ }
     Dispatch::Unmatched       => { /* no binding — handle the key yourself */ }
+    Dispatch::Consumed        => { /* a key mode used the key — ignore it */ }
 }
 ```
 
@@ -164,6 +165,51 @@ let help = KeymapHelp::from_keymap(&keymap);
 first on narrow screens and never clips halfway through a key/action pair.
 `KeymapHelp::offset` supports a vertically scrollable help overlay. Because both
 query active bindings, changing keymap runtime data updates the displayed mode.
+
+## Key modes
+
+A key mode is a named set of bindings that apply only while the mode is
+entered: vim's normal mode, tmux's prefix table, a "resize" mode where arrows
+resize instead of move. Bind in a mode by prefixing the spec with its name and
+a slash, or put a whole layer in one with `Layer::mode`:
+
+```rust
+use tuika::keymap::Mode;
+
+let mut keymap = Keymap::new()
+    .layer(
+        Layer::new("global")
+            .bind("ctrl+w", Action::EnterResize)
+            .bind("resize/left", Action::Shrink)
+            .bind("resize/right", Action::Grow)
+            .bind("resize/enter", Action::Done),
+    )
+    .mode(Mode::new("resize").exclusive().block("q"));
+
+// The host enters and leaves modes while running commands:
+// Action::EnterResize => keymap.enter_mode("resize"),
+// Action::Done        => { keymap.exit_mode(); }
+```
+
+- **A stack.** `enter_mode` pushes; the newest mode is checked first.
+  `exit_mode` leaves only that one and `exit_all_modes` leaves them all.
+  `current_mode` and `active_modes` feed a mode indicator.
+- **Fall-through.** A key the mode does not bind goes to the modes below it and
+  then to the base keymap, so typing still works.
+- **Exclusive.** With `Mode::exclusive`, only the mode's bindings work while
+  it is on top; every other key returns `Dispatch::Consumed`.
+- **Escape.** A bare Escape leaves the top mode and returns
+  `Dispatch::Consumed`, unless the mode binds Escape itself or sets
+  `escape_exits(false)`.
+- **Blocked keys.** `Mode::block("q")` makes a key do nothing inside the mode,
+  even though the base keymap binds it.
+- **Once.** `enter_mode_once` leaves the mode after the next complete key —
+  whatever that key did — which is the tmux prefix-key pattern.
+
+Mode names are lowercase letters, digits, `_`, and `-`, so the slash key itself
+(`/`, `ctrl+/`) is never read as a mode. A mode needs no `Mode` registration
+unless you change its options. `hints()` leads with the top mode's bindings
+and drops keys a mode blocks, so a footer follows the mode automatically.
 
 ## A leader key
 

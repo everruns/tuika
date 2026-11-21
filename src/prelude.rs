@@ -32,7 +32,9 @@ pub use crate::focus::FocusRegistry;
 pub use crate::highlight::{CachedHighlighter, CodeHighlighter, Highlighter, PlainHighlighter};
 #[cfg(feature = "ratatui")]
 pub use crate::interop::RatatuiView;
-pub use crate::keymap::{Binding, Chord, CommandInfo, Dispatch, Hint, KeySequence, Keymap, Layer};
+pub use crate::keymap::{
+    Binding, Chord, CommandInfo, Dispatch, Hint, KeySequence, Keymap, Layer, Mode,
+};
 pub use crate::live::{Live, LiveView, RedrawHandle};
 pub use crate::style::{
     BorderStyle, CodeTheme, Gradient, Role, StyleBundle, StyleResolver, StyleRole, lerp_color,

@@ -22,6 +22,11 @@ next release.
 
 - `Capabilities` gained the public field `kitty_keyboard`. Struct-literal
   construction must set it; `from_env`, `from_env_parts`, and `query` fill it.
+- `keymap::Dispatch` gained a `Consumed` variant: the keymap used the key
+  itself (Escape left a key mode, or the key was blocked or unbound in an
+  exclusive mode) and the host should ignore it. Exhaustive matches on
+  `Dispatch` need an arm for it; a keymap that never enters a mode never
+  returns it.
 - `tuika-charts`: `SeriesKind` gained a `Band { lower }` variant, and `Series`
   gained the public fields `dashed` and `legend`. Exhaustive matches on
   `SeriesKind` and struct-literal `Series` construction must be updated; the
@@ -53,6 +58,15 @@ next release.
 
 ### Added
 
+- Keymap key modes: bind inside a mode with `"resize/left"` (or
+  `Layer::mode`), then `Keymap::enter_mode` / `enter_mode_once` /
+  `exit_mode` / `exit_all_modes` drive a mode stack checked newest first.
+  Unbound keys fall through to lower modes and the base keymap unless the
+  `Mode` is `exclusive()`; Escape leaves the top mode unless it binds Escape or
+  sets `escape_exits(false)`; `Mode::block` makes a key do nothing inside a
+  mode. `current_mode` / `active_modes` feed a mode indicator, and hints,
+  `bindings`, `diagnostics`, and `dump` all understand modes. `Mode` joins the
+  prelude.
 - Keymap command catalog, diagnostics, leader key, and dump:
   `Keymap::command` registers a `CommandInfo` (id, title, description,
   category, keywords) and `Keymap::search_commands` ranks the catalog with the
