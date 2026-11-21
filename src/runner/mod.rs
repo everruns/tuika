@@ -134,13 +134,28 @@ fn schedule_redraw(deadline: &mut Option<Instant>, at: Instant) {
 struct FrameGraphics {
     support: ImageSupport,
     layer: ImageLayer,
+    /// The terminal's screen epoch as of the last frame, so a clear, scroll,
+    /// or resize in between makes the layer put its images back.
+    screen_epoch: std::cell::Cell<Option<u64>>,
 }
 
 impl FrameGraphics {
-    fn detected() -> Self {
+    fn new(support: ImageSupport) -> Self {
         Self {
-            support: ImageSupport::detect(),
+            support,
             layer: ImageLayer::new(),
+            screen_epoch: std::cell::Cell::new(None),
+        }
+    }
+
+    fn detected() -> Self {
+        Self::new(ImageSupport::detect())
+    }
+
+    /// Invalidate the layer if the screen was disturbed since the last frame.
+    fn observe_screen(&self, epoch: u64) {
+        if self.screen_epoch.replace(Some(epoch)) != Some(epoch) {
+            self.layer.invalidate();
         }
     }
 
@@ -962,6 +977,9 @@ where
         });
         copied = selection.finish_frame(terminal_frame.buffer_mut(), area, theme, &selection_frame);
     })?;
+    if let Some(graphics) = graphics {
+        graphics.observe_screen(terminal.screen_epoch());
+    }
     Ok(copied)
 }
 
@@ -1126,10 +1144,7 @@ mod tests {
 
     #[test]
     fn finishing_a_graphics_frame_emits_and_clears_placements() {
-        let graphics = FrameGraphics {
-            support: ImageSupport::Kitty,
-            layer: ImageLayer::new(),
-        };
+        let graphics = FrameGraphics::new(ImageSupport::Kitty);
         let data = crate::term::image::ImageData::from_rgba(1, 1, vec![1, 2, 3, 255]).unwrap();
         graphics.layer.record(
             crate::geometry::Rect::new(2, 3, 4, 5),
@@ -1142,6 +1157,53 @@ mod tests {
 
         assert!(!output.is_empty());
         assert!(graphics.layer.is_empty());
+    }
+
+    #[test]
+    fn kitty_images_are_sent_once_and_put_back_after_the_screen_is_disturbed() {
+        use crate::components::Image;
+        use crate::term::testbackend::TestBackend;
+        use crate::view::element;
+
+        let graphics = FrameGraphics::new(ImageSupport::Kitty);
+        let data = crate::term::image::ImageData::from_rgba(1, 1, vec![1, 2, 3, 255]).unwrap();
+        let mut state = ();
+        let mut frames = from_fn(
+            &mut state,
+            |(), _| element(Image::new(data.clone(), 4, 2)),
+            |(), _: Signal| UpdateResult::Clean,
+        );
+        let mut terminal = Terminal::new(TestBackend::new(10, 4)).unwrap();
+        let mut selection = RunnerSelection::new(false);
+        let theme = Theme::default();
+        let mut frame = |terminal: &mut Terminal<TestBackend>, n| {
+            draw::<_, _, Infallible>(
+                terminal,
+                &theme,
+                &mut frames,
+                n,
+                Some(&graphics),
+                &mut selection,
+            )
+            .unwrap();
+            let mut output = Vec::new();
+            graphics.finish_frame_to(&mut output).unwrap();
+            String::from_utf8(output).unwrap()
+        };
+
+        let first = frame(&mut terminal, 0);
+        assert_eq!(first.matches("a=t,").count(), 1, "{first:?}");
+        assert!(
+            frame(&mut terminal, 1).is_empty(),
+            "an unchanged frame re-sent the image"
+        );
+
+        // A resize (or any clear) may have erased the placement.
+        terminal.invalidate();
+        let after = frame(&mut terminal, 2);
+        assert_eq!(after.matches("a=t,").count(), 1, "{after:?}");
+        assert!(after.contains("a=p,"), "{after:?}");
+        assert!(frame(&mut terminal, 3).is_empty());
     }
 
     #[test]

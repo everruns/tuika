@@ -129,15 +129,36 @@ the Ghostty marker), plus an explicit host override, and defaults to *no*
 graphics (text fallback) when unsure. A future phase may add a runtime query
 (the Kitty graphics query escape) for certainty.
 
-### Re-transmission
+### Transmit once, place by id (Kitty)
 
-The layer transmits pixel data on every emit (`a=T`, transmit-and-display). This
-is simple and correct but re-uploads the image each frame. Kitty placements use
-client image numbers; after replacements are visible, the layer deletes the
-previous frame's numbered images. This prevents stale pixels when an image
-moves, shrinks, or disappears without deleting graphics owned by another
-layer. A later phase may transmit once and thereafter only place cached data,
-tracking which identifiers the terminal already holds.
+Kitty stores transmitted pixels under an image id and draws them wherever a
+placement of that id says, until told otherwise; writing cells over a placement
+does not erase it. So the layer keeps what the terminal holds between frames and
+writes only the difference: a new image is sent once (`a=t`, under an id from a
+per-process sequence kept to 24 bits so it also fits a placeholder cell's
+color), each recorded rect becomes a placement (`a=p`, with a placement id per
+copy so one image can sit in several places), a moved placement is re-placed
+under the same ids, and an image no frame uses any more is deleted with its
+data. A frame where nothing changed or moved writes no bytes at all — before,
+every redraw (a spinner tick included) base64-encoded and uploaded every pixel.
+
+An image is recognized by its shared buffer, or failing that by equal
+dimensions and equal bytes, because hosts such as charts rebuild their
+`ImageData` every frame; comparing bytes is exact and far cheaper than
+re-sending them. New pixels go out before anything is placed, and old
+placements and images are retired only after their replacements are up, so an
+ordinary redraw never shows a blank interval.
+
+The cache is only as good as the screen it describes. Anything that may have
+erased or moved images behind the layer — a resize, a clear, a scrollback
+publish in split-footer mode — has to call `ImageLayer::invalidate`, after which
+the next emit deletes everything it owned and starts again under fresh ids.
+`Runner` does this from the terminal's screen epoch, a counter its `Terminal`
+bumps on every clear, scroll, insert and invalidate; a custom host calls
+`invalidate` itself.
+
+iTerm2 and Sixel images live in the cells they cover, and a cell redraw erases
+that part of them, so they are still written in full every frame.
 
 ## Non-goals
 

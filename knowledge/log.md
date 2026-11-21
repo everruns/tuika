@@ -8,6 +8,12 @@
     byte specifically, since the keyboard answer is a CSI frame too. See
     [Out-of-band escapes](specs/out-of-band.md).
 
+- **Kitty images are sent once and placed by id**
+  - The image layer now keeps what the terminal holds between frames, so a
+    frame where no image changed or moved writes nothing; the runner
+    invalidates it from the terminal's screen epoch. Replaces the
+    "re-transmit every frame" design. See [Image rendering](specs/images.md).
+
 - **Chart annotations join the portable grammar**
   - Bands, value/position reference lines, dashed strokes, grid lines, axis
     titles, and per-series legend visibility are now part of `tuika-charts`'

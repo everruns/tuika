@@ -173,36 +173,35 @@ impl ImageSupport {
 struct Placement {
     rect: Rect,
     data: ImageData,
-    /// The protocol encoder chosen when this placement was recorded.
-    ///
-    /// Holding the encoder here rather than matching on [`ImageSupport`] inside
-    /// [`ImageLayer::emit`] is what keeps graphics encoding **pay-for-use**:
-    /// `emit` runs on every frame of every host, so naming the three encoders
-    /// there anchored all of them — Kitty, iTerm2, Sixel, and the PNG writer
-    /// behind iTerm2 — into any binary that links tuika at all. Reaching them
-    /// only through `record`, whose sole caller is
-    /// [`Image`](crate::components::Image)'s `render`, lets the linker drop the
-    /// whole set for a host that places no images.
-    encode: Encoder,
-    kitty_image_number: Option<u32>,
+    /// How this placement reaches the terminal, chosen when it was recorded.
+    protocol: Protocol,
 }
 
-/// A protocol encoder: writes one recorded placement's graphics escape.
+/// The protocol half of a [`Placement`].
+///
+/// Holding an encoder here rather than matching on [`ImageSupport`] inside
+/// [`ImageLayer::emit`] is what keeps graphics encoding **pay-for-use**:
+/// `emit` runs on every frame of every host, so naming the encoders there
+/// anchored all of them — Kitty, iTerm2, Sixel, and the PNG writer behind
+/// iTerm2 — into any binary that links tuika at all. Reaching them only
+/// through `record`, whose callers are the image views' `render`, lets the
+/// linker drop the whole set for a host that places no images. Kitty goes
+/// through the layer's [`KittyEmitter`], installed by the same `record`.
+#[derive(Clone, Copy, Debug)]
+enum Protocol {
+    /// Repainted in full every frame (iTerm2, Sixel): the picture lives in
+    /// the cells it covers, and a redraw of any of them erases that part.
+    Cells(Encoder),
+    /// Transmitted once and placed by id; see [`KittyState`].
+    Kitty,
+}
+
+/// A cell-painting protocol encoder: writes one recorded placement's escape.
 ///
 /// `&mut dyn Write` rather than a generic sink, because a function pointer
 /// cannot be generic — and the indirection costs nothing measurable next to
 /// transmitting the pixels themselves.
 type Encoder = fn(&mut dyn Write, &Placement) -> io::Result<()>;
-
-fn place_kitty(mut out: &mut dyn Write, p: &Placement) -> io::Result<()> {
-    write_kitty(
-        &mut out,
-        &p.data,
-        p.rect.width,
-        p.rect.height,
-        p.kitty_image_number,
-    )
-}
 
 fn place_iterm2(mut out: &mut dyn Write, p: &Placement) -> io::Result<()> {
     write_iterm2(&mut out, &p.data, p.rect.width, p.rect.height)
@@ -215,17 +214,234 @@ fn place_sixel(out: &mut dyn Write, p: &Placement) -> io::Result<()> {
 #[derive(Debug, Default)]
 struct ImageLayerState {
     placements: Vec<Placement>,
-    previous_kitty_images: Vec<u32>,
+    /// Installed by the first Kitty `record` and kept for the layer's life,
+    /// since frames without Kitty images still have to retire earlier ones.
+    kitty: Option<KittyEmitter>,
 }
 
-static NEXT_KITTY_IMAGE_NUMBER: AtomicU32 = AtomicU32::new(1);
+/// What the terminal holds for one layer under the Kitty protocol.
+///
+/// Kitty stores transmitted pixels under an image id and draws them wherever
+/// a *placement* of that id says, until told otherwise. Writing cells over a
+/// placement does not erase it. So the layer sends each distinct image once,
+/// places it once, and on a frame where nothing moved writes nothing at all —
+/// where re-sending `a=T` every frame base64-encoded and uploaded every pixel
+/// on every redraw, a spinner tick included.
+#[derive(Debug, Default)]
+struct KittyState {
+    /// Images the terminal holds for this layer, each under its own id.
+    images: Vec<KittyImage>,
+    /// Placements on screen after the last emit.
+    shown: Vec<KittyShown>,
+    /// Set by [`ImageLayer::invalidate`]: the screen may have been cleared or
+    /// scrolled, so nothing in `images` or `shown` can be trusted.
+    stale: bool,
+}
 
-fn next_kitty_image_number() -> u32 {
-    NEXT_KITTY_IMAGE_NUMBER
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |number| {
-            Some(if number == u32::MAX { 1 } else { number + 1 })
-        })
-        .expect("the update closure always returns a value")
+#[derive(Debug)]
+struct KittyImage {
+    id: u32,
+    /// Kept so the next frame can tell whether its image is this one, and so
+    /// the pixels stay alive exactly as long as the terminal holds them.
+    data: ImageData,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct KittyShown {
+    image: u32,
+    /// Distinguishes several placements of one image in the same frame.
+    placement: u32,
+    rect: Rect,
+}
+
+/// One Kitty command a frame needs, in the order it must be written.
+#[derive(Debug)]
+enum KittyOp {
+    Transmit {
+        id: u32,
+        data: ImageData,
+    },
+    Place {
+        image: u32,
+        placement: u32,
+        rect: Rect,
+    },
+    DeletePlacement {
+        image: u32,
+        placement: u32,
+    },
+    DeleteImage {
+        id: u32,
+    },
+}
+
+/// The Kitty half of a layer: its terminal-side state plus the two passes,
+/// held as function pointers for the pay-for-use reason on [`Protocol`].
+#[derive(Debug)]
+struct KittyEmitter {
+    state: KittyState,
+    plan: fn(&[Placement], &mut KittyState) -> Vec<KittyOp>,
+    write: fn(&mut dyn Write, &[KittyOp]) -> io::Result<()>,
+}
+
+impl KittyEmitter {
+    fn new() -> Self {
+        Self {
+            state: KittyState::default(),
+            plan: plan_kitty,
+            write: write_kitty_ops,
+        }
+    }
+}
+
+/// Whether two images are the same pixels: the same shared buffer, or — for a
+/// host that rebuilds its `ImageData` every frame, as a chart does — an equal
+/// one. Comparing bytes is exact and far cheaper than re-sending them.
+fn same_pixels(a: &ImageData, b: &ImageData) -> bool {
+    Arc::ptr_eq(&a.rgba, &b.rgba)
+        || (a.pixel_width == b.pixel_width && a.pixel_height == b.pixel_height && a.rgba == b.rgba)
+}
+
+/// Work out the Kitty commands that turn what the terminal shows into this
+/// frame, and record the result as what it shows now.
+///
+/// New pixels are transmitted before anything is placed, and old placements
+/// and images are retired only after their replacements are placed, so an
+/// ordinary redraw never shows a blank interval.
+fn plan_kitty(placements: &[Placement], state: &mut KittyState) -> Vec<KittyOp> {
+    let mut ops = Vec::new();
+    let mut retire = Vec::new();
+    if std::mem::take(&mut state.stale) {
+        // The terminal may have dropped any of these. Deleting what remains
+        // and sending afresh under new ids is correct whatever it dropped.
+        retire.extend(
+            state
+                .images
+                .drain(..)
+                .map(|image| KittyOp::DeleteImage { id: image.id }),
+        );
+        state.shown.clear();
+    }
+
+    let mut used = vec![false; state.images.len()];
+    let mut shown: Vec<KittyShown> = Vec::new();
+    for p in placements
+        .iter()
+        .filter(|p| matches!(p.protocol, Protocol::Kitty))
+    {
+        let index = match state
+            .images
+            .iter()
+            .position(|image| same_pixels(&image.data, &p.data))
+        {
+            Some(index) => index,
+            None => {
+                let id = next_kitty_image_id();
+                ops.push(KittyOp::Transmit {
+                    id,
+                    data: p.data.clone(),
+                });
+                state.images.push(KittyImage {
+                    id,
+                    data: p.data.clone(),
+                });
+                used.push(false);
+                state.images.len() - 1
+            }
+        };
+        used[index] = true;
+        let image = state.images[index].id;
+        let placement = 1 + shown.iter().filter(|s| s.image == image).count() as u32;
+        let now = KittyShown {
+            image,
+            placement,
+            rect: p.rect,
+        };
+        // Placing an existing (image, placement) pair again moves it, so a
+        // moved image needs no separate delete.
+        if !state.shown.contains(&now) {
+            ops.push(KittyOp::Place {
+                image,
+                placement,
+                rect: p.rect,
+            });
+        }
+        shown.push(now);
+    }
+
+    let mut index = 0;
+    state.images.retain(|image| {
+        let keep = used[index];
+        index += 1;
+        if !keep {
+            // Deleting the image takes all of its placements with it.
+            retire.push(KittyOp::DeleteImage { id: image.id });
+        }
+        keep
+    });
+    for old in &state.shown {
+        let alive = state.images.iter().any(|image| image.id == old.image);
+        let still_placed = shown
+            .iter()
+            .any(|s| s.image == old.image && s.placement == old.placement);
+        if alive && !still_placed {
+            retire.push(KittyOp::DeletePlacement {
+                image: old.image,
+                placement: old.placement,
+            });
+        }
+    }
+    state.shown = shown;
+    ops.extend(retire);
+    ops
+}
+
+fn write_kitty_ops(mut out: &mut dyn Write, ops: &[KittyOp]) -> io::Result<()> {
+    for op in ops {
+        match op {
+            KittyOp::Transmit { id, data } => write_kitty_transmit(&mut out, data, *id)?,
+            KittyOp::Place {
+                image,
+                placement,
+                rect,
+            } => {
+                // CUP is 1-based; the reserved rect is 0-based screen coordinates.
+                write!(out, "\x1b[{};{}H", rect.y + 1, rect.x + 1)?;
+                write_kitty_place(&mut out, *image, *placement, rect.width, rect.height)?;
+            }
+            KittyOp::DeletePlacement { image, placement } => {
+                write!(out, "\x1b_Ga=d,d=i,i={image},p={placement},q=2{ST}")?;
+            }
+            KittyOp::DeleteImage { id } => write!(out, "\x1b_Ga=d,d=I,i={id},q=2{ST}")?,
+        }
+    }
+    Ok(())
+}
+
+/// Kitty image ids are kept to 24 bits: that is what a placeholder cell's
+/// foreground color can carry without an extra diacritic.
+const KITTY_ID_MAX: u32 = 0x00FF_FFFF;
+
+static NEXT_KITTY_IMAGE_ID: AtomicU32 = AtomicU32::new(0);
+
+/// A fresh Kitty image id, never 0.
+///
+/// Ids live in the terminal and are shared by every program drawing on that
+/// screen, so the sequence starts at a per-process offset rather than at 1:
+/// a second tuika process (nested, or one that died without cleaning up)
+/// would otherwise overwrite this one's images.
+fn next_kitty_image_id() -> u32 {
+    fn step(id: u32) -> u32 {
+        if id == 0 {
+            std::process::id().wrapping_mul(0x9E37_79B1) % KITTY_ID_MAX + 1
+        } else {
+            id % KITTY_ID_MAX + 1
+        }
+    }
+    let previous = NEXT_KITTY_IMAGE_ID
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| Some(step(id)))
+        .expect("the update closure always returns a value");
+    step(previous)
 }
 
 /// A shared collector of the images placed during a frame, and the emitter that
@@ -235,6 +451,12 @@ fn next_kitty_image_number() -> u32 {
 /// is: a host holds one, hands clones to its [`Image`](crate::components::Image) views via
 /// [`Image::in_layer`](crate::components::Image::in_layer), then after `terminal.draw()` calls [`emit`](Self::emit)
 /// and [`clear`](Self::clear) for the next frame.
+///
+/// Under the Kitty protocol the layer also remembers what the terminal holds
+/// between frames, so it sends each image once and writes nothing on a frame
+/// where no image changed or moved. Keep one layer for the life of a screen,
+/// and call [`invalidate`](Self::invalidate) whenever that screen is cleared
+/// or scrolled behind its back.
 #[derive(Clone, Debug, Default)]
 pub struct ImageLayer(Rc<RefCell<ImageLayerState>>);
 
@@ -253,17 +475,20 @@ impl ImageLayer {
         if rect.width == 0 || rect.height == 0 {
             return;
         }
+        let mut state = self.0.borrow_mut();
         // `None` shouldn't record, but Kitty is the safe default encoding.
-        let encode: Encoder = match support {
-            ImageSupport::ITerm2 => place_iterm2,
-            ImageSupport::Sixel => place_sixel,
-            _ => place_kitty,
+        let protocol = match support {
+            ImageSupport::ITerm2 => Protocol::Cells(place_iterm2),
+            ImageSupport::Sixel => Protocol::Cells(place_sixel),
+            _ => {
+                state.kitty.get_or_insert_with(KittyEmitter::new);
+                Protocol::Kitty
+            }
         };
-        self.0.borrow_mut().placements.push(Placement {
+        state.placements.push(Placement {
             rect,
             data,
-            encode,
-            kitty_image_number: (support == ImageSupport::Kitty).then(next_kitty_image_number),
+            protocol,
         });
     }
 
@@ -271,6 +496,20 @@ impl ImageLayer {
     /// so the next frame starts clean.
     pub fn clear(&self) {
         self.0.borrow_mut().placements.clear();
+    }
+
+    /// Forget what the terminal is believed to hold, so the next
+    /// [`emit`](Self::emit) sends and places every image afresh.
+    ///
+    /// Call it after anything that may have erased or moved images behind the
+    /// layer's back: a terminal resize, a full-screen clear, or output
+    /// scrolled through the rows an image occupies. [`Runner`](crate::Runner)
+    /// does this itself. Only the Kitty protocol keeps such state; iTerm2 and
+    /// Sixel images are repainted every frame regardless.
+    pub fn invalidate(&self) {
+        if let Some(kitty) = &mut self.0.borrow_mut().kitty {
+            kitty.state.stale = true;
+        }
     }
 
     /// Whether any image was placed this frame.
@@ -283,69 +522,59 @@ impl ImageLayer {
         self.0.borrow().placements.len()
     }
 
-    /// Write every recorded image to `out` as its protocol's graphics escape at
-    /// its cell origin.
+    /// Write what the terminal needs to show this frame's images to `out`.
     ///
     /// Call this after `terminal.draw()` has flushed the frame, against the same
-    /// sink as the terminal backend. The whole batch is wrapped in a cursor
-    /// save/restore (`ESC 7` / `ESC 8`) and each image is positioned with a CUP
-    /// (`ESC [ row ; col H`, 1-based) before its escape, so ratatui's cursor
-    /// model is left exactly as it was. Kitty placements additionally suppress
-    /// protocol cursor movement, which could otherwise scroll at the last row.
+    /// sink as the terminal backend. iTerm2 and Sixel images are written in
+    /// full at their cell origin every time. Kitty images are transmitted once
+    /// and then only placed, moved, or deleted as the frames differ, so a frame
+    /// whose images all stayed put writes no bytes at all.
+    ///
+    /// Whatever is written is wrapped in a cursor save/restore (`ESC 7` /
+    /// `ESC 8`), and each image is positioned with a CUP (`ESC [ row ; col H`,
+    /// 1-based) before its escape, so the cursor model of the terminal
+    /// renderer is left exactly as it was. Kitty placements additionally
+    /// suppress protocol cursor movement, which could otherwise scroll at the
+    /// last row.
     pub fn emit(&self, out: &mut impl Write) -> io::Result<()> {
-        let mut state = self.0.borrow_mut();
-        if state.placements.is_empty() && state.previous_kitty_images.is_empty() {
+        let mut guard = self.0.borrow_mut();
+        let ImageLayerState { placements, kitty } = &mut *guard;
+        let kitty_ops = match kitty {
+            Some(kitty) => (kitty.plan)(placements, &mut kitty.state),
+            None => Vec::new(),
+        };
+        let mut cells = placements.iter().filter_map(|p| match p.protocol {
+            Protocol::Cells(encode) => Some((p, encode)),
+            Protocol::Kitty => None,
+        });
+        let first_cells = cells.next();
+        if kitty_ops.is_empty() && first_cells.is_none() {
             return Ok(());
         }
         // Save the cursor once, restore once, so nothing between shifts it.
         out.write_all(b"\x1b7")?;
-        for p in &state.placements {
+        for (p, encode) in first_cells.into_iter().chain(cells) {
             // CUP is 1-based; the reserved rect is 0-based screen coordinates.
             let (row, col) = (p.rect.y + 1, p.rect.x + 1);
             write!(out, "\x1b[{row};{col}H")?;
-            (p.encode)(out, p)?;
+            encode(out, p)?;
         }
-        // Cell redraws do not erase Kitty placements. Retire the previous
-        // frame only after its replacements are visible, avoiding both stale
-        // pixels after shrink and a blank interval during ordinary redraws.
-        for number in &state.previous_kitty_images {
-            write!(out, "\x1b_Ga=d,d=N,I={number},q=2\x1b\\")?;
+        if let Some(kitty) = kitty {
+            (kitty.write)(out, &kitty_ops)?;
         }
         out.write_all(b"\x1b8")?;
-        out.flush()?;
-        state.previous_kitty_images = state
-            .placements
-            .iter()
-            .filter_map(|placement| placement.kitty_image_number)
-            .collect();
-        Ok(())
+        out.flush()
     }
 }
 
-/// Encode `data` as a Kitty graphics protocol command that transmits and
-/// displays the image scaled into `cols × rows` cells.
+/// Write `data` as a Kitty transmit-only command (`a=t`) storing raw RGBA
+/// (`f=32`) with its pixel dimensions (`s`/`v`) under image id `i`.
 ///
-/// Pure and allocation-only — no I/O — so the wire format is unit-testable, the
-/// same as [`crate::term::hyperlink::encode`] and [`crate::term::progress::encode`]. The payload
-/// is raw RGBA (`f=32`) with its source pixel dimensions (`s`/`v`), displayed at
-/// the cursor (`a=T`) across `c`/`r` cells, base64-encoded and split into
-/// [`CHUNK`]-sized pieces with the `m` continuation key. `C=1` prevents the
-/// placement from moving or scrolling the cursor; `q=2` suppresses the
-/// terminal's acknowledgement replies so they can't be read as input.
-#[cfg(test)]
-fn encode_kitty(data: &ImageData, cols: u16, rows: u16) -> String {
-    let mut out = Vec::new();
-    write_kitty(&mut out, data, cols, rows, None).expect("writing to Vec cannot fail");
-    String::from_utf8(out).expect("graphics escapes and base64 are ASCII")
-}
-
-fn write_kitty(
-    out: &mut impl Write,
-    data: &ImageData,
-    cols: u16,
-    rows: u16,
-    image_number: Option<u32>,
-) -> io::Result<()> {
+/// The base64 payload is split into [`CHUNK`]-sized pieces with the `m`
+/// continuation key, and control keys ride only on the first. `q=2`
+/// suppresses the terminal's acknowledgement replies so they can't be read as
+/// input.
+fn write_kitty_transmit(out: &mut impl Write, data: &ImageData, id: u32) -> io::Result<()> {
     // 3072 input bytes become exactly one 4096-byte base64 protocol chunk.
     // Encoding one chunk at a time avoids two full-frame temporary strings.
     const RAW_CHUNK: usize = CHUNK / 4 * 3;
@@ -355,15 +584,11 @@ fn write_kitty(
         let more = u8::from(i + 1 != chunks);
         out.write_all(b"\x1b_G")?;
         if i == 0 {
-            // Control keys ride only on the first chunk; continuations carry `m`.
             write!(
                 out,
-                "f=32,s={},v={},a=T,c={},r={},C=1,q=2,m={}",
-                data.pixel_width, data.pixel_height, cols, rows, more
+                "a=t,f=32,s={},v={},i={id},q=2,m={more}",
+                data.pixel_width, data.pixel_height
             )?;
-            if let Some(number) = image_number {
-                write!(out, ",I={number}")?;
-            }
         } else {
             write!(out, "m={more}")?;
         }
@@ -372,6 +597,22 @@ fn write_kitty(
         out.write_all(ST.as_bytes())?;
     }
     Ok(())
+}
+
+/// Write a Kitty placement (`a=p`) of image `image` at the cursor, scaled into
+/// `cols × rows` cells. Re-sending the same `p` moves that placement instead
+/// of adding one. `C=1` keeps the cursor where it is.
+fn write_kitty_place(
+    out: &mut impl Write,
+    image: u32,
+    placement: u32,
+    cols: u16,
+    rows: u16,
+) -> io::Result<()> {
+    write!(
+        out,
+        "\x1b_Ga=p,i={image},p={placement},c={cols},r={rows},C=1,q=2{ST}"
+    )
 }
 
 #[cfg(test)]
@@ -414,7 +655,7 @@ fn write_base64(out: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
 /// Encode `data` as an iTerm2 inline-image escape displayed across `cols × rows`
 /// cells.
 ///
-/// Pure and allocation-only, like [`encode_kitty`]. iTerm2 wants a full image
+/// Pure and allocation-only, like the other encoders here. iTerm2 wants a full image
 /// *file* rather than raw RGBA, so the pixels are PNG-encoded first (see
 /// [`png_rgba`]); `width`/`height` are given in cells, `preserveAspectRatio=0`
 /// makes the image fill the reserved box, and `inline=1` displays it at the
@@ -446,7 +687,7 @@ const SIXEL_CELL_H: u32 = 20;
 
 /// Encode `data` as a Sixel bitmap scaled to fill `cols × rows` cells.
 ///
-/// Pure and allocation-only, like [`encode_kitty`]. The RGBA is nearest-neighbor
+/// Pure and allocation-only, like the other encoders here. The RGBA is nearest-neighbor
 /// resampled to `cols*SIXEL_CELL_W × rows*SIXEL_CELL_H` pixels (Sixel can't scale
 /// to cells itself), quantized to a fixed 6×6×6 color cube, and emitted band by
 /// band (6 rows each), one color pass per band with run-length encoding. The
@@ -680,35 +921,224 @@ mod tests {
         assert_eq!(adler32(b"Wikipedia"), 0x11e6_0398);
     }
 
+    fn transmit(data: &ImageData, id: u32) -> String {
+        let mut out = Vec::new();
+        write_kitty_transmit(&mut out, data, id).expect("writing to Vec cannot fail");
+        String::from_utf8(out).expect("graphics escapes and base64 are ASCII")
+    }
+
+    /// Emit one frame of `placements` into a fresh buffer, then clear the
+    /// layer the way a host does between frames.
+    fn frame(layer: &ImageLayer, placements: &[(Rect, &ImageData)]) -> String {
+        for (rect, data) in placements {
+            layer.record(*rect, (*data).clone(), ImageSupport::Kitty);
+        }
+        let mut out = Vec::new();
+        layer.emit(&mut out).expect("emit");
+        layer.clear();
+        String::from_utf8(out).expect("graphics commands are ASCII")
+    }
+
+    /// The value of `key` in the first Kitty command that has it.
+    fn kitty_key(out: &str, key: &str) -> u32 {
+        out.split("\x1b_G")
+            .flat_map(|command| command.split(['\x1b', ';']).next())
+            .flat_map(|keys| keys.split(','))
+            .find_map(|pair| pair.strip_prefix(&format!("{key}=")))
+            .and_then(|value| value.parse().ok())
+            .unwrap_or_else(|| panic!("no {key}= in {out:?}"))
+    }
+
     #[test]
-    fn encode_kitty_single_chunk_shape() {
+    fn kitty_transmit_single_chunk_shape() {
         let img = solid(1, 1, [1, 2, 3, 4]);
-        let out = encode_kitty(&img, 4, 2);
-        // APC open + control keys with pixel + cell dims, response suppression,
-        // no cursor movement, single-chunk (m=0), then payload and ST.
-        assert!(out.starts_with("\x1b_Gf=32,s=1,v=1,a=T,c=4,r=2,C=1,q=2,m=0;"));
+        let out = transmit(&img, 7);
+        // APC open + transmit-only with pixel dims, the image id, response
+        // suppression, single-chunk (m=0), then payload and ST.
+        assert!(out.starts_with("\x1b_Ga=t,f=32,s=1,v=1,i=7,q=2,m=0;"));
         assert!(out.ends_with("\x1b\\"));
         // One RGBA pixel [1,2,3,4] base64-encodes to "AQIDBA==".
         assert!(out.contains(";AQIDBA==\x1b\\"));
-        // Exactly one APC command.
         assert_eq!(out.matches("\x1b_G").count(), 1);
     }
 
     #[test]
-    fn encode_kitty_chunks_large_payloads() {
+    fn kitty_transmit_chunks_large_payloads() {
         // Enough pixels that the base64 payload exceeds one CHUNK and must split.
         let img = solid(64, 64, [9, 9, 9, 9]);
-        let out = encode_kitty(&img, 10, 5);
+        let out = transmit(&img, 7);
         let commands = out.matches("\x1b_G").count();
         assert!(commands > 1, "large image should span multiple chunks");
         // First chunk carries the control keys and m=1 (more follows).
-        assert!(out.starts_with("\x1b_Gf=32,s=64,v=64,a=T,c=10,r=5,C=1,q=2,m=1;"));
+        assert!(out.starts_with("\x1b_Ga=t,f=32,s=64,v=64,i=7,q=2,m=1;"));
         // Continuation chunks carry only the m key.
         assert!(out.contains("\x1b_Gm=1;"));
         // The final chunk closes with m=0.
         assert!(out.contains("\x1b_Gm=0;"));
         // Every command is ST-terminated.
         assert_eq!(out.matches("\x1b\\").count(), commands);
+        // Every pixel arrives exactly once.
+        let payload: String = out
+            .split("\x1b_G")
+            .filter_map(|command| command.split_once(';'))
+            .map(|(_, rest)| rest.trim_end_matches("\x1b\\"))
+            .collect();
+        assert_eq!(b64_decode(&payload).len(), 64 * 64 * 4);
+    }
+
+    #[test]
+    fn kitty_place_keeps_the_cursor_and_names_the_placement() {
+        let mut out = Vec::new();
+        write_kitty_place(&mut out, 7, 2, 4, 3).expect("writing to Vec cannot fail");
+        assert_eq!(
+            String::from_utf8(out).expect("ASCII"),
+            "\x1b_Ga=p,i=7,p=2,c=4,r=3,C=1,q=2\x1b\\"
+        );
+    }
+
+    #[test]
+    fn kitty_sends_an_image_once_and_then_writes_nothing() {
+        let layer = ImageLayer::new();
+        let img = solid(4, 4, [1, 2, 3, 255]);
+        let rect = Rect::new(2, 1, 4, 2);
+
+        let first = frame(&layer, &[(rect, &img)]);
+        assert_eq!(first.matches("a=t,").count(), 1, "{first:?}");
+        assert!(first.contains("\x1b[2;3H\x1b_Ga=p,"), "{first:?}");
+
+        for _ in 0..3 {
+            let again = frame(&layer, &[(rect, &img)]);
+            assert!(again.is_empty(), "an unchanged frame wrote {again:?}");
+        }
+    }
+
+    #[test]
+    fn kitty_recognizes_equal_pixels_in_a_new_buffer() {
+        // A chart rebuilds its ImageData every frame; equal bytes are the
+        // same image to the terminal.
+        let layer = ImageLayer::new();
+        let rect = Rect::new(0, 0, 4, 2);
+        frame(&layer, &[(rect, &solid(4, 4, [1, 2, 3, 255]))]);
+        let again = frame(&layer, &[(rect, &solid(4, 4, [1, 2, 3, 255]))]);
+        assert!(again.is_empty(), "{again:?}");
+    }
+
+    #[test]
+    fn kitty_moves_an_image_without_resending_it() {
+        let layer = ImageLayer::new();
+        let img = solid(4, 4, [1, 2, 3, 255]);
+        let first = frame(&layer, &[(Rect::new(0, 0, 8, 4), &img)]);
+        let id = kitty_key(&first, "i");
+
+        let moved = frame(&layer, &[(Rect::new(3, 5, 4, 2), &img)]);
+        assert!(
+            !moved.contains("a=t,"),
+            "moved image was re-sent: {moved:?}"
+        );
+        assert!(!moved.contains("a=d,"), "a move needs no delete: {moved:?}");
+        assert!(
+            moved.contains(&format!("\x1b[6;4H\x1b_Ga=p,i={id},p=1,c=4,r=2,")),
+            "{moved:?}"
+        );
+    }
+
+    #[test]
+    fn kitty_replaces_changed_pixels_and_then_retires_the_old_image() {
+        let layer = ImageLayer::new();
+        let rect = Rect::new(0, 0, 8, 4);
+        let first = frame(&layer, &[(rect, &solid(1, 1, [1, 2, 3, 255]))]);
+        let old = kitty_key(&first, "i");
+
+        let out = frame(&layer, &[(rect, &solid(1, 1, [4, 5, 6, 255]))]);
+        let new = kitty_key(&out, "i");
+        assert_ne!(old, new);
+        let place = out.find("a=p,").expect("new image placed");
+        let delete = out
+            .find(&format!("a=d,d=I,i={old},q=2"))
+            .expect("old image deleted");
+        assert!(
+            place < delete,
+            "retire only after the replacement is up: {out:?}"
+        );
+    }
+
+    #[test]
+    fn kitty_retires_an_image_that_disappeared() {
+        let layer = ImageLayer::new();
+        let first = frame(
+            &layer,
+            &[(Rect::new(0, 0, 8, 4), &solid(1, 1, [1, 2, 3, 255]))],
+        );
+        let id = kitty_key(&first, "i");
+        let out = frame(&layer, &[]);
+        assert!(out.contains(&format!("a=d,d=I,i={id},q=2")), "{out:?}");
+        assert!(frame(&layer, &[]).is_empty(), "retired once");
+    }
+
+    #[test]
+    fn kitty_places_one_image_twice_from_one_transmission() {
+        let layer = ImageLayer::new();
+        let img = solid(2, 2, [1, 2, 3, 255]);
+        let a = Rect::new(0, 0, 2, 1);
+        let b = Rect::new(0, 4, 2, 1);
+        let first = frame(&layer, &[(a, &img), (b, &img)]);
+        assert_eq!(first.matches("a=t,").count(), 1, "{first:?}");
+        assert!(
+            first.contains(",p=1,") && first.contains(",p=2,"),
+            "{first:?}"
+        );
+
+        // Dropping the second copy deletes that placement, not the image.
+        let id = kitty_key(&first, "i");
+        let out = frame(&layer, &[(a, &img)]);
+        assert_eq!(out, format!("\x1b7\x1b_Ga=d,d=i,i={id},p=2,q=2\x1b\\\x1b8"));
+    }
+
+    #[test]
+    fn kitty_invalidate_resends_under_a_fresh_id() {
+        let layer = ImageLayer::new();
+        let img = solid(1, 1, [1, 2, 3, 255]);
+        let rect = Rect::new(0, 0, 8, 4);
+        let first = frame(&layer, &[(rect, &img)]);
+        let old = kitty_key(&first, "i");
+
+        layer.invalidate();
+        let out = frame(&layer, &[(rect, &img)]);
+        let new = kitty_key(&out, "i");
+        assert_ne!(old, new);
+        assert!(out.contains("a=t,") && out.contains("a=p,"), "{out:?}");
+        assert!(out.contains(&format!("a=d,d=I,i={old},q=2")), "{out:?}");
+        assert!(frame(&layer, &[(rect, &img)]).is_empty());
+    }
+
+    #[test]
+    fn kitty_image_ids_fit_a_placeholder_color_and_skip_zero() {
+        for _ in 0..1000 {
+            let id = next_kitty_image_id();
+            assert!((1..=KITTY_ID_MAX).contains(&id), "{id}");
+        }
+    }
+
+    #[test]
+    fn cell_protocols_repaint_every_frame() {
+        let layer = ImageLayer::new();
+        for _ in 0..2 {
+            layer.record(
+                Rect::new(0, 0, 4, 2),
+                solid(1, 1, [1, 2, 3, 4]),
+                ImageSupport::ITerm2,
+            );
+            let mut out = Vec::new();
+            layer.emit(&mut out).expect("emit");
+            layer.clear();
+            assert_eq!(
+                String::from_utf8(out)
+                    .expect("ASCII")
+                    .matches("\x1b]1337;File=")
+                    .count(),
+                1
+            );
+        }
     }
 
     #[test]
@@ -760,9 +1190,9 @@ mod tests {
         assert!(s.starts_with("\x1b7"));
         assert!(s.ends_with("\x1b8"));
         // CUP is 1-based: rect (2,1) → row 2, col 3; rect (0,5) → row 6, col 1.
-        assert!(s.contains("\x1b[2;3H\x1b_G"));
-        assert!(s.contains("\x1b[6;1H\x1b_G"));
-        assert_eq!(s.matches("\x1b_G").count(), 2, "one command per image");
+        assert!(s.contains("\x1b[2;3H\x1b_Ga=p,"));
+        assert!(s.contains("\x1b[6;1H\x1b_Ga=p,"));
+        assert_eq!(s.matches("a=p,").count(), 2, "one placement per image");
     }
 
     #[test]
@@ -782,7 +1212,7 @@ mod tests {
         layer.emit(&mut out).expect("emit");
         let s = String::from_utf8(out).expect("utf8");
         // Each image is emitted with its own protocol's escape.
-        assert_eq!(s.matches("\x1b_G").count(), 1, "one Kitty command");
+        assert_eq!(s.matches("a=p,").count(), 1, "one Kitty placement");
         assert_eq!(
             s.matches("\x1b]1337;File=").count(),
             1,
@@ -812,56 +1242,6 @@ mod tests {
         assert_eq!(layer.len(), 1);
         layer.clear();
         assert!(layer.is_empty());
-    }
-
-    #[test]
-    fn kitty_emit_removes_the_previous_frame_placement() {
-        let layer = ImageLayer::new();
-        layer.record(
-            Rect::new(0, 0, 8, 4),
-            solid(1, 1, [1, 2, 3, 255]),
-            ImageSupport::Kitty,
-        );
-        let mut first = Vec::new();
-        layer.emit(&mut first).expect("first emit");
-        let first = String::from_utf8(first).expect("graphics commands are ASCII");
-        let previous_number = first
-            .split(",I=")
-            .nth(1)
-            .and_then(|tail| tail.split(';').next())
-            .expect("transmission has an image number");
-        layer.clear();
-
-        layer.record(
-            Rect::new(0, 0, 4, 2),
-            solid(1, 1, [4, 5, 6, 255]),
-            ImageSupport::Kitty,
-        );
-        let mut out = Vec::new();
-        layer.emit(&mut out).expect("resized emit");
-        let out = String::from_utf8(out).expect("graphics commands are ASCII");
-
-        assert!(
-            out.contains(&format!("a=d,d=N,I={previous_number},q=2")),
-            "the old, larger placement must be removed after resize: {out:?}"
-        );
-    }
-
-    #[test]
-    fn kitty_emit_removes_an_image_that_disappeared() {
-        let layer = ImageLayer::new();
-        layer.record(
-            Rect::new(0, 0, 8, 4),
-            solid(1, 1, [1, 2, 3, 255]),
-            ImageSupport::Kitty,
-        );
-        layer.emit(&mut Vec::new()).expect("image frame");
-        layer.clear();
-
-        let mut out = Vec::new();
-        layer.emit(&mut out).expect("empty frame");
-        let out = String::from_utf8(out).expect("graphics commands are ASCII");
-        assert!(out.contains("a=d,d=N,I="), "stale image remains: {out:?}");
     }
 
     #[test]
