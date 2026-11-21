@@ -159,6 +159,19 @@ pub fn render_with_context(view: &dyn View, width: u16, height: u16, ctx: &Rende
     buffer
 }
 
+/// Render `view` and read it back as a screen reader would hear it.
+///
+/// Returns the frame's [`Document`](crate::access::Document) as text, one
+/// spoken line per line: recorded [`Node`](crate::access::Node)s in reading
+/// order, with unlabelled cells read as plain text. Assert on it the way
+/// [`grid`] is asserted on for cells.
+pub fn screen_reader(view: &dyn View, width: u16, height: u16, theme: &Theme) -> String {
+    let frame = crate::access::AccessFrame::new();
+    let ctx = RenderCtx::new(theme).with_access(&frame);
+    let buffer = render_with_context(view, width, height, &ctx);
+    frame.document(&buffer).to_string()
+}
+
 /// Convert a buffer to a stable glyph grid suitable for snapshot assertions.
 pub fn grid(buffer: &Buffer) -> String {
     let mut output = String::new();

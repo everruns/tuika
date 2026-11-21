@@ -916,3 +916,24 @@ proptest! {
         prop_assert_eq!(data.is_some(), expected != 0 && len == expected);
     }
 }
+
+proptest! {
+    /// Screen-reader text is written straight to a terminal, so no adversarial
+    /// label or painted cell may smuggle a control byte into it, and no size
+    /// or nesting of semantic wrappers may panic the reading pass.
+    #[test]
+    fn screen_reader_text_never_carries_a_control_byte(
+        label in fuzz_text(),
+        body in fuzz_text(),
+        width in 0u16..40,
+        height in 0u16..6,
+    ) {
+        use crate::access::{Role, Semantic};
+        use crate::components::Text;
+        let view = Semantic::new(Semantic::new(Text::raw(body)).role(Role::Group).label(label.clone()))
+            .role(Role::Dialog)
+            .label(label);
+        let spoken = crate::testing::screen_reader(&view, width, height, &crate::Theme::default());
+        prop_assert!(!spoken.chars().any(|c| c.is_control() && c != '\n'), "{spoken:?}");
+    }
+}

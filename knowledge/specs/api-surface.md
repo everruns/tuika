@@ -33,7 +33,7 @@ Four levels, each with one job:
 | `prelude` | the spine plus all components, in one glob | an application wants it without thinking |
 
 Everything else stays behind its own module path: `themes::by_name`,
-`probe::RectProbe`, `width::str_cols`, `framebuffer::FrameBuffer`,
+`probe::RectProbe`, `access::Semantic`, `width::str_cols`, `framebuffer::FrameBuffer`,
 `view::DrawView`, `mouse::paint_selection`. That is not a demotion — it is the
 point. A short path is a claim about frequency, so it is worth something only
 when it is true.

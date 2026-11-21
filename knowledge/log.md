@@ -2,6 +2,11 @@
 
 ## 2026-11-21
 
+- **Frames carry screen-reader semantics**
+  - Views may record role, label, value, and state while painting; unlabelled
+    cells are read back as text, and container nodes group what they hold.
+    This is the base of the accessibility mode. See
+    [Accessibility](specs/accessibility.md).
 - **Probe Kitty keyboard support**
   - The startup probe also asks `CSI ? u`; its answer, not the environment,
     decides `Capabilities::kitty_keyboard`. The fence is now DA1's CSI final

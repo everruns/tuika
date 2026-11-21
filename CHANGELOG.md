@@ -53,6 +53,12 @@ next release.
 
 ### Added
 
+- Screen-reader semantics, the first part of an accessibility mode: the new
+  `access` module (`Role`, `Node`, `AccessFrame`, `Document`, and the
+  `Semantic` wrapper), `RenderCtx::with_access` / `access` / `record_access`,
+  and `testing::screen_reader`, which reads a frame back as linear plain text.
+  Unlabelled views are read from their cells with decoration dropped. `demo --
+  <scene> --screen-reader` prints a scene's spoken text.
 - Text selection survives scrolling. The runner's built-in selection anchors a
   drag that starts in `Scroll`, `Viewport`, or `ItemScroll` to content rows, so
   it stays on the same text while the view scrolls (instead of being cleared),
