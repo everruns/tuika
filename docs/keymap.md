@@ -156,6 +156,86 @@ first on narrow screens and never clips halfway through a key/action pair.
 `KeymapHelp::offset` supports a vertically scrollable help overlay. Because both
 query active bindings, changing keymap runtime data updates the displayed mode.
 
+## A leader key
+
+Bind `<leader>` at the start of a spec and set the leader on the keymap. The
+leader resolves at dispatch time, so changing it rebinds every leader sequence
+at once, and a help surface shows the real chord:
+
+```rust
+let mut keymap = Keymap::new()
+    .leader("space")
+    .layer(Layer::new("global").bind_labeled("<leader> f", "find", Action::Search));
+// Space then F runs Search; the hint reads "Space F".
+```
+
+Until a leader is set, leader bindings never fire and are left out of `hints()`.
+
+## A command catalog
+
+Bindings say which keys run a command; the catalog says what the command *is*,
+bound or not. Register each command once with a stable id and a title people
+search for, and a palette or help screen reads it back:
+
+```rust
+use tuika::keymap::CommandInfo;
+
+let keymap = keymap
+    .command(
+        CommandInfo::new("app.search", "Search messages", Action::Search)
+            .category("Navigation")
+            .keyword("find"),
+    )
+    .command(CommandInfo::new("app.quit", "Quit", Action::Quit).description("Exit the app"));
+
+for found in keymap.search_commands("fin") {
+    // found.info.title == "Search messages", found.keys == ["Ctrl+R", "Space F"]
+}
+```
+
+`search_commands` uses the same fuzzy ranking as the completion popup: a match
+on the title ranks first, then the id, keywords, category, and description.
+`keys_for` lists the active keys for one command. Registering an id twice
+replaces the earlier entry.
+
+## Diagnostics and the dump
+
+Some binding mistakes only show up as a key that silently does nothing.
+`diagnostics()` finds them statically, across every runtime-data value:
+
+- **Duplicate** — the same keys twice in one layer; the later never fires.
+- **Shadowed** — a winning layer that is active whenever this one is binds the
+  same keys. A *gated* overlay overriding a global key is intended and is not
+  reported.
+- **Ambiguous** — two layers that can be active together bind the same keys at
+  the same priority, so only declaration order picks the winner.
+- **Unreachable** — a shorter binding is a prefix (`g` and `g g`), and exact
+  matches fire at once.
+- **MissingLeader** — a `<leader>` binding with no leader set.
+
+Each diagnostic names both bindings with the source line that declared them
+(`bind` records its caller), so a test can assert a keymap is clean:
+
+```rust
+assert!(keymap.diagnostics().is_empty(), "{}", keymap.dump());
+```
+
+`dump()` prints every binding grouped by layer — keys, label, command, source
+line — and then the diagnostics:
+
+```text
+leader: Space
+
+layer "global"  priority 0  always active
+  Ctrl+R   search  Search  src/app.rs:12:10
+  Space F  find    Search  src/app.rs:13:10
+
+layer "panel"  priority 10  when mode=panel  (inactive)
+  Q        close   Close   src/app.rs:17:10
+```
+
+`bindings()` returns the same information as data.
+
 ## Testing
 
 The engine never touches the terminal, so behavior is tested by feeding

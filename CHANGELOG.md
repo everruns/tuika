@@ -51,6 +51,16 @@ next release.
 
 ### Added
 
+- Keymap command catalog, diagnostics, leader key, and dump:
+  `Keymap::command` registers a `CommandInfo` (id, title, description,
+  category, keywords) and `Keymap::search_commands` ranks the catalog with the
+  completion popup's fuzzy matcher, returning each command's current keys
+  (`Keymap::keys_for`). `Keymap::diagnostics` reports bindings that can never
+  fire — duplicates, shadowed or prefix-starved sequences, `<leader>` bindings
+  with no leader — and equal-priority conflicts. `Keymap::leader` sets the
+  chord `"<leader> f"` specs start with. Every binding records the source line
+  that declared it, which `Keymap::bindings` and the plain-text `Keymap::dump`
+  report. `CommandInfo` joins the prelude.
 - `tuika-charts`: `Series::band` fills between two edges (percentile ranges,
   confidence intervals); `Chart::reference` with `Reference::value` /
   `Reference::position` draws labelled, optionally dashed threshold and event

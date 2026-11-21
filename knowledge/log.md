@@ -2,6 +2,12 @@
 
 ## 2026-11-21
 
+- **Keymap catalog, diagnostics, leader, and dump**
+  - The keymap gains a command catalog searched with the shared fuzzy
+    ranking, static diagnostics that separate dead bindings from intended
+    overrides, a dispatch-time `<leader>`, and a source-located dump. See
+    [Keymap engine](specs/keymap.md).
+
 - **Chart annotations join the portable grammar**
   - Bands, value/position reference lines, dashed strokes, grid lines, axis
     titles, and per-series legend visibility are now part of `tuika-charts`'

@@ -39,6 +39,14 @@ named command values:
   binding), or `Unmatched` (the host should handle the key itself).
 - **Query.** `Keymap::hints` lists the currently-active bindings — key label,
   optional help text, command — for a help overlay or `KeyHints` row.
+- **Catalog.** `CommandInfo` entries (stable id, title, description, category,
+  keywords) describe every command, bound or not, and `search_commands` ranks
+  them for a palette with the keys that currently run each one.
+- **Diagnostics and dump.** `diagnostics` statically finds bindings that can
+  never fire and equal-priority conflicts; `dump` prints every binding with
+  the source line that declared it.
+- **Leader.** A spec may start with `<leader>`, resolved to the keymap's
+  leader chord.
 
 ## Design
 
@@ -79,6 +87,34 @@ returns `Pending`. A buffer that matches nothing is dropped, and the final strok
 is retried on its own so it can begin a fresh sequence. Changing runtime data
 clears the pending buffer, since the bindings that could complete it may no
 longer be active.
+
+### The catalog is separate from the bindings
+
+A binding answers "what does this key do"; a command palette asks the reverse,
+and also needs commands no key reaches. So the catalog is its own list keyed by
+a stable string id, joined to bindings by command equality only when a caller
+asks for keys (`keys_for`, `search_commands` — the only methods that need
+`C: PartialEq`). Search reuses the completion popup's fuzzy ranking so every
+searchable surface in tuika orders a query the same way.
+
+### Diagnostics are static, and overrides are not errors
+
+`diagnostics` reasons over gates rather than current data: two layers can be
+active together unless they gate one key on different values, and a layer is
+active whenever another is when its gates are a subset. That separates the
+intended pattern — a gated overlay at higher priority overriding a global key —
+from a dead binding, where the winner is active whenever the loser is. Only
+the dead case, an equal-priority tie (decided by declaration order alone), a
+prefix that starves a longer sequence, and a `<leader>` spec with no leader are
+reported. Bindings record `#[track_caller]` locations so each report names the
+source lines on both sides, in the spirit of Rex's `rex keymap` source column.
+
+### The leader resolves at dispatch time
+
+`<leader>` is stored as a flag on the binding, not substituted at parse time,
+so layers can be built before the keymap that owns them and changing the leader
+rebinds every leader sequence at once. Without a leader those bindings are
+inert and hidden from `hints`.
 
 ### Static binding parse errors fail fast
 
