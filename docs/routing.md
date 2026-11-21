@@ -165,6 +165,39 @@ route by ownership, the pointer routes by position. A host that wants a click to
 move focus resolves the id from the hit map, calls `FocusRegistry::focus`, and
 routes from there.
 
+## Multiple screens
+
+Routing decides which surface on *this* screen gets an event. An application
+with several screens — a list that opens a detail view, settings over a main
+view, a wizard — also needs to know which screen is current, and to come back
+to the control the user left when they go back.
+[`ScreenStack`](https://docs.rs/tuika/latest/tuika/navigation/struct.ScreenStack.html)
+is that state: a non-empty stack of the application's own screen type, usually
+an enum whose variants hold each screen's state, so a covered screen keeps its
+scroll position and selection.
+
+```rust
+enum Screen { Inbox, Message(u32) }
+
+let mut screens = ScreenStack::new(Screen::Inbox);
+
+// Open a message; the inbox's focused control is remembered.
+screens.push(Screen::Message(7), &focus);
+
+// Back (say, on Esc): the inbox is current again, and the focus registry
+// focuses the remembered control when the inbox's next frame registers it.
+if screens.pop(&mut focus).is_none() {
+    // Only the root is open: quit, or ignore the key.
+}
+```
+
+`replace` swaps the current screen without adding history, `pop_until` unwinds
+to a screen, and `reset` starts again from a new root. The stack does not render
+or bind keys: the host builds its view from `current()` and decides which key
+means back. Restoring focus rests on `FocusRegistry::request_focus`, which
+focuses an id when the next frame registers it, because the uncovered screen's
+regions are not registered until it renders again.
+
 ## See also
 
 - [Keymap](keymap.md) — turning key presses into named commands, which a `pre_fn`

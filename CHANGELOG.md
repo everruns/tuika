@@ -76,6 +76,13 @@ next release.
   after they scroll away. New: `mouse::{ContentSelection, ContentWindow,
   ContentPoint, ContentRange}` for hosts with their own loop, and
   `RenderCtx::record_scrolled_content` for custom scrolling views.
+- Screen navigation: `navigation::ScreenStack` (also in the prelude) is a
+  host-owned stack of the application's own screens with `push`, `pop`,
+  `pop_until`, `replace`, and `reset`. It remembers which control held focus
+  on a covered screen and restores it when the screen is uncovered, through the
+  new `FocusRegistry::request_focus` (focus an id once the next frame
+  registers it) and `FocusRegistry::focused` (the base-ring focus, ignoring
+  overlay ownership).
 - `term::capabilities` probes the Kitty keyboard protocol: `query` and
   `query_with_palette` also send `KITTY_KEYBOARD_QUERY` (`CSI ? u`) and set
   `Capabilities::kitty_keyboard` from the terminal's answer, so a host can tell

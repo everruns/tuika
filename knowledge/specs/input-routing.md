@@ -78,6 +78,23 @@ another surface from inside a stage would require a borrow of the whole
 application mid-route, so the recommended shape is a stage that records intent
 and a host that acts on it once the route is finished.
 
+## Screens above routing
+
+Routing resolves delivery within one screen. Which screen is current is a
+separate, coarser piece of host state, and `navigation::ScreenStack` holds it:
+a non-empty stack of the host's own screen type (typically an enum carrying
+each screen's state), so covered screens keep their state and the root can
+never be popped out from under the renderer. It deliberately does not render,
+bind a back key, or own per-screen lifecycle hooks; those stay in the host,
+consistent with "routing learns no host modes".
+
+Focus is the part hosts get wrong by hand, so the stack owns it: `push` records
+the base-ring focus of the screen being covered, and `pop` restores it. The
+uncovered screen's regions are not registered until it renders again, so a
+plain `FocusRegistry::focus` would be refused. `request_focus` therefore holds
+the id until the next frame registers it, and lapses after one frame so a stale
+id cannot take focus later.
+
 ## Related
 
 - [Architecture](architecture.md) — focus registry, overlays, and the host boundary.

@@ -162,7 +162,9 @@ surface for terminal events either way.
   registration, so a paste cannot take a different path from a key. `Router`
   reads the focus registry an overlay-bearing `Scene` already synchronized, and
   reports through `Delivery` which surface received what, including the case
-  where nothing did. See the
+  where nothing did. `navigation::ScreenStack` keeps a multi-screen app's
+  push/pop/replace history and restores each screen's focus on the way back.
+  See the
   [routing guide](https://github.com/everruns/tuika/blob/v0.13.0/docs/routing.md).
 - **Motion** (`anim`, `components::{Spinner, ProgressBar, Loader}`,
   `term::progress::TerminalProgress`) animates from a host-supplied frame counter and
@@ -567,6 +569,7 @@ palette, for example `cargo run --example gallery -- --theme gruvbox-dark`.
 | [`select`](examples/select.rs)   | `cargo run --example select`     | interactive multi-select with aliases, numbers, and mouse hit-testing |
 | [`keyed_table`](examples/keyed_table.rs) | `cargo run --example keyed_table` | dynamic borrowed rows, stable keyed selection, filtering, and reordering |
 | [`tree_list`](examples/tree_list.rs) | `cargo run --example tree_list` | expandable stable-id tree, refresh, mouse selection, and persistent scrolling |
+| [`screens`](examples/screens.rs) | `cargo run --example screens`    | `ScreenStack` navigation: open a screen, go back to the same selection and focus |
 | [`overlay`](examples/overlay.rs)  | `cargo run --example overlay`    | Target-following popover + input routing           |
 | [`primitives`](examples/primitives.rs) | `cargo run --example primitives` | owned dialog scene + form + arbitrary-child viewport |
 | [`ratatui_dashboard`](examples/ratatui_dashboard.rs) | `cargo run --example ratatui_dashboard` | mixed Ratatui widgets + responsive live data |
