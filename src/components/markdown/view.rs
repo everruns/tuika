@@ -10,10 +10,10 @@ use crate::components::Image;
 use crate::components::text::line_width;
 use crate::geometry::Size;
 use crate::highlight::{CodeHighlighter, Highlighter};
-use crate::style::{StyleSheet, Theme};
 use crate::surface::Surface;
 use crate::term::hyperlink::{BufferLink, LinkPolicy, apply_buffer_links_in};
 use crate::term::image::{ImageLayer, ImageSupport};
+use crate::term::text_size::{SizedRun, apply_sized_runs_in};
 use crate::view::{RenderCtx, View};
 
 use super::MarkdownBlockRenderer;
@@ -69,6 +69,8 @@ pub struct Markdown<'a> {
     image_layer: Option<ImageLayer>,
     /// Which URL schemes become OSC 8 hyperlinks when this view paints.
     link_policy: LinkPolicy,
+    /// Draw level-one headings large where the terminal sizes text.
+    large_headings: bool,
 }
 
 impl<'a> Markdown<'a> {
@@ -83,7 +85,19 @@ impl<'a> Markdown<'a> {
             image_support: ImageSupport::None,
             image_layer: None,
             link_policy: LinkPolicy::default(),
+            large_headings: false,
         }
+    }
+
+    /// Draw level-one headings at twice the cell height on a terminal that
+    /// implements OSC 66 text sizing (see [`term::text_size`](crate::term::text_size)).
+    ///
+    /// Takes effect only when the render context declares support
+    /// ([`RenderCtx::with_text_sizing`]; [`Runner`](crate::Runner) detects it).
+    /// Elsewhere headings render exactly as they do with this off.
+    pub fn large_headings(mut self, enabled: bool) -> Self {
+        self.large_headings = enabled;
+        self
     }
 
     /// Use `highlighter` to syntax-highlight fenced code blocks.
@@ -134,15 +148,14 @@ impl<'a> Markdown<'a> {
         self
     }
 
-    /// Flatten the source to lines, block images, and hyperlink runs.
-    fn lines_images_links(
-        &self,
-        width: u16,
-        theme: &Theme,
-        sheet: &StyleSheet,
-    ) -> (Vec<Line<'static>>, Vec<MarkdownImage>, Vec<BufferLink>) {
+    /// Flatten the source to lines, block images, hyperlink runs, and the
+    /// heading runs to draw large.
+    fn flatten(&self, width: u16, ctx: &RenderCtx) -> Flattened {
+        let (theme, sheet) = (ctx.theme, &ctx.sheet);
         let items = parse_with(&self.source, theme, sheet, self.highlighter, self.resolver);
         let mut images = Vec::new();
+        let mut sized = Vec::new();
+        let sizing = self.large_headings && ctx.text_sizing().is_supported();
         let (lines, links) = flatten_linked_into(
             &items,
             width,
@@ -150,20 +163,39 @@ impl<'a> Markdown<'a> {
             sheet,
             self.block_renderers.as_slice(),
             &mut images,
+            sizing.then_some(&mut sized),
         );
-        (lines, images, links)
+        Flattened {
+            lines,
+            images,
+            links,
+            sized,
+        }
     }
+}
+
+/// One flatten pass, as the view paints it.
+struct Flattened {
+    lines: Vec<Line<'static>>,
+    images: Vec<MarkdownImage>,
+    links: Vec<BufferLink>,
+    sized: Vec<SizedRun>,
 }
 
 impl View for Markdown<'_> {
     fn measure(&self, available: Size, ctx: &RenderCtx) -> Size {
-        let (lines, _, _) = self.lines_images_links(available.width, ctx.theme, &ctx.sheet);
+        let lines = self.flatten(available.width, ctx).lines;
         let width = lines.iter().map(line_width).max().unwrap_or(0);
         Size::new(width.min(available.width), lines.len() as u16)
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
-        let (lines, images, links) = self.lines_images_links(area.width, ctx.theme, &ctx.sheet);
+        let Flattened {
+            lines,
+            images,
+            links,
+            sized,
+        } = self.flatten(area.width, ctx);
         for (row, line) in lines.iter().enumerate() {
             let y = area.y.saturating_add(row as u16);
             if y >= area.bottom() {
@@ -176,6 +208,16 @@ impl View for Markdown<'_> {
                 }
                 x = surface.set_string(x, y, span.content.as_ref(), span.style);
             }
+        }
+        // Sized headings read the plain cells just painted, so they go before
+        // the link markers. A block the clip cuts stays at normal size.
+        if !sized.is_empty() {
+            let visible = surface.area().intersection(area);
+            apply_sized_runs_in(
+                surface.buffer_mut(),
+                area,
+                &sized_within(&sized, area, visible),
+            );
         }
         // Embed OSC 8 for labeled links (and bare URLs) so Ctrl+click / Ghostty
         // open the destination even when the visible text is not the URL.
@@ -205,12 +247,31 @@ impl View for Markdown<'_> {
     }
 }
 
+/// The runs whose scaled block lies inside `visible`, the part of `area` the
+/// surface may paint. A block straddling the clip would be erased by the cells
+/// around it, so it is left at normal size.
+fn sized_within(runs: &[SizedRun], area: Rect, visible: Rect) -> Vec<SizedRun> {
+    runs.iter()
+        .copied()
+        .filter(|run| {
+            let (width, height) = run.scaled_size();
+            let block = Rect::new(
+                area.x.saturating_add(run.start_col),
+                area.y.saturating_add(run.line),
+                width,
+                height,
+            );
+            block.intersection(visible) == block
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::components::{MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer};
-    use crate::style::Color;
     use crate::style::StyleBundle;
+    use crate::style::{Color, StyleSheet, Theme};
     use crate::testing::{grid, render_with_sheet};
     use crate::text::{Line, Span};
 
@@ -258,5 +319,53 @@ mod tests {
             grid(&render_with_sheet(&view, 10, 3, &theme, sheet)),
             "alpha     \nbeta      \nomega     "
         );
+    }
+
+    #[test]
+    fn large_headings_draw_level_one_headings_sized() {
+        use crate::buffer::CellDiffOption;
+        use crate::term::text_size::{TextSizing, visible_text};
+        use crate::testing::render_with_context;
+
+        let theme = Theme::default();
+        let view = Markdown::new("# Big\n\n## Small\n\nBody").large_headings(true);
+        let sized = RenderCtx::new(&theme).with_text_sizing(TextSizing::Supported);
+        assert_eq!(view.measure(Size::new(20, 20), &sized), Size::new(5, 6));
+        let buf = render_with_context(&view, 20, 6, &sized);
+        assert!(buf[(0, 0)].symbol().starts_with("\x1b]66;s=2:w=1;"));
+        assert_eq!(
+            (0..3)
+                .map(|i| visible_text(buf[(i * 2, 0)].symbol()))
+                .collect::<String>(),
+            "Big"
+        );
+        assert_eq!(buf[(0, 1)].diff_option, CellDiffOption::Skip);
+        // The blank after the heading survives, and H2 stays normal size.
+        assert_eq!(buf[(0, 2)].symbol(), " ");
+        assert_eq!(buf[(0, 3)].symbol(), "S");
+        assert_eq!(buf[(0, 5)].symbol(), "B");
+
+        // Without terminal support the option changes nothing.
+        let plain = RenderCtx::new(&theme);
+        let off = Markdown::new("# Big\n\n## Small\n\nBody");
+        assert_eq!(
+            grid(&render_with_context(&view, 20, 6, &plain)),
+            grid(&render_with_context(&off, 20, 6, &plain))
+        );
+    }
+
+    #[test]
+    fn large_headings_wrap_to_half_the_width() {
+        use crate::term::text_size::{TextSizing, visible_text};
+        use crate::testing::render_with_context;
+
+        let theme = Theme::default();
+        let ctx = RenderCtx::new(&theme).with_text_sizing(TextSizing::Supported);
+        let view = Markdown::new("# one two").large_headings(true);
+        // Ten columns hold five sized columns: "one" and "two" each get a row.
+        let buf = render_with_context(&view, 10, 4, &ctx);
+        assert_eq!(visible_text(buf[(0, 0)].symbol()), "o");
+        assert_eq!(visible_text(buf[(0, 2)].symbol()), "t");
+        assert_eq!(visible_text(buf[(4, 2)].symbol()), "o");
     }
 }

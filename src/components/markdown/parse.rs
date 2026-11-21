@@ -101,6 +101,9 @@ struct Builder<'a> {
 
     // Host hook resolving image URLs to pixels; `None` keeps the text placeholder.
     resolver: Option<&'a dyn ImageResolver>,
+
+    // Level (1–6) of the heading being collected, so its prose can be sized.
+    heading: Option<u8>,
 }
 
 /// One open inline-HTML scope: what closes it, and the stack depths to restore.
@@ -136,6 +139,7 @@ impl<'a> Builder<'a> {
             html: Vec::new(),
             image: None,
             resolver,
+            heading: None,
         }
     }
 
@@ -195,6 +199,7 @@ impl<'a> Builder<'a> {
             spans,
             indent,
             hanging,
+            heading: self.heading.unwrap_or(0),
         });
     }
 
@@ -393,6 +398,7 @@ impl<'a> Builder<'a> {
                     )],
                     indent: self.indent(),
                     hanging: 0,
+                    heading: 0,
                 });
             }
             Event::TaskListMarker(done) => {
@@ -417,6 +423,7 @@ impl<'a> Builder<'a> {
                     style = style.add_modifier(Modifier::ITALIC);
                 }
                 self.style_stack.push(style);
+                self.heading = Some(level as u8);
             }
             Tag::BlockQuote(_) => {
                 self.separate();
@@ -506,6 +513,7 @@ impl<'a> Builder<'a> {
             TagEnd::Paragraph => self.flush(),
             TagEnd::Heading(_) => {
                 self.flush();
+                self.heading = None;
                 self.style_stack.pop();
             }
             TagEnd::BlockQuote(_) => {

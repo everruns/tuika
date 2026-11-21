@@ -11,6 +11,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::style::{StyleSheet, Theme};
 use crate::term::hyperlink::BufferLink;
+use crate::term::text_size::SizedRun;
 use crate::width::grapheme_cols;
 
 use super::image::{MarkdownImage, image_cell_size};
@@ -58,8 +59,13 @@ pub(super) fn flatten_linked<R: MarkdownBlockRenderer + ?Sized>(
     renderers: &R,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let mut images = Vec::new();
-    flatten_linked_into(items, width, theme, sheet, renderers, &mut images)
+    flatten_linked_into(items, width, theme, sheet, renderers, &mut images, None)
 }
+
+/// How many times larger a level-one heading is drawn when large headings are
+/// on. Two keeps a heading readable in an 80-column pane (40 characters a row);
+/// three would leave a long title wrapping on every few words.
+pub(super) const LARGE_HEADING_SCALE: u8 = 2;
 
 /// Flatten into lines and links while collecting each reserved block image and
 /// its row, so [`Markdown`](super::Markdown) can overlay an
@@ -71,6 +77,7 @@ pub(super) fn flatten_linked_into<R: MarkdownBlockRenderer + ?Sized>(
     sheet: &StyleSheet,
     renderers: &R,
     images: &mut Vec<MarkdownImage>,
+    mut sized: Option<&mut Vec<SizedRun>>,
 ) -> (Vec<Line<'static>>, Vec<BufferLink>) {
     let mut out = Vec::new();
     let mut links = Vec::new();
@@ -88,7 +95,37 @@ pub(super) fn flatten_linked_into<R: MarkdownBlockRenderer + ?Sized>(
                 spans,
                 indent,
                 hanging,
+                heading,
             } => {
+                // A large heading wraps to the columns left once every glyph is
+                // `scale` wide, paints at normal size on its first row, and
+                // reserves the rows below for the sized glyphs. A host that does
+                // not apply the runs still shows a readable heading.
+                let scale = LARGE_HEADING_SCALE;
+                let sized_avail = width.saturating_sub(*indent) / u16::from(scale);
+                if *heading == 1
+                    && sized_avail > 0
+                    && let Some(sized) = sized.as_deref_mut()
+                {
+                    for (row, _links) in wrap_rich(spans, sized_avail) {
+                        let line = out.len().min(u16::MAX as usize) as u16;
+                        let cols = spans_cols(&row).min(usize::from(u16::MAX)) as u16;
+                        out.push(prefix_line(*indent, row));
+                        for _ in 1..scale {
+                            // Not `Line::default()`: an empty span list is a
+                            // spacer, and the blank that follows the heading
+                            // would collapse into it.
+                            out.push(Line::from(vec![Span::raw("")]));
+                        }
+                        sized.push(SizedRun {
+                            line,
+                            start_col: *indent,
+                            end_col: indent.saturating_add(cols),
+                            scale,
+                        });
+                    }
+                    continue;
+                }
                 // The first row carries the marker and wraps to the indent
                 // width. Continuation rows hang under the item's text at
                 // `indent + hanging` and re-wrap to that narrower width, so

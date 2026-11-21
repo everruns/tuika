@@ -1,6 +1,6 @@
 ---
 title: Banners, codes & pixels components
-description: ASCII lettering, QR codes, framebuffers, and key hints.
+description: Large text, ASCII lettering, QR codes, framebuffers, and key hints.
 sidebar:
   label: Codes & pixels
   order: 7
@@ -21,6 +21,22 @@ punctuation; case-insensitive). Themed accent by default, overridable.
 ```rust
 use tuika::{AsciiFont, view};
 view! { node(AsciiFont::new("TUIKA")) }
+```
+
+### `LargeText`
+
+A single line drawn two to seven times the cell height with Kitty's text sizing
+protocol (OSC 66), so a title is real type in the terminal's own font rather
+than block letters. It picks the largest scale that fits the space it gets.
+Where the terminal cannot size text it falls back to `AsciiFont` block letters
+when the bundled font can spell the line, and to bold text otherwise.
+`Runner` detects support; custom hosts declare it with
+`RenderCtx::with_text_sizing`.
+[API](https://docs.rs/tuika/latest/tuika/components/struct.LargeText.html)
+
+```rust
+use tuika::{LargeText, view};
+view! { node(LargeText::new("Release notes").scale(3)) }
 ```
 
 ### `QrCode`

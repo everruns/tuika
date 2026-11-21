@@ -37,6 +37,7 @@ mod image;
 mod item_scroll;
 mod key_hints;
 mod keyed_table;
+mod large_text;
 mod loader;
 pub mod markdown;
 mod option_hits;
@@ -86,6 +87,7 @@ pub use keyed_table::{
     KeyedColumn, KeyedMultiSelectState, KeyedRowSource, KeyedSelectState, KeyedTable,
     NavigableKeyedRowSource,
 };
+pub use large_text::LargeText;
 pub use loader::Loader;
 pub use markdown::{
     ImageResolver, Markdown, MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer,

@@ -108,6 +108,7 @@ use crate::mouse::{
 use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
 use crate::term::clipboard;
 use crate::term::image::{ImageLayer, ImageSupport};
+use crate::term::text_size::TextSizing;
 use crate::view::SelectionFrame;
 use crate::{
     Clock, Element, Event, RenderCtx, ScopedElement, SystemClock, TerminalSession, Theme, View,
@@ -139,6 +140,7 @@ struct FrameGraphics {
     /// The terminal's screen epoch as of the last frame, so a clear, scroll,
     /// or resize in between makes the layer put its images back.
     screen_epoch: std::cell::Cell<Option<u64>>,
+    text_sizing: TextSizing,
 }
 
 impl FrameGraphics {
@@ -147,6 +149,7 @@ impl FrameGraphics {
             support,
             layer: ImageLayer::new(),
             screen_epoch: std::cell::Cell::new(None),
+            text_sizing: TextSizing::detect(),
         }
     }
 
@@ -162,7 +165,9 @@ impl FrameGraphics {
     }
 
     fn render_context<'a>(&'a self, theme: &'a Theme) -> RenderCtx<'a> {
-        RenderCtx::new(theme).with_image_graphics(self.support, &self.layer)
+        RenderCtx::new(theme)
+            .with_image_graphics(self.support, &self.layer)
+            .with_text_sizing(self.text_sizing)
     }
 
     fn finish_frame(&self) -> io::Result<()> {

@@ -99,6 +99,13 @@ next release.
   plain characters are never translated. `TextInput`'s editing shortcuts and
   the `Ctrl+N`/`Ctrl+P` navigation of `SelectState` and `KeyedTableState`
   follow the same rule. New: `Key::base_layout` and `Key::shortcut`.
+- Large text through Kitty's text sizing protocol (OSC 66):
+  `term::text_size` (`encode`, `TextSizing` detection, `SizedRun`,
+  `apply_sized_runs_in`), the `LargeText` component (falls back to `AsciiFont`
+  or bold text), and opt-in large level-one headings in markdown
+  (`Markdown::large_headings`, `MarkdownState::with_large_headings` /
+  `sized_runs`). `Runner` detects support and installs it on the render context
+  (`RenderCtx::with_text_sizing` / `text_sizing` for custom hosts).
 - `tuika-charts`: `Series::band` fills between two edges (percentile ranges,
   confidence intervals); `Chart::reference` with `Reference::value` /
   `Reference::position` draws labelled, optionally dashed threshold and event

@@ -24,10 +24,14 @@ pub(super) enum MdItem {
     /// `hanging` is the extra indent wrapped continuation rows carry so item
     /// text hangs under the first line's text instead of the margin; it holds
     /// the list marker's width and is zero for non-item prose.
+    ///
+    /// `heading` is the heading level (1–6), or 0 for ordinary prose; flatten
+    /// reads it to draw large headings.
     Prose {
         spans: Vec<RichSpan>,
         indent: u16,
         hanging: u16,
+        heading: u8,
     },
     /// A fenced or indented code block. The source stays width-independent so a
     /// [`MarkdownBlockRenderer`](super::MarkdownBlockRenderer) can lay it out for

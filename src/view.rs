@@ -130,6 +130,7 @@ use super::surface::Surface;
 use crate::access::{AccessFrame, Node};
 use crate::mouse::ContentWindow;
 use crate::term::image::{ImageLayer, ImageSupport};
+use crate::term::text_size::TextSizing;
 
 /// Original text rendered in a frame, used to preserve source line breaks when copying.
 #[derive(Clone, Debug, Default)]
@@ -206,6 +207,8 @@ pub struct RenderCtx<'a> {
     style_resolver: Option<&'a dyn StyleResolver>,
     /// Graphics protocol and per-frame placement collector supplied by a host.
     image_graphics: Option<(ImageSupport, &'a ImageLayer)>,
+    /// Whether the terminal draws OSC 66 sized text, supplied by a host.
+    text_sizing: TextSizing,
     selection: Option<&'a SelectionFrame>,
     /// Screen-reader collector supplied by a host; `None` on an ordinary paint.
     access: Option<&'a AccessFrame>,
@@ -222,6 +225,7 @@ impl<'a> RenderCtx<'a> {
             sheet: StyleSheet::from_theme(theme),
             style_resolver: None,
             image_graphics: None,
+            text_sizing: TextSizing::Unsupported,
             selection: None,
             access: None,
             focused: false,
@@ -289,6 +293,22 @@ impl<'a> RenderCtx<'a> {
         if let Some(frame) = self.access {
             frame.begin_overlay(area, modal);
         }
+    }
+
+    /// Declare whether the terminal draws OSC 66 sized text.
+    ///
+    /// [`Runner`](crate::Runner) supplies [`TextSizing::detect`] automatically;
+    /// custom hosts opt in here. Views that scale text
+    /// ([`LargeText`](crate::components::LargeText), markdown's large headings)
+    /// fall back to normal-size rendering while this is unsupported.
+    pub fn with_text_sizing(mut self, sizing: TextSizing) -> Self {
+        self.text_sizing = sizing;
+        self
+    }
+
+    /// Whether the host declared OSC 66 sized text support.
+    pub fn text_sizing(&self) -> TextSizing {
+        self.text_sizing
     }
 
     pub(crate) fn with_selection(mut self, selection: &'a SelectionFrame) -> Self {
@@ -359,6 +379,7 @@ impl<'a> RenderCtx<'a> {
             sheet: self.sheet,
             style_resolver: self.style_resolver,
             image_graphics: self.image_graphics,
+            text_sizing: self.text_sizing,
             selection: self.selection,
             access: self.access,
             focused,

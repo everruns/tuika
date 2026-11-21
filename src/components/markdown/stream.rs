@@ -16,6 +16,7 @@ use super::flatten::flatten_linked_into;
 use super::image::{ImageResolver, MarkdownImage};
 use super::item::MdItem;
 use super::parse::parse_with;
+use crate::term::text_size::SizedRun;
 
 /// Whether `trimmed` (a line with its indentation removed) starts a list item.
 ///
@@ -186,6 +187,14 @@ pub struct MarkdownState {
     frame_links: Vec<BufferLink>,
     /// Count of leading `frame_links` entries that belong to settled lines.
     settled_link_count: usize,
+    /// Whether level-one headings are laid out large (see
+    /// [`with_large_headings`](Self::with_large_headings)).
+    large_headings: bool,
+    /// Settled + tail sized heading runs with absolute rows, rebuilt by
+    /// [`lines`](Self::lines) the way `frame_links` is.
+    frame_sized: Vec<SizedRun>,
+    /// Count of leading `frame_sized` entries that belong to settled lines.
+    settled_sized_count: usize,
 }
 
 impl MarkdownState {
@@ -218,6 +227,31 @@ impl MarkdownState {
         self.block_renderers.push(renderer);
         self.reset_cache();
         self
+    }
+
+    /// Lay out level-one headings large: wrapped to half the width, each row
+    /// followed by a reserved blank row, with the run to scale reported by
+    /// [`sized_runs`](Self::sized_runs).
+    ///
+    /// Turn this on only when the terminal sizes text
+    /// ([`TextSizing::is_supported`](crate::term::text_size::TextSizing::is_supported)):
+    /// the layout reserves the rows either way.
+    pub fn with_large_headings(mut self, enabled: bool) -> Self {
+        self.large_headings = enabled;
+        self.reset_cache();
+        self
+    }
+
+    /// Large-heading runs produced by the last [`lines`](Self::lines) call,
+    /// with rows relative to those lines. Empty unless
+    /// [`with_large_headings`](Self::with_large_headings) is on.
+    ///
+    /// After painting the lines, and before applying [`links`](Self::links),
+    /// pass these to
+    /// [`apply_sized_runs_in`](crate::term::text_size::apply_sized_runs_in)
+    /// with the same area.
+    pub fn sized_runs(&self) -> &[SizedRun] {
+        &self.frame_sized
     }
 
     /// The block images reserved by the last [`lines`](Self::lines) call, with
@@ -266,6 +300,8 @@ impl MarkdownState {
         self.frame_images.clear();
         self.frame_links.clear();
         self.settled_link_count = 0;
+        self.frame_sized.clear();
+        self.settled_sized_count = 0;
     }
 
     /// Render the current buffer to final, width-fitted styled lines, advancing
@@ -307,6 +343,8 @@ impl MarkdownState {
             self.settled_images.clear();
             self.frame_links.clear();
             self.settled_link_count = 0;
+            self.frame_sized.clear();
+            self.settled_sized_count = 0;
         }
 
         let boundary = stable_boundary(&self.source, self.stable_len);
@@ -332,9 +370,11 @@ impl MarkdownState {
         // lines equals re-flattening the whole prefix.
         self.rendered.truncate(self.settled_lines);
         self.frame_links.truncate(self.settled_link_count);
+        self.frame_sized.truncate(self.settled_sized_count);
         if self.flattened_items < self.stable.len() {
             let base = self.rendered.len() as u16;
             let mut settled_imgs = Vec::new();
+            let mut settled_sized = Vec::new();
             let (settled, settled_links) = flatten_linked_into(
                 &self.stable[self.flattened_items..],
                 width,
@@ -342,7 +382,12 @@ impl MarkdownState {
                 sheet,
                 self.block_renderers.as_slice(),
                 &mut settled_imgs,
+                self.large_headings.then_some(&mut settled_sized),
             );
+            for mut run in settled_sized {
+                run.line = run.line.saturating_add(base);
+                self.frame_sized.push(run);
+            }
             for mut link in settled_links {
                 link.line = link.line.saturating_add(base);
                 self.frame_links.push(link);
@@ -355,6 +400,7 @@ impl MarkdownState {
             self.flattened_items = self.stable.len();
             self.settled_lines = self.rendered.len();
             self.settled_link_count = self.frame_links.len();
+            self.settled_sized_count = self.frame_sized.len();
         }
 
         let tail = parse_with(
@@ -365,6 +411,7 @@ impl MarkdownState {
             self.resolver.as_deref(),
         );
         let mut tail_imgs = Vec::new();
+        let mut tail_sized = Vec::new();
         let (tail_lines, tail_links) = flatten_linked_into(
             &tail,
             width,
@@ -372,6 +419,7 @@ impl MarkdownState {
             sheet,
             self.block_renderers.as_slice(),
             &mut tail_imgs,
+            self.large_headings.then_some(&mut tail_sized),
         );
         // The tail begins just past the boundary's blank line; keep that gap.
         if !self.rendered.is_empty()
@@ -396,6 +444,10 @@ impl MarkdownState {
         for mut link in tail_links {
             link.line = link.line.saturating_add(tail_base);
             self.frame_links.push(link);
+        }
+        for mut run in tail_sized {
+            run.line = run.line.saturating_add(tail_base);
+            self.frame_sized.push(run);
         }
         &self.rendered
     }
@@ -918,5 +970,38 @@ mod tests {
             CodeHighlighter::Plain,
         );
         assert!(md.images().is_empty(), "images() empty without a resolver");
+    }
+
+    #[test]
+    fn large_heading_runs_track_streamed_rows() {
+        let theme = Theme::default();
+        let sheet = StyleSheet::from_theme(&theme);
+        let mut md = MarkdownState::new().with_large_headings(true);
+        md.push_str("Intro\n\n# Title\n\nBody\n\n# Second");
+        let lines = md
+            .lines(40, &theme, &sheet, CodeHighlighter::Plain)
+            .to_vec();
+        let runs = md.sized_runs().to_vec();
+        assert_eq!(runs.len(), 2);
+        for run in &runs {
+            let text: String = lines[run.line as usize]
+                .spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect();
+            assert!(text == "Title" || text == "Second", "{text:?}");
+            assert_eq!(run.scale, 2);
+            assert_eq!(run.end_col - run.start_col, text.len() as u16);
+        }
+        // Streaming more text keeps the settled run and re-derives the tail.
+        md.push_str(" part\n\nMore");
+        md.lines(40, &theme, &sheet, CodeHighlighter::Plain);
+        assert_eq!(md.sized_runs().len(), 2);
+        assert_eq!(md.sized_runs()[0], runs[0]);
+        // Off by default.
+        let mut plain = MarkdownState::new();
+        plain.push_str("# Title");
+        plain.lines(40, &theme, &sheet, CodeHighlighter::Plain);
+        assert!(plain.sized_runs().is_empty());
     }
 }

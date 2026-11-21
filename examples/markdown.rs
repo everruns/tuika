@@ -42,6 +42,7 @@ use tuika::prelude::*;
 
 mod support;
 use tuika::term::hyperlink::{HyperlinkBackend, LinkPolicy, apply_buffer_links};
+use tuika::term::text_size::{SizedRun, TextSizing, apply_sized_runs_in};
 
 /// A tiny self-contained Rust highlighter — enough to satisfy the
 /// [`Highlighter`] boundary without a grammar dependency. Real hosts use the
@@ -179,7 +180,10 @@ fn main() -> io::Result<()> {
     let highlighter = CachedHighlighter::new(&syntax);
     let doc: Vec<char> = SOURCE.chars().collect();
 
-    let mut state = MarkdownState::new();
+    // Kitty draws level-one headings at twice the cell height (OSC 66); other
+    // terminals keep the ordinary heading.
+    let sizing = TextSizing::detect();
+    let mut state = MarkdownState::new().with_large_headings(sizing.is_supported());
     let mut scroll = ScrollState::new();
     let mut cursor = 0usize;
     let mut paused = false;
@@ -243,6 +247,17 @@ fn main() -> io::Result<()> {
                 )
             })
             .collect::<Vec<_>>();
+        let visible_sized = state
+            .sized_runs()
+            .iter()
+            .filter_map(|run| {
+                let line = usize::from(run.line);
+                (line >= scroll.offset()).then(|| SizedRun {
+                    line: u16::try_from(line - scroll.offset()).unwrap_or(u16::MAX),
+                    ..*run
+                })
+            })
+            .collect::<Vec<_>>();
 
         terminal.draw(|f| {
             let area = f.area();
@@ -275,6 +290,15 @@ fn main() -> io::Result<()> {
                 }
             };
             paint(f.buffer_mut(), area, &theme, root.as_ref(), &[]);
+            // Sized headings first: they read the plain cells the links mark.
+            // A heading the viewport edge cuts is left at normal size.
+            let viewport = tuika::ui::Rect::new(
+                area.x.saturating_add(1),
+                area.y.saturating_add(1),
+                area.width.saturating_sub(2),
+                u16::try_from(viewport_h).unwrap_or(u16::MAX),
+            );
+            apply_sized_runs_in(f.buffer_mut(), viewport, &visible_sized);
             apply_buffer_links(
                 f.buffer_mut(),
                 tuika::ui::Position {
@@ -299,7 +323,7 @@ fn main() -> io::Result<()> {
                 KeyCode::Char('q') | KeyCode::Esc => break,
                 KeyCode::Char(' ') => paused = !paused,
                 KeyCode::Char('r') => {
-                    state = MarkdownState::new();
+                    state = MarkdownState::new().with_large_headings(sizing.is_supported());
                     scroll = ScrollState::new();
                     cursor = 0;
                     paused = false;
