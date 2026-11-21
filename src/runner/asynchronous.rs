@@ -68,13 +68,17 @@ use crate::term::traits::Backend;
 use crossterm::event::EventStream;
 use tokio::time::{Instant as TokioInstant, MissedTickBehavior, interval, sleep_until};
 
+#[cfg(unix)]
+use super::DecodedEvents;
 use super::{
     FrameGraphics, FrameGraphicsCleanup, PaintRoot, RESIZE_FRAME_INTERVAL, RunnerAction,
     RunnerCore, RunnerSelection, Signal,
 };
+use super::{SchemeFollow, SchemeSubscription};
 use crate::host::paint_with_context_and_selection;
 use crate::live::RedrawHandle;
 use crate::screen::{Scrollback, close_footer, pin_footer};
+use crate::term::color_scheme::ColorScheme;
 use crate::view::{ScopedElement, SelectionFrame};
 use crate::{
     Element, Event, RenderCtx, RunnerConfig, SystemClock, TerminalSession, Theme, UpdateResult,
@@ -214,6 +218,7 @@ pub struct AsyncRunner {
     scrollback: Scrollback,
     session_config: Option<crate::TerminalSessionConfig>,
     text_selection: bool,
+    follow: SchemeFollow,
 }
 
 impl AsyncRunner {
@@ -228,6 +233,7 @@ impl AsyncRunner {
             config.screen_mode.footer_height().unwrap_or(1),
             redraw.clone(),
         );
+        let follow = SchemeFollow::new(redraw.clone());
         Self {
             config,
             redraw,
@@ -235,7 +241,41 @@ impl AsyncRunner {
             scrollback: Scrollback::new(),
             session_config: None,
             text_selection: true,
+            follow,
         }
+    }
+
+    /// Switch between `light` and `dark` as the terminal's color scheme
+    /// changes, while the app runs — the counterpart to
+    /// [`Runner::follow_color_scheme`](crate::Runner::follow_color_scheme),
+    /// which documents the behavior (including why reports are only followed
+    /// in [`ScreenMode::Alternate`](crate::screen::ScreenMode::Alternate)).
+    /// Input is then read by tuika's decoder on a background thread instead of
+    /// crossterm's `EventStream`.
+    pub fn follow_color_scheme(mut self, light: Theme, dark: Theme) -> Self {
+        self.follow.enable(light, dark);
+        self
+    }
+
+    /// The color scheme the terminal last reported, `None` until it reports
+    /// one. Setting it wakes the runner and repaints with the matching theme.
+    pub fn color_scheme(&self) -> crate::live::Live<Option<ColorScheme>> {
+        self.follow.scheme()
+    }
+
+    /// Terminal input for a real-terminal run: crossterm's `EventStream`, or
+    /// tuika's decoder while following the color scheme.
+    fn terminal_events(&self) -> io::Result<(TerminalStream, Option<SchemeSubscription>)> {
+        #[cfg(unix)]
+        if self.follow.decodes_input(self.config.screen_mode) {
+            let events = DecodedEvents::open(self.follow.scheme())?;
+            return Ok((
+                TerminalStream::Decoded(DecodedStream::spawn(events)),
+                Some(SchemeSubscription::start()?),
+            ));
+        }
+        let events = stream::filter_map(EventStream::new(), crossterm_event as fn(_) -> _);
+        Ok((TerminalStream::Crossterm(events), None))
     }
 
     /// Requested split-footer height. Calling `set` on this shared value wakes
@@ -409,10 +449,7 @@ impl AsyncRunner {
             },
         )?;
         let _graphics_cleanup = FrameGraphicsCleanup(&graphics);
-        let events = stream::filter_map(EventStream::new(), |result| match result {
-            Ok(raw) => translate_event(raw).map(Ok),
-            Err(error) => Some(Err(error)),
-        });
+        let (events, _subscription) = self.terminal_events()?;
         let result = self
             .run_inner(
                 &mut terminal,
@@ -470,10 +507,7 @@ impl AsyncRunner {
                 viewport: mode.viewport(),
             },
         )?;
-        let events = stream::filter_map(EventStream::new(), |result| match result {
-            Ok(raw) => translate_event(raw).map(Ok),
-            Err(error) => Some(Err(error)),
-        });
+        let (events, _subscription) = self.terminal_events()?;
         let result = self
             .run_inner(
                 &mut terminal,
@@ -615,6 +649,7 @@ impl AsyncRunner {
         MS: Stream<Item = Result<M, Er>> + Unpin,
         Finish: FnMut(Option<&str>) -> Result<(), Er>,
     {
+        let base_theme = theme;
         let mut events_done = false;
         let mut messages_done = false;
         let mut core = RunnerCore::new();
@@ -632,7 +667,14 @@ impl AsyncRunner {
             pin_footer(terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
-            let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+            let copied = draw(
+                terminal,
+                &self.follow.active(base_theme),
+                frames,
+                frame,
+                graphics,
+                &mut selection,
+            )?;
             finish_frame(copied.as_deref())?;
         }
         let mut last_frame = TokioInstant::now();
@@ -690,7 +732,14 @@ impl AsyncRunner {
                         terminal.set_footer_height(self.footer_height.with(|height| *height))?;
                         pin_footer(terminal)?;
                     }
-                    let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+                    let copied = draw(
+                        terminal,
+                        &self.follow.active(base_theme),
+                        frames,
+                        frame,
+                        graphics,
+                        &mut selection,
+                    )?;
                     finish_frame(copied.as_deref())?;
                     last_frame = TokioInstant::now();
                 }
@@ -739,7 +788,10 @@ impl AsyncRunner {
                     let now = TokioInstant::now();
                     redraw_at = Some(redraw_at.map_or(now, |current| current.min(now)));
                 }
-                if self.scrollback.flush(terminal, theme)? {
+                if self
+                    .scrollback
+                    .flush(terminal, &self.follow.active(base_theme))?
+                {
                     core.request_redraw();
                     let now = TokioInstant::now();
                     redraw_at = Some(redraw_at.map_or(now, |current| current.min(now)));
@@ -754,7 +806,14 @@ impl AsyncRunner {
                         terminal.set_footer_height(self.footer_height.with(|height| *height))?;
                         pin_footer(terminal)?;
                     }
-                    let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+                    let copied = draw(
+                        terminal,
+                        &self.follow.active(base_theme),
+                        frames,
+                        frame,
+                        graphics,
+                        &mut selection,
+                    )?;
                     finish_frame(copied.as_deref())?;
                     last_frame = TokioInstant::now();
                 }
@@ -763,6 +822,131 @@ impl AsyncRunner {
         }
 
         Ok(())
+    }
+}
+
+fn crossterm_event(result: io::Result<crossterm::event::Event>) -> Option<io::Result<Event>> {
+    match result {
+        Ok(raw) => translate_event(raw).map(Ok),
+        Err(error) => Some(Err(error)),
+    }
+}
+
+type CrosstermStream = stream::FilterMap<
+    EventStream,
+    fn(io::Result<crossterm::event::Event>) -> Option<io::Result<Event>>,
+>;
+
+/// The input stream of a real-terminal async run.
+enum TerminalStream {
+    Crossterm(CrosstermStream),
+    #[cfg(unix)]
+    Decoded(DecodedStream),
+}
+
+impl Stream for TerminalStream {
+    type Item = io::Result<Event>;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        match self.get_mut() {
+            Self::Crossterm(events) => std::pin::Pin::new(events).poll_next(cx),
+            #[cfg(unix)]
+            Self::Decoded(events) => std::pin::Pin::new(events).poll_next(cx),
+        }
+    }
+}
+
+/// tuika's decoder on a background thread, as a stream.
+///
+/// The thread waits on the tty in short slices and checks a stop flag between
+/// them, so dropping the stream ends it within one slice instead of leaving a
+/// reader behind to swallow the next keystroke the shell expects.
+#[cfg(unix)]
+struct DecodedStream {
+    shared: std::sync::Arc<DecodedShared>,
+}
+
+#[cfg(unix)]
+#[derive(Default)]
+struct DecodedShared {
+    queue: std::sync::Mutex<DecodedQueue>,
+    stop: std::sync::atomic::AtomicBool,
+}
+
+#[cfg(unix)]
+#[derive(Default)]
+struct DecodedQueue {
+    items: std::collections::VecDeque<io::Result<Event>>,
+    waker: Option<std::task::Waker>,
+    finished: bool,
+}
+
+#[cfg(unix)]
+impl DecodedStream {
+    /// How long the reader thread waits before re-checking the stop flag.
+    const SLICE: Duration = Duration::from_millis(50);
+
+    fn spawn(mut events: DecodedEvents) -> Self {
+        use std::sync::atomic::Ordering;
+        let shared = std::sync::Arc::new(DecodedShared::default());
+        let thread_shared = std::sync::Arc::clone(&shared);
+        std::thread::spawn(move || {
+            let push = |item: Option<io::Result<Event>>, finished: bool| {
+                let mut queue = thread_shared
+                    .queue
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                queue.items.extend(item);
+                queue.finished |= finished;
+                if let Some(waker) = queue.waker.take() {
+                    waker.wake();
+                }
+            };
+            while !thread_shared.stop.load(Ordering::Relaxed) {
+                match events.poll(Self::SLICE) {
+                    Ok(Some(event)) => push(Some(Ok(event)), false),
+                    Ok(None) => {}
+                    Err(error) => {
+                        push(Some(Err(error)), true);
+                        return;
+                    }
+                }
+            }
+            push(None, true);
+        });
+        Self { shared }
+    }
+}
+
+#[cfg(unix)]
+impl Stream for DecodedStream {
+    type Item = io::Result<Event>;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        let mut queue = self.shared.queue.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(item) = queue.items.pop_front() {
+            return std::task::Poll::Ready(Some(item));
+        }
+        if queue.finished {
+            return std::task::Poll::Ready(None);
+        }
+        queue.waker = Some(cx.waker().clone());
+        std::task::Poll::Pending
+    }
+}
+
+#[cfg(unix)]
+impl Drop for DecodedStream {
+    fn drop(&mut self) {
+        self.shared
+            .stop
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
 

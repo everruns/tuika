@@ -1013,3 +1013,43 @@ fn codex_leaves_the_session_in_the_scrollback_after_exit() {
         "the composer's rows should be released:\n{contents}"
     );
 }
+
+#[test]
+fn color_scheme_reports_switch_the_theme_without_eating_keys() {
+    // The report arrives among keystrokes. crossterm would hold every byte
+    // after it; tuika's decoder must hand `x` through and repaint light.
+    let run = Script::new("color_scheme")
+        .settle(Duration::from_millis(600))
+        .settle_until(b"\x1b[?2031h", Duration::from_secs(10))
+        .key(b"\x1b[?997;2n", Duration::from_millis(300))
+        .key(b"x", Duration::from_millis(600))
+        .run();
+    assert!(run.exited_ok, "q after the report must still quit");
+    assert!(contains(&run.output, b"\x1b[?2031h"), "subscribes");
+    assert!(
+        contains(&run.output, b"\x1b[?996n"),
+        "asks for the current scheme"
+    );
+    let subscribed = run
+        .output
+        .windows(8)
+        .position(|w| w == b"\x1b[?2031h")
+        .expect("subscribed");
+    assert!(
+        run.output[subscribed..]
+            .windows(8)
+            .any(|w| w == b"\x1b[?2031l"),
+        "unsubscribes on exit"
+    );
+
+    let parser = run.live_screen();
+    let screen = parser.screen();
+    let text = screen.contents();
+    assert!(text.contains("Color scheme: light"), "{text}");
+    assert!(text.contains("Last key: x"), "{text}");
+    assert_eq!(
+        screen.cell(0, 0).expect("cell").bgcolor(),
+        vt100::Color::Rgb(253, 246, 227),
+        "painted with the light theme"
+    );
+}

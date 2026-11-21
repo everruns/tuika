@@ -20,7 +20,7 @@ the renderer did not expect.
 
 ## What
 
-Eight out-of-band capabilities, in three families:
+Nine out-of-band capabilities, in three families:
 
 | Capability | Sequence | Module | Emission point |
 | --- | --- | --- | --- |
@@ -31,6 +31,7 @@ Eight out-of-band capabilities, in three families:
 | Pointer shape | OSC 22 | `term::pointer` | host-initiated, any time |
 | Images | Kitty / iTerm2 / Sixel | `term::image` | after `terminal.draw()` returns |
 | Sized text | OSC 66 | `term::text_size` | embedded in cells by `apply_sized_runs_in` |
+| Color-scheme reports | mode 2031 (`CSI ? 2031 h`), `CSI ? 996 n` | `term::color_scheme` | runner-initiated when the host follows the scheme; reports arrive on stdin at any time |
 | Terminal queries | DA1, Kitty keyboard (`CSI ? u`), OSC 10 / 11 / 4 | `term::capabilities`, `term::palette` | host-initiated, once at startup, in raw mode |
 
 They live together under `term` because they are one kind of thing, and a reader
@@ -125,6 +126,28 @@ unsized.
 Any *new* out-of-band feature must be classified against this rule before it
 ships: if an unsupporting terminal would show garbage rather than nothing, it
 needs detection and a fallback, not an opt-out flag.
+
+### Unsolicited replies need tuika's own input decoder
+
+Mode 2031 is the one capability whose reply is not fenced by a startup probe:
+the terminal sends `CSI ? 997 ; Ps n` whenever the desktop flips, interleaved
+with keystrokes. crossterm's parser only completes `CSI ?` frames it knows
+(`u` and `c`), and treats any other as unfinished, so one report would hold
+every following key. Rather than fork or patch crossterm, the runner switches to
+a small tuika-owned decoder (`term::input`, Unix) only while the host follows
+the color scheme. It produces crossterm `Event`s so `translate_event` stays the
+single mapping, recognises the report, and drops other unknown replies whole.
+Without following, input is read exactly as before. Windows keeps crossterm's
+reader; its console API delivers no such reports.
+
+Only on the alternate screen, though: an inline or split-footer viewport
+anchors itself with `CSI 6n`, and crossterm reads that reply straight from the
+tty, so a second reader would steal it (and `CSI r ; c R` decodes as a modified
+F3). In those modes the runner keeps crossterm's reader and the scheme changes
+only when the host sets it.
+
+Following is safe everywhere: a terminal without mode 2031 ignores the
+subscribe and the query, and the app keeps its base theme.
 
 ### Opt-in where the escape writes styled spans
 

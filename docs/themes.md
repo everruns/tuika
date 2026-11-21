@@ -98,6 +98,30 @@ bright black). To keep those distinct, ask the terminal for its actual colors an
 derive them — `Theme::from_terminal` — which is covered in
 [terminal features](features.md#inheriting-the-terminals-colors).
 
+## Following the OS dark/light setting
+
+A theme picked at startup goes stale when the desktop switches to dark mode at
+sunset. Hand the runner a light and a dark theme and it follows the terminal's
+color-scheme reports, repainting as the setting flips:
+
+```rust,no_run
+use tuika::prelude::*;
+use tuika::themes;
+
+let runner = Runner::new(RunnerConfig::default())
+    .follow_color_scheme(themes::SOLARIZED_LIGHT, themes::SOLARIZED_DARK);
+let scheme = runner.color_scheme(); // read it, or `scheme.set(..)` by hand
+```
+
+The theme passed to `run` is painted until the terminal answers. kitty, Ghostty,
+Contour, foot, and recent WezTerm report changes; other terminals ignore the
+request and the app keeps that theme. Reports are followed on the alternate
+screen; in split-footer mode the scheme changes only when you set it. On a terminal that only answers the
+background-color query, `ColorScheme::from_background` picks a starting scheme
+from it. `cargo run --example color_scheme` shows it live:
+
+<img src="../examples/color_scheme.gif" alt="The color_scheme example switching between Solarized Light and Solarized Dark while keys are typed" width="880">
+
 ## Rolling your own
 
 The bundled palettes are a starting point, not a ceiling. Construct a `Theme`

@@ -65,6 +65,7 @@ exclude = [
     "/docs",
     "examples/codex/*.gif",
     "examples/program_status.gif",
+    "examples/color_scheme.gif",
     "examples/workbench_demo/*.gif",
     "/benches/*.json",
     "/.agents",
@@ -143,6 +144,12 @@ unicode-width = "0.2"
 # = false` drops the bundled HTML renderer and SIMD scanner we don't use, so
 # this stays a small, pure-Rust addition to tuika's dependency set.
 pulldown-cmark = { version = "0.13", default-features = false }
+
+# `poll(2)` for the tuika-owned input reader `Runner::follow_color_scheme` uses
+# (crossterm cannot decode mode 2031 reports). Not a new crate: crossterm
+# already depends on `libc` on Unix.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 proptest = "1"

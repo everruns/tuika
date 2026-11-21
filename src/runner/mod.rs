@@ -107,6 +107,7 @@ use crate::mouse::{
 };
 use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
 use crate::term::clipboard;
+use crate::term::color_scheme::{self, ColorScheme};
 use crate::term::image::{ImageLayer, ImageSupport};
 use crate::term::text_size::TextSizing;
 use crate::view::SelectionFrame;
@@ -188,6 +189,127 @@ struct FrameGraphicsCleanup<'a>(&'a FrameGraphics);
 impl Drop for FrameGraphicsCleanup<'_> {
     fn drop(&mut self) {
         let _ = self.0.finish_frame();
+    }
+}
+
+/// The light/dark theme pair a runner switches between, and the scheme the
+/// terminal last reported. Shared by both runners.
+#[derive(Clone)]
+pub(crate) struct SchemeFollow {
+    themes: Option<(Theme, Theme)>,
+    scheme: crate::live::Live<Option<ColorScheme>>,
+}
+
+impl SchemeFollow {
+    pub(crate) fn new(redraw: RedrawHandle) -> Self {
+        Self {
+            themes: None,
+            scheme: crate::live::Live::with_redraw(None, redraw),
+        }
+    }
+
+    pub(crate) fn enable(&mut self, light: Theme, dark: Theme) {
+        self.themes = Some((light, dark));
+    }
+
+    pub(crate) fn is_enabled(&self) -> bool {
+        self.themes.is_some()
+    }
+
+    /// Whether this run reads input with tuika's decoder and subscribes to
+    /// reports. Never outside the alternate screen: an inline viewport anchors
+    /// itself with `CSI 6n`, whose reply crossterm reads straight from the tty,
+    /// and a reader of our own would take it (and see `CSI r ; c R` as F3).
+    pub(crate) fn decodes_input(&self, mode: ScreenMode) -> bool {
+        self.is_enabled() && mode.is_alternate()
+    }
+
+    pub(crate) fn scheme(&self) -> crate::live::Live<Option<ColorScheme>> {
+        self.scheme.clone()
+    }
+
+    /// The theme to paint with: the pair's member for the reported scheme, or
+    /// the theme the host passed to `run` until a report arrives.
+    pub(crate) fn active(&self, base: &Theme) -> Theme {
+        match (self.themes, self.scheme.with(|scheme| *scheme)) {
+            (Some((light, _)), Some(ColorScheme::Light)) => light,
+            (Some((_, dark)), Some(ColorScheme::Dark)) => dark,
+            _ => *base,
+        }
+    }
+}
+
+/// Subscribes to color-scheme reports for the life of a run and unsubscribes
+/// on every exit path. Declared after the terminal session so it runs first.
+pub(crate) struct SchemeSubscription;
+
+impl SchemeSubscription {
+    pub(crate) fn start() -> io::Result<Self> {
+        let mut out = io::stdout();
+        out.write_all(color_scheme::SUBSCRIBE.as_bytes())?;
+        out.write_all(color_scheme::QUERY.as_bytes())?;
+        out.flush()?;
+        Ok(Self)
+    }
+}
+
+impl Drop for SchemeSubscription {
+    fn drop(&mut self) {
+        let mut out = io::stdout();
+        let _ = out.write_all(color_scheme::UNSUBSCRIBE.as_bytes());
+        let _ = out.flush();
+    }
+}
+
+/// Terminal input read by tuika's own decoder, publishing color-scheme
+/// reports to the runner and handing everything else to `translate_event`.
+#[cfg(unix)]
+pub(crate) struct DecodedEvents {
+    input: crate::term::input::TtyInput,
+    scheme: crate::live::Live<Option<ColorScheme>>,
+}
+
+#[cfg(unix)]
+impl DecodedEvents {
+    pub(crate) fn open(scheme: crate::live::Live<Option<ColorScheme>>) -> io::Result<Self> {
+        Ok(Self {
+            input: crate::term::input::TtyInput::open()?,
+            scheme,
+        })
+    }
+
+    /// Wait up to `timeout`; `Ok(None)` also covers a scheme report, which
+    /// the runner observes through the shared value and its redraw request.
+    pub(crate) fn poll(&mut self, timeout: Duration) -> io::Result<Option<Event>> {
+        use crate::term::input::Decoded;
+        Ok(match self.input.poll(timeout)? {
+            Some(Decoded::Event(raw)) => translate_event(raw),
+            Some(Decoded::ColorScheme(scheme)) => {
+                if self.scheme.with(|current| *current) != Some(scheme) {
+                    self.scheme.set(Some(scheme));
+                }
+                None
+            }
+            None => None,
+        })
+    }
+}
+
+/// The input a real-terminal run reads: crossterm's, or tuika's decoder while
+/// following the color scheme.
+enum TerminalEvents {
+    Crossterm(CrosstermEvents),
+    #[cfg(unix)]
+    Decoded(DecodedEvents),
+}
+
+impl EventSource<io::Error> for TerminalEvents {
+    fn poll_event(&mut self, timeout: Duration) -> io::Result<Option<Event>> {
+        match self {
+            Self::Crossterm(events) => events.poll_event(timeout),
+            #[cfg(unix)]
+            Self::Decoded(events) => events.poll(timeout),
+        }
     }
 }
 
@@ -587,6 +709,7 @@ pub struct Runner {
     scrollback: Scrollback,
     session_config: Option<crate::host::TerminalSessionConfig>,
     text_selection: bool,
+    follow: SchemeFollow,
 }
 
 impl Runner {
@@ -606,6 +729,7 @@ impl Runner {
         // a safe scheduling floor at the boundary.
         config.tick_rate = config.tick_rate.max(Duration::from_millis(1));
         let redraw = RedrawHandle::default();
+        let follow_redraw = redraw.clone();
         let footer_height = crate::live::Live::with_redraw(
             config.screen_mode.footer_height().unwrap_or(1),
             redraw.clone(),
@@ -618,7 +742,39 @@ impl Runner {
             scrollback: Scrollback::new(),
             session_config: None,
             text_selection: true,
+            follow: SchemeFollow::new(follow_redraw),
         }
+    }
+
+    /// Switch between `light` and `dark` as the terminal's color scheme
+    /// changes, while the app runs.
+    ///
+    /// The runner subscribes to the terminal's dark/light reports (mode 2031:
+    /// kitty, Ghostty, Contour, foot, recent WezTerm), asks for the current
+    /// scheme at start, and repaints with the matching theme on every change.
+    /// Until a report arrives — and on a terminal that never sends one — it
+    /// paints with the theme passed to [`run`](Self::run). Read the reported
+    /// scheme with [`color_scheme`](Self::color_scheme).
+    ///
+    /// While this is on, the runner reads terminal input with tuika's own
+    /// decoder instead of crossterm's, because crossterm cannot decode the
+    /// report (see [`term::color_scheme`](crate::term::color_scheme)). Reports
+    /// are only followed in [`ScreenMode::Alternate`]: a split footer anchors
+    /// itself with cursor-position queries that crossterm reads directly, so
+    /// there the runner keeps crossterm's reader and the scheme changes only
+    /// when the host sets [`color_scheme`](Self::color_scheme). On a non-Unix
+    /// platform it likewise keeps crossterm and the startup theme.
+    pub fn follow_color_scheme(mut self, light: Theme, dark: Theme) -> Self {
+        self.follow.enable(light, dark);
+        self
+    }
+
+    /// The color scheme the terminal last reported, `None` until it reports
+    /// one. Setting it repaints with the matching theme from
+    /// [`follow_color_scheme`](Self::follow_color_scheme), which is also how a
+    /// host can switch the theme itself.
+    pub fn color_scheme(&self) -> crate::live::Live<Option<ColorScheme>> {
+        self.follow.scheme()
     }
 
     /// Requested split-footer height. Calling `set` requests a redraw; the
@@ -789,13 +945,16 @@ impl Runner {
         // Declared after the session so cleanup runs first on every exit path,
         // while placements still belong to the screen on which they were made.
         let _graphics_cleanup = graphics.map(FrameGraphicsCleanup);
+        // Subscribe after the session is entered (so the reports reach raw
+        // mode, not the shell) and unsubscribe before it is restored.
+        let (mut events, _subscription) = self.terminal_events()?;
         // This entry point owns the process's stdout, so it is the one that may
         // emit the image layer and the OSC 52 copy after each frame.
         let result = self.drive(
             &mut terminal,
             theme,
             frames,
-            &mut CrosstermEvents,
+            &mut events,
             graphics,
             |copied| {
                 if let Some(graphics) = graphics {
@@ -818,6 +977,20 @@ impl Runner {
             let _ = terminal.clear();
         }
         result
+    }
+
+    /// The input source for a real-terminal run, plus the color-scheme
+    /// subscription when the runner follows it.
+    fn terminal_events(&self) -> io::Result<(TerminalEvents, Option<SchemeSubscription>)> {
+        #[cfg(unix)]
+        if self.follow.decodes_input(self.config.screen_mode) {
+            let events = DecodedEvents::open(self.follow.scheme())?;
+            return Ok((
+                TerminalEvents::Decoded(events),
+                Some(SchemeSubscription::start()?),
+            ));
+        }
+        Ok((TerminalEvents::Crossterm(CrosstermEvents), None))
     }
 
     /// The loop shared by every entry point: no session, no terminal
@@ -850,14 +1023,20 @@ impl Runner {
             terminal.set_footer_height(self.footer_height.with(|height| *height))?;
             pin_footer(terminal)?;
         }
+        let base_theme = theme;
+        let mut current = self.follow.active(base_theme);
         if let RunnerAction::Render(frame) = core.next_action() {
-            let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+            let copied = draw(terminal, &current, frames, frame, graphics, &mut selection)?;
             finish_frame(copied)?;
         }
         let mut last_frame = self.clock.now();
         let mut redraw_at = None;
 
         'running: loop {
+            // A reported scheme change swaps the theme; every cell's colors
+            // change with it, and the redraw request it raised paints them.
+            current = self.follow.active(base_theme);
+            let theme = &current;
             let now = self.clock.now();
             if self.redraw.take() {
                 core.request_redraw();
@@ -1675,6 +1854,97 @@ mod tests {
     use crate::components::Text;
     use crate::event::KeyCode;
     use crate::view::element;
+
+    /// Paints its whole area in the active theme's background.
+    struct Backdrop;
+
+    impl crate::View for Backdrop {
+        fn measure(&self, available: crate::Size, _ctx: &crate::RenderCtx) -> crate::Size {
+            available
+        }
+
+        fn render(&self, _area: Rect, surface: &mut crate::Surface, ctx: &crate::RenderCtx) {
+            surface.fill(crate::ui::Style::default().bg(ctx.theme.background));
+        }
+    }
+
+    #[test]
+    fn a_reported_color_scheme_repaints_with_the_matching_theme() {
+        use crate::style::Color;
+        let base = Theme::default();
+        let light = Theme {
+            background: Color::Rgb(250, 250, 250),
+            ..base
+        };
+        let dark = Theme {
+            background: Color::Rgb(10, 10, 10),
+            ..base
+        };
+        let runner = Runner::new(RunnerConfig::default()).follow_color_scheme(light, dark);
+        let scheme = runner.color_scheme();
+        assert_eq!(scheme.with(|s| *s), None);
+        let mut terminal = terminal(4, 1);
+        let mut state = ();
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &base,
+                from_fn(
+                    &mut state,
+                    |(), _| element(Backdrop),
+                    |(), signal| match signal {
+                        Signal::Event(Event::Key(key)) => match key.code {
+                            KeyCode::Char('d') => {
+                                scheme.set(Some(ColorScheme::Dark));
+                                UpdateResult::Clean
+                            }
+                            KeyCode::Char('l') => {
+                                scheme.set(Some(ColorScheme::Light));
+                                UpdateResult::Clean
+                            }
+                            _ => UpdateResult::Exit,
+                        },
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                scripted_events([
+                    key_event(KeyCode::Char('d')),
+                    key_event(KeyCode::Char('l')),
+                    key_event(KeyCode::Esc),
+                ]),
+            )
+            .unwrap();
+        // The last report wins, and it reached the screen without the
+        // application returning Dirty.
+        assert_eq!(terminal.backend().buffer()[(0, 0)].bg, light.background);
+    }
+
+    #[test]
+    fn scheme_reports_are_only_decoded_on_the_alternate_screen() {
+        let follow = SchemeFollow::new(RedrawHandle::default());
+        assert!(!follow.decodes_input(ScreenMode::Alternate));
+        let mut follow = follow;
+        follow.enable(Theme::default(), Theme::default());
+        assert!(follow.decodes_input(ScreenMode::Alternate));
+        assert!(!follow.decodes_input(ScreenMode::split_footer(2)));
+    }
+
+    #[test]
+    fn scheme_follow_keeps_the_base_theme_until_a_report() {
+        use crate::style::Color;
+        let base = Theme::default();
+        let light = Theme {
+            background: Color::Rgb(250, 250, 250),
+            ..base
+        };
+        let mut follow = SchemeFollow::new(RedrawHandle::default());
+        assert_eq!(follow.active(&base), base);
+        follow.scheme().set(Some(ColorScheme::Light));
+        // Not enabled: a report alone changes nothing.
+        assert_eq!(follow.active(&base), base);
+        follow.enable(light, base);
+        assert_eq!(follow.active(&base), light);
+    }
 
     fn key_event(code: KeyCode) -> Event {
         Event::Key(crate::event::Key::new(code))

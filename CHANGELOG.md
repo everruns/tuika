@@ -69,6 +69,17 @@ next release.
   and `testing::screen_reader`, which reads a frame back as linear plain text.
   Unlabelled views are read from their cells with decoration dropped. `demo --
   <scene> --screen-reader` prints a scene's spoken text.
+- Follow the OS dark/light setting while the app runs. `Runner` and
+  `AsyncRunner` gained `follow_color_scheme(light, dark)`, which subscribes to
+  the terminal's color-scheme reports (mode 2031: kitty, Ghostty, Contour, foot,
+  recent WezTerm) and repaints with the matching theme as the desktop flips, and
+  `color_scheme()`, a `Live<Option<ColorScheme>>` the host can read or set. New
+  module `tuika::term::color_scheme` (`ColorScheme`, `parse_report`,
+  `from_background`, and the `SUBSCRIBE`/`UNSUBSCRIBE`/`QUERY` sequences). While
+  following, the runner reads input with its own decoder, because crossterm
+  holds every key after a report it does not recognise; reports are followed on
+  the alternate screen only. New example:
+  `color_scheme`.
 - Text selection survives scrolling. The runner's built-in selection anchors a
   drag that starts in `Scroll`, `Viewport`, or `ItemScroll` to content rows, so
   it stays on the same text while the view scrolls (instead of being cleared),

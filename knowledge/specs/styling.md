@@ -56,6 +56,14 @@ and `Reset`) or by querying the terminal and deriving one (`Theme::from_terminal
 over `term::palette`). Both produce an ordinary `Theme`, so nothing downstream
 knows the difference.
 
+The theme can also change **while the app runs**. `follow_color_scheme(light,
+dark)` on the runners swaps between two host-chosen themes as the terminal
+reports the OS appearance (mode 2031). The choice is a `Live<Option<ColorScheme>>`
+that triggers a redraw, so the host can read it or set it by hand with the same
+effect; until a report arrives the theme handed to `run` stays. The runner owns
+the swap so that every frame, including split-footer scrollback, paints with one
+theme; a host that wants more than two looks maps the scheme itself.
+
 ## Design
 
 ### Bundles are partial overlays
