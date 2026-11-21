@@ -22,6 +22,7 @@
 //! [`SelectList`]: crate::components::SelectList
 //! [`Boxed::border_color`]: crate::components::Boxed::border_color
 
+use crate::access::{Node as AccessNode, Role as AccessRole, line_text};
 use crate::geometry::Rect;
 use crate::style::Style;
 use crate::text::Line;
@@ -400,6 +401,10 @@ impl View for Table {
             self.draw_cells(&headers, &col_rects, area.y, Some(header_style), surface);
         }
 
+        ctx.record_access(|| {
+            AccessNode::new(AccessRole::Table, "").area(area.intersection(surface.area()))
+        });
+
         // Data rows, windowed around the selection.
         let body_top = area.y.saturating_add(self.header_rows());
         let row_span_w = area.width.saturating_sub(scrollbar_w);
@@ -417,6 +422,15 @@ impl View for Table {
                 break;
             }
             let selected = self.selected == Some(idx);
+            ctx.record_access(|| {
+                let cells: Vec<String> = row.iter().map(line_text).collect();
+                let band = Rect::new(area.x, y, row_span_w, 1).intersection(surface.area());
+                AccessNode::new(AccessRole::Row, cells.join(", "))
+                    .area(band)
+                    .position(idx + 1, window.total())
+                    .selected(selected)
+                    .focused(selected && ctx.focused)
+            });
             let row_style = if selected {
                 let sel = self
                     .selection_style

@@ -68,6 +68,7 @@ use crate::term::traits::Backend;
 use crossterm::event::EventStream;
 use tokio::time::{Instant as TokioInstant, MissedTickBehavior, interval, sleep_until};
 
+use super::screen_reader::{self, ScreenReaderSink, SinkBackend};
 use super::{
     FrameGraphics, FrameGraphicsCleanup, PaintRoot, RESIZE_FRAME_INTERVAL, RunnerAction,
     RunnerCore, RunnerSelection, Signal,
@@ -214,6 +215,7 @@ pub struct AsyncRunner {
     scrollback: Scrollback,
     session_config: Option<crate::TerminalSessionConfig>,
     text_selection: bool,
+    screen_reader: crate::access::ScreenReader,
 }
 
 impl AsyncRunner {
@@ -235,6 +237,7 @@ impl AsyncRunner {
             scrollback: Scrollback::new(),
             session_config: None,
             text_selection: true,
+            screen_reader: crate::access::ScreenReader::default(),
         }
     }
 
@@ -276,6 +279,13 @@ impl AsyncRunner {
     /// [`UpdateResult::Consumed`] or [`UpdateResult::Dirty`] for its events.
     pub fn with_text_selection(mut self, enabled: bool) -> Self {
         self.text_selection = enabled;
+        self
+    }
+
+    /// Choose whether to speak to a screen reader instead of painting cells.
+    /// See [`Runner::with_screen_reader`](crate::Runner::with_screen_reader).
+    pub fn with_screen_reader(mut self, screen_reader: crate::access::ScreenReader) -> Self {
+        self.screen_reader = screen_reader;
         self
     }
 
@@ -395,6 +405,9 @@ impl AsyncRunner {
         F: AsyncFrameSource<M>,
         MS: Stream<Item = io::Result<M>> + Unpin,
     {
+        if self.screen_reader.is_active() {
+            return self.run_screen_reader(theme, &mut frames, messages).await;
+        }
         let graphics = FrameGraphics::detected();
         let mode = self.config.screen_mode;
         let _session = if let Some(config) = self.session_config {
@@ -421,6 +434,7 @@ impl AsyncRunner {
                 events,
                 messages,
                 Some(&graphics),
+                None,
                 |copied| {
                     graphics.finish_frame()?;
                     if let Some(text) = copied {
@@ -458,6 +472,11 @@ impl AsyncRunner {
         F: AsyncFrameSource,
         B: Backend<Error = io::Error>,
     {
+        if self.screen_reader.is_active() {
+            return self
+                .run_screen_reader(theme, &mut frames, no_messages())
+                .await;
+        }
         let mode = self.config.screen_mode;
         let _session = if let Some(config) = self.session_config {
             TerminalSession::enter_config(config)?
@@ -481,6 +500,7 @@ impl AsyncRunner {
                 &mut frames,
                 events,
                 no_messages(),
+                None,
                 None,
                 |_| Ok(()),
             )
@@ -527,10 +547,58 @@ impl AsyncRunner {
         E: Stream<Item = Result<Event, Er>> + Unpin,
         MS: Stream<Item = Result<M, Er>> + Unpin,
     {
-        self.run_inner(terminal, theme, &mut frames, events, messages, None, |_| {
-            Ok(())
-        })
+        self.run_inner(
+            terminal,
+            theme,
+            &mut frames,
+            events,
+            messages,
+            None,
+            None,
+            |_| Ok(()),
+        )
         .await
+    }
+
+    /// Screen-reader mode: the same loop over an off-screen terminal, with
+    /// each frame's changes spoken to stdout. See the synchronous runner's
+    /// counterpart.
+    async fn run_screen_reader<M, F, MS>(
+        &self,
+        theme: &Theme,
+        frames: &mut F,
+        messages: MS,
+    ) -> io::Result<()>
+    where
+        F: AsyncFrameSource<M>,
+        MS: Stream<Item = io::Result<M>> + Unpin,
+    {
+        let _session = TerminalSession::enter_config(screen_reader::session_config())?;
+        let mut terminal = Terminal::with_options(
+            SinkBackend,
+            TerminalOptions {
+                viewport: crate::term::terminal::Viewport::Fullscreen,
+            },
+        )?;
+        let events = stream::filter_map(EventStream::new(), |result| match result {
+            Ok(raw) => translate_event(raw).map(Ok),
+            Err(error) => Some(Err(error)),
+        });
+        let reader = ScreenReaderSink::new(io::stdout());
+        let result = self
+            .run_inner(
+                &mut terminal,
+                theme,
+                frames,
+                events,
+                messages,
+                None,
+                Some(&reader),
+                |_| Ok(()),
+            )
+            .await;
+        let finished = reader.finish();
+        result.and(finished)
     }
 
     /// Run with caller-owned terminal and event stream.
@@ -606,6 +674,7 @@ impl AsyncRunner {
         mut events: E,
         mut messages: MS,
         graphics: Option<&FrameGraphics>,
+        reader: Option<&ScreenReaderSink>,
         mut finish_frame: Finish,
     ) -> Result<(), Er>
     where
@@ -618,8 +687,9 @@ impl AsyncRunner {
         let mut events_done = false;
         let mut messages_done = false;
         let mut core = RunnerCore::new();
-        let mut selection = RunnerSelection::new(self.selects_text());
-        let split = !self.config.screen_mode.is_alternate();
+        let mut selection = RunnerSelection::new(reader.is_none() && self.selects_text());
+        // A screen-reader run never pins a footer: nothing is painted on screen.
+        let split = reader.is_none() && !self.config.screen_mode.is_alternate();
         let mut ticker = interval(self.config.tick_rate);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
@@ -632,7 +702,15 @@ impl AsyncRunner {
             pin_footer(terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
-            let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+            let copied = draw(
+                terminal,
+                theme,
+                frames,
+                frame,
+                graphics,
+                reader,
+                &mut selection,
+            )?;
             finish_frame(copied.as_deref())?;
         }
         let mut last_frame = TokioInstant::now();
@@ -690,7 +768,15 @@ impl AsyncRunner {
                         terminal.set_footer_height(self.footer_height.with(|height| *height))?;
                         pin_footer(terminal)?;
                     }
-                    let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+                    let copied = draw(
+                        terminal,
+                        theme,
+                        frames,
+                        frame,
+                        graphics,
+                        reader,
+                        &mut selection,
+                    )?;
                     finish_frame(copied.as_deref())?;
                     last_frame = TokioInstant::now();
                 }
@@ -744,6 +830,13 @@ impl AsyncRunner {
                     let now = TokioInstant::now();
                     redraw_at = Some(redraw_at.map_or(now, |current| current.min(now)));
                 }
+            } else if let Some(reader) = reader {
+                // Published blocks are spoken whole, once, as they would have
+                // been committed above a footer.
+                if !self.scrollback.is_empty() {
+                    let width = terminal.size()?.width;
+                    reader.announce(&self.scrollback.take_documents(width, theme));
+                }
             } else {
                 self.scrollback.clear();
             }
@@ -754,7 +847,15 @@ impl AsyncRunner {
                         terminal.set_footer_height(self.footer_height.with(|height| *height))?;
                         pin_footer(terminal)?;
                     }
-                    let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+                    let copied = draw(
+                        terminal,
+                        theme,
+                        frames,
+                        frame,
+                        graphics,
+                        reader,
+                        &mut selection,
+                    )?;
                     finish_frame(copied.as_deref())?;
                     last_frame = TokioInstant::now();
                 }
@@ -773,6 +874,7 @@ fn draw<M, S, B, Er>(
     frames: &mut S,
     frame: u64,
     graphics: Option<&FrameGraphics>,
+    reader: Option<&ScreenReaderSink>,
     selection: &mut RunnerSelection,
 ) -> Result<Option<String>, Er>
 where
@@ -784,6 +886,10 @@ where
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
         let ctx = graphics.map_or_else(|| RenderCtx::new(theme), |g| g.render_context(theme));
+        let ctx = match reader {
+            Some(reader) => reader.install(ctx),
+            None => ctx,
+        };
         frames.frame(frame, &mut |root| {
             paint_with_context_and_selection(
                 terminal_frame.buffer_mut(),
@@ -794,6 +900,9 @@ where
                 &selection_frame,
             );
         });
+        if let Some(reader) = reader {
+            reader.capture(terminal_frame.buffer_mut());
+        }
         copied = selection.finish_frame(terminal_frame.buffer_mut(), area, theme, &selection_frame);
     })?;
     Ok(copied)

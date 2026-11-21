@@ -1,5 +1,6 @@
 //! Focus-independent tab navigation with host-owned selection state.
 
+use crate::access::{Node, Role, line_text};
 use crate::geometry::Rect;
 use crate::style::{Modifier, Style};
 use crate::text::Line;
@@ -102,12 +103,14 @@ impl View for Tabs {
         if area.is_empty() {
             return;
         }
+        ctx.record_access(|| Node::new(Role::TabList, "").area(area.intersection(surface.area())));
         let mut x = area.x;
         for (index, label) in self.labels.iter().enumerate() {
             if index > 0 {
                 x = surface.set_string(x, area.y, "  ", ctx.theme.muted_style());
             }
             let selected = index == self.selected;
+            let start = x;
             for span in &label.spans {
                 let style = if selected {
                     span.style.patch(
@@ -120,6 +123,14 @@ impl View for Tabs {
                 };
                 x = surface.set_string(x, area.y, span.content.as_ref(), style);
             }
+            ctx.record_access(|| {
+                let width = x.saturating_sub(start);
+                Node::new(Role::Tab, line_text(label))
+                    .area(Rect::new(start, area.y, width, 1).intersection(surface.area()))
+                    .position(index + 1, self.labels.len())
+                    .selected(selected)
+                    .focused(selected && ctx.focused)
+            });
             if x >= area.right() {
                 break;
             }

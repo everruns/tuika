@@ -83,6 +83,12 @@ impl View for Spinner {
         }
         let color = self.color.unwrap_or(ctx.theme.accent);
         surface.set_string(area.x, area.y, self.glyph(), Style::default().fg(color));
+        // Motion, not meaning: the text beside a spinner says what is busy,
+        // and a changing glyph would be re-read on every frame.
+        if let Some(frame) = ctx.access() {
+            let width = crate::width::str_cols(self.glyph());
+            frame.hide(Rect::new(area.x, area.y, width, 1).intersection(surface.area()));
+        }
     }
 }
 

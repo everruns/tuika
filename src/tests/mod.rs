@@ -12,5 +12,6 @@
 mod fuzz;
 mod integration;
 mod proptests;
+mod screen_reader;
 mod snapshots;
 pub(crate) mod support;

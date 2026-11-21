@@ -7,6 +7,7 @@
 //! [`InputOutcome`] contract so the host can react to a change versus an
 //! activation — the value-select analog of OpenTUI's `TabSelect`.
 
+use crate::access::{Node, Role, line_text};
 use crate::geometry::Rect;
 use crate::style::{Modifier, Style};
 use crate::text::Line;
@@ -165,6 +166,7 @@ impl View for TabSelect {
             return;
         }
         let clip = surface.area().intersection(area);
+        ctx.record_access(|| Node::new(Role::TabList, "").area(area.intersection(surface.area())));
         let mut x = area.x;
         for (index, label) in self.labels.iter().enumerate() {
             if x >= area.right() {
@@ -195,6 +197,14 @@ impl View for TabSelect {
             if let Some(hits) = &self.hits {
                 hits.record(Rect::new(start, area.y, x - start, 1), clip, index);
             }
+            ctx.record_access(|| {
+                let width = x.saturating_sub(start);
+                Node::new(Role::Tab, line_text(label))
+                    .area(Rect::new(start, area.y, width, 1).intersection(surface.area()))
+                    .position(index + 1, self.labels.len())
+                    .selected(selected)
+                    .focused(selected && ctx.focused)
+            });
         }
     }
 }

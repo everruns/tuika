@@ -1,5 +1,6 @@
 //! Responsive labeled-form composition.
 
+use crate::access::{Node as AccessNode, Role as AccessRole};
 use crate::geometry::Rect;
 
 use crate::event::{Event, InputOutcome, KeyCode};
@@ -248,7 +249,13 @@ impl<V: View> View for Form<V> {
             if y >= area.bottom() {
                 break;
             }
+            let field_top = y;
             surface.set_string(area.x, y, &field.label, ctx.theme.text_style());
+            if let Some(frame) = ctx.access() {
+                // The label is spoken as the field's group header instead.
+                let label = Rect::new(area.x, y, str_cols(&field.label), 1);
+                frame.hide(label.intersection(surface.area()));
+            }
             if stacked {
                 y = y.saturating_add(1);
                 if y >= area.bottom() {
@@ -278,6 +285,12 @@ impl<V: View> View for Form<V> {
                 surface.set_string(control_x, y, error, ctx.theme.danger_style());
                 y += 1;
             }
+            ctx.record_access(|| {
+                let rows = y.saturating_sub(field_top).max(1);
+                let cells = Rect::new(area.x, field_top, area.width, rows);
+                AccessNode::new(AccessRole::Group, field.label.clone())
+                    .area(cells.intersection(surface.area()))
+            });
         }
         if let Some(actions) = &self.actions
             && y < area.bottom()

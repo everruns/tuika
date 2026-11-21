@@ -8,6 +8,7 @@
 //! Keys must be unique within the authoritative collection; duplicate keys are
 //! indistinguishable to selection state.
 
+use crate::access::{Node as AccessNode, Role as AccessRole, line_text};
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
 
@@ -1196,6 +1197,9 @@ impl<R, K: PartialEq, F, S: KeyedRowSource<K, Row = R>> View for KeyedTable<'_, 
             }
         }
 
+        ctx.record_access(|| {
+            AccessNode::new(AccessRole::Table, "").area(area.intersection(surface.area()))
+        });
         let body_y = area.y.saturating_add(self.header_rows());
         for (screen_row, index) in window.range().enumerate() {
             let Some(row) = self.source.row(index) else {
@@ -1249,11 +1253,29 @@ impl<R, K: PartialEq, F, S: KeyedRowSource<K, Row = R>> View for KeyedTable<'_, 
                     row_style.unwrap_or_else(|| ctx.theme.muted_style()),
                 );
             }
+            let mut cells = Vec::new();
             for (&column_index, &rect) in indices.iter().zip(&rects) {
                 let column = &self.columns[column_index];
                 let cell = (column.cell)(index, row);
                 self.draw_line(&cell, rect, y, column.align, cell_style, surface);
+                if ctx.access().is_some() {
+                    cells.push(line_text(&cell));
+                }
             }
+            ctx.record_access(|| {
+                let band = Rect::new(area.x, y, area.width.saturating_sub(scrollbar_w), 1)
+                    .intersection(surface.area());
+                let node = AccessNode::new(AccessRole::Row, cells.join(", "))
+                    .area(band)
+                    .position(index + 1, window.total())
+                    .selected(focused)
+                    .focused(focused && ctx.focused);
+                if self.selection.is_multi() {
+                    node.checked(self.selection.checked_source(&self.source, index, row))
+                } else {
+                    node
+                }
+            });
         }
 
         if scrollbar_w == 1 {

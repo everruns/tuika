@@ -1,5 +1,6 @@
 //! Generic, host-data tree navigation with stable node identity.
 
+use crate::access::{Node as AccessNode, Role as AccessRole, line_text};
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::geometry::Rect;
@@ -537,6 +538,9 @@ impl<K: Clone + Ord> View for TreeList<'_, K> {
             .selection_style
             .unwrap_or_else(|| ctx.theme.selection_style());
 
+        ctx.record_access(|| {
+            AccessNode::new(AccessRole::Tree, "").area(area.intersection(surface.area()))
+        });
         for (screen_row, position) in window.range().enumerate() {
             let Some(&source_index) = visible.get(position) else {
                 break;
@@ -547,6 +551,20 @@ impl<K: Clone + Ord> View for TreeList<'_, K> {
                 break;
             }
             let selected = self.state.selected.as_ref() == Some(&row.id);
+            ctx.record_access(|| {
+                let cells = Rect::new(area.x, y, row_width, 1).intersection(surface.area());
+                let node = AccessNode::new(AccessRole::TreeItem, line_text(&row.label))
+                    .area(cells)
+                    .level(u8::try_from(row.depth + 1).unwrap_or(u8::MAX))
+                    .position(position + 1, visible.len())
+                    .selected(selected)
+                    .focused(selected && ctx.focused);
+                if row.expandable {
+                    node.expanded(self.state.is_expanded(&row.id))
+                } else {
+                    node
+                }
+            });
             if selected {
                 surface
                     .child(Rect::new(area.x, y, row_width, 1))
