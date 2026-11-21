@@ -25,6 +25,12 @@
     stands in for Kitty's base-layout key, which crossterm drops. See
     [Keymap](specs/keymap.md).
 
+- **Translucent overlays**
+  - Overlays can tint the layers behind them or be semi-transparent. Alpha is a
+    layer property resolved into opaque cells at composite time, with a dim or
+    opaque fallback for colors that have no RGB value. See
+    [Architecture](specs/architecture.md).
+
 - **Chart annotations join the portable grammar**
   - Bands, value/position reference lines, dashed strokes, grid lines, axis
     titles, and per-series legend visibility are now part of `tuika-charts`'

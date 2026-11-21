@@ -530,6 +530,14 @@ const DEMOS: &[Demo] = &[
         false,
         scene_overlay,
     ),
+    filling_demo(
+        "translucent",
+        "Translucent overlays",
+        "tinted backdrop · see-through panel",
+        14,
+        false,
+        scene_translucent,
+    ),
 ];
 
 fn main() -> io::Result<()> {

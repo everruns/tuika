@@ -49,6 +49,16 @@ rather than adding a second layer above it.
   dialog independent of where it is declared; target placement follows a
   `RectProbe` from the already-painted root for popovers and menus, with
   cross-axis alignment, gaps, edge-aware flipping, and final screen clamping.
+- **Translucency is resolved on the cell grid, at composite time.** A terminal
+  cell has no alpha, so a tinted backdrop or a semi-transparent layer is blended
+  into ordinary opaque cells as the scene composites, and alpha lives on the
+  layer (`Backdrop::Tint`, `SceneOverlay::opacity`) rather than on `Color`,
+  which keeps every other color path alpha-free. Only RGB values blend: `Reset`
+  resolves through the theme, and anything indexed or named has no RGB without
+  the terminal's palette, so it takes the non-truecolor fallback — dim for a
+  backdrop, opaque for a panel — instead of a guessed blend. A translucent layer
+  shows the content beneath only where it painted nothing, so a deliberate space
+  in its own title or text stays its own.
 - **Selection policy is host-configurable**: the core state owns cursor and
   checked-item transitions, while aliases and mouse geometry are explicit
   inputs. Hosts can share picker behavior without inheriting hard-coded keys or

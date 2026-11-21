@@ -23,7 +23,8 @@ pub struct Dialog {
     border: BorderStyle,
     padding: Padding,
     clear: bool,
-    dim: bool,
+    backdrop: Backdrop,
+    opacity: u8,
     owner: Option<String>,
 }
 
@@ -38,7 +39,8 @@ impl Dialog {
             border: BorderStyle::Rounded,
             padding: Padding::symmetric(1, 0),
             clear: true,
-            dim: false,
+            backdrop: Backdrop::None,
+            opacity: u8::MAX,
             owner: None,
         }
     }
@@ -96,8 +98,25 @@ impl Dialog {
     }
 
     /// Dim all already-rendered layers behind the dialog.
+    ///
+    /// Shorthand for [`backdrop`](Self::backdrop) with [`Backdrop::Dim`]
+    /// (`true`) or [`Backdrop::None`] (`false`).
     pub fn dim_backdrop(mut self, dim: bool) -> Self {
-        self.dim = dim;
+        self.backdrop = if dim { Backdrop::Dim } else { Backdrop::None };
+        self
+    }
+
+    /// Treat the already-rendered layers behind the dialog with `backdrop` —
+    /// for example [`Backdrop::tint`] to wash them toward a color.
+    pub fn backdrop(mut self, backdrop: Backdrop) -> Self {
+        self.backdrop = backdrop;
+        self
+    }
+
+    /// Composite the dialog panel at `alpha` opacity (`0..=255`, default
+    /// `255`). See [`SceneOverlay::opacity`].
+    pub fn opacity(mut self, alpha: u8) -> Self {
+        self.opacity = alpha;
         self
     }
 
@@ -125,11 +144,8 @@ impl Dialog {
             .padding(self.padding);
         let mut overlay = SceneOverlay::new(element(panel), self.spec)
             .clear(self.clear)
-            .backdrop(if self.dim {
-                Backdrop::Dim
-            } else {
-                Backdrop::None
-            });
+            .backdrop(self.backdrop)
+            .opacity(self.opacity);
         if let Some(owner) = self.owner {
             overlay = overlay.focus_owner(owner);
         }

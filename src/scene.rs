@@ -92,8 +92,9 @@
 //! ```
 
 use crate::geometry::Rect;
-use crate::style::{Modifier, Style};
+use crate::style::{Color, Style};
 
+use crate::compose;
 use crate::focus::FocusRegistry;
 use crate::geometry::Size;
 use crate::overlay::{OverlaySpec, TargetPlacement};
@@ -102,13 +103,49 @@ use crate::surface::Surface;
 use crate::view::{Element, RenderCtx, View};
 
 /// How an overlay treats the already-rendered layers behind it.
+///
+/// ![translucent overlays demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/translucent.png)
+///
+/// ```
+/// use tuika::prelude::*;
+///
+/// // Wash everything behind a dialog 60% of the way toward black.
+/// let dialog = Dialog::new("Confirm", element(Text::raw("Delete?")))
+///     .backdrop(Backdrop::tint(Color::Rgb(0, 0, 0), 153));
+/// let scene = Scene::new(element(Text::raw("base"))).dialog(dialog);
+/// let frame = tuika::testing::render(&scene, 30, 8, &Theme::default());
+/// assert!(tuika::testing::grid(&frame).contains("Delete?"));
+/// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Backdrop {
     /// Leave the layers behind the overlay unchanged.
     #[default]
     None,
     /// Add the terminal's dim modifier to the layers behind the overlay.
     Dim,
+    /// Blend `color` over the layers behind the overlay with `alpha` opacity
+    /// (`0` leaves them unchanged, `255` paints solid `color`).
+    ///
+    /// Background, foreground, and underline colors all blend, so text behind
+    /// the overlay fades with it. Blending needs RGB values: [`Color::Reset`]
+    /// resolves to the theme's `background` or `text` slot, and any cell — or
+    /// a `color` — without an RGB value (an indexed or named ANSI color, as in
+    /// [`themes::TERMINAL`](crate::themes::TERMINAL)) falls back to
+    /// [`Backdrop::Dim`] rather than a guessed blend.
+    Tint {
+        /// The color washed over the layers behind.
+        color: Color,
+        /// Opacity of the wash, `0..=255`.
+        alpha: u8,
+    },
+}
+
+impl Backdrop {
+    /// A [`Backdrop::Tint`] of `color` at `alpha` opacity (`0..=255`).
+    pub const fn tint(color: Color, alpha: u8) -> Self {
+        Self::Tint { color, alpha }
+    }
 }
 
 /// An owned overlay whose placement is resolved against the scene at render time.
@@ -117,6 +154,7 @@ pub struct SceneOverlay {
     spec: OverlaySpec,
     clear: bool,
     backdrop: Backdrop,
+    opacity: u8,
     focus_owner: Option<String>,
     target: Option<(RectProbe, TargetPlacement)>,
 }
@@ -129,6 +167,7 @@ impl SceneOverlay {
             spec,
             clear: true,
             backdrop: Backdrop::None,
+            opacity: u8::MAX,
             focus_owner: None,
             target: None,
         }
@@ -143,6 +182,32 @@ impl SceneOverlay {
     /// Configure the backdrop rendered behind this layer.
     pub fn backdrop(mut self, backdrop: Backdrop) -> Self {
         self.backdrop = backdrop;
+        self
+    }
+
+    /// Composite this layer over the layers behind it at `alpha` opacity
+    /// (`0..=255`, default `255` — fully opaque).
+    ///
+    /// Below `255` the layer is translucent: its background blends with what
+    /// it covers, and where the layer leaves a cell blank the glyph beneath
+    /// shows through, faded toward the layer's background. Glyphs the layer
+    /// draws itself stay at full strength, so a semi-transparent panel's own
+    /// text remains legible. Blending needs RGB values on both sides
+    /// ([`Color::Reset`] resolves through the theme); a cell without one keeps
+    /// the layer's opaque cell — the fallback on a theme built from ANSI
+    /// palette slots.
+    ///
+    /// ```
+    /// use tuika::prelude::*;
+    ///
+    /// let panel = SceneOverlay::new(element(Text::raw("HUD")), OverlaySpec::centered(50, 50))
+    ///     .opacity(192);
+    /// let scene = Scene::new(element(Text::raw("background text"))).overlay(panel);
+    /// let frame = tuika::testing::render(&scene, 20, 4, &Theme::default());
+    /// assert!(tuika::testing::grid(&frame).contains("HUD"));
+    /// ```
+    pub fn opacity(mut self, alpha: u8) -> Self {
+        self.opacity = alpha;
         self
     }
 
@@ -343,25 +408,40 @@ fn render_scene<V: View + ?Sized>(
 
     let top = overlays.len().saturating_sub(1);
     for (index, overlay) in overlays.iter().enumerate() {
-        if overlay.backdrop == Backdrop::Dim {
-            let dim_area = area.intersection(surface.area());
-            let buffer = surface.buffer_mut();
-            for y in dim_area.y..dim_area.bottom() {
-                for x in dim_area.x..dim_area.right() {
-                    buffer[(x, y)].set_style(Style::default().add_modifier(Modifier::DIM));
-                }
+        let backdrop_area = area.intersection(surface.area());
+        match overlay.backdrop {
+            Backdrop::None => {}
+            Backdrop::Dim => compose::dim(surface.buffer_mut(), backdrop_area),
+            Backdrop::Tint { color, alpha } => {
+                compose::tint(surface.buffer_mut(), backdrop_area, color, alpha, ctx.theme);
             }
         }
         let overlay_area = overlay.resolve(area);
+        // A translucent layer paints over a marked copy of what it covers and
+        // is then composited onto it; an opaque one skips the copy.
+        let visible = overlay_area.intersection(surface.area());
+        let fill = Style::default().bg(ctx.theme.surface);
+        let under = (overlay.opacity < u8::MAX)
+            .then(|| compose::begin(surface.buffer_mut(), visible, overlay.clear.then_some(fill)));
         let mut layer = surface.child(overlay_area);
-        // A dimmed backdrop is the modal signal: what it dims is inert.
-        ctx.begin_access_overlay(layer.area(), overlay.backdrop == Backdrop::Dim);
-        if overlay.clear {
-            layer.fill(Style::default().bg(ctx.theme.surface));
+        // A dimmed or tinted backdrop is the modal signal: what it covers is
+        // inert.
+        ctx.begin_access_overlay(layer.area(), overlay.backdrop != Backdrop::None);
+        if overlay.clear && under.is_none() {
+            layer.fill(fill);
         }
         overlay
             .view
             .render(overlay_area, &mut layer, &ctx.with_focus(index == top));
+        if let Some(under) = under {
+            compose::over(
+                surface.buffer_mut(),
+                visible,
+                &under,
+                overlay.opacity,
+                ctx.theme,
+            );
+        }
     }
 }
 
@@ -374,6 +454,7 @@ mod tests {
     use crate::components::Text;
     use crate::overlay::{Extent, TargetAlign, TargetPlacement};
     use crate::probe::RectProbe;
+    use crate::style::Modifier;
     use crate::testing::{grid, render};
     use crate::{Theme, element};
 
@@ -537,6 +618,87 @@ mod tests {
             owned_top.layer(element(Text::raw("tooltip")), OverlaySpec::centered(20, 20));
         ownerless_top.sync_focus(&mut focus);
         assert_eq!(focus.active(), Some("base"));
+    }
+
+    fn rgb_theme() -> Theme {
+        Theme {
+            background: Color::Rgb(0, 0, 0),
+            surface: Color::Rgb(200, 200, 200),
+            text: Color::Rgb(255, 255, 255),
+            ..Theme::default()
+        }
+    }
+
+    #[test]
+    fn tint_backdrop_blends_the_layers_behind_but_not_the_overlay() {
+        let scene = Scene::new(element(Text::raw("base text"))).overlay(
+            SceneOverlay::new(element(Text::raw("top")), OverlaySpec::centered(30, 34))
+                .backdrop(Backdrop::tint(Color::Rgb(0, 0, 255), 128)),
+        );
+        let theme = rgb_theme();
+        let frame = render(&scene, 10, 3, &theme);
+        // Root cell (0,0) had Reset bg (→ theme.background black) and Reset
+        // fg (→ theme.text white): both move halfway toward blue.
+        assert_eq!(frame[(0, 0)].bg, Color::Rgb(0, 0, 128));
+        assert_eq!(frame[(0, 0)].fg, Color::Rgb(127, 127, 255));
+        assert_eq!(frame[(0, 0)].symbol(), "b");
+        // The overlay paints over the wash at full strength.
+        let top = (0..10).find(|&x| frame[(x, 1)].symbol() == "t").unwrap();
+        assert_eq!(frame[(top, 1)].bg, theme.surface);
+        assert!(!frame[(0, 0)].modifier.contains(Modifier::DIM));
+    }
+
+    #[test]
+    fn tint_backdrop_falls_back_to_dim_on_an_ansi_theme() {
+        let scene = Scene::new(element(Text::raw("base"))).overlay(
+            SceneOverlay::new(element(Text::raw("top")), OverlaySpec::centered(10, 10))
+                .backdrop(Backdrop::tint(Color::Rgb(0, 0, 0), 160)),
+        );
+        let frame = render(&scene, 8, 3, &crate::themes::TERMINAL);
+        assert!(frame[(0, 0)].modifier.contains(Modifier::DIM));
+        assert_eq!(frame[(0, 0)].bg, Color::Reset);
+    }
+
+    #[test]
+    fn translucent_overlay_shows_the_root_through_its_blank_cells() {
+        let scene = Scene::new(element(Text::raw("abcdefgh"))).overlay(
+            SceneOverlay::new(element(Text::raw("X")), OverlaySpec::centered(50, 100)).opacity(128),
+        );
+        let theme = rgb_theme();
+        let frame = render(&scene, 8, 1, &theme);
+        assert_eq!(grid(&frame).lines().next().unwrap(), "abXdefgh");
+        // Halfway between black and the light-gray surface.
+        assert_eq!(frame[(3, 0)].bg, Color::Rgb(100, 100, 100));
+        // White root text washed halfway toward the surface.
+        assert_eq!(frame[(3, 0)].fg, Color::Rgb(227, 227, 227));
+        // Outside the overlay nothing changed.
+        let bare = render(&Text::raw("abcdefgh"), 8, 1, &theme);
+        assert_eq!(frame[(7, 0)], bare[(7, 0)]);
+
+        let opaque = Scene::new(element(Text::raw("abcdefgh"))).overlay(SceneOverlay::new(
+            element(Text::raw("X")),
+            OverlaySpec::centered(50, 100),
+        ));
+        let frame = render(&opaque, 8, 1, &theme);
+        assert_eq!(grid(&frame).lines().next().unwrap(), "abX   gh");
+    }
+
+    #[test]
+    fn translucent_overlay_respects_the_parent_surface_clip() {
+        use crate::buffer::{Buffer, Cell};
+
+        let mut buffer = Buffer::filled(Rect::new(0, 0, 6, 1), Cell::new("#"));
+        let scene = Scene::new(element(Text::raw(""))).overlay(
+            SceneOverlay::new(element(Text::raw("")), OverlaySpec::centered(100, 100)).opacity(64),
+        );
+        let theme = rgb_theme();
+        let ctx = RenderCtx::new(&theme);
+        let mut surface = Surface::new(&mut buffer, Rect::new(2, 0, 2, 1));
+        scene.render(Rect::new(0, 0, 6, 1), &mut surface, &ctx);
+
+        assert_eq!(buffer[(1, 0)].bg, Color::Reset);
+        assert_ne!(buffer[(2, 0)].bg, Color::Reset);
+        assert_eq!(buffer[(4, 0)].bg, Color::Reset);
     }
 
     #[test]
