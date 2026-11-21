@@ -3,8 +3,11 @@ use tuika::term::image::ImageData;
 use tuika::ui::Color;
 
 use crate::axis::AxisLayout;
+use crate::cells::reference_visible;
+use crate::model::PlotModel;
 use crate::plan::{ChartPlan, Geometry};
-use crate::{Chart, Point, draw_line};
+use crate::reference::ReferenceAt;
+use crate::{Chart, Point, draw_dashed, draw_line, fill_polygon};
 
 const PIXELS_PER_COL: u32 = 8;
 const PIXELS_PER_ROW: u32 = 16;
@@ -30,89 +33,153 @@ pub(super) fn render_pixels(
     // labels outside the image already do.
     let pixels = usize::try_from(width.checked_mul(height)?).ok()?;
     let mut rgba = vec![0u8; pixels * 4];
-    // The image plot occupies exactly the cells the portable renderer plots
-    // into: one column for the axis, one row for its baseline. Tick labels sit
-    // outside the image, so any other margin would misalign them.
-    let left = PIXELS_PER_COL;
-    let plot_width = width.saturating_sub(left);
-    let plot_height = height.saturating_sub(PIXELS_PER_ROW);
-    if plot_width == 0 || plot_height == 0 {
+    let data_cols = u32::from(cols).saturating_sub(1);
+    let data_rows = u32::from(rows).saturating_sub(1);
+    if data_cols == 0 || data_rows == 0 {
         return ImageData::from_rgba(width, height, rgba);
     }
-    let at = |point: Point| {
-        let (x, y) = model.map(point, plot_width, plot_height);
-        (x + left as i32, y)
-    };
+    let frame = Frame::new(model, data_cols, data_rows);
 
     let axis = rgb(ctx.theme.border);
-    let axis_x = left as i32 - 1;
-    let baseline_y = plot_height as i32;
     pixel_line(
         &mut rgba,
         width,
         height,
-        (axis_x, 0),
-        (axis_x, baseline_y),
+        (frame.axis_x, 0),
+        (frame.axis_x, frame.baseline_y),
         axis,
     );
     pixel_line(
         &mut rgba,
         width,
         height,
-        (axis_x, baseline_y),
-        ((left + plot_width) as i32, baseline_y),
+        (frame.axis_x, frame.baseline_y),
+        (width as i32 - 1, frame.baseline_y),
         axis,
     );
     for tick in &layout.y {
-        let y = at(model.up_at(tick.value)).1;
-        pixel_line(&mut rgba, width, height, (axis_x - 3, y), (axis_x, y), axis);
-    }
-    for tick in &layout.x {
-        let x = at(model.across_at(tick.value)).0;
+        let y = frame.at(model.up_at(tick.value)).1;
         pixel_line(
             &mut rgba,
             width,
             height,
-            (x, baseline_y),
-            (x, baseline_y + 3),
+            (frame.axis_x - 3, y),
+            (frame.axis_x, y),
             axis,
         );
+    }
+    for tick in &layout.x {
+        let x = frame.at(model.across_at(tick.value)).0;
+        pixel_line(
+            &mut rgba,
+            width,
+            height,
+            (x, frame.baseline_y),
+            (x, frame.baseline_y + 3),
+            axis,
+        );
+    }
+
+    // Reference geometry first, so every mark lands on top of it.
+    let (across_axis, up_axis) = crate::axis::screen_axes(chart);
+    let grid = rgb(ctx.theme.dim);
+    if up_axis.grid {
+        for tick in &layout.y {
+            let y = frame.at(model.up_at(tick.value)).1;
+            if y < frame.baseline_y {
+                let line = [(frame.axis_x + 1, y), (width as i32 - 1, y)];
+                draw_dashed(&line, GRID_ON, GRID_OFF, |x, y| {
+                    set_pixel(&mut rgba, width, height, x, y, grid);
+                });
+            }
+        }
+    }
+    if across_axis.grid {
+        for tick in &layout.x {
+            let x = frame.at(model.across_at(tick.value)).0;
+            if x > frame.axis_x {
+                let line = [(x, 0), (x, frame.baseline_y - 1)];
+                draw_dashed(&line, GRID_ON, GRID_OFF, |x, y| {
+                    set_pixel(&mut rgba, width, height, x, y, grid);
+                });
+            }
+        }
     }
 
     // The zero rule, when the value domain straddles it, so negative geometry
     // is read against the baseline rather than against the frame.
     if model.y.min < 0.0 && model.y.max > 0.0 {
         if model.horizontal {
-            let x = at(model.across_at(0.0)).0;
-            pixel_line(&mut rgba, width, height, (x, 0), (x, baseline_y), axis);
-        } else {
-            let y = at(model.up_at(0.0)).1;
+            let x = frame.at(model.across_at(0.0)).0;
             pixel_line(
                 &mut rgba,
                 width,
                 height,
-                (left as i32, y),
-                ((left + plot_width) as i32, y),
+                (x, 0),
+                (x, frame.baseline_y),
                 axis,
             );
+        } else {
+            let y = frame.at(model.up_at(0.0)).1;
+            pixel_line(
+                &mut rgba,
+                width,
+                height,
+                (frame.axis_x, y),
+                (width as i32 - 1, y),
+                axis,
+            );
+        }
+    }
+
+    for reference in chart
+        .references
+        .iter()
+        .filter(|reference| reference.finite() && reference_visible(model, reference))
+    {
+        let color = rgb(reference.color.unwrap_or(ctx.theme.border));
+        let point = match reference.at {
+            ReferenceAt::Value(v) => model.value_point(v),
+            ReferenceAt::Position(p) => model.position_point(p),
+        };
+        let (x, y) = frame.at(point);
+        let across = matches!(reference.at, ReferenceAt::Value(_)) != model.horizontal;
+        let line = if across {
+            [(frame.axis_x + 1, y), (width as i32 - 1, y)]
+        } else {
+            [(x, 0), (x, frame.baseline_y - 1)]
+        };
+        if reference.dashed {
+            draw_dashed(&line, DASH_ON, DASH_OFF, |x, y| {
+                set_pixel(&mut rgba, width, height, x, y, color);
+            });
+        } else {
+            pixel_line(&mut rgba, width, height, line[0], line[1], color);
         }
     }
 
     if let Some(focus) = chart.focus {
         let accent = rgb(ctx.theme.accent);
         if model.horizontal {
-            let y = at(model.up_at(focus)).1;
+            let y = frame.at(model.up_at(focus)).1;
             pixel_line(
                 &mut rgba,
                 width,
                 height,
-                (left as i32, y),
-                ((left + plot_width) as i32, y),
+                (frame.axis_x, y),
+                (width as i32 - 1, y),
                 accent,
             );
         } else {
-            let x = at(model.across_at(focus)).0;
-            pixel_line(&mut rgba, width, height, (x, 0), (x, baseline_y), accent);
+            let x = frame.at(model.across_at(focus)).0;
+            pixel_line(
+                &mut rgba,
+                width,
+                height,
+                (x, 0),
+                (x, frame.baseline_y),
+                accent,
+            );
         }
     }
 
@@ -120,24 +187,48 @@ pub(super) fn render_pixels(
         let color = rgb(mark.color);
         match &mark.geometry {
             Geometry::Path { points, stepped } => {
-                let mapped: Vec<_> = points.iter().map(|point| at(*point)).collect();
-                pixel_polyline(&mut rgba, width, height, &mapped, color, *stepped);
+                let mapped: Vec<_> = points.iter().map(|point| frame.at(*point)).collect();
+                if mark.dashed {
+                    let path = if *stepped {
+                        crate::cells::stepped_path(&mapped)
+                    } else {
+                        mapped
+                    };
+                    let thick: Vec<_> = path.iter().map(|&(x, y)| (x, y + 1)).collect();
+                    for path in [&path, &thick] {
+                        draw_dashed(path, DASH_ON, DASH_OFF, |x, y| {
+                            set_pixel(&mut rgba, width, height, x, y, color);
+                        });
+                    }
+                } else {
+                    pixel_polyline(&mut rgba, width, height, &mapped, color, *stepped);
+                }
             }
             Geometry::Points(points) => {
                 for point in points {
-                    pixel_marker(&mut rgba, width, height, at(*point), color);
+                    pixel_marker(&mut rgba, width, height, frame.at(*point), color);
                 }
             }
             Geometry::Band { upper, lower } => {
-                let edge: Vec<_> = upper.iter().map(|point| at(*point)).collect();
-                let floor: Vec<_> = lower.iter().map(|point| at(*point)).collect();
+                let edge: Vec<_> = upper.iter().map(|point| frame.at(*point)).collect();
+                let floor: Vec<_> = lower.iter().map(|point| frame.floor(*point)).collect();
                 pixel_band(&mut rgba, width, height, &edge, &floor, dim(color));
                 pixel_polyline(&mut rgba, width, height, &edge, color, false);
             }
+            Geometry::Fill { upper, lower } => {
+                let upper: Vec<_> = upper.iter().map(|point| frame.floor(*point)).collect();
+                let lower: Vec<_> = lower.iter().map(|point| frame.floor(*point)).collect();
+                fill_polygon(&upper, &lower, |x, y| {
+                    set_pixel(&mut rgba, width, height, x, y, color);
+                });
+            }
             Geometry::Bars { bars, .. } => {
                 for bar in bars {
-                    let (x0, y0) = at(Point::new(bar.x0, bar.y0));
-                    let (x1, y1) = at(Point::new(bar.x1, bar.y1));
+                    // The base corner snaps to the axis when it rests on the
+                    // domain edge, so a bar reaches the baseline it is read
+                    // against instead of stopping half a cell short.
+                    let (x0, y0) = frame.floor(Point::new(bar.x0, bar.y0));
+                    let (x1, y1) = frame.at(Point::new(bar.x1, bar.y1));
                     for x in x0.min(x1)..=x0.max(x1) {
                         pixel_line(&mut rgba, width, height, (x, y0), (x, y1), color);
                     }
@@ -147,11 +238,77 @@ pub(super) fn render_pixels(
         }
         if mark.markers {
             for sample in &mark.samples {
-                pixel_marker(&mut rgba, width, height, at(*sample), color);
+                pixel_marker(&mut rgba, width, height, frame.at(*sample), color);
             }
         }
     }
     ImageData::from_rgba(width, height, rgba)
+}
+
+/// Grid lines are dotted, as the cell renderer's `┈`/`┊` glyphs are: a solid
+/// line in the same color would outweigh the data it is meant to sit behind.
+const GRID_ON: u32 = 1;
+const GRID_OFF: u32 = 2;
+
+/// Dash pattern for graphics strokes, in pixels: about one cell on, half off.
+const DASH_ON: u32 = 7;
+const DASH_OFF: u32 = 4;
+
+/// Data-to-pixel mapping that lands on the same cells the cell renderer uses.
+///
+/// Tick labels are cells, placed at the row or column the cell renderer maps a
+/// value to. Mapping the image's data range onto the *centres* of those same
+/// cells, rather than stretching it edge to edge, keeps a label level with the
+/// pixel it names: stretched, a value near the top drifted up to a whole row
+/// away from its label.
+struct Frame {
+    model: PlotModel,
+    /// Pixel span of the data range: from the first to the last data cell's
+    /// centre.
+    span_x: u32,
+    span_y: u32,
+    /// Centre of the first data column and of the top data row.
+    origin_x: i32,
+    origin_y: i32,
+    /// The axis lines, through the centres of the axis column and row, where
+    /// the cell renderer draws `│` and `─`.
+    axis_x: i32,
+    baseline_y: i32,
+}
+
+impl Frame {
+    fn new(model: &PlotModel, data_cols: u32, data_rows: u32) -> Self {
+        let half_col = (PIXELS_PER_COL / 2) as i32;
+        let half_row = (PIXELS_PER_ROW / 2) as i32;
+        Self {
+            model: *model,
+            span_x: (data_cols - 1) * PIXELS_PER_COL,
+            span_y: (data_rows - 1) * PIXELS_PER_ROW,
+            origin_x: PIXELS_PER_COL as i32 + half_col,
+            origin_y: half_row,
+            axis_x: half_col,
+            baseline_y: (data_rows * PIXELS_PER_ROW) as i32 + half_row,
+        }
+    }
+
+    fn at(&self, point: Point) -> (i32, i32) {
+        let (x, y) = self.model.map(point, self.span_x + 1, self.span_y + 1);
+        (x + self.origin_x, y + self.origin_y)
+    }
+
+    /// Like [`Frame::at`], but a coordinate on the value domain's low edge is
+    /// pulled onto the axis: fills and bars rest on the baseline rather than
+    /// on the centre of the last data cell.
+    fn floor(&self, point: Point) -> (i32, i32) {
+        let (x, y) = self.at(point);
+        if self.model.horizontal {
+            let low = x <= self.origin_x;
+            (if low { self.axis_x + 1 } else { x }, y)
+        } else {
+            let low = y >= self.origin_y + self.span_y as i32;
+            (x, if low { self.baseline_y - 1 } else { y })
+        }
+    }
 }
 
 /// A smooth ring. The cell renderer paints the same arcs in block glyphs; here
@@ -305,4 +462,48 @@ fn set_pixel(rgba: &mut [u8], width: u32, height: u32, x: i32, y: i32, color: (u
     }
     let offset = ((y as u32 * width + x as u32) * 4) as usize;
     rgba[offset..offset + 4].copy_from_slice(&[color.0, color.1, color.2, 255]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Domain;
+
+    #[test]
+    fn every_value_lands_in_the_cell_row_the_cell_renderer_uses() {
+        // The label for a value is printed on the row `PlotModel::map` gives
+        // it at cell resolution; the pixel for the same value has to fall
+        // inside that row, or the label points somewhere else.
+        let model = PlotModel {
+            x: Domain::new(0.0, 32.0).unwrap(),
+            y: Domain::new(0.0, 300.0).unwrap(),
+            horizontal: false,
+        };
+        for data_rows in [3u32, 7, 13, 28, 41] {
+            let data_cols = 40;
+            let frame = Frame::new(&model, data_cols, data_rows);
+            for step in 0..=60 {
+                let value = f64::from(step) * 5.0;
+                let row = model.map(model.value_point(value), data_cols, data_rows).1;
+                let y = frame.at(model.value_point(value)).1;
+                let top = row * PIXELS_PER_ROW as i32;
+                assert!(
+                    (top..top + PIXELS_PER_ROW as i32).contains(&y),
+                    "{value} at pixel {y}, label row {row} ({data_rows} rows)"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fills_rest_on_the_axis_line() {
+        let model = PlotModel {
+            x: Domain::new(0.0, 1.0).unwrap(),
+            y: Domain::new(0.0, 1.0).unwrap(),
+            horizontal: false,
+        };
+        let frame = Frame::new(&model, 10, 10);
+        assert_eq!(frame.floor(Point::new(0.5, 0.0)).1, frame.baseline_y - 1);
+        assert!(frame.at(Point::new(0.5, 0.0)).1 < frame.baseline_y - 1);
+    }
 }

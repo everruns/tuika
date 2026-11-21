@@ -11,6 +11,7 @@ use tuika::RenderCtx;
 use tuika::ui::Color;
 
 use crate::model::{Domain, PlotModel, Point};
+use crate::reference::{Reference, ReferenceAt};
 use crate::{Chart, SeriesKind, chart_color};
 
 /// How overlapping bar or area series combine.
@@ -49,6 +50,13 @@ pub(crate) enum Geometry {
         upper: Vec<Point>,
         lower: Vec<Point>,
     },
+    /// A closed region between two absolute edges, filled with no stroke.
+    /// Unlike [`Geometry::Band`] the edges may cross and need not share x
+    /// positions: renderers fill the polygon `upper` + reversed `lower`.
+    Fill {
+        upper: Vec<Point>,
+        lower: Vec<Point>,
+    },
     /// Independent marks.
     Points(Vec<Point>),
     /// Bars, already offset into their group slot and stacked if asked.
@@ -76,6 +84,10 @@ pub(crate) struct Mark {
     pub(crate) samples: Vec<Point>,
     pub(crate) markers: bool,
     pub(crate) labelled: bool,
+    /// Stroke paths with a dash pattern.
+    pub(crate) dashed: bool,
+    /// Listed in the legend and the focus readout.
+    pub(crate) legend: bool,
 }
 
 /// Every series' geometry plus the domains that contain it.
@@ -152,6 +164,8 @@ fn arc_marks(chart: &Chart, ctx: &RenderCtx) -> Vec<Mark> {
             samples: vec![Point::new(index as f64, value)],
             markers: false,
             labelled: series.labelled,
+            dashed: false,
+            legend: series.legend,
         });
         start += sweep;
     }
@@ -195,6 +209,20 @@ fn cartesian_marks(chart: &Chart, ctx: &RenderCtx) -> Vec<Mark> {
             },
             SeriesKind::Scatter => Geometry::Points(samples.clone()),
             SeriesKind::Donut => continue,
+            SeriesKind::Band { ref lower } => {
+                // Pair by index and drop a pair if either side is non-finite,
+                // so one bad sample cannot shear the polygon.
+                let (upper, lower): (Vec<Point>, Vec<Point>) = series
+                    .points
+                    .iter()
+                    .zip(lower.iter())
+                    .filter(|(hi, lo)| {
+                        hi.x.is_finite() && hi.y.is_finite() && lo.x.is_finite() && lo.y.is_finite()
+                    })
+                    .map(|(hi, lo)| (*hi, *lo))
+                    .unzip();
+                Geometry::Fill { upper, lower }
+            }
             SeriesKind::Area => {
                 let mut upper = Vec::with_capacity(samples.len());
                 let mut lower = Vec::with_capacity(samples.len());
@@ -257,6 +285,8 @@ fn cartesian_marks(chart: &Chart, ctx: &RenderCtx) -> Vec<Mark> {
             samples,
             markers: series.markers,
             labelled: series.labelled,
+            dashed: series.dashed,
+            legend: series.legend,
         });
     }
     marks
@@ -355,7 +385,9 @@ impl Geometry {
             Geometry::Path { points, .. } | Geometry::Points(points) => {
                 Box::new(points.iter().copied())
             }
-            Geometry::Band { upper, lower } => Box::new(upper.iter().chain(lower.iter()).copied()),
+            Geometry::Band { upper, lower } | Geometry::Fill { upper, lower } => {
+                Box::new(upper.iter().chain(lower.iter()).copied())
+            }
             Geometry::Bars { bars, band } => {
                 let half = *band / 2.0;
                 Box::new(bars.iter().flat_map(move |bar| {
@@ -374,7 +406,10 @@ impl Geometry {
 /// Domain extents that keep a bar or area anchored to the baseline it is read
 /// against. The geometry already carries that baseline as its own low edge, so
 /// no separate rule is needed.
-pub(crate) fn extents(marks: &[Mark]) -> Option<(Domain, Domain)> {
+///
+/// References widen only the axis they mark: a value line must stay visible,
+/// but it says nothing about which positions the data covers.
+pub(crate) fn extents(marks: &[Mark], references: &[Reference]) -> Option<(Domain, Domain)> {
     let (mut xmin, mut xmax, mut ymin, mut ymax) = (
         f64::INFINITY,
         f64::NEG_INFINITY,
@@ -391,7 +426,22 @@ pub(crate) fn extents(marks: &[Mark]) -> Option<(Domain, Domain)> {
         ymin = ymin.min(point.y);
         ymax = ymax.max(point.y);
     }
-    xmin.is_finite().then_some((
+    if !xmin.is_finite() {
+        return None;
+    }
+    for reference in references.iter().filter(|reference| reference.finite()) {
+        match reference.at {
+            ReferenceAt::Value(y) => {
+                ymin = ymin.min(y);
+                ymax = ymax.max(y);
+            }
+            ReferenceAt::Position(x) => {
+                xmin = xmin.min(x);
+                xmax = xmax.max(x);
+            }
+        }
+    }
+    Some((
         Domain {
             min: xmin,
             max: xmax,

@@ -34,6 +34,12 @@ pub enum SeriesKind {
     Step,
     /// A ring segment sized by the series' total, drawn as part of a donut.
     Donut,
+    /// Fill the region between `lower` and the series' own points, with no
+    /// edge stroke. Bands ignore stacking: both edges are absolute values.
+    Band {
+        /// The lower edge. Paired with the upper edge's points by index.
+        lower: Vec<Point>,
+    },
 }
 
 /// One named data series.
@@ -51,6 +57,10 @@ pub struct Series {
     pub markers: bool,
     /// Print each sample's value beside its mark.
     pub labelled: bool,
+    /// Stroke connected geometry with a dash pattern instead of a solid line.
+    pub dashed: bool,
+    /// List the series in the legend and the focus readout.
+    pub legend: bool,
 }
 
 impl Series {
@@ -79,6 +89,22 @@ impl Series {
         Self::new(name, SeriesKind::Step, points)
     }
 
+    /// Construct a filled band between two edges — matplotlib's
+    /// `fill_between`, the shape of a percentile or confidence range.
+    ///
+    /// `lower` and `upper` are paired by index; the shorter edge decides how
+    /// many samples the band has. The fill is drawn in the series color as
+    /// given, in both renderers, so choose a muted color and draw any edge
+    /// lines as separate line series on top.
+    pub fn band(
+        name: impl Into<String>,
+        lower: impl IntoIterator<Item = Point>,
+        upper: impl IntoIterator<Item = Point>,
+    ) -> Self {
+        let lower = lower.into_iter().collect();
+        Self::new(name, SeriesKind::Band { lower }, upper)
+    }
+
     /// Construct a donut segment. Its share of the ring is its total.
     pub fn donut(name: impl Into<String>, points: impl IntoIterator<Item = Point>) -> Self {
         Self::new(name, SeriesKind::Donut, points)
@@ -96,6 +122,8 @@ impl Series {
             color: None,
             markers: false,
             labelled: false,
+            dashed: false,
+            legend: true,
         }
     }
 
@@ -109,6 +137,21 @@ impl Series {
     /// would otherwise only show a trend.
     pub fn markers(mut self) -> Self {
         self.markers = true;
+        self
+    }
+
+    /// Stroke a line or step series with a dash pattern, the way a target or a
+    /// forecast is told apart from measured data. Other kinds ignore it.
+    pub fn dashed(mut self) -> Self {
+        self.dashed = true;
+        self
+    }
+
+    /// Show or hide the series in the legend and the focus readout. Hidden
+    /// series still draw; use this for helper geometry a reader should not
+    /// have to decode.
+    pub fn legend(mut self, visible: bool) -> Self {
+        self.legend = visible;
         self
     }
 
@@ -148,7 +191,7 @@ impl PlotModel {
     /// Size the plot around resolved geometry rather than raw points, so
     /// stacked totals and bar widths are inside the domain by construction.
     pub(crate) fn new(chart: &Chart, marks: &[Mark]) -> Option<Self> {
-        let (x, y) = crate::plan::extents(marks)?;
+        let (x, y) = crate::plan::extents(marks, &chart.references)?;
         Some(Self {
             x: chart
                 .x_domain
@@ -210,6 +253,16 @@ impl PlotModel {
         } else {
             Point::new(self.x.min, value)
         }
+    }
+
+    /// A data point on the value axis at `value`, at the category edge.
+    pub(crate) fn value_point(&self, value: f64) -> Point {
+        Point::new(self.x.min, value)
+    }
+
+    /// A data point on the category axis at `position`, at the value edge.
+    pub(crate) fn position_point(&self, position: f64) -> Point {
+        Point::new(position, self.y.min)
     }
 
     /// A point that maps to `value` on the screen's horizontal axis.

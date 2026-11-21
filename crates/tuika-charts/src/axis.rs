@@ -35,6 +35,8 @@ pub struct Axis {
     ticks: Option<usize>,
     format: Option<Formatter>,
     categories: Option<Vec<String>>,
+    pub(crate) grid: bool,
+    pub(crate) title: Option<String>,
 }
 
 impl Axis {
@@ -45,6 +47,8 @@ impl Axis {
             ticks: None,
             format: None,
             categories: None,
+            grid: false,
+            title: None,
         }
     }
 
@@ -68,6 +72,28 @@ impl Axis {
     /// Format tick values, replacing the automatic numeric formatter.
     pub fn format(mut self, format: impl Fn(f64) -> String + 'static) -> Self {
         self.format = Some(Arc::new(format));
+        self
+    }
+
+    /// Draw a faint grid line across the plot at every labelled tick.
+    ///
+    /// Grid lines are reference geometry: they sit beneath every series in both
+    /// renderers and never paint over a mark. A tick whose label was thinned
+    /// away gets no line either, so the grid always matches the labels.
+    pub fn grid(mut self) -> Self {
+        self.grid = true;
+        self
+    }
+
+    /// Name the axis — usually the unit, like `"ms"`.
+    ///
+    /// Terminals cannot rotate text, so the vertical axis' title sits on its
+    /// own row above the plot, left-aligned over the tick labels, and the
+    /// horizontal axis' title sits centered on a row below them. Each costs the
+    /// plot one row, and only when set.
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        let title = title.into();
+        self.title = (!title.is_empty()).then_some(title);
         self
     }
 
@@ -142,6 +168,8 @@ impl fmt::Debug for Axis {
             .field("ticks", &self.ticks)
             .field("format", &self.format.is_some())
             .field("categories", &self.categories)
+            .field("grid", &self.grid)
+            .field("title", &self.title)
             .finish()
     }
 }
@@ -247,10 +275,10 @@ impl AxisLayout {
             y: Vec::new(),
             x: Vec::new(),
         };
-        let chrome = u16::from(!chart.title.is_empty())
-            + u16::from(chart.legend && !chart.series.is_empty())
-            + 1;
-        let rows = area.height.saturating_sub(chrome);
+        let chrome = chart.chrome();
+        let rows = area
+            .height
+            .saturating_sub(chrome.top() + chrome.bottom() - 1);
         if rows < 3 {
             return layout;
         }
@@ -331,8 +359,16 @@ impl AxisLayout {
         }
     }
 
-    /// Paint both axes' labels. Shared by the cell and graphics paths.
-    pub(crate) fn render(&self, plot: Rect, surface: &mut Surface, ctx: &RenderCtx) {
+    /// Paint both axes' labels and titles. Shared by the cell and graphics
+    /// paths.
+    pub(crate) fn render(
+        &self,
+        plot: Rect,
+        area: Rect,
+        chart: &Chart,
+        surface: &mut Surface,
+        ctx: &RenderCtx,
+    ) {
         let style = ctx.theme.muted_style();
         for tick in &self.y {
             surface.set_string(tick.start, tick.at, &tick.label, style);
@@ -340,6 +376,22 @@ impl AxisLayout {
         let row = plot.bottom();
         for tick in &self.x {
             surface.set_string(tick.start, row, &tick.label, style);
+        }
+
+        let (across, up) = screen_axes(chart);
+        if let Some(title) = &up.title {
+            // The row directly above the plot, over the tick-label gutter.
+            if let Some(row) = plot.y.checked_sub(1).filter(|&row| row >= area.y) {
+                surface.set_string(area.x, row, title, style);
+            }
+        }
+        if let Some(title) = &across.title {
+            let row = plot.bottom() + 1;
+            let len = u16::try_from(title.chars().count()).unwrap_or(u16::MAX);
+            if row < area.bottom() && len <= plot.width {
+                let start = plot.x + (plot.width - len) / 2;
+                surface.set_string(start, row, title, style);
+            }
         }
     }
 }

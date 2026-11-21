@@ -201,7 +201,8 @@ tuika's own suite covers more:
   `tuika-charts` has paired portable-cell and terminal-graphics screenshots for
   every series kind under `docs/charts/`, embedded by its README, the public
   chart guide, and `Chart` rustdoc. Regenerate them with
-  `scripts/gen-chart-demo.sh`. The graphics pass builds the pinned Everruns VHS
+  `scripts/gen-chart-demo.sh`; the `latency_dashboard` example's pair beside
+  them comes from `scripts/gen-latency-dashboard-demo.sh`. The graphics pass builds the pinned Everruns VHS
   fork under `target/` with its Ghostty renderer and requires Go 1.26,
   pkg-config, and Zig 0.15.2 in addition to VHS's normal dependencies.
 
