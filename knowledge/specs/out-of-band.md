@@ -27,7 +27,7 @@ Seven out-of-band capabilities, in three families:
 | Hyperlinks | OSC 8 | `term::hyperlink` | embedded by semantic prose components or spliced into arbitrary drawn runs by `HyperlinkBackend` |
 | Clipboard | OSC 52 | `term::clipboard` | host- or runner-initiated, any time |
 | Native progress | OSC 9;4 | `term::progress` | host-initiated, any time |
-| Program status | OSC 7501 | `term::program_status` | host-initiated, any time |
+| Program status | OSC 7501 | `term::program_status` | host-initiated, or runner-owned from one status value |
 | Pointer shape | OSC 22 | `term::pointer` | host-initiated, any time |
 | Images | Kitty / iTerm2 / Sixel | `term::image` | after `terminal.draw()` returns |
 | Terminal queries | DA1, Kitty keyboard (`CSI ? u`), OSC 10 / 11 / 4 | `term::capabilities`, `term::palette` | host-initiated, once at startup, in raw mode |
@@ -149,6 +149,18 @@ ambiguous environment markers. No clipboard path negotiates emulator permission.
 OSC 8 environment hints recognize editor terminals and versioned VTE support,
 but an outer terminal's identity does not prove multiplexer link support.
 Pointer shapes are a fixed vocabulary of OSC 22 CSS names, never caller text.
+
+### Program status is a value, not a stream of reports
+
+OSC 7501 records outlive the program on purpose: the terminal drops `working`
+and `blocked` when the process exits, but keeps `done` and `error` so the user
+finds the result later. A host that ends with `clear` defeats that, and a host
+that re-sends on every frame floods the terminal. So the runners own the
+protocol around a single value the host sets (`Runner::program_status`): report
+on change, clear on exit only what is still live, and leave finished records
+alone. OSC 9;4 can be driven from the same value so the two indicators cannot
+disagree. The logic lives in `term::program_status::StatusReporter` so a host
+with its own loop gets the same rules.
 
 ## Constraints
 

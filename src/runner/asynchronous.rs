@@ -58,7 +58,7 @@
 //! ```
 
 use std::convert::Infallible;
-use std::io;
+use std::io::{self, Write};
 use std::time::Duration;
 
 use super::stream::{self, Stream};
@@ -68,6 +68,7 @@ use crate::term::traits::Backend;
 use crossterm::event::EventStream;
 use tokio::time::{Instant as TokioInstant, MissedTickBehavior, interval, sleep_until};
 
+use super::status::{RunnerStatus, StatusSession};
 use super::{
     FrameGraphics, FrameGraphicsCleanup, PaintRoot, RESIZE_FRAME_INTERVAL, RunnerAction,
     RunnerCore, RunnerSelection, Signal,
@@ -75,6 +76,7 @@ use super::{
 use crate::host::paint_with_context_and_selection;
 use crate::live::RedrawHandle;
 use crate::screen::{Scrollback, close_footer, pin_footer};
+use crate::term::program_status::Report;
 use crate::view::{ScopedElement, SelectionFrame};
 use crate::{
     Element, Event, RenderCtx, RunnerConfig, SystemClock, TerminalSession, Theme, UpdateResult,
@@ -214,6 +216,7 @@ pub struct AsyncRunner {
     scrollback: Scrollback,
     session_config: Option<crate::TerminalSessionConfig>,
     text_selection: bool,
+    status: RunnerStatus,
 }
 
 impl AsyncRunner {
@@ -230,6 +233,7 @@ impl AsyncRunner {
         );
         Self {
             config,
+            status: RunnerStatus::new(redraw.clone()),
             redraw,
             footer_height,
             scrollback: Scrollback::new(),
@@ -259,6 +263,29 @@ impl AsyncRunner {
     /// deliver it: see [`run_with_messages`](Self::run_with_messages).
     pub fn redraw_handle(&self) -> RedrawHandle {
         self.redraw.clone()
+    }
+
+    /// The program's status, reported to the terminal as OSC 7501. Setting it
+    /// wakes the parked loop. Same contract as
+    /// [`Runner::program_status`](crate::Runner::program_status): reports only
+    /// on change, clears only `working`/`blocked` on exit, and
+    /// [`Report::cancelled`] for a cancel.
+    pub fn program_status(&self) -> crate::live::Live<Option<Report>> {
+        self.status.value()
+    }
+
+    /// Also drive OSC 9;4 from [`program_status`](Self::program_status). See
+    /// [`Runner::with_native_progress`](crate::Runner::with_native_progress).
+    pub fn with_native_progress(mut self, enabled: bool) -> Self {
+        self.status.set_native_progress(enabled);
+        self
+    }
+
+    /// Send status reports to `output` instead of stdout, including from
+    /// [`run_driven_by`](Self::run_driven_by), which otherwise writes none.
+    pub fn with_status_output(mut self, output: impl Write + Send + 'static) -> Self {
+        self.status.set_output(output);
+        self
     }
 
     /// Override terminal lifecycle policy while retaining the async loop.
@@ -409,6 +436,7 @@ impl AsyncRunner {
             },
         )?;
         let _graphics_cleanup = FrameGraphicsCleanup(&graphics);
+        let status = self.status.session(true);
         let events = stream::filter_map(EventStream::new(), |result| match result {
             Ok(raw) => translate_event(raw).map(Ok),
             Err(error) => Some(Err(error)),
@@ -421,6 +449,7 @@ impl AsyncRunner {
                 events,
                 messages,
                 Some(&graphics),
+                &status,
                 |copied| {
                     graphics.finish_frame()?;
                     if let Some(text) = copied {
@@ -470,6 +499,7 @@ impl AsyncRunner {
                 viewport: mode.viewport(),
             },
         )?;
+        let status = self.status.session(true);
         let events = stream::filter_map(EventStream::new(), |result| match result {
             Ok(raw) => translate_event(raw).map(Ok),
             Err(error) => Some(Err(error)),
@@ -482,6 +512,7 @@ impl AsyncRunner {
                 events,
                 no_messages(),
                 None,
+                &status,
                 |_| Ok(()),
             )
             .await;
@@ -527,9 +558,17 @@ impl AsyncRunner {
         E: Stream<Item = Result<Event, Er>> + Unpin,
         MS: Stream<Item = Result<M, Er>> + Unpin,
     {
-        self.run_inner(terminal, theme, &mut frames, events, messages, None, |_| {
-            Ok(())
-        })
+        let status = self.status.session(false);
+        self.run_inner(
+            terminal,
+            theme,
+            &mut frames,
+            events,
+            messages,
+            None,
+            &status,
+            |_| Ok(()),
+        )
         .await
     }
 
@@ -606,6 +645,7 @@ impl AsyncRunner {
         mut events: E,
         mut messages: MS,
         graphics: Option<&FrameGraphics>,
+        status: &StatusSession<'_>,
         mut finish_frame: Finish,
     ) -> Result<(), Er>
     where
@@ -635,6 +675,7 @@ impl AsyncRunner {
             let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
             finish_frame(copied.as_deref())?;
         }
+        status.sync();
         let mut last_frame = TokioInstant::now();
         let mut redraw_at = None;
 
@@ -694,6 +735,7 @@ impl AsyncRunner {
                     finish_frame(copied.as_deref())?;
                     last_frame = TokioInstant::now();
                 }
+                status.sync();
                 redraw_at = None;
                 continue;
             }
@@ -712,6 +754,7 @@ impl AsyncRunner {
                 terminal.invalidate();
             }
             let result = frames.update(signal).await;
+            status.sync();
             core.apply(result);
             if core.is_exited() {
                 break;
@@ -1867,6 +1910,72 @@ mod tests {
             buffer_text(&terminal).contains("value=41"),
             "the requested repaint shows the producer's data: {:?}",
             buffer_text(&terminal)
+        );
+    }
+
+    #[tokio::test]
+    async fn program_status_reports_on_change_and_applies_the_exit_rule() {
+        use crate::term::program_status::{Report, State};
+
+        #[derive(Clone, Default)]
+        struct SharedBytes(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for SharedBytes {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let out = SharedBytes::default();
+        let runner = AsyncRunner::new(RunnerConfig {
+            tick_rate: Duration::from_secs(3600),
+            ..RunnerConfig::default()
+        })
+        .with_status_output(out.clone());
+        let status = runner.program_status();
+        let mut terminal = terminal(8, 1);
+        let events = stream::iter([
+            key(KeyCode::Char('w')),
+            key(KeyCode::Char('w')),
+            key(KeyCode::Char('d')),
+            key(KeyCode::Char('e')),
+        ]);
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                async_from_fn(
+                    &mut (),
+                    |(), _frame| element(Text::raw("x")),
+                    async |(), signal| {
+                        let Signal::Event(Event::Key(k)) = signal else {
+                            return UpdateResult::Clean;
+                        };
+                        match k.code {
+                            KeyCode::Char('w') => status.set(Some(Report::new(State::Working))),
+                            KeyCode::Char('d') => status.set(Some(Report::new(State::Done))),
+                            // Set and exit in the same update: still reported.
+                            _ => {
+                                status.set(Some(Report::new(State::Error)));
+                                return UpdateResult::Exit;
+                            }
+                        }
+                        UpdateResult::Clean
+                    },
+                ),
+                events,
+                no_messages(),
+            )
+            .await
+            .unwrap();
+
+        let bytes = String::from_utf8(out.0.lock().unwrap().clone()).unwrap();
+        assert_eq!(
+            bytes,
+            "\x1b]7501;state=working\x1b\\\x1b]7501;state=done\x1b\\\x1b]7501;state=error\x1b\\"
         );
     }
 }

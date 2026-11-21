@@ -4,21 +4,22 @@
 //!
 //! A scripted build job walks through every state the Program Status Protocol
 //! has: `working` with a rising `progress=`, `blocked` with `kind=question`
-//! while it waits for an answer, then `done` (or `error` if the answer is no),
-//! and a `clear` on exit. Each report goes to the terminal through
-//! [`tuika::term::program_status::write`]; the lower panel prints the exact
-//! bytes of every report sent, so what the terminal receives is on screen.
+//! while it waits for an answer, then `done` (or `error` if the answer is no).
+//! The app only sets one value, [`Runner::program_status`]; the runner sends a
+//! report when it changes and applies the exit rule — quitting mid-job clears
+//! the record, quitting after `done` or `error` leaves it for the user to find.
+//! The lower panel prints the exact bytes of every report, so what the
+//! terminal receives is on screen.
 //!
 //! In a terminal that reads the protocol (such as tuios) the pane's status follows
 //! along; anywhere else the sequences are swallowed and only the UI changes.
 
 use std::collections::VecDeque;
-use std::io::{self, Write};
+use std::io;
 use std::time::Duration;
 
-use crossterm::event::{self, Event as CtEvent, KeyCode, KeyEventKind};
-use tuika::term::program_status::{self, BlockKind, Report, State};
-use tuika::term::terminal::{Terminal, TerminalOptions, Viewport};
+use tuika::live::Live;
+use tuika::term::program_status::{BlockKind, Report, State};
 use tuika::ui::{Line, Span};
 
 use tuika::prelude::*;
@@ -52,7 +53,7 @@ struct Job {
     phase: Phase,
     progress: u8,
     answered: bool,
-    /// The last report sent, so one goes out per change rather than per frame.
+    /// The last report logged, so the log gains a line per change.
     last: Option<Report>,
     log: VecDeque<String>,
 }
@@ -117,21 +118,14 @@ impl Job {
         }
     }
 
-    /// Send the current report if it changed since the last one.
-    fn sync(&mut self) -> io::Result<()> {
+    /// Hand the current report to the runner, and log it if it changed. The
+    /// runner does its own change detection; the log only mirrors it.
+    fn sync(&mut self, status: &Live<Option<Report>>) {
         let report = self.report();
         if self.last.as_ref() == Some(&report) {
-            return Ok(());
+            return;
         }
-        self.send(&report)?;
-        self.last = Some(report);
-        Ok(())
-    }
-
-    fn send(&mut self, report: &Report) -> io::Result<()> {
-        let mut out = io::stdout();
-        program_status::write(&mut out, report)?;
-        out.flush()?;
+        status.set(Some(report.clone()));
         if let Some(bytes) = report.encode() {
             // Keep only the payload; the frame is drawn around it as `\e]` / `\e\`.
             let shown = bytes
@@ -143,7 +137,39 @@ impl Job {
             }
             self.log.push_back(shown);
         }
-        Ok(())
+        self.last = Some(report);
+    }
+}
+
+struct App {
+    job: Job,
+    theme: Theme,
+    status: Live<Option<Report>>,
+}
+
+impl Application for App {
+    fn update(&mut self, signal: Signal) -> UpdateResult {
+        match signal {
+            Signal::Tick => self.job.tick(),
+            Signal::Event(Event::Key(key)) => match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => return UpdateResult::Exit,
+                KeyCode::Char('y') => self.job.answer(true),
+                KeyCode::Char('n') => self.job.answer(false),
+                KeyCode::Char('r') => {
+                    let log = std::mem::take(&mut self.job.log);
+                    self.job = Job::new();
+                    self.job.log = log;
+                }
+                _ => return UpdateResult::Clean,
+            },
+            _ => return UpdateResult::Clean,
+        }
+        self.job.sync(&self.status);
+        UpdateResult::Dirty
+    }
+
+    fn view(&self, frame: u64) -> tuika::ScopedElement<'_> {
+        build(&self.job, frame, &self.theme)
     }
 }
 
@@ -229,48 +255,15 @@ fn build(job: &Job, frame: u64, theme: &Theme) -> tuika::Element {
 
 fn main() -> io::Result<()> {
     let cli = support::Cli::parse()?;
-    let theme = cli.theme;
-    let _session = tuika::TerminalSession::enter_with(ScreenMode::Alternate)?;
-    let mut terminal = Terminal::with_options(
-        tuika::term::backend::CrosstermBackend::new(io::stdout()),
-        TerminalOptions {
-            viewport: Viewport::Fullscreen,
-        },
-    )?;
-
-    let mut job = Job::new();
-    let mut frame = 0u64;
-    loop {
-        job.sync()?;
-        terminal.draw(|f| {
-            let area = f.area();
-            let root = build(&job, frame, &theme);
-            tuika::paint(f.buffer_mut(), area, &theme, root.as_ref(), &[]);
-        })?;
-        if event::poll(Duration::from_millis(80))?
-            && let CtEvent::Key(key) = event::read()?
-            && key.kind != KeyEventKind::Release
-        {
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => break,
-                KeyCode::Char('y') => job.answer(true),
-                KeyCode::Char('n') => job.answer(false),
-                KeyCode::Char('r') => {
-                    let log = std::mem::take(&mut job.log);
-                    job = Job::new();
-                    job.log = log;
-                }
-                _ => {}
-            }
-        }
-        job.tick();
-        frame = frame.wrapping_add(1);
-    }
-
-    // Remove the record, so the terminal stops showing this pane as a job.
-    let _ = program_status::write(&mut io::stdout(), &Report::clear(None));
-    let _ = io::stdout().flush();
-    let _ = terminal.clear();
-    drop(terminal);
-    Ok(())
+    let runner = Runner::new(RunnerConfig {
+        tick_rate: Duration::from_millis(80),
+        ..RunnerConfig::default()
+    });
+    let mut app = App {
+        job: Job::new(),
+        theme: cli.theme,
+        status: runner.program_status(),
+    };
+    app.job.sync(&app.status);
+    runner.run(&cli.theme, &mut app)
 }

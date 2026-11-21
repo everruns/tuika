@@ -77,6 +77,7 @@
 
 #[cfg(feature = "async")]
 mod asynchronous;
+mod status;
 #[cfg(feature = "async")]
 mod stream;
 
@@ -108,11 +109,13 @@ use crate::mouse::{
 use crate::screen::{ScreenMode, Scrollback, close_footer, pin_footer};
 use crate::term::clipboard;
 use crate::term::image::{ImageLayer, ImageSupport};
+use crate::term::program_status::Report;
 use crate::view::SelectionFrame;
 use crate::{
     Clock, Element, Event, RenderCtx, ScopedElement, SystemClock, TerminalSession, Theme, View,
     translate_event,
 };
+use status::{RunnerStatus, StatusSession};
 
 /// Receives a frame's root view for painting.
 ///
@@ -582,6 +585,7 @@ pub struct Runner {
     scrollback: Scrollback,
     session_config: Option<crate::host::TerminalSessionConfig>,
     text_selection: bool,
+    status: RunnerStatus,
 }
 
 impl Runner {
@@ -608,6 +612,7 @@ impl Runner {
         Self {
             config,
             clock: Arc::new(clock),
+            status: RunnerStatus::new(redraw.clone()),
             redraw,
             footer_height,
             scrollback: Scrollback::new(),
@@ -648,6 +653,49 @@ impl Runner {
     /// [`crate::paint`].
     pub fn redraw_handle(&self) -> RedrawHandle {
         self.redraw.clone()
+    }
+
+    /// The program's status, reported to the terminal as OSC 7501 for the
+    /// record the value names (the root record unless it sets an
+    /// [`id`](Report::id)).
+    ///
+    /// Set it whenever the program's activity changes; `None`, the default,
+    /// reports nothing. The runner owns the protocol around that one value:
+    ///
+    /// - a report goes out only when the value changes, however often the
+    ///   loop runs, and setting it from another thread wakes the loop;
+    /// - on exit the record is cleared only if it was last `working` or
+    ///   `blocked`, so a `done` or `error` record stays for the user to find,
+    ///   as the spec asks;
+    /// - when the user cancels work, set [`Report::cancelled`] — the spec's
+    ///   `idle` for an interrupted program, keeping the record's app and title.
+    ///
+    /// The session-owning entry points report to stdout; [`run_driven_by`]
+    /// reports only to a [`with_status_output`] destination. With
+    /// [`with_native_progress`] the same value also drives OSC 9;4.
+    ///
+    /// [`run_driven_by`]: Self::run_driven_by
+    /// [`with_status_output`]: Self::with_status_output
+    /// [`with_native_progress`]: Self::with_native_progress
+    pub fn program_status(&self) -> crate::live::Live<Option<Report>> {
+        self.status.value()
+    }
+
+    /// Also drive the terminal's OSC 9;4 progress indicator from
+    /// [`program_status`](Self::program_status), mapped by
+    /// [`Report::native_progress`], so the two never disagree. Off by default.
+    /// The indicator is hidden when the run ends.
+    pub fn with_native_progress(mut self, enabled: bool) -> Self {
+        self.status.set_native_progress(enabled);
+        self
+    }
+
+    /// Send [`program_status`](Self::program_status) reports to `output`
+    /// instead of stdout, including from [`run_driven_by`](Self::run_driven_by),
+    /// which otherwise writes none.
+    pub fn with_status_output(mut self, output: impl Write + Send + 'static) -> Self {
+        self.status.set_output(output);
+        self
     }
 
     /// Override terminal lifecycle policy while retaining the runner's loop.
@@ -754,7 +802,16 @@ impl Runner {
         B: Backend<Error = Er>,
         E: EventSource<Er>,
     {
-        self.drive(terminal, theme, &mut frames, &mut events, None, |_| Ok(()))
+        let status = self.status.session(false);
+        self.drive(
+            terminal,
+            theme,
+            &mut frames,
+            &mut events,
+            None,
+            &status,
+            |_| Ok(()),
+        )
     }
 
     fn run_inner<F, B>(
@@ -784,6 +841,9 @@ impl Runner {
         // Declared after the session so cleanup runs first on every exit path,
         // while placements still belong to the screen on which they were made.
         let _graphics_cleanup = graphics.map(FrameGraphicsCleanup);
+        // Also after the session: the exit report goes out while the terminal
+        // is still the program's.
+        let status = self.status.session(true);
         // This entry point owns the process's stdout, so it is the one that may
         // emit the image layer and the OSC 52 copy after each frame.
         let result = self.drive(
@@ -792,6 +852,7 @@ impl Runner {
             frames,
             &mut CrosstermEvents,
             graphics,
+            &status,
             |copied| {
                 if let Some(graphics) = graphics {
                     graphics.finish_frame()?;
@@ -817,6 +878,7 @@ impl Runner {
 
     /// The loop shared by every entry point: no session, no terminal
     /// construction, no cleanup — those belong to whoever owns the terminal.
+    #[allow(clippy::too_many_arguments)]
     fn drive<F, B, E, Er, Finish>(
         &self,
         terminal: &mut Terminal<B>,
@@ -824,6 +886,7 @@ impl Runner {
         frames: &mut F,
         events: &mut E,
         graphics: Option<&FrameGraphics>,
+        status: &StatusSession<'_>,
         mut finish_frame: Finish,
     ) -> Result<(), Er>
     where
@@ -849,6 +912,7 @@ impl Runner {
             let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
             finish_frame(copied)?;
         }
+        status.sync();
         let mut last_frame = self.clock.now();
         let mut redraw_at = None;
 
@@ -880,6 +944,7 @@ impl Runner {
             if now.saturating_duration_since(last_tick) >= self.config.tick_rate {
                 last_tick = now;
                 let result = frames.update(Signal::Tick);
+                status.sync();
                 core.apply(result);
                 if core.is_exited() {
                     break;
@@ -900,6 +965,7 @@ impl Runner {
                     finish_frame(copied)?;
                     last_frame = self.clock.now();
                 }
+                status.sync();
                 redraw_at = None;
             }
 
@@ -920,6 +986,7 @@ impl Runner {
                     _ => None,
                 };
                 let result = frames.update(signal);
+                status.sync();
                 core.apply(result);
                 if core.is_exited() {
                     break 'running;
@@ -2046,5 +2113,162 @@ mod tests {
             &["published", "FOOTER", "FOOTER"],
             "the block sits directly above the repainted footer: {lines:?}"
         );
+    }
+
+    /// A `Write` the test keeps a handle to after the runner owns a clone.
+    #[derive(Clone, Default)]
+    struct SharedBytes(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl Write for SharedBytes {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl SharedBytes {
+        fn sequences(&self) -> Vec<String> {
+            String::from_utf8(self.0.lock().unwrap().clone())
+                .unwrap()
+                .split("\x1b]")
+                .filter(|s| !s.is_empty())
+                .map(|s| {
+                    s.trim_end_matches("\x1b\\")
+                        .trim_end_matches('\x07')
+                        .to_string()
+                })
+                .collect()
+        }
+    }
+
+    /// `w` reports working, `d` done, `c` cancels, Esc exits — each update
+    /// returning `Clean`, so no report depends on a repaint.
+    fn run_status_script(runner: Runner, keys: &[KeyCode]) -> Vec<String> {
+        use crate::term::program_status::State;
+
+        let out = SharedBytes::default();
+        let runner = runner.with_status_output(out.clone());
+        let status = runner.program_status();
+        let mut terminal = terminal(8, 1);
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut (),
+                    |(), _frame| element(Text::raw("x")),
+                    |(), signal| {
+                        let Signal::Event(Event::Key(key)) = signal else {
+                            return UpdateResult::Clean;
+                        };
+                        let job = Report::new(State::Working).app("job").title("Job");
+                        match key.code {
+                            KeyCode::Char('w') => status.set(Some(job)),
+                            KeyCode::Char('d') => status.set(Some(Report::new(State::Done))),
+                            KeyCode::Char('c') => status.set(Some(job.cancelled())),
+                            KeyCode::Esc => return UpdateResult::Exit,
+                            _ => {}
+                        }
+                        UpdateResult::Clean
+                    },
+                ),
+                scripted_events(keys.iter().map(|code| key_event(*code))),
+            )
+            .expect("run");
+        out.sequences()
+    }
+
+    #[test]
+    fn program_status_reports_changes_and_clears_working_on_exit() {
+        let sent = run_status_script(
+            quiet_runner(),
+            &[KeyCode::Char('w'), KeyCode::Char('w'), KeyCode::Esc],
+        );
+        assert_eq!(
+            sent,
+            ["7501;state=working:app=job:title=Sm9i", "7501;state=clear"],
+            "one report per change, and working is cleared on exit"
+        );
+    }
+
+    #[test]
+    fn program_status_leaves_done_for_the_user() {
+        let sent = run_status_script(
+            quiet_runner(),
+            &[KeyCode::Char('w'), KeyCode::Char('d'), KeyCode::Esc],
+        );
+        assert_eq!(
+            sent,
+            ["7501;state=working:app=job:title=Sm9i", "7501;state=done"]
+        );
+    }
+
+    #[test]
+    fn program_status_cancel_reports_idle_and_keeps_it() {
+        let sent = run_status_script(
+            quiet_runner(),
+            &[KeyCode::Char('w'), KeyCode::Char('c'), KeyCode::Esc],
+        );
+        assert_eq!(
+            sent,
+            [
+                "7501;state=working:app=job:title=Sm9i",
+                "7501;state=idle:app=job:title=Sm9i"
+            ]
+        );
+    }
+
+    #[test]
+    fn program_status_set_before_the_run_is_reported_first() {
+        let runner = quiet_runner();
+        runner.program_status().set(Some(Report::new(
+            crate::term::program_status::State::Blocked,
+        )));
+        let sent = run_status_script(runner, &[KeyCode::Esc]);
+        assert_eq!(sent, ["7501;state=blocked", "7501;state=clear"]);
+    }
+
+    #[test]
+    fn program_status_can_mirror_native_progress() {
+        let sent = run_status_script(
+            quiet_runner().with_native_progress(true),
+            &[KeyCode::Char('w'), KeyCode::Char('d'), KeyCode::Esc],
+        );
+        assert_eq!(
+            sent,
+            [
+                "7501;state=working:app=job:title=Sm9i",
+                "9;4;3;0",
+                "7501;state=done",
+                "9;4;0;0"
+            ]
+        );
+    }
+
+    #[test]
+    fn program_status_is_silent_without_an_output_in_driven_runs() {
+        // No output configured and `run_driven_by` owns no stdout: setting a
+        // status must not panic or write anywhere.
+        let runner = quiet_runner();
+        runner.program_status().set(Some(Report::new(
+            crate::term::program_status::State::Working,
+        )));
+        let mut terminal = terminal(4, 1);
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut (),
+                    |(), _frame| element(Text::raw("x")),
+                    |(), _signal| UpdateResult::Exit,
+                ),
+                scripted_events([key_event(KeyCode::Esc)]),
+            )
+            .expect("run");
     }
 }
