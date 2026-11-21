@@ -1727,14 +1727,16 @@ mod tests {
         let lines: Vec<&str> = dump.lines().collect();
         assert_eq!(lines[0], "leader: Space");
         assert_eq!(lines[2], "layer \"global\"  priority 0  always active");
-        assert!(lines[3].starts_with("  Ctrl+R   search  Search  src/keymap.rs:"));
-        assert!(lines[4].starts_with("  Space Q  -       Quit    src/keymap.rs:"));
+        // `file!()` rather than a literal path: Windows spells it `src\\keymap.rs`.
+        let here = file!();
+        assert!(lines[3].starts_with(&format!("  Ctrl+R   search  Search  {here}:")));
+        assert!(lines[4].starts_with(&format!("  Space Q  -       Quit    {here}:")));
         assert_eq!(
             lines[6],
             "layer \"panel\"  priority 10  when mode=panel  (inactive)"
         );
         assert!(dump.contains("1 warning(s):"));
-        assert!(dump.contains("\"Q\" in layer \"panel\" (src/keymap.rs:"));
+        assert!(dump.contains(&format!("\"Q\" in layer \"panel\" ({here}:")));
         assert!(lines.iter().all(|line| !line.ends_with(' ')));
     }
 
