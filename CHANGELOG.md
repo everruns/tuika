@@ -63,6 +63,16 @@ next release.
   chord `"<leader> f"` specs start with. Every binding records the source line
   that declared it, which `Keymap::bindings` and the plain-text `Keymap::dump`
   report. `CommandInfo` joins the prelude.
+- Color downsampling. `Runner` and `AsyncRunner` detect the terminal's color
+  depth (`term::capabilities::ColorDepth::from_env`) and, on a terminal known
+  to be limited (the Linux console and other 16-color `TERM`s, Apple Terminal),
+  map every truecolor cell to the nearest color the terminal has — the xterm 256-color cube and gray
+  ramp, or the sixteen ANSI colors — so a hex theme no longer garbles on a 256-
+  or 16-color terminal. Override with `Runner::with_color_depth` /
+  `AsyncRunner::with_color_depth`; a caller-supplied backend opts in with
+  `CrosstermBackend::with_color_depth` or `HyperlinkBackend::with_color_depth`.
+  `Color::downsample` exposes the mapping. Only the emitted bytes change: the
+  buffer, and every test that reads cells, keeps the theme's own colors.
 - Screen-reader semantics, the first part of an accessibility mode: the new
   `access` module (`Role`, `Node`, `AccessFrame`, `Document`, and the
   `Semantic` wrapper), `RenderCtx::with_access` / `access` / `record_access`,
