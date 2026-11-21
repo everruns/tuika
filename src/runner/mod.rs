@@ -77,6 +77,7 @@
 
 #[cfg(feature = "async")]
 mod asynchronous;
+mod hooks;
 #[cfg(feature = "async")]
 mod stream;
 
@@ -114,6 +115,7 @@ use crate::{
     Clock, Element, Event, RenderCtx, ScopedElement, SystemClock, TerminalSession, Theme, View,
     translate_event,
 };
+use hooks::FrameHooks;
 
 /// Receives a frame's root view for painting.
 ///
@@ -587,6 +589,7 @@ pub struct Runner {
     scrollback: Scrollback,
     session_config: Option<crate::host::TerminalSessionConfig>,
     text_selection: bool,
+    hooks: FrameHooks,
 }
 
 impl Runner {
@@ -618,7 +621,20 @@ impl Runner {
             scrollback: Scrollback::new(),
             session_config: None,
             text_selection: true,
+            hooks: FrameHooks::default(),
         }
+    }
+
+    /// Attach a devtools [`Inspector`](crate::devtools::Inspector): the runner
+    /// gives it first refusal of every event (its toggle chord never reaches the
+    /// application), logs each delivered event with the [`UpdateResult`] it
+    /// produced, times the paint, counts the damaged cells, and paints the
+    /// inspector over every frame.
+    #[cfg(feature = "devtools")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "devtools")))]
+    pub fn with_inspector(mut self, inspector: crate::devtools::Inspector) -> Self {
+        self.hooks.inspector = Some(inspector);
+        self
     }
 
     /// Requested split-footer height. Calling `set` requests a redraw; the
@@ -851,7 +867,15 @@ impl Runner {
             pin_footer(terminal)?;
         }
         if let RunnerAction::Render(frame) = core.next_action() {
-            let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+            let copied = draw(
+                terminal,
+                theme,
+                frames,
+                frame,
+                graphics,
+                &mut selection,
+                &self.hooks,
+            )?;
             finish_frame(copied)?;
         }
         let mut last_frame = self.clock.now();
@@ -901,7 +925,15 @@ impl Runner {
                         terminal.set_footer_height(self.footer_height.with(|height| *height))?;
                         pin_footer(terminal)?;
                     }
-                    let copied = draw(terminal, theme, frames, frame, graphics, &mut selection)?;
+                    let copied = draw(
+                        terminal,
+                        theme,
+                        frames,
+                        frame,
+                        graphics,
+                        &mut selection,
+                        &self.hooks,
+                    )?;
                     finish_frame(copied)?;
                     last_frame = self.clock.now();
                 }
@@ -915,6 +947,12 @@ impl Runner {
             });
             let timeout = tick_timeout.min(redraw_timeout);
             if let Some(event) = events.poll_event(timeout)? {
+                if self.hooks.intercept(&event) {
+                    core.request_redraw();
+                    schedule_redraw(&mut redraw_at, self.clock.now());
+                    continue;
+                }
+                let delivered = event.clone();
                 let signal = Signal::Event(event);
                 let requires_redraw = signal.requires_redraw();
                 if requires_redraw {
@@ -929,10 +967,15 @@ impl Runner {
                 if core.is_exited() {
                     break 'running;
                 }
+                let inspected = self.hooks.delivered(&delivered, result);
                 let selection_changed = selection_event.is_some_and(|event| {
                     selection.handle_event(&event, result, self.clock.as_ref())
                 });
-                if requires_redraw || result == UpdateResult::Dirty || selection_changed {
+                if requires_redraw
+                    || result == UpdateResult::Dirty
+                    || selection_changed
+                    || inspected
+                {
                     core.request_redraw();
                     let now = self.clock.now();
                     let deadline = if requires_redraw {
@@ -962,16 +1005,19 @@ fn draw<F, B, Er>(
     frame: u64,
     graphics: Option<&FrameGraphics>,
     selection: &mut RunnerSelection,
+    hooks: &FrameHooks,
 ) -> Result<Option<String>, Er>
 where
     B: Backend<Error = Er>,
     F: FrameSource,
 {
     let mut copied = None;
+    let mut paint = Duration::ZERO;
     let selection_frame = SelectionFrame::default();
     terminal.draw(|terminal_frame| {
         let area = terminal_frame.area();
         let ctx = graphics.map_or_else(|| RenderCtx::new(theme), |g| g.render_context(theme));
+        let started = hooks.begin_frame();
         frames.frame(frame, &mut |root| {
             paint_with_context_and_selection(
                 terminal_frame.buffer_mut(),
@@ -982,8 +1028,13 @@ where
                 &selection_frame,
             );
         });
+        paint = started.elapsed();
         copied = selection.finish_frame(terminal_frame.buffer_mut(), area, theme, &selection_frame);
+        // Last, so the inspector sits over the selection highlight too and its
+        // own cells never land in copied text.
+        hooks.paint(terminal_frame.buffer_mut(), area, theme);
     })?;
+    hooks.finish_frame(paint, terminal.last_damage());
     if let Some(graphics) = graphics {
         graphics.observe_screen(terminal.screen_epoch());
     }
@@ -1272,6 +1323,7 @@ mod tests {
                 n,
                 Some(&graphics),
                 &mut selection,
+                &FrameHooks::default(),
             )
             .unwrap();
             let mut output = Vec::new();
@@ -2050,6 +2102,68 @@ mod tests {
             &lines[3..],
             &["published", "FOOTER", "FOOTER"],
             "the block sits directly above the repainted footer: {lines:?}"
+        );
+    }
+
+    #[cfg(feature = "devtools")]
+    #[test]
+    fn an_attached_inspector_owns_its_chord_logs_events_and_paints_last() {
+        use crate::devtools::{Inspector, InspectorMode};
+
+        let inspector = Inspector::new();
+        let runner = quiet_runner().with_inspector(inspector.clone());
+        let mut terminal = terminal(80, 20);
+        let mut seen = Vec::new();
+        let alt_i = Event::Key(crate::event::Key {
+            code: KeyCode::Char('i'),
+            ctrl: false,
+            alt: true,
+            shift: false,
+        });
+
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut seen,
+                    |_, _frame| element(Text::raw("app")),
+                    |seen, signal| match signal {
+                        Signal::Event(Event::Key(k)) if k.code == KeyCode::Esc => {
+                            UpdateResult::Exit
+                        }
+                        Signal::Event(event) => {
+                            seen.push(event);
+                            UpdateResult::Clean
+                        }
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                scripted_events([
+                    alt_i.clone(),
+                    key_event(KeyCode::Char('x')),
+                    key_event(KeyCode::Esc),
+                ]),
+            )
+            .expect("run");
+
+        assert_eq!(
+            seen,
+            vec![key_event(KeyCode::Char('x'))],
+            "the toggle chord never reaches the application"
+        );
+        assert_eq!(inspector.mode(), InspectorMode::Panel);
+        let screen = buffer_text(&terminal);
+        assert!(screen.contains("app"), "the application still paints");
+        assert!(screen.contains("inspector"), "the panel paints over it");
+        // A clean update still repaints while the panel is open, so the log
+        // shows the event that was just delivered.
+        assert!(screen.contains("x clean"), "{screen}");
+        let stats = inspector.last_frame();
+        assert!(stats.frames >= 2, "every frame is recorded: {stats:?}");
+        assert!(
+            stats.damage > 0,
+            "opening the panel changed cells: {stats:?}"
         );
     }
 }

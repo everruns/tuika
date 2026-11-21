@@ -19,6 +19,12 @@
     byte specifically, since the keyboard answer is a CSI frame too. See
     [Out-of-band escapes](specs/out-of-band.md).
 
+- **A devtools inspector behind a feature**
+  - `tuika::devtools` paints traced layout rects, focus and route, the pending
+    key sequence, frame time, damaged cells, and an event log over the frame.
+    The runner supplies what it owns; the host supplies what only it has. See
+    [Devtools inspector](specs/devtools.md).
+
 - **Kitty images are sent once and placed by id**
   - The image layer now keeps what the terminal holds between frames, so a
     frame where no image changed or moved writes nothing; the runner

@@ -1,6 +1,7 @@
 export const GUIDE_SLUGS = Object.freeze([
   "charts",
   "components",
+  "devtools",
   "features",
   "getting-started",
   "keymap",

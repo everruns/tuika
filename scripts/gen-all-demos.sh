@@ -41,6 +41,7 @@ scripts/gen-program-status-demo.sh
 scripts/gen-workbench-demo.sh
 scripts/gen-mermaid-demo.sh
 scripts/gen-html-demo.sh
+scripts/gen-devtools-demo.sh
 scripts/gen-language-demo.sh
 scripts/gen-chart-demo.sh
 scripts/gen-latency-dashboard-demo.sh
