@@ -43,6 +43,14 @@
     rather than in a post-frame layer. Markdown can lay level-one headings out
     for it. See [Out-of-band escapes](specs/out-of-band.md) and
     [Markdown](specs/markdown.md).
+
+
+- **Split-footer hosts can lay out before they publish**
+  - `probe::resolve_layout` runs a view tree's layout without painting, so a
+    footer can size its transcript region from the tree it paints and publish
+    the overflow first. It closes the gap that kept yolop's inline renderer on
+    hand-written layouts. See [Screen modes](specs/screen-modes.md).
+
 - **Chart annotations join the portable grammar**
   - Bands, value/position reference lines, dashed strokes, grid lines, axis
     titles, and per-series legend visibility are now part of `tuika-charts`'

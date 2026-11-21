@@ -160,6 +160,22 @@ producers, and `screen::publish_block` commits a view straight from a host's own
 render loop. Either way a block is rendered once and handed over — it is the
 terminal's content afterwards, not a frame tuika will repaint.
 
+A chat or log footer usually shows the newest lines live and publishes whatever
+no longer fits. Publishing scrolls the terminal, so it has to happen before the
+footer is painted, yet how many rows the footer shows is decided by the footer's
+own layout. `probe::resolve_layout` answers that first: it lays the tree out
+without painting, so a `RectProbe` around the transcript region reports its
+height, the host publishes the overflow, and then paints the same tree over the
+rows it kept.
+
+```rust,ignore
+let rows = RectProbe::new();
+tuika::probe::resolve_layout(area, &ctx, &footer(&app, &rows), &[]);
+app.publish_overflow(terminal, rows.rect().height)?; // calls screen::publish_block
+let rows = RectProbe::new();
+terminal.draw(|f| tuika::paint_with_context(f.buffer_mut(), f.area(), &ctx, &footer(&app, &rows), &[]))?;
+```
+
 ```rust,ignore
 use tuika::prelude::*;
 

@@ -212,6 +212,7 @@ pub struct RenderCtx<'a> {
     selection: Option<&'a SelectionFrame>,
     /// Screen-reader collector supplied by a host; `None` on an ordinary paint.
     access: Option<&'a AccessFrame>,
+    layout_pass: bool,
     /// Whether the focused component of the frame is this one. Containers pass
     /// this down unchanged; focus-aware leaves use it to highlight borders.
     pub focused: bool,
@@ -228,6 +229,7 @@ impl<'a> RenderCtx<'a> {
             text_sizing: TextSizing::Unsupported,
             selection: None,
             access: None,
+            layout_pass: false,
             focused: false,
         }
     }
@@ -311,6 +313,28 @@ impl<'a> RenderCtx<'a> {
         self.text_sizing
     }
 
+    /// This context marked as a layout-only pass (see
+    /// [`is_layout_pass`](Self::is_layout_pass)).
+    pub(crate) fn for_layout_pass(&self) -> RenderCtx<'a> {
+        // The screen-reader collector is withheld as well: the paint that
+        // follows records the frame's nodes, and recording them here too would
+        // describe the screen twice.
+        RenderCtx {
+            layout_pass: true,
+            access: None,
+            ..self.clone()
+        }
+    }
+
+    /// Whether this render is a layout-only pass from
+    /// [`probe::resolve_layout`](crate::probe::resolve_layout): its cells are
+    /// discarded, and a view must not record anything that outlives the frame
+    /// towards the terminal, such as an image placement. Ordinary views need
+    /// not check it; only views with such side effects do.
+    pub fn is_layout_pass(&self) -> bool {
+        self.layout_pass
+    }
+
     pub(crate) fn with_selection(mut self, selection: &'a SelectionFrame) -> Self {
         self.selection = Some(selection);
         self
@@ -382,6 +406,7 @@ impl<'a> RenderCtx<'a> {
             text_sizing: self.text_sizing,
             selection: self.selection,
             access: self.access,
+            layout_pass: self.layout_pass,
             focused,
         }
     }

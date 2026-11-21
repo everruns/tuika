@@ -408,10 +408,14 @@ impl<V: View> View for Traced<V> {
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
-        self.inspector
-            .state()
-            .traces
-            .push((self.name.clone(), area));
+        // A layout-only pass (`probe::resolve_layout`) is followed by the real
+        // paint, which records the trace; recording both would list it twice.
+        if !ctx.is_layout_pass() {
+            self.inspector
+                .state()
+                .traces
+                .push((self.name.clone(), area));
+        }
         self.inner.render(area, surface, ctx);
     }
 }
@@ -960,6 +964,22 @@ mod tests {
         );
         inspector.begin_frame();
         assert!(inspector.traces().is_empty());
+    }
+
+    #[test]
+    fn a_layout_only_pass_records_no_trace() {
+        let inspector = Inspector::new();
+        let theme = Theme::default();
+        let root = inspector.trace("a", Text::raw("x"));
+        crate::probe::resolve_layout(
+            Rect::new(0, 0, 4, 1),
+            &crate::RenderCtx::new(&theme),
+            &root,
+            &[],
+        );
+        assert!(inspector.traces().is_empty());
+        let _ = render(&root, 4, 1, &theme);
+        assert_eq!(inspector.traces().len(), 1);
     }
 
     #[test]

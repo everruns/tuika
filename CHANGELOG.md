@@ -122,6 +122,13 @@ next release.
   (`Markdown::large_headings`, `MarkdownState::with_large_headings` /
   `sized_runs`). `Runner` detects support and installs it on the render context
   (`RenderCtx::with_text_sizing` / `text_sizing` for custom hosts).
+- `probe::resolve_layout` lays a view tree out without painting, so every
+  `RectProbe` in it reads back the rect the next paint will assign. A
+  split-footer host can now size its footer's transcript region from the same
+  view tree it paints, and publish the rows that do not fit *before* the paint,
+  instead of re-deriving the layout by hand. `RenderCtx::is_layout_pass` tells a
+  view with side effects that the pass is layout-only; `Image` uses it to skip
+  recording a placement.
 - `tuika-charts`: `Series::band` fills between two edges (percentile ranges,
   confidence intervals); `Chart::reference` with `Reference::value` /
   `Reference::position` draws labelled, optionally dashed threshold and event
