@@ -69,6 +69,16 @@ rather than adding a second layer above it.
   `TreeState` extends the same host-owned model with stable node identity,
   expansion, and remembered ancestry while domain traversal remains outside the
   toolkit.
+- **Pickers report their own click geometry.** A host gets a click one frame
+  after the picker painted, and re-deriving where each option landed (borders,
+  padding, headers, the scroll window) duplicates the renderer and drifts from
+  it. So `SelectList`, `SelectionScreen`, and `TabSelect` record each visible
+  option's rect into a shared `OptionHits` handle while they render, the same
+  read-back shape as `RectProbe`, and the host-owned state resolves clicks
+  against it. Indices are absolute, so the window needs no restating. A
+  one-click choice is held briefly by `ClickConfirm`, driven by host time,
+  because confirming in the same frame closes the picker before the user sees
+  what they hit.
 - **Key bindings are the help source of truth**: active labeled bindings expose
   layer priority, and component adapters derive responsive footer hints and
   complete help rows from the same declarations used for dispatch.

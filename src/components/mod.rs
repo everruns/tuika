@@ -39,6 +39,7 @@ mod key_hints;
 mod keyed_table;
 mod loader;
 pub mod markdown;
+mod option_hits;
 mod progress_bar;
 pub mod qr;
 mod responsive;
@@ -90,6 +91,7 @@ pub use markdown::{
     ImageResolver, Markdown, MarkdownBlock, MarkdownBlockContext, MarkdownBlockRenderer,
     MarkdownImage, MarkdownState, Renderers,
 };
+pub use option_hits::{ClickAction, ClickConfirm, OptionHits};
 pub use progress_bar::ProgressBar;
 pub use qr::{QrCode, QrEcc};
 pub use responsive::Responsive;

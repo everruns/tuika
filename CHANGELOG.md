@@ -61,6 +61,14 @@ next release.
   and `Capabilities::with_multiplexer` (tmux and screen do not forward the
   protocol). `DeviceAttributes::parse` now finds the DA1 frame among other CSI
   answers instead of reading the first frame.
+- Click to choose in pickers: `SelectList`, `SelectionScreen`, and `TabSelect`
+  take `.hits(&OptionHits)` and record where each visible option was painted,
+  and `SelectState`, `SelectViewportState`, `MultiSelectState`, and
+  `TabSelectState` gain `handle_click`, which resolves a click against that
+  geometry so hosts no longer mirror the picker's layout by hand.
+  `ClickAction` chooses between highlight-then-confirm and one-click choice,
+  and `ClickConfirm` holds a one-click choice for a short highlight before the
+  host acts on it.
 - `tuika-charts`: `Series::band` fills between two edges (percentile ranges,
   confidence intervals); `Chart::reference` with `Reference::value` /
   `Reference::position` draws labelled, optionally dashed threshold and event
