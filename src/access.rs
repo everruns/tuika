@@ -919,6 +919,21 @@ mod tests {
     }
 
     #[test]
+    fn a_tinted_scene_overlay_is_modal_too() {
+        use crate::overlay::OverlaySpec;
+        use crate::scene::{Backdrop, Scene, SceneOverlay};
+        let base = Semantic::new(Text::raw("Quit")).role(Role::Button);
+        let dialog = Semantic::new(Text::raw("Sure?"))
+            .role(Role::Dialog)
+            .label("Confirm");
+        let scene = Scene::new(crate::element(base)).overlay(
+            SceneOverlay::new(crate::element(dialog), OverlaySpec::centered(50, 34))
+                .backdrop(Backdrop::tint(crate::style::Color::Rgb(0, 0, 0), 128)),
+        );
+        assert_eq!(read(&scene, 20, 3), "Confirm, dialog\nSure?");
+    }
+
+    #[test]
     fn an_overlay_drops_the_nodes_it_covers() {
         let frame = AccessFrame::new();
         frame.record(Node::new(Role::Button, "Covered").area(Rect::new(0, 0, 4, 1)));

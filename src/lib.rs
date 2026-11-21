@@ -89,6 +89,7 @@ pub mod anim;
 pub mod buffer;
 mod clock;
 pub mod components;
+mod compose;
 #[cfg(feature = "devtools")]
 #[cfg_attr(docsrs, doc(cfg(feature = "devtools")))]
 pub mod devtools;

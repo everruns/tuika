@@ -152,3 +152,71 @@ pub(crate) fn scene_overlay(frame: u64, theme: &Theme) -> Element {
         )),
     )
 }
+
+/// Translucent compositing: a dialog whose backdrop washes the screen toward
+/// the theme background (left), and a semi-transparent panel the content
+/// behind it shows through (right). Both blend real RGB values on the cell
+/// grid; an ANSI-palette theme falls back to dimming and an opaque panel.
+pub(crate) fn scene_translucent(frame: u64, theme: &Theme) -> Element {
+    let _ = frame;
+    // A busy, colorful base layer so the blend has something to act on.
+    let busy = || {
+        DrawView::new(
+            |area: Rect, surface: &mut tuika::Surface<'_>, ctx: &tuika::RenderCtx<'_>| {
+                let t = ctx.theme;
+                let words: [(&str, Style); 6] = [
+                    ("fn render(", t.accent_style()),
+                    ("area,", t.text_style()),
+                    ("surface", t.info_style()),
+                    ("// blend", t.muted_style()),
+                    ("Ok(())", t.success_style()),
+                    ("界面", t.warning_style()),
+                ];
+                surface.fill(Style::default().bg(t.background));
+                for y in area.y..area.bottom() {
+                    let mut x = area.x + (y % 3);
+                    let mut i = y as usize;
+                    while x < area.right() {
+                        let (word, style) = words[i % words.len()];
+                        x = surface.set_string(x, y, word, style).saturating_add(1);
+                        i += 1;
+                    }
+                }
+            },
+        )
+    };
+    let dialog = Dialog::new(
+        "Delete branch?",
+        element(Text::new(vec![
+            Line::from(Span::styled("feature/translucency", theme.accent_style())),
+            Line::from(Span::styled("is not merged.", theme.text_style())),
+        ])),
+    )
+    .size(26, 6)
+    .key_hints([("y", "delete"), ("esc", "keep")])
+    .backdrop(Backdrop::tint(theme.background, 170));
+    let tinted = Scene::new(element(busy())).dialog(dialog);
+
+    let panel = view! {
+        boxed(
+            title = Line::from(Span::styled(" opacity 65% ", theme.accent_style())),
+            border = BorderStyle::Rounded,
+            padding = Padding::symmetric(1, 0)
+        ) {
+            node(Text::new(vec![
+                Line::from(Span::styled("frame   16.2 ms", theme.text_style())),
+                Line::from(Span::styled("cells   1 584", theme.text_style())),
+                Line::from(Span::styled("layers  2", theme.text_style())),
+            ]))
+        }
+    };
+    let glass = Scene::new(element(busy()))
+        .overlay(SceneOverlay::new(panel, OverlaySpec::centered(84, 50)).opacity(166));
+
+    view! {
+        row(gap = 2) {
+            grow(1) { node(tinted) }
+            grow(1) { node(glass) }
+        }
+    }
+}
