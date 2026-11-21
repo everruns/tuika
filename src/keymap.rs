@@ -22,6 +22,10 @@
 //!   on runtime data so it is only active in a given mode.
 //! - A [`Keymap`] holds the layers plus a small runtime-data store and the
 //!   pending multi-stroke state, and turns incoming [`Key`]s into [`Dispatch`].
+//! - A [`Mode`] is a named set of bindings (`"resize/left"`) that apply only
+//!   while the mode is on the keymap's mode stack.
+//! - [`CommandInfo`] entries form a searchable catalog of commands, and
+//!   [`Keymap::diagnostics`] / [`Keymap::dump`] explain the bindings.
 //!
 //! # Example
 //!
@@ -341,9 +345,32 @@ pub struct Binding<C> {
     // (or without) the keymap that will own them, and changing the leader
     // rebinds every leader sequence at once.
     leader: bool,
+    // The key mode this binding belongs to, or `None` for the base keymap.
+    mode: Option<String>,
     command: C,
     label: Option<String>,
     location: Option<&'static Location<'static>>,
+}
+
+/// Split a `mode/` prefix off a spec (`"resize/left"`). A mode name is
+/// lowercase ASCII letters, digits, `_`, and `-`, so the slash key itself
+/// (`"/"`, `"ctrl+/"`, `"g /"`) is never mistaken for one.
+fn split_mode(keys: &str) -> (Option<&str>, &str) {
+    let trimmed = keys.trim_start();
+    if let Some((name, rest)) = trimmed.split_once('/')
+        && is_mode_name(name)
+        && !rest.trim().is_empty()
+    {
+        return (Some(name), rest);
+    }
+    (None, keys)
+}
+
+fn is_mode_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
 }
 
 /// Split a leading [`LEADER`] token off a sequence spec.
@@ -366,6 +393,7 @@ pub struct Layer<C> {
     name: String,
     priority: i32,
     when: Vec<(String, String)>,
+    mode: Option<String>,
     bindings: Vec<Binding<C>>,
 }
 
@@ -376,8 +404,22 @@ impl<C> Layer<C> {
             name: name.into(),
             priority: 0,
             when: Vec::new(),
+            mode: None,
             bindings: Vec::new(),
         }
+    }
+
+    /// Put the bindings added after this call in key mode `mode`, as if each
+    /// spec were written `"mode/keys"`. A spec's own `mode/` prefix still wins.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `mode` is not a valid mode name (see [`Mode::new`]).
+    #[track_caller]
+    pub fn mode(mut self, mode: &str) -> Self {
+        assert!(is_mode_name(mode), "invalid key mode name: {mode:?}");
+        self.mode = Some(mode.to_string());
+        self
     }
 
     /// This layer's name.
@@ -403,7 +445,8 @@ impl<C> Layer<C> {
     /// Add a binding, parsing `keys` as a [`KeySequence`].
     ///
     /// A spec may start with [`LEADER`] (`"<leader> f"`) to bind after the
-    /// keymap's [leader key](Keymap::leader). The caller's source location is
+    /// keymap's [leader key](Keymap::leader), and with a mode name and a slash
+    /// (`"resize/left"`) to bind inside a [key mode](Mode). The caller's source location is
     /// recorded for [`Keymap::dump`] and [`Keymap::diagnostics`].
     ///
     /// # Panics
@@ -441,7 +484,9 @@ impl<C> Layer<C> {
         label: Option<String>,
         command: C,
     ) -> Result<Self, KeyParseError> {
-        let (leader, rest) = split_leader(keys);
+        let (mode, keys_only) = split_mode(keys);
+        let mode = mode.map(str::to_string).or_else(|| self.mode.clone());
+        let (leader, rest) = split_leader(keys_only);
         // `<leader>` alone would bind the leader chord itself, which then
         // could never start a sequence. Bind the chord directly instead.
         if leader && rest.trim().is_empty() {
@@ -451,6 +496,7 @@ impl<C> Layer<C> {
         self.bindings.push(Binding {
             sequence,
             leader,
+            mode,
             command,
             label,
             location: Some(Location::caller()),
@@ -506,6 +552,10 @@ pub enum Dispatch<C> {
     Pending,
     /// No active binding matches; the host should handle the key itself.
     Unmatched,
+    /// The keymap used the key itself and the host should ignore it: Escape
+    /// left a [key mode](Mode), or the key was blocked or unbound in an
+    /// exclusive mode.
+    Consumed,
 }
 
 /// A discoverable binding for a help surface: its key label, optional
@@ -535,6 +585,96 @@ pub struct Keymap<C> {
     pending: Vec<Chord>,
     leader: Option<Chord>,
     commands: Vec<CommandInfo<C>>,
+    modes: Vec<Mode>,
+    stack: Vec<ActiveMode>,
+}
+
+/// Options for a key mode: a named set of bindings that apply only while the
+/// mode is entered (vim's normal mode, tmux's prefix table, a resize mode).
+///
+/// A mode exists as soon as a binding names it (`"resize/left"`), with the
+/// defaults below; register a `Mode` with [`Keymap::mode`] only to change
+/// them. Modes stack: [`Keymap::enter_mode`] pushes, the most recently entered
+/// mode is checked first, and a key it does not bind falls through to the
+/// modes below it and then the base keymap — unless the mode is
+/// [`exclusive`](Self::exclusive).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Mode {
+    name: String,
+    exclusive: bool,
+    escape_exits: bool,
+    blocked: Vec<Chord>,
+}
+
+impl Mode {
+    /// Options for mode `name`: not exclusive, left with Escape, nothing
+    /// blocked.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `name` is lowercase ASCII letters, digits, `_`, and `-`
+    /// — the characters that keep `"name/key"` specs unambiguous.
+    #[track_caller]
+    pub fn new(name: &str) -> Self {
+        assert!(is_mode_name(name), "invalid key mode name: {name:?}");
+        Self {
+            name: name.to_string(),
+            exclusive: false,
+            escape_exits: true,
+            blocked: Vec::new(),
+        }
+    }
+
+    /// The mode's name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Only this mode's bindings work while it is on top: every other key
+    /// returns [`Dispatch::Consumed`] instead of reaching lower modes, the
+    /// base keymap, or the host.
+    pub fn exclusive(mut self) -> Self {
+        self.exclusive = true;
+        self
+    }
+
+    /// Whether an Escape the mode does not bind leaves it (the default), or
+    /// falls through like any other key.
+    pub fn escape_exits(mut self, exits: bool) -> Self {
+        self.escape_exits = exits;
+        self
+    }
+
+    /// Block a key inside this mode: it does nothing there
+    /// ([`Dispatch::Consumed`]), even though a lower mode or the base keymap
+    /// binds it. Blocking applies to the first stroke of a sequence.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `key` is not a valid single chord, like [`Layer::bind`].
+    #[track_caller]
+    pub fn block(mut self, key: &str) -> Self {
+        let chord = Chord::parse(key).unwrap_or_else(|err| panic!("{err}"));
+        self.blocked.push(chord);
+        self
+    }
+}
+
+/// An entry on the mode stack.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ActiveMode {
+    name: String,
+    once: bool,
+}
+
+/// What resolving a candidate against the mode stack found.
+enum Resolution<C> {
+    Exact(C),
+    Prefix,
+    /// Nothing matched and the top mode swallows the key.
+    Swallow,
+    /// Nothing matched; the key belongs to the host.
+    None,
 }
 
 /// How one binding relates to a candidate stroke sequence.
@@ -557,7 +697,91 @@ impl<C: Clone> Keymap<C> {
             pending: Vec::new(),
             leader: None,
             commands: Vec::new(),
+            modes: Vec::new(),
+            stack: Vec::new(),
         }
+    }
+
+    /// Register options for a key mode (builder style). See [`Mode`].
+    /// Registering a name twice replaces the earlier options.
+    pub fn mode(mut self, mode: Mode) -> Self {
+        self.add_mode(mode);
+        self
+    }
+
+    /// Register options for a key mode in place.
+    pub fn add_mode(&mut self, mode: Mode) {
+        match self.modes.iter_mut().find(|known| known.name == mode.name) {
+            Some(known) => *known = mode,
+            None => self.modes.push(mode),
+        }
+    }
+
+    /// Enter key mode `name`, on top of any mode already active. It stays
+    /// until [`exit_mode`](Self::exit_mode), Escape, or
+    /// [`exit_all_modes`](Self::exit_all_modes).
+    ///
+    /// Entering never fails: a mode with no bindings and no options is simply
+    /// a mode in which only lower modes and the base keymap answer.
+    pub fn enter_mode(&mut self, name: impl Into<String>) {
+        self.push_mode(name.into(), false);
+    }
+
+    /// Enter key mode `name` for one key: the mode is left after the next key
+    /// that does not leave a sequence pending, whatever that key did — the
+    /// tmux prefix-key pattern.
+    pub fn enter_mode_once(&mut self, name: impl Into<String>) {
+        self.push_mode(name.into(), true);
+    }
+
+    fn push_mode(&mut self, name: String, once: bool) {
+        self.stack.push(ActiveMode { name, once });
+        self.pending.clear();
+    }
+
+    /// Leave the most recently entered mode, returning its name.
+    pub fn exit_mode(&mut self) -> Option<String> {
+        self.pending.clear();
+        self.stack.pop().map(|mode| mode.name)
+    }
+
+    /// Leave every mode.
+    pub fn exit_all_modes(&mut self) {
+        self.stack.clear();
+        self.pending.clear();
+    }
+
+    /// The most recently entered mode, for a mode indicator.
+    pub fn current_mode(&self) -> Option<&str> {
+        self.stack.last().map(|mode| mode.name.as_str())
+    }
+
+    /// Every active mode, oldest first.
+    pub fn active_modes(&self) -> impl Iterator<Item = &str> {
+        self.stack.iter().map(|mode| mode.name.as_str())
+    }
+
+    /// The options for mode `name`: the registered ones, or the defaults.
+    fn mode_options(&self, name: &str) -> Option<&Mode> {
+        self.modes.iter().find(|mode| mode.name == name)
+    }
+
+    /// The binding levels checked for a key, top first: each active mode from
+    /// the most recent down, stopping after an exclusive one, then the base
+    /// keymap (`None`) when no exclusive mode cut the walk short.
+    fn levels(&self) -> Vec<Option<&str>> {
+        let mut levels = Vec::with_capacity(self.stack.len() + 1);
+        for active in self.stack.iter().rev() {
+            levels.push(Some(active.name.as_str()));
+            if self
+                .mode_options(&active.name)
+                .is_some_and(|mode| mode.exclusive)
+            {
+                return levels;
+            }
+        }
+        levels.push(None);
+        levels
     }
 
     /// Set the leader key (builder style), parsing `spec` as one chord.
@@ -674,18 +898,39 @@ impl<C: Clone> Keymap<C> {
             .then(|| key.base_layout())
             .flatten()
             .map(Chord::from_key);
+        let top = self.stack.len();
+        let result = self.dispatch_chord(chord, base);
+        // A once-mode lasts for one complete key. Leave it unless the key
+        // left a sequence pending, or the dispatch already left it (Escape).
+        if !matches!(result, Dispatch::Pending)
+            && self.stack.len() == top
+            && self.stack.last().is_some_and(|mode| mode.once)
+        {
+            self.stack.pop();
+        }
+        result
+    }
 
+    fn dispatch_chord(&mut self, chord: Chord, base: Option<Chord>) -> Dispatch<C> {
+        if self.escape_leaves_mode(chord) {
+            self.stack.pop();
+            return Dispatch::Consumed;
+        }
+        let mut swallowed = false;
         let mut candidate = self.pending.clone();
         for stroke in std::iter::once(chord).chain(base) {
             candidate.push(stroke);
-            let (exact, prefix) = self.resolve(&candidate);
-            if let Some(command) = exact {
-                self.pending.clear();
-                return Dispatch::Command(command);
-            }
-            if prefix {
-                self.pending = candidate;
-                return Dispatch::Pending;
+            match self.resolve_levels(&candidate) {
+                Resolution::Exact(command) => {
+                    self.pending.clear();
+                    return Dispatch::Command(command);
+                }
+                Resolution::Prefix => {
+                    self.pending = candidate;
+                    return Dispatch::Pending;
+                }
+                Resolution::Swallow => swallowed = true,
+                Resolution::None => {}
             }
             candidate.pop();
         }
@@ -694,25 +939,71 @@ impl<C: Clone> Keymap<C> {
         let retry = !self.pending.is_empty();
         self.pending.clear();
         if retry {
+            swallowed = false;
             for stroke in std::iter::once(chord).chain(base) {
-                let single = [stroke];
-                let (exact, prefix) = self.resolve(&single);
-                if let Some(command) = exact {
-                    return Dispatch::Command(command);
-                }
-                if prefix {
-                    self.pending.push(stroke);
-                    return Dispatch::Pending;
+                match self.resolve_levels(&[stroke]) {
+                    Resolution::Exact(command) => return Dispatch::Command(command),
+                    Resolution::Prefix => {
+                        self.pending.push(stroke);
+                        return Dispatch::Pending;
+                    }
+                    Resolution::Swallow => swallowed = true,
+                    Resolution::None => {}
                 }
             }
         }
-        Dispatch::Unmatched
+        if swallowed {
+            Dispatch::Consumed
+        } else {
+            Dispatch::Unmatched
+        }
     }
 
-    /// Resolve a candidate stroke sequence against the active layers, returning
+    /// Whether this chord is a bare Escape that leaves the top mode: no
+    /// sequence is pending, the mode keeps the default, and the mode does not
+    /// bind Escape itself.
+    fn escape_leaves_mode(&self, chord: Chord) -> bool {
+        let Some(top) = self.stack.last() else {
+            return false;
+        };
+        chord == Chord::new(KeyCode::Esc)
+            && self.pending.is_empty()
+            && self
+                .mode_options(&top.name)
+                .is_none_or(|mode| mode.escape_exits)
+            && matches!(self.resolve(&[chord], Some(&top.name)), (None, false))
+    }
+
+    /// Walk the levels top first. The first level with an exact match or a
+    /// live prefix answers; a blocked first stroke or an exclusive top mode
+    /// swallows the key; otherwise it falls through to the next level.
+    fn resolve_levels(&self, candidate: &[Chord]) -> Resolution<C> {
+        for level in self.levels() {
+            let (exact, prefix) = self.resolve(candidate, level);
+            if let Some(command) = exact {
+                return Resolution::Exact(command);
+            }
+            if prefix {
+                return Resolution::Prefix;
+            }
+            let options = level.and_then(|name| self.mode_options(name));
+            if let Some(mode) = options {
+                if candidate.len() == 1 && mode.blocked.contains(&candidate[0]) {
+                    return Resolution::Swallow;
+                }
+                if mode.exclusive {
+                    return Resolution::Swallow;
+                }
+            }
+        }
+        Resolution::None
+    }
+
+    /// Resolve a candidate stroke sequence against the active layers' bindings
+    /// at one level (a mode, or `None` for the base keymap), returning
     /// the winning exact-match command (highest priority) and whether any active
     /// binding is a strict extension of the candidate (a live prefix).
-    fn resolve(&self, candidate: &[Chord]) -> (Option<C>, bool) {
+    fn resolve(&self, candidate: &[Chord], level: Option<&str>) -> (Option<C>, bool) {
         let mut best: Option<(i32, &C)> = None;
         let mut prefix = false;
         for layer in &self.layers {
@@ -720,6 +1011,9 @@ impl<C: Clone> Keymap<C> {
                 continue;
             }
             for binding in &layer.bindings {
+                if binding.mode.as_deref() != level {
+                    continue;
+                }
                 match self.match_binding(binding, candidate) {
                     Match::Exact => {
                         if best.is_none_or(|(p, _)| layer.priority > p) {
@@ -789,10 +1083,19 @@ impl<C: Clone> Keymap<C> {
         }
     }
 
+    /// A binding's key label with its mode prefix (`"resize/Left"`), for
+    /// surfaces that list every mode at once.
+    fn qualified_keys(&self, binding: &Binding<C>) -> String {
+        match &binding.mode {
+            Some(mode) => format!("{mode}/{}", self.keys_label(binding)),
+            None => self.keys_label(binding),
+        }
+    }
+
     fn site(&self, layer: &Layer<C>, binding: &Binding<C>) -> BindingSite {
         BindingSite {
             layer: layer.name.clone(),
-            keys: self.keys_label(binding),
+            keys: self.qualified_keys(binding),
             location: binding.location,
         }
     }
@@ -800,10 +1103,12 @@ impl<C: Clone> Keymap<C> {
     /// Every declared binding, active or not, in declaration order: the raw
     /// material for [`dump`](Self::dump) and for a host's own keymap viewer.
     pub fn bindings(&self) -> Vec<BindingInfo<C>> {
+        let levels = self.levels();
         self.layers
             .iter()
             .flat_map(|layer| {
-                let active = layer.is_active(&self.data);
+                let gate_open = layer.is_active(&self.data);
+                let levels = &levels;
                 layer.bindings.iter().map(move |binding| BindingInfo {
                     keys: self.keys_label(binding),
                     label: binding.label.clone(),
@@ -811,7 +1116,8 @@ impl<C: Clone> Keymap<C> {
                     layer: layer.name.clone(),
                     priority: layer.priority,
                     when: layer.when.clone(),
-                    active,
+                    mode: binding.mode.clone(),
+                    active: gate_open && levels.contains(&binding.mode.as_deref()),
                     location: binding.location,
                 })
             })
@@ -844,7 +1150,9 @@ impl<C: Clone> Keymap<C> {
         }
         for (index, (a_layer, a_binding, a_strokes)) in entries.iter().enumerate() {
             for (b_layer, b_binding, b_strokes) in &entries[index + 1..] {
-                if !a_layer.may_coexist(b_layer) {
+                // Bindings in different modes never compete: a mode is
+                // checked before the levels below it by design.
+                if a_binding.mode != b_binding.mode || !a_layer.may_coexist(b_layer) {
                     continue;
                 }
                 let same_layer = std::ptr::eq(*a_layer, *b_layer);
@@ -914,24 +1222,38 @@ impl<C: Clone> Keymap<C> {
             .filter(|l| l.is_active(&self.data))
             .collect();
         layers.sort_by(|a, b| b.priority.cmp(&a.priority));
-        layers
-            .iter()
-            .flat_map(|layer| {
-                layer
+        let mut hints = Vec::new();
+        // Keys blocked by a mode above hide the bindings below it.
+        let mut blocked: Vec<Chord> = Vec::new();
+        // The top mode's bindings first, so a help surface leads with what
+        // the current mode adds.
+        for level in self.levels() {
+            for layer in &layers {
+                let bindings = layer
                     .bindings
                     .iter()
+                    .filter(|binding| binding.mode.as_deref() == level)
                     // A leader binding with no leader set cannot be typed, so
                     // advertising it would be a lie.
                     .filter(|binding| !binding.leader || self.leader.is_some())
-                    .map(|binding| Hint {
-                        keys: self.keys_label(binding),
-                        label: binding.label.clone(),
-                        command: binding.command.clone(),
-                        layer: layer.name.clone(),
-                        priority: layer.priority,
-                    })
-            })
-            .collect()
+                    .filter(|binding| {
+                        self.effective(binding)
+                            .and_then(|strokes| strokes.first().copied())
+                            .is_none_or(|first| !blocked.contains(&first))
+                    });
+                hints.extend(bindings.map(|binding| Hint {
+                    keys: self.keys_label(binding),
+                    label: binding.label.clone(),
+                    command: binding.command.clone(),
+                    layer: layer.name.clone(),
+                    priority: layer.priority,
+                }));
+            }
+            if let Some(mode) = level.and_then(|name| self.mode_options(name)) {
+                blocked.extend_from_slice(&mode.blocked);
+            }
+        }
+        hints
     }
 }
 
@@ -954,6 +1276,10 @@ impl<C: Clone + fmt::Debug> Keymap<C> {
             }
             None => out.push_str("leader: (none)\n"),
         }
+        let stack: Vec<&str> = self.active_modes().collect();
+        if !stack.is_empty() {
+            let _ = writeln!(out, "modes: {}", stack.join(" > "));
+        }
         for layer in &self.layers {
             let state = if layer.is_active(&self.data) {
                 ""
@@ -972,7 +1298,7 @@ impl<C: Clone + fmt::Debug> Keymap<C> {
                 .iter()
                 .map(|binding| {
                     [
-                        self.keys_label(binding),
+                        self.qualified_keys(binding),
                         binding.label.clone().unwrap_or_else(|| "-".to_string()),
                         format!("{:?}", binding.command),
                         binding
@@ -1001,6 +1327,26 @@ impl<C: Clone + fmt::Debug> Keymap<C> {
                 let trimmed = out.trim_end_matches(' ').len();
                 out.truncate(trimmed);
                 out.push('\n');
+            }
+        }
+        if !self.modes.is_empty() {
+            out.push_str("\nmode options:\n");
+            for mode in &self.modes {
+                let mut traits = Vec::new();
+                if mode.exclusive {
+                    traits.push("exclusive".to_string());
+                }
+                if !mode.escape_exits {
+                    traits.push("escape does not exit".to_string());
+                }
+                if !mode.blocked.is_empty() {
+                    let blocked: Vec<String> = mode.blocked.iter().map(Chord::display).collect();
+                    traits.push(format!("blocked: {}", blocked.join(" ")));
+                }
+                if traits.is_empty() {
+                    traits.push("defaults".to_string());
+                }
+                let _ = writeln!(out, "  {}  {}", mode.name, traits.join(", "));
             }
         }
         let diagnostics = self.diagnostics();
@@ -1150,7 +1496,10 @@ pub struct BindingInfo<C> {
     pub priority: i32,
     /// The declaring layer's gates, as `(key, value)` pairs.
     pub when: Vec<(String, String)>,
-    /// Whether the layer is active under the current runtime data.
+    /// The key mode the binding belongs to, or `None` for the base keymap.
+    pub mode: Option<String>,
+    /// Whether the binding can fire now: its layer's gates hold and its mode
+    /// (if any) is reachable on the mode stack.
     pub active: bool,
     /// The source line that declared the binding.
     pub location: Option<&'static Location<'static>>,
@@ -1746,7 +2095,7 @@ mod tests {
         let lines: Vec<&str> = dump.lines().collect();
         assert_eq!(lines[0], "leader: Space");
         assert_eq!(lines[2], "layer \"global\"  priority 0  always active");
-        // `file!()` rather than a literal path: Windows spells it `src\\keymap.rs`.
+        // `file!()` rather than a literal path: Windows spells it with a backslash.
         let here = file!();
         assert!(lines[3].starts_with(&format!("  Ctrl+R   search  Search  {here}:")));
         assert!(lines[4].starts_with(&format!("  Space Q  -       Quit    {here}:")));
@@ -1894,5 +2243,252 @@ mod tests {
             Dispatch::Command(Action::Search)
         );
         assert!(keymap.pending().is_empty());
+    }
+
+    fn left() -> Key {
+        key(KeyCode::Left)
+    }
+
+    fn modal() -> Keymap<Action> {
+        Keymap::new().layer(
+            Layer::new("global")
+                .bind("ctrl+r", Action::Search)
+                .bind("q", Action::Quit)
+                .bind("resize/left", Action::Top)
+                .bind("resize/enter", Action::Close),
+        )
+    }
+
+    #[test]
+    fn mode_bindings_only_apply_inside_the_mode() {
+        let mut keymap = modal();
+        assert_eq!(keymap.dispatch(left()), Dispatch::Unmatched);
+        keymap.enter_mode("resize");
+        assert_eq!(keymap.current_mode(), Some("resize"));
+        assert_eq!(keymap.dispatch(left()), Dispatch::Command(Action::Top));
+        // Unbound keys fall through to the base keymap by default, and the
+        // mode stays until it is left.
+        assert_eq!(
+            keymap.dispatch(ctrl('r')),
+            Dispatch::Command(Action::Search)
+        );
+        assert_eq!(keymap.dispatch(left()), Dispatch::Command(Action::Top));
+        assert_eq!(keymap.exit_mode().as_deref(), Some("resize"));
+        assert_eq!(keymap.dispatch(left()), Dispatch::Unmatched);
+    }
+
+    #[test]
+    fn mode_prefix_is_not_confused_with_the_slash_key() {
+        let keymap = Keymap::new().layer(
+            Layer::new("global")
+                .bind("/", Action::Search)
+                .bind("ctrl+/", Action::Quit)
+                .bind("g /", Action::Top),
+        );
+        assert!(keymap.bindings().iter().all(|b| b.mode.is_none()));
+        assert!(
+            Layer::new("l")
+                .try_bind("Resize/left", Action::Top)
+                .is_err()
+        );
+        assert!(Layer::new("l").try_bind("resize/", Action::Top).is_err());
+        let layer = Layer::new("l")
+            .mode("nav")
+            .bind("j", Action::Top)
+            .bind("other/k", Action::Close);
+        let keymap = Keymap::new().layer(layer);
+        let modes: Vec<_> = keymap.bindings().into_iter().map(|b| b.mode).collect();
+        assert_eq!(
+            modes,
+            vec![Some("nav".to_string()), Some("other".to_string())]
+        );
+    }
+
+    #[test]
+    fn escape_leaves_the_mode_unless_bound_or_disabled() {
+        let mut keymap = modal();
+        keymap.enter_mode("resize");
+        assert_eq!(keymap.dispatch(key(KeyCode::Esc)), Dispatch::Consumed);
+        assert_eq!(keymap.current_mode(), None);
+        // Outside any mode Escape is the host's.
+        assert_eq!(keymap.dispatch(key(KeyCode::Esc)), Dispatch::Unmatched);
+
+        let mut keymap = modal().layer(Layer::new("m").bind("resize/esc", Action::Bottom));
+        keymap.enter_mode("resize");
+        assert_eq!(
+            keymap.dispatch(key(KeyCode::Esc)),
+            Dispatch::Command(Action::Bottom)
+        );
+        assert_eq!(keymap.current_mode(), Some("resize"));
+
+        let mut keymap = modal().mode(Mode::new("resize").escape_exits(false));
+        keymap.enter_mode("resize");
+        assert_eq!(keymap.dispatch(key(KeyCode::Esc)), Dispatch::Unmatched);
+        assert_eq!(keymap.current_mode(), Some("resize"));
+    }
+
+    #[test]
+    fn exclusive_modes_swallow_unbound_keys() {
+        let mut keymap = modal().mode(Mode::new("resize").exclusive());
+        keymap.enter_mode("resize");
+        assert_eq!(keymap.dispatch(ctrl('r')), Dispatch::Consumed);
+        assert_eq!(keymap.dispatch(key(KeyCode::Char('x'))), Dispatch::Consumed);
+        assert_eq!(keymap.dispatch(left()), Dispatch::Command(Action::Top));
+        assert_eq!(keymap.dispatch(key(KeyCode::Esc)), Dispatch::Consumed);
+        assert_eq!(
+            keymap.dispatch(ctrl('r')),
+            Dispatch::Command(Action::Search)
+        );
+    }
+
+    #[test]
+    fn blocked_keys_do_nothing_inside_the_mode() {
+        let mut keymap = modal().mode(Mode::new("resize").block("q"));
+        keymap.enter_mode("resize");
+        assert_eq!(keymap.dispatch(key(KeyCode::Char('q'))), Dispatch::Consumed);
+        assert_eq!(
+            keymap.dispatch(ctrl('r')),
+            Dispatch::Command(Action::Search)
+        );
+        assert!(
+            keymap
+                .hints()
+                .iter()
+                .all(|hint| hint.command != Action::Quit)
+        );
+        keymap.exit_mode();
+        assert_eq!(
+            keymap.dispatch(key(KeyCode::Char('q'))),
+            Dispatch::Command(Action::Quit)
+        );
+    }
+
+    #[test]
+    fn once_modes_leave_after_one_complete_key() {
+        let mut keymap = modal().layer(Layer::new("seq").bind("resize/g g", Action::Bottom));
+        keymap.enter_mode_once("resize");
+        assert_eq!(keymap.dispatch(left()), Dispatch::Command(Action::Top));
+        assert_eq!(keymap.current_mode(), None);
+
+        // A pending sequence keeps the mode until the sequence completes.
+        keymap.enter_mode_once("resize");
+        assert_eq!(keymap.dispatch(key(KeyCode::Char('g'))), Dispatch::Pending);
+        assert_eq!(keymap.current_mode(), Some("resize"));
+        assert_eq!(
+            keymap.dispatch(key(KeyCode::Char('g'))),
+            Dispatch::Command(Action::Bottom)
+        );
+        assert_eq!(keymap.current_mode(), None);
+
+        // An unbound key ends it too, and still reaches the host.
+        keymap.enter_mode_once("resize");
+        assert_eq!(
+            keymap.dispatch(key(KeyCode::Char('x'))),
+            Dispatch::Unmatched
+        );
+        assert_eq!(keymap.current_mode(), None);
+
+        // Escape leaves only the once-mode, not the one below it.
+        keymap.enter_mode("other");
+        keymap.enter_mode_once("resize");
+        assert_eq!(keymap.dispatch(key(KeyCode::Esc)), Dispatch::Consumed);
+        assert_eq!(keymap.current_mode(), Some("other"));
+    }
+
+    #[test]
+    fn nested_modes_check_the_newest_first_and_fall_through() {
+        let mut keymap = Keymap::new().layer(
+            Layer::new("global")
+                .bind("a/x", Action::Top)
+                .bind("a/y", Action::Bottom)
+                .bind("b/x", Action::Close)
+                .bind("z", Action::Quit),
+        );
+        keymap.enter_mode("a");
+        keymap.enter_mode("b");
+        assert_eq!(keymap.active_modes().collect::<Vec<_>>(), vec!["a", "b"]);
+        assert_eq!(
+            keymap.dispatch(key(KeyCode::Char('x'))),
+            Dispatch::Command(Action::Close)
+        );
+        assert_eq!(
+            keymap.dispatch(key(KeyCode::Char('y'))),
+            Dispatch::Command(Action::Bottom)
+        );
+        assert_eq!(
+            keymap.dispatch(key(KeyCode::Char('z'))),
+            Dispatch::Command(Action::Quit)
+        );
+        // Hints lead with the newest mode.
+        let hints: Vec<Action> = keymap.hints().into_iter().map(|h| h.command).collect();
+        assert_eq!(
+            hints,
+            vec![Action::Close, Action::Top, Action::Bottom, Action::Quit]
+        );
+
+        // An exclusive mode in the middle stops the walk there.
+        let mut keymap = keymap.mode(Mode::new("a").exclusive());
+        keymap.enter_mode("a");
+        keymap.enter_mode("b");
+        assert_eq!(
+            keymap.dispatch(key(KeyCode::Char('y'))),
+            Dispatch::Command(Action::Bottom)
+        );
+        assert_eq!(keymap.dispatch(key(KeyCode::Char('z'))), Dispatch::Consumed);
+        keymap.exit_all_modes();
+        assert_eq!(keymap.current_mode(), None);
+    }
+
+    #[test]
+    fn entering_or_leaving_a_mode_clears_pending() {
+        let mut keymap = Keymap::new().layer(Layer::new("nav").bind("g g", Action::Top));
+        assert_eq!(keymap.dispatch(key(KeyCode::Char('g'))), Dispatch::Pending);
+        keymap.enter_mode("x");
+        assert!(keymap.pending().is_empty());
+    }
+
+    #[test]
+    fn diagnostics_and_dump_understand_modes() {
+        let keymap = Keymap::new()
+            .layer(
+                Layer::new("global")
+                    .bind("x", Action::Quit)
+                    .bind("resize/x", Action::Top)
+                    .bind("resize/x", Action::Close),
+            )
+            .mode(Mode::new("resize").exclusive().block("q"));
+        // Same keys in different modes are not a conflict; a duplicate inside
+        // one mode is.
+        let found = keymap.diagnostics();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].kind, DiagnosticKind::Duplicate);
+        assert_eq!(found[0].binding.keys, "resize/X");
+
+        let infos = keymap.bindings();
+        assert!(infos[0].active);
+        assert!(!infos[1].active);
+
+        let dump = keymap.dump();
+        assert!(dump.contains("  resize/X  -  Top"));
+        assert!(dump.contains("mode options:\n  resize  exclusive, blocked: Q\n"));
+        let mut keymap = keymap;
+        keymap.enter_mode("resize");
+        assert!(keymap.dump().contains("modes: resize\n"));
+        assert!(keymap.bindings()[1].active);
+        assert!(!keymap.bindings()[0].active);
+    }
+
+    #[test]
+    fn non_latin_fallback_works_inside_modes() {
+        let mut keymap = modal()
+            .layer(Layer::new("m").bind("resize/ctrl+r", Action::Bottom))
+            .mode(Mode::new("resize").exclusive());
+        keymap.enter_mode("resize");
+        // Ctrl+к reaches the mode's Ctrl+R before the exclusive mode swallows it.
+        assert_eq!(
+            keymap.dispatch(ctrl('к')),
+            Dispatch::Command(Action::Bottom)
+        );
+        assert_eq!(keymap.dispatch(ctrl('й')), Dispatch::Consumed);
     }
 }

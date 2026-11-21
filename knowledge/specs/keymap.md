@@ -36,7 +36,8 @@ named command values:
   layers bind the same sequence, the higher priority wins.
 - **Dispatch.** `Keymap::dispatch` takes a translated `Key` and returns
   `Command(c)`, `Pending` (the strokes so far are a live prefix of a longer
-  binding), or `Unmatched` (the host should handle the key itself).
+  binding), `Unmatched` (the host should handle the key itself), or
+  `Consumed` (a key mode used the key; the host should ignore it).
 - **Query.** `Keymap::hints` lists the currently-active bindings — key label,
   optional help text, command — for a help overlay or `KeyHints` row.
 - **Catalog.** `CommandInfo` entries (stable id, title, description, category,
@@ -47,6 +48,10 @@ named command values:
   the source line that declared it.
 - **Leader.** A spec may start with `<leader>`, resolved to the keymap's
   leader chord.
+- **Key modes.** A spec may start with `mode/` to bind inside a named key mode.
+  The keymap keeps a mode stack (`enter_mode`, `enter_mode_once`,
+  `exit_mode`); modes can be exclusive, block keys, and are left with Escape by
+  default. `Dispatch::Consumed` reports a key the keymap used itself.
 
 ## Design
 
@@ -126,6 +131,23 @@ prefix that starves a longer sequence, and a `<leader>` spec with no leader are
 reported. Bindings record `#[track_caller]` locations so each report names the
 source lines on both sides, in the spirit of Rex's `rex keymap` source column.
 
+### Modes are a stack of levels, not more gated layers
+
+Gated layers already express "active in mode X", but not what Rex-style modes
+need: an order between modes (the newest wins), keys that must *not* reach the
+host (exclusive modes, blocked keys), and a mode that ends itself (once). So a
+binding carries an optional mode, and dispatch walks levels — the active modes
+newest first, then the base keymap — taking the first level with an exact match
+or a live prefix. An exclusive mode or a blocked first stroke ends the walk
+with `Consumed`. Gates still apply inside every level, so the two compose.
+
+Mode entry is the host's call, made while it runs its own command: the engine
+has no built-in "enter mode" command, because `C` is the host's type. Escape
+leaving a mode and a once-mode ending are the only stack changes the engine
+makes itself, and both are the documented Rex defaults. `Consumed` is a new
+`Dispatch` variant rather than a reused `Pending` or `Unmatched`, because the
+host must neither wait for more keys nor handle this one.
+
 ### The leader resolves at dispatch time
 
 `<leader>` is stored as a flag on the binding, not substituted at parse time,
@@ -146,7 +168,8 @@ bindings), including an explanation for rejected `shift+character` input.
 The engine resolves bindings; it does not decide when a host consults it. A host
 that wants global chords to fire in any mode dispatches ahead of its modal
 guards; one that wants modals to win dispatches after. Both are correct, and
-neither requires the engine to model modality beyond gated layers.
+neither requires the engine to model modality beyond gated layers and key
+modes.
 
 ## Non-goals
 

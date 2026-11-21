@@ -2,6 +2,12 @@
 
 ## 2026-11-21
 
+- **Keymap key modes**
+  - Bindings can live in named modes on a stack checked newest first, with
+    exclusive modes, blocked keys, Escape-to-leave, and once-modes;
+    `Dispatch::Consumed` reports keys the keymap used itself. See
+    [Keymap engine](specs/keymap.md).
+
 - **Keymap catalog, diagnostics, leader, and dump**
   - The keymap gains a command catalog searched with the shared fuzzy
     ranking, static diagnostics that separate dead bindings from intended
