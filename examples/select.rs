@@ -25,11 +25,13 @@ const ITEMS: [&str; 7] = [
     "Deploy canary",
     "Promote production",
 ];
-const LIST_Y: u16 = 4;
 
 #[derive(Default)]
 struct PickerState {
     selection: MultiSelectState,
+    /// Where the list painted each row last frame; clicks resolve against it,
+    /// so the example never restates the list's screen position.
+    hits: OptionHits,
     message: String,
 }
 
@@ -37,6 +39,7 @@ impl PickerState {
     fn new() -> Self {
         Self {
             selection: MultiSelectState::new(),
+            hits: OptionHits::new(),
             message: "Choose any number of tasks".into(),
         }
     }
@@ -66,7 +69,7 @@ fn scene(state: &PickerState, _theme: &Theme) -> Element {
             fixed(1) { node(Text::raw("↑↓/jk  Ctrl+N/P  Tab/Shift+Tab  1-7  click  Enter/Space")) }
             fixed(1) { node(Text::raw(format!("{} · {checked} checked", state.message))) }
             fixed(1) { node(Text::raw("")) }
-            fixed(7) { node(SelectList::new(rows, state.selection.cursor())) }
+            fixed(7) { node(SelectList::new(rows, state.selection.cursor()).hits(&state.hits)) }
             fixed(1) { node(Text::raw("c clear · q/esc quit")) }
         }
     }
@@ -88,12 +91,11 @@ fn update(state: &mut PickerState, event: &Event) -> UpdateResult {
     }
 
     let outcome = match event {
-        Event::Mouse(_) => state.selection.handle_mouse(
-            event,
-            ITEMS.len(),
-            Rect::new(0, LIST_Y, u16::MAX, ITEMS.len() as u16),
-            0,
-        ),
+        Event::Mouse(_) => {
+            state
+                .selection
+                .handle_click(event, ITEMS.len(), &state.hits, ClickAction::Choose)
+        }
         _ => state
             .selection
             .handle(event, ITEMS.len(), SelectNavigation::common()),
@@ -140,6 +142,7 @@ fn main() -> io::Result<()> {
 mod tests {
     use super::*;
     use tuika::event::{Mouse, MouseButton, MouseKind};
+    use tuika::testing::render;
 
     #[test]
     fn aliases_numbers_mouse_and_clear_drive_the_example_state() {
@@ -156,7 +159,14 @@ mod tests {
         );
         assert!(state.selection.contains(2));
 
-        let click = Event::Mouse(Mouse::at(MouseKind::Down(MouseButton::Left), 3, LIST_Y + 4));
+        // Paint once so the list records where its rows landed (row 4 down).
+        let _ = render(
+            scene(&state, &Theme::default()).as_ref(),
+            60,
+            12,
+            &Theme::default(),
+        );
+        let click = Event::Mouse(Mouse::at(MouseKind::Down(MouseButton::Left), 3, 4 + 4));
         assert_eq!(update(&mut state, &click), UpdateResult::Dirty);
         assert!(state.selection.contains(4));
 

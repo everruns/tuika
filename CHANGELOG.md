@@ -20,6 +20,8 @@ next release.
 
 ### Breaking
 
+- `Capabilities` gained the public field `kitty_keyboard`. Struct-literal
+  construction must set it; `from_env`, `from_env_parts`, and `query` fill it.
 - `tuika-charts`: `SeriesKind` gained a `Band { lower }` variant, and `Series`
   gained the public fields `dashed` and `legend`. Exhaustive matches on
   `SeriesKind` and struct-literal `Series` construction must be updated; the
@@ -61,6 +63,22 @@ next release.
   chord `"<leader> f"` specs start with. Every binding records the source line
   that declared it, which `Keymap::bindings` and the plain-text `Keymap::dump`
   report. `CommandInfo` joins the prelude.
+- `term::capabilities` probes the Kitty keyboard protocol: `query` and
+  `query_with_palette` also send `KITTY_KEYBOARD_QUERY` (`CSI ? u`) and set
+  `Capabilities::kitty_keyboard` from the terminal's answer, so a host can tell
+  whether Shift+Enter and similar chords are distinguishable. New:
+  `KittyKeyboardFlags` (parses the answer), `Capabilities::with_probe_reply`,
+  and `Capabilities::with_multiplexer` (tmux and screen do not forward the
+  protocol). `DeviceAttributes::parse` now finds the DA1 frame among other CSI
+  answers instead of reading the first frame.
+- Click to choose in pickers: `SelectList`, `SelectionScreen`, and `TabSelect`
+  take `.hits(&OptionHits)` and record where each visible option was painted,
+  and `SelectState`, `SelectViewportState`, `MultiSelectState`, and
+  `TabSelectState` gain `handle_click`, which resolves a click against that
+  geometry so hosts no longer mirror the picker's layout by hand.
+  `ClickAction` chooses between highlight-then-confirm and one-click choice,
+  and `ClickConfirm` holds a one-click choice for a short highlight before the
+  host acts on it.
 - `tuika-charts`: `Series::band` fills between two edges (percentile ranges,
   confidence intervals); `Chart::reference` with `Reference::value` /
   `Reference::position` draws labelled, optionally dashed threshold and event

@@ -15,7 +15,7 @@ use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
 
-use super::{Scrollbar, SelectionAnchor, VirtualWindow};
+use super::{ClickAction, OptionHits, Scrollbar, SelectionAnchor, VirtualWindow};
 
 /// Optional navigation bindings for [`SelectState`].
 ///
@@ -197,6 +197,24 @@ impl SelectViewportState {
         }
         outcome
     }
+
+    /// Resolve a click against the rows a [`SelectList`] painted into `hits`.
+    ///
+    /// The recorded indices are absolute, so no window is needed: the clicked
+    /// row was visible, and following it never moves the window.
+    pub fn handle_click(
+        &mut self,
+        event: &Event,
+        len: usize,
+        hits: &OptionHits,
+        action: ClickAction,
+    ) -> InputOutcome {
+        let outcome = self.selection.handle_click(event, len, hits, action);
+        if matches!(outcome, InputOutcome::Changed | InputOutcome::Submitted) {
+            self.follow_selection = true;
+        }
+        outcome
+    }
 }
 
 impl Default for SelectState {
@@ -347,6 +365,35 @@ impl SelectState {
         }
     }
 
+    /// Resolve a click against the rows a picker painted into `hits`.
+    ///
+    /// Unlike [`handle_mouse`](Self::handle_mouse), the host passes no
+    /// geometry: [`SelectList::hits`] or
+    /// [`SelectionScreen::hits`](super::SelectionScreen::hits) recorded where
+    /// each visible row landed, borders, headers and scroll window included.
+    /// `action` decides whether a click on a new row only highlights it
+    /// ([`Changed`](InputOutcome::Changed)) or also confirms it
+    /// ([`Submitted`](InputOutcome::Submitted)). Clicks outside every row, and
+    /// modified or non-left presses, are [`Ignored`](InputOutcome::Ignored).
+    pub fn handle_click(
+        &mut self,
+        event: &Event,
+        len: usize,
+        hits: &OptionHits,
+        action: ClickAction,
+    ) -> InputOutcome {
+        let Some(index) = hits.hit(event).filter(|&index| index < len) else {
+            return InputOutcome::Ignored;
+        };
+        let confirm = action == ClickAction::Choose || self.selected == Some(index);
+        self.selected = Some(index);
+        if confirm {
+            InputOutcome::Submitted
+        } else {
+            InputOutcome::Changed
+        }
+    }
+
     fn step_up(&mut self, len: usize) -> InputOutcome {
         let before = self.selected;
         self.selected = Some(match self.selected {
@@ -460,6 +507,29 @@ impl MultiSelectState {
         }
     }
 
+    /// Resolve a click against painted rows and toggle the confirmed row.
+    ///
+    /// With [`ClickAction::Choose`] one click moves the cursor and toggles;
+    /// with [`ClickAction::Highlight`] the first click only moves the cursor.
+    pub fn handle_click(
+        &mut self,
+        event: &Event,
+        len: usize,
+        hits: &OptionHits,
+        action: ClickAction,
+    ) -> InputOutcome {
+        match self.cursor.handle_click(event, len, hits, action) {
+            InputOutcome::Submitted => {
+                let Some(index) = self.cursor.selected() else {
+                    return InputOutcome::Ignored;
+                };
+                self.toggle(index);
+                InputOutcome::Changed
+            }
+            outcome => outcome,
+        }
+    }
+
     fn toggle_cursor(&mut self, len: usize) -> InputOutcome {
         self.cursor.clamp(len);
         let Some(index) = self.cursor.selected() else {
@@ -512,6 +582,7 @@ pub struct SelectList {
     scrollbar: bool,
     selection_style: Option<Style>,
     selection_anchor: SelectionAnchor,
+    hits: Option<OptionHits>,
 }
 
 pub(crate) struct SelectRows<'items> {
@@ -523,6 +594,7 @@ pub(crate) struct SelectRows<'items> {
     scrollbar: bool,
     selection_style: Option<Style>,
     selection_anchor: SelectionAnchor,
+    hits: Option<OptionHits>,
 }
 
 impl<'items> SelectRows<'items> {
@@ -536,6 +608,7 @@ impl<'items> SelectRows<'items> {
             scrollbar: true,
             selection_style: None,
             selection_anchor: SelectionAnchor::default(),
+            hits: None,
         }
     }
 
@@ -557,6 +630,11 @@ impl<'items> SelectRows<'items> {
 
     pub(crate) fn selection_style(mut self, style: Option<Style>) -> Self {
         self.selection_style = style;
+        self
+    }
+
+    pub(crate) fn hits(mut self, hits: Option<OptionHits>) -> Self {
+        self.hits = hits;
         self
     }
 
@@ -609,6 +687,9 @@ impl View for SelectRows<'_> {
     }
 
     fn render(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
+        if let Some(hits) = &self.hits {
+            hits.clear();
+        }
         let window = self.window(Some(area.height));
         let start = window.start();
         let rows = window.len();
@@ -634,6 +715,9 @@ impl View for SelectRows<'_> {
             let y = area.y.saturating_add(i as u16);
             if y >= area.bottom() {
                 break;
+            }
+            if let Some(hits) = &self.hits {
+                hits.record(Rect::new(area.x, y, row_width, 1), surface.area(), idx);
             }
             let selected = self.selected == Some(idx);
             if selected {
@@ -687,6 +771,7 @@ impl SelectList {
             scrollbar: true,
             selection_style: None,
             selection_anchor: SelectionAnchor::default(),
+            hits: None,
         }
     }
 
@@ -705,6 +790,7 @@ impl SelectList {
             scrollbar: true,
             selection_style: None,
             selection_anchor: SelectionAnchor::default(),
+            hits: None,
         }
     }
 
@@ -750,6 +836,13 @@ impl SelectList {
         self
     }
 
+    /// Record where each visible row is painted, for
+    /// [`SelectState::handle_click`] and its siblings.
+    pub fn hits(mut self, hits: &OptionHits) -> Self {
+        self.hits = Some(hits.clone());
+        self
+    }
+
     fn rows(&self) -> SelectRows<'_> {
         SelectRows {
             items: &self.items,
@@ -760,6 +853,7 @@ impl SelectList {
             scrollbar: self.scrollbar,
             selection_style: self.selection_style,
             selection_anchor: self.selection_anchor,
+            hits: self.hits.clone(),
         }
     }
 }
