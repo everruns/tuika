@@ -20,12 +20,14 @@ the renderer did not expect.
 
 ## What
 
-Eight out-of-band capabilities, in three families:
+Out-of-band capabilities, in three families:
 
 | Capability | Sequence | Module | Emission point |
 | --- | --- | --- | --- |
 | Hyperlinks | OSC 8 | `term::hyperlink` | embedded by semantic prose components or spliced into arbitrary drawn runs by `HyperlinkBackend` |
 | Clipboard | OSC 52 | `term::clipboard` | host- or runner-initiated, any time |
+| Desktop notification | OSC 9 / OSC 777 | `term::attention` | host-initiated, opt-in; inbox fallback stays host-owned |
+| Focus reporting | CSI ? 1004 | `term::attention::FocusReporting` | host-initiated scope; drop disables reporting |
 | Native progress | OSC 9;4 | `term::progress` | host-initiated, any time |
 | Program status | OSC 7501 | `term::program_status` | host-initiated, any time |
 | Pointer shape | OSC 22 | `term::pointer` | host-initiated, any time |
@@ -144,6 +146,14 @@ links. `HyperlinkBackend` remains the host-controlled escape hatch for arbitrary
 rendered content.
 
 ### Encoders live in tuika, payloads come from the host
+
+Desktop notifications follow the same explicit-input rule. Their encoders bound
+text, remove terminal control characters, and replace protocol delimiters.
+Unknown OSC notifications are ignored; hosts retain a visible in-app fallback.
+Hosts choose the protocol and attention policy, including deduplication and
+whether focus is known. Enabling focus reports does not reveal current focus
+until an event arrives. The focus scope restores reporting on early returns and
+failed enable flushes as well as normal exit.
 
 Every one of these sequences is produced only by tuika's own encoder, from data
 the host passed explicitly. Host text is never interpolated into an escape

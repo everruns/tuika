@@ -592,3 +592,13 @@ inline placeholder rather than dropping the URL.
 - [Runnable examples](../examples/) — `mouse` records the selection/clipboard
   workflow live; quit with `q`/`esc`.
 - [README](../README.md) — the model behind the toolkit.
+
+## Desktop attention
+
+Custom hosts can opt into `tuika::term::attention::FocusReporting` for terminal
+focus events and select `Protocol::Osc9` or `Protocol::Osc777` when sending a
+notification with `attention::write`. Text fields are bounded and control-safe.
+Keep the guard alive for the host scope; it disables focus reporting on drop.
+Treat focus as unknown until a focus event arrives. Hosts decide consent,
+privacy, deduplication and when to notify. Keep a visible in-app unread state
+because unsupported terminals ignore these sequences. See `examples/attention.rs`.

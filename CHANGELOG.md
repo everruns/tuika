@@ -11,14 +11,20 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
-## Unreleased
+## [0.14.0] - 2026-11-24
 
-`tuika-codeformatters` 0.8.0 was published ahead of this release, from `main`
-against `tuika` 0.13.0. It carries the tree-sitter 0.27 move and the 1.90 MSRV
-listed under Breaking below; `tuika` itself is unchanged on crates.io until the
-next release.
+Released alongside `tuika-codeformatters` 0.9.0, `tuika-mermaid` 0.6.0,
+`tuika-html` 0.4.0 and `tuika-charts` 0.4.0. Every companion now uses tuika 0.14.
+Codeformatters 0.8.0 previously published the tree-sitter 0.27 migration.
 
-### Breaking
+### Highlights
+
+**Selection survives scrolling.** Drag across several screens and copy the
+original text, while keeping the selection anchored to content.
+
+![Selection demo](https://raw.githubusercontent.com/everruns/tuika/v0.14.0/docs/demos/mouse.gif)
+
+### Breaking Changes
 
 - `Capabilities` gained the public field `kitty_keyboard`. Struct-literal
   construction must set it; `from_env`, `from_env_parts`, and `query` fill it.
@@ -52,6 +58,12 @@ next release.
   This change requires the next minor release, not a 0.13 patch.
 
 ### Added
+
+- `term::attention`: opt-in desktop notification encoders (`Protocol`, `encode`,
+  `write`) and focus reporting (`encode_focus_reporting`, `FocusReporting::enable`).
+  Notification text is bounded and strips terminal controls. The focus guard
+  restores reporting on errors and early returns. Hosts own consent, focus,
+  unread state and deduplication; unsupported terminals keep the in-app fallback.
 
 - Keymap command catalog, diagnostics, leader key, and dump:
   `Keymap::command` registers a `CommandInfo` (id, title, description,
@@ -172,6 +184,38 @@ next release.
 
 - Resize events invalidate the physical screen even when a shrink and restore
   happen between frames and the final geometry matches the diff baseline.
+
+### What's Changed
+
+* feat(probe): resolve layout without painting for split footers (#171)
+* feat(devtools): add a feature-gated inspector overlay (#179)
+* feat(navigation): add ScreenStack for multi-screen apps (#181)
+* feat(term): draw large text with OSC 66 text sizing (#178)
+* feat(keymap): add command catalog, diagnostics, leader, and dump (#170)
+* feat(access): record screen-reader semantics during paint (#176)
+* feat(keymap): match shortcuts on non-Latin keyboard layouts (#175)
+* feat(mouse): keep text selection on content rows while scrolling (#180)
+* feat(image): send Kitty images once and place them by id (#169)
+* feat(select): click to choose in pickers (#167)
+* feat(term): probe Kitty keyboard protocol support (#168)
+* feat(charts): add bands, reference lines, dashes, grid, axis titles (#166)
+* fix(site): stop docs pages jumping on navigation (#165)
+* chore(deps): bump the cargo-minor-and-patch group across 1 directory with 6 updates (#159) by @dependabot
+* fix(site): resolve Dependabot alerts in site dependencies (#161) by @tuika-developer
+* chore(ci): publish to crates.io through trusted publishing (OIDC) (#160)
+* chore(codeformatters): prepare tuika-codeformatters 0.8.0 (#158)
+* feat(codeformatters)!: move to tree-sitter 0.27, raise MSRV to 1.90 (#156)
+* fix(markdown): align wrapped list text under item markers (#149)
+* chore(deps): bump tree-sitter-php from 0.24.2 to 0.25.1 by @dependabot
+* chore(deps): bump tokio from 1.53.1 to 1.53.2 in the cargo-minor-and-patch group by @dependabot
+* chore(deps): bump dtolnay/rust-toolchain to e2a55d2ffb04f378e9626c28d38b36d230d1e12f by @dependabot
+* feat(ui)!: polish syntax, selection, and split-footer rendering (#145)
+* refactor(layout)!: replace AppShell with Flex composition
+* feat(site): add release notes pages and fix code blocks (#143)
+* chore(deps): bump tree-sitter-highlight from 0.26.12 to 0.26.13 (#138) by @dependabot
+* chore(deps): bump dtolnay/rust-toolchain from 6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 to 7e38f4b43b4db5c8dd498af069a4f6196df1d067 (#139) by @dependabot
+* chore(deps): bump tree-sitter from 0.26.12 to 0.26.13 (#137) by @dependabot
+* feat(terminal): add bounded notifications and scoped focus reporting
 
 ## [0.13.0] - 2026-10-07
 

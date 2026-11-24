@@ -1013,3 +1013,24 @@ fn codex_leaves_the_session_in_the_scrollback_after_exit() {
         "the composer's rows should be released:\n{contents}"
     );
 }
+
+#[test]
+fn attention_notifications_and_focus_reporting_restore_in_a_real_pty() {
+    let run = Script::new("attention")
+        .settle(Duration::from_millis(100))
+        .quit_with(b"")
+        .run();
+    assert!(run.exited_ok);
+    assert!(contains(&run.output, b"\x1b[?1004h"));
+    assert!(contains(
+        &run.output,
+        b"\x1b]777;notify;Tuika;Attention protocol smoke test\x1b\\"
+    ));
+    assert!(contains(&run.output, b"\x1b[?1004l"));
+    assert!(
+        run.final_screen()
+            .screen()
+            .contents()
+            .contains("Cleanup restores focus reporting")
+    );
+}

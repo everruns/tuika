@@ -1,5 +1,13 @@
 # Knowledge Log
 
+## 2026-11-24
+
+- Desktop attention protocols
+
+Added opt-in bounded OSC 9 and OSC 777 notifications and scoped focus reporting.
+Hosts retain notification policy, consent and unread state. Prepared the 0.14
+minor release for the accumulated public API changes.
+
 ## 2026-11-21
 
 - **Keymap catalog, diagnostics, leader, and dump**
