@@ -31,6 +31,7 @@
 //! ```
 
 use std::io::{self, Read, Write};
+use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -193,7 +194,11 @@ fn record(theme: &Theme, theme_name: Option<&str>) -> io::Result<Vec<Frame>> {
     // The reference terminal is shared: the reader thread feeds it every byte,
     // the recorder samples it, and cursor-position queries are answered from it
     // (ratatui refuses to start an inline viewport without a truthful reply).
-    let parser = Arc::new(Mutex::new(vt100::Parser::new(ROWS, COLS, 0)));
+    let parser = Arc::new(Mutex::new(vt100::Parser::new(
+        NonZeroU16::new(ROWS).expect("rows is non-zero"),
+        NonZeroU16::new(COLS).expect("cols is non-zero"),
+        0,
+    )));
     let reader = pair.master.try_clone_reader().map_err(io::Error::other)?;
     let reader_parser = Arc::clone(&parser);
     let reader_writer = Arc::clone(&writer);
