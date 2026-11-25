@@ -16,6 +16,7 @@
 #![cfg(unix)]
 
 use std::io::{Read, Write};
+use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
@@ -69,7 +70,7 @@ impl ExampleRun {
     /// escape, so assertions read the resulting cell grid rather than the raw
     /// byte stream.
     fn live_screen(&self) -> vt100::Parser {
-        let mut parser = vt100::Parser::new(self.rows, self.cols, 0);
+        let mut parser = vt100::Parser::new(nonzero(self.rows), nonzero(self.cols), 0);
         parser.process(&self.live);
         parser
     }
@@ -77,7 +78,7 @@ impl ExampleRun {
     /// The grid the user is left with after the example exits — for a split
     /// footer, the published scrollback with the footer's rows handed back.
     fn final_screen(&self) -> vt100::Parser {
-        let mut parser = vt100::Parser::new(self.rows, self.cols, 0);
+        let mut parser = vt100::Parser::new(nonzero(self.rows), nonzero(self.cols), 0);
         parser.process(&self.output);
         parser
     }
@@ -88,7 +89,11 @@ impl ExampleRun {
     /// is asserted, rather than "it happened to still be on screen".
     fn scrollback_text(&self) -> String {
         const PAGES: usize = 12;
-        let mut parser = vt100::Parser::new(self.rows, self.cols, PAGES * self.rows as usize);
+        let mut parser = vt100::Parser::new(
+            nonzero(self.rows),
+            nonzero(self.cols),
+            PAGES * self.rows as usize,
+        );
         parser.process(&self.output);
         let mut text = String::new();
         for page in (0..=PAGES).rev() {
@@ -240,7 +245,7 @@ impl Script {
         let (rows, cols) = (self.rows, self.cols);
         let reader_handle = thread::spawn(move || {
             let mut reader = reader;
-            let mut parser = vt100::Parser::new(rows, cols, 0);
+            let mut parser = vt100::Parser::new(nonzero(rows), nonzero(cols), 0);
             let mut modeled = (rows, cols);
             let mut chunk = [0u8; 8192];
             while let Ok(n) = reader.read(&mut chunk) {
@@ -255,7 +260,9 @@ impl Script {
 
                 let current = *reader_size.lock().expect("lock size");
                 if current != modeled {
-                    parser.screen_mut().set_size(current.0, current.1);
+                    parser
+                        .screen_mut()
+                        .set_size(nonzero(current.0), nonzero(current.1));
                     modeled = current;
                 }
                 parser.process(bytes);
@@ -364,6 +371,12 @@ fn run_split_footer() -> ExampleRun {
         .run()
 }
 
+/// vt100 0.18 sizes terminals with `NonZeroU16`, since a zero row or column
+/// count was never supported. The pty harness only ever asks for real sizes.
+fn nonzero(dim: u16) -> NonZeroU16 {
+    NonZeroU16::new(dim).expect("terminal dimensions are non-zero")
+}
+
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
     haystack.windows(needle.len()).any(|w| w == needle)
 }
@@ -379,8 +392,8 @@ fn has_braille(text: &str) -> bool {
 /// terminal parser, not just that RGB bytes appeared in the stream.
 fn has_rgb_cell(screen: &vt100::Screen) -> bool {
     let (rows, cols) = screen.size();
-    (0..rows).any(|r| {
-        (0..cols).any(|c| {
+    (0..rows.get()).any(|r| {
+        (0..cols.get()).any(|c| {
             screen.cell(r, c).is_some_and(|cell| {
                 matches!(cell.fgcolor(), vt100::Color::Rgb(..))
                     || matches!(cell.bgcolor(), vt100::Color::Rgb(..))
