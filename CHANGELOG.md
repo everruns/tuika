@@ -42,6 +42,9 @@ described in the release process begins with the entry below.
   an `id=parent/child` record with its title, sending only changes, clearing
   tasks that leave the tree, and clearing live ones on exit. `task_reports`,
   `segment`, and `TaskReporter` are the same pieces for custom loops.
+- `testing::StatusRecorder` records the OSC 7501 reports an app sends, so tests
+  assert status changes the way they assert cells; `Report::decode` reads a
+  report back from its wire form.
 
 ## [0.14.0] - 2026-11-24
 

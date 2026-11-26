@@ -55,6 +55,11 @@ signals, theme, and stylesheet contexts used in production. The harness owns
 no terminal or runtime; a dirty update returns an in-memory frame. Changes to
 this surface are API changes.
 
+Out-of-band output gets the same treatment where it carries meaning a host
+asserts on. `StatusRecorder` reads OSC 7501 program-status reports back into
+values and replays them into the records a terminal would keep, so a host
+asserts "the run left a `done` record" rather than matching escape bytes.
+
 ## Why a session layer exists beside the component sweep
 
 `tests/robustness.rs` answers "does this component survive being painted into a

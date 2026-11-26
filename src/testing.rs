@@ -2,6 +2,7 @@
 
 use crate::buffer::Buffer;
 use crate::geometry::Rect;
+use crate::term::program_status::{Report, State};
 
 use crate::{
     Application, Element, Event, RenderCtx, Signal, StyleSheet, Theme, UpdateResult, View, paint,
@@ -231,5 +232,194 @@ mod tests {
             |_, _| crate::element(Text::raw("unused")),
         );
         assert!(frame.is_none());
+    }
+}
+
+/// Records the OSC 7501 program-status reports an application sends, so a
+/// test can assert status changes the way it asserts cells.
+///
+/// It is a cloneable [`Write`](std::io::Write): hand one clone to
+/// [`Runner::with_status_output`](crate::Runner::with_status_output) (or any
+/// writer the host reports through) and keep the other. Everything written is
+/// kept; [`reports`](Self::reports) reads the 7501 sequences back as
+/// [`Report`]s, skipping anything else on the stream (OSC 9;4, cell output),
+/// and [`records`](Self::records) replays them the way a terminal keeps
+/// records, `clear` included.
+///
+/// ```
+/// use tuika::prelude::*;
+/// use tuika::runner::scripted_events;
+/// use tuika::term::program_status::{Report, State};
+/// use tuika::term::terminal::Terminal;
+/// use tuika::term::testbackend::TestBackend;
+/// use tuika::testing::StatusRecorder;
+///
+/// let recorder = StatusRecorder::new();
+/// let runner = Runner::new(RunnerConfig::default()).with_status_output(recorder.clone());
+/// let status = runner.program_status();
+/// let mut terminal = Terminal::new(TestBackend::new(10, 1)).unwrap();
+/// runner
+///     .run_driven_by(
+///         &mut terminal,
+///         &Theme::default(),
+///         from_fn(
+///             &mut (),
+///             |(), _| element(Text::raw("")),
+///             |(), signal| match signal {
+///                 Signal::Event(Event::Key(k)) if k.code == KeyCode::Enter => {
+///                     status.set(Some(Report::new(State::Done)));
+///                     UpdateResult::Exit
+///                 }
+///                 Signal::Event(Event::Key(_)) => {
+///                     status.set(Some(Report::new(State::Working)));
+///                     UpdateResult::Clean
+///                 }
+///                 _ => UpdateResult::Clean,
+///             },
+///         ),
+///         scripted_events([
+///             Event::Key(Key::new(KeyCode::Char('x'))),
+///             Event::Key(Key::new(KeyCode::Enter)),
+///         ]),
+///     )
+///     .unwrap();
+///
+/// assert_eq!(recorder.states(), [State::Working, State::Done]);
+/// assert_eq!(recorder.records()[0].state(), State::Done, "done survives exit");
+/// ```
+#[derive(Clone, Debug, Default)]
+pub struct StatusRecorder {
+    bytes: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+}
+
+impl StatusRecorder {
+    /// An empty recorder.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Everything written so far, raw.
+    pub fn bytes(&self) -> Vec<u8> {
+        self.lock().clone()
+    }
+
+    /// Forget everything written so far.
+    pub fn clear(&self) {
+        self.lock().clear();
+    }
+
+    /// Every OSC 7501 report written, in order. Sequences a terminal would
+    /// discard are skipped, as a terminal would skip them.
+    pub fn reports(&self) -> Vec<Report> {
+        let bytes = self.lock();
+        let mut out = Vec::new();
+        let mut rest: &[u8] = &bytes;
+        const INTRO: &[u8] = b"\x1b]7501;";
+        while let Some(start) = rest.windows(INTRO.len()).position(|w| w == INTRO) {
+            let body = &rest[start + INTRO.len()..];
+            let end = body
+                .iter()
+                .position(|&b| b == 0x1b || b == 0x07)
+                .unwrap_or(body.len());
+            if let Some(report) = Report::decode(&body[..end]) {
+                out.push(report);
+            }
+            rest = &body[end..];
+        }
+        out
+    }
+
+    /// The state of every report, in order.
+    pub fn states(&self) -> Vec<State> {
+        self.reports().iter().map(Report::state).collect()
+    }
+
+    /// The records a terminal would hold after these reports, in id order
+    /// (the root record first): each report replaces its record, and `clear`
+    /// removes the addressed record and everything beneath it — every record
+    /// when it names no id.
+    pub fn records(&self) -> Vec<Report> {
+        let mut records: std::collections::BTreeMap<String, Report> = Default::default();
+        for report in self.reports() {
+            let id = report.record_id().unwrap_or_default().to_string();
+            if report.state() == State::Clear {
+                let prefix = format!("{id}/");
+                records.retain(|key, _| !id.is_empty() && *key != id && !key.starts_with(&prefix));
+            } else {
+                records.insert(id, report);
+            }
+        }
+        records.into_values().collect()
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Vec<u8>> {
+        self.bytes.lock().unwrap_or_else(|error| error.into_inner())
+    }
+}
+
+impl std::io::Write for StatusRecorder {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.lock().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod status_recorder_tests {
+    use std::io::Write;
+
+    use super::StatusRecorder;
+    use crate::term::program_status::{Report, State};
+
+    #[test]
+    fn reads_reports_out_of_a_mixed_stream() {
+        let mut recorder = StatusRecorder::new();
+        recorder
+            .write_all(
+                b"cells\x1b]9;4;3;0\x07\x1b]7501;state=working:id=a\x1b\\more\x1b]7501;state=bogus\x07\x1b]7501;state=done\x07",
+            )
+            .unwrap();
+        assert_eq!(recorder.states(), [State::Working, State::Done]);
+        assert_eq!(recorder.reports()[0].record_id(), Some("a"));
+        recorder.clear();
+        assert!(recorder.reports().is_empty());
+    }
+
+    #[test]
+    fn records_replay_clear_like_a_terminal() {
+        let mut recorder = StatusRecorder::new();
+        for report in [
+            Report::new(State::Idle),
+            Report::new(State::Working).id("a"),
+            Report::new(State::Blocked).id("a/b"),
+            Report::new(State::Done).id("ab"),
+            Report::clear(Some("a")),
+        ] {
+            recorder
+                .write_all(report.encode().unwrap().as_bytes())
+                .unwrap();
+        }
+        let ids: Vec<_> = recorder
+            .records()
+            .iter()
+            .map(|r| r.record_id().map(str::to_string))
+            .collect();
+        assert_eq!(
+            ids,
+            [None, Some("ab".to_string())],
+            "a and a/b are gone, ab stays"
+        );
+
+        recorder
+            .write_all(Report::clear(None).encode().unwrap().as_bytes())
+            .unwrap();
+        assert!(
+            recorder.records().is_empty(),
+            "a bare clear removes every record"
+        );
     }
 }

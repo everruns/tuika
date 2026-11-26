@@ -1011,6 +1011,9 @@ module draws a `View` into an in-memory `Buffer` and reads it back:
   resize deterministically, and receive a buffer only for dirty updates.
   `render_app` / `step_app` do the same for an `Application`, including scoped
   views and mandatory resize redraws.
+- `StatusRecorder` — a cloneable writer for `Runner::with_status_output` that
+  reads back the OSC 7501 program-status reports an app sent (`reports`,
+  `states`) and the records a terminal would keep (`records`).
 
 ```rust
 use tuika::testing::{grid, render};
