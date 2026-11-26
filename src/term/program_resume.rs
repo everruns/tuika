@@ -773,8 +773,13 @@ fn is_valid_program(program: &str) -> bool {
         && program != ".."
 }
 
+/// A leading `/` is absolute on every platform, not only where
+/// [`Path::is_absolute`] agrees: the report is a wire format, and a verifier
+/// on Windows must accept the same Unix paths the spec's own examples use.
+/// The platform's own notion is accepted too, so `C:\…` works where it means
+/// something.
 fn is_absolute(path: &str) -> bool {
-    Path::new(path).is_absolute()
+    path.starts_with('/') || Path::new(path).is_absolute()
 }
 
 fn parse_positive(value: &str) -> Option<u64> {
