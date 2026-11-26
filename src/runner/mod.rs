@@ -704,6 +704,19 @@ impl Runner {
         self.status.value()
     }
 
+    /// Tasks reported as child records of [`program_status`](Self::program_status)
+    /// — an agent's sub-agents, a pipeline's jobs — so a terminal such as Rex
+    /// can show each one under the program.
+    ///
+    /// Set the whole tree whenever it changes; ids come from the task keys
+    /// (`agent-1/search`, see [`StatusTask`](crate::term::program_status::StatusTask)).
+    /// The runner sends only records whose report changed, clears tasks that
+    /// left the tree, and on exit clears the ones still `working` or
+    /// `blocked`. Reports go wherever `program_status` reports go.
+    pub fn task_status(&self) -> crate::live::Live<Vec<crate::term::program_status::StatusTask>> {
+        self.status.tasks()
+    }
+
     /// Also drive the terminal's OSC 9;4 progress indicator from
     /// [`program_status`](Self::program_status), mapped by
     /// [`Report::native_progress`], so the two never disagree. Off by default.
@@ -2459,6 +2472,67 @@ mod tests {
             sent,
             ["7501;state=idle:app=job:title=Sm9i"],
             "working went out as idle, which the exit rule leaves alone"
+        );
+    }
+
+    #[test]
+    fn task_status_reports_child_records() {
+        use crate::term::program_status::{State, StatusTask};
+
+        let out = SharedBytes::default();
+        let runner = quiet_runner().with_status_output(out.clone());
+        let tasks = runner.task_status();
+        let mut terminal = terminal(8, 1);
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut (),
+                    |(), _frame| element(Text::raw("x")),
+                    |(), signal| {
+                        let Signal::Event(Event::Key(key)) = signal else {
+                            return UpdateResult::Clean;
+                        };
+                        match key.code {
+                            KeyCode::Char('s') => tasks.set(vec![
+                                StatusTask::new(
+                                    "agent 1",
+                                    Report::new(State::Working).title("Plan"),
+                                )
+                                .child(StatusTask::new(
+                                    "search",
+                                    Report::new(State::Blocked).title("Search"),
+                                )),
+                                StatusTask::new("agent 2", Report::new(State::Done).title("Done")),
+                            ]),
+                            KeyCode::Char('t') => tasks.set(vec![StatusTask::new(
+                                "agent 1",
+                                Report::new(State::Working).title("Plan"),
+                            )]),
+                            _ => return UpdateResult::Exit,
+                        }
+                        UpdateResult::Clean
+                    },
+                ),
+                scripted_events([
+                    key_event(KeyCode::Char('s')),
+                    key_event(KeyCode::Char('t')),
+                    key_event(KeyCode::Esc),
+                ]),
+            )
+            .expect("run");
+        assert_eq!(
+            out.sequences(),
+            [
+                "7501;state=working:id=agent-1:title=UGxhbg==",
+                "7501;state=blocked:id=agent-1/search:title=U2VhcmNo",
+                "7501;state=done:id=agent-2:title=RG9uZQ==",
+                "7501;state=clear:id=agent-1/search",
+                "7501;state=clear:id=agent-2",
+                "7501;state=clear:id=agent-1",
+            ],
+            "changes only, vanished tasks cleared, live tasks cleared on exit"
         );
     }
 }

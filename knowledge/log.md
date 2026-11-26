@@ -60,6 +60,8 @@ minor release for the accumulated public API changes.
 - **OSC 7501 detection is read, and reports adapt to it**
   - The `?` reply is parsed behind the DA1 fence; missing states fall back to
     the nearest meaning.
+- **Task trees report as OSC 7501 child records**
+  - The runner diffs a host's task tree into `parent/child` records.
 
 - **Shortcuts on non-Latin layouts**
   - Unmatched Ctrl/Alt chords retry as the QWERTY key in the same position;

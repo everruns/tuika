@@ -37,6 +37,11 @@ described in the release process begins with the entry below.
   `StatusSupport::parse` reads the reply. `StatusSupport::adapt`,
   `StatusReporter::with_support`, and `Runner`/`AsyncRunner::with_status_support`
   send a missing state as its nearest supported one.
+- OSC 7501 child records from task trees: `Runner`/`AsyncRunner::task_status()`
+  takes a tree of `term::program_status::StatusTask`s and reports each task as
+  an `id=parent/child` record with its title, sending only changes, clearing
+  tasks that leave the tree, and clearing live ones on exit. `task_reports`,
+  `segment`, and `TaskReporter` are the same pieces for custom loops.
 
 ## [0.14.0] - 2026-11-24
 

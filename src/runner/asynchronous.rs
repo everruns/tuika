@@ -287,6 +287,19 @@ impl AsyncRunner {
         self.status.value()
     }
 
+    /// Tasks reported as child records of [`program_status`](Self::program_status)
+    /// — an agent's sub-agents, a pipeline's jobs — so a terminal such as Rex
+    /// can show each one under the program.
+    ///
+    /// Set the whole tree whenever it changes; ids come from the task keys
+    /// (`agent-1/search`, see [`StatusTask`](crate::term::program_status::StatusTask)).
+    /// The runner sends only records whose report changed, clears tasks that
+    /// left the tree, and on exit clears the ones still `working` or
+    /// `blocked`. Reports go wherever `program_status` reports go.
+    pub fn task_status(&self) -> crate::live::Live<Vec<crate::term::program_status::StatusTask>> {
+        self.status.tasks()
+    }
+
     /// Also drive OSC 9;4 from [`program_status`](Self::program_status). See
     /// [`Runner::with_native_progress`](crate::Runner::with_native_progress).
     pub fn with_native_progress(mut self, enabled: bool) -> Self {

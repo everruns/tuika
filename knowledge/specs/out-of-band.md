@@ -218,6 +218,12 @@ alone. OSC 9;4 can be driven from the same value so the two indicators cannot
 disagree. The logic lives in `term::program_status::StatusReporter` so a host
 with its own loop gets the same rules.
 
+Sub-tasks are records too. A host hands the runner its task tree and each task
+becomes an `id=parent/child` record; the runner diffs the set, clears tasks that
+left it, and applies the same exit rule per record. Ids come from host keys made
+valid rather than rejected, and a subtree past the spec's id limits is left out
+whole, since a truncated id would address the wrong record.
+
 A terminal may accept only some states. The detection reply lists them, and a
 report in a missing state is dropped whole, so a host that probed adapts each
 report to the nearest state with the same meaning (`blocked` → `working`,

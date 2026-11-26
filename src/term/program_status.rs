@@ -491,6 +491,225 @@ pub fn query(timeout: std::time::Duration) -> Option<StatusSupport> {
         .and_then(StatusSupport::parse)
 }
 
+/// One task in a tree of work — a sub-agent, a build step — reported to the
+/// terminal as its own child record.
+///
+/// The host keeps the tree it already has (agents and their sub-agents, a
+/// pipeline and its jobs) and maps each node to a task: a key, which becomes
+/// one segment of the record id, and the [`Report`] that says what the task
+/// is doing. [`task_reports`] flattens the tree into `id=parent/child`
+/// records, and a [`TaskReporter`] (or
+/// [`Runner::task_status`](crate::Runner::task_status)) sends only what
+/// changed and clears tasks that disappeared.
+///
+/// Give each task a [`title`](Report::title): it is the label a terminal
+/// shows for a child record, and a report replaces its record whole, so it
+/// must be repeated every time. `app` need not be — a record without one
+/// inherits its nearest ancestor's.
+///
+/// ```
+/// use tuika::term::program_status::{task_reports, Report, State, StatusTask};
+///
+/// let tree = [StatusTask::new("agent-1", Report::new(State::Working).title("Planner"))
+///     .child(StatusTask::new("search", Report::new(State::Blocked).title("Web search")))];
+/// let ids: Vec<_> = task_reports(None, &tree)
+///     .iter()
+///     .map(|r| r.record_id().unwrap().to_string())
+///     .collect();
+/// assert_eq!(ids, ["agent-1", "agent-1/search"]);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusTask {
+    segment: String,
+    report: Report,
+    children: Vec<StatusTask>,
+}
+
+impl StatusTask {
+    /// A task keyed by `key`, which is made a valid id segment with
+    /// [`segment`]: a host can pass its own ids (`agent #3`, a UUID) as they
+    /// are. Any id already on `report` is replaced by the task's place in
+    /// the tree.
+    pub fn new(key: &str, report: Report) -> Self {
+        Self {
+            segment: segment(key),
+            report,
+            children: Vec::new(),
+        }
+    }
+
+    /// Add a child task.
+    pub fn child(mut self, task: StatusTask) -> Self {
+        self.children.push(task);
+        self
+    }
+
+    /// Add child tasks.
+    pub fn children(mut self, tasks: impl IntoIterator<Item = StatusTask>) -> Self {
+        self.children.extend(tasks);
+        self
+    }
+
+    /// The id segment this task reports under.
+    pub fn key(&self) -> &str {
+        &self.segment
+    }
+}
+
+/// Make `key` a valid id segment: bytes outside `[A-Za-z0-9_.+-]` become
+/// `-`, it is cut to 32 bytes, and an empty key becomes `_`. Distinct keys
+/// can map to the same segment; [`task_reports`] keeps the first of any
+/// duplicate id.
+pub fn segment(key: &str) -> String {
+    let mut out: String = key
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '+' | '-') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .take(32)
+        .collect();
+    if out.is_empty() {
+        out.push('_');
+    }
+    out
+}
+
+/// Flatten `tasks` into one report per task, depth first, each with its
+/// `parent/child` id. `parent` is the id the tree hangs under; `None` puts
+/// top-level tasks directly under the root record.
+///
+/// A subtree that would break the spec's id limits (8 levels, 128 bytes) is
+/// left out whole — the terminal would discard those records anyway, and a
+/// truncated id would land on the wrong record. A duplicate id keeps its
+/// first task.
+pub fn task_reports(parent: Option<&str>, tasks: &[StatusTask]) -> Vec<Report> {
+    fn walk(
+        parent: Option<&str>,
+        tasks: &[StatusTask],
+        out: &mut Vec<Report>,
+        seen: &mut std::collections::BTreeSet<String>,
+    ) {
+        for task in tasks {
+            let id = match parent {
+                Some(parent) => format!("{parent}/{}", task.segment),
+                None => task.segment.clone(),
+            };
+            if !is_valid_id(&id) || !seen.insert(id.clone()) {
+                continue;
+            }
+            let mut report = task.report.clone();
+            report.id = Some(id.clone());
+            out.push(report);
+            walk(Some(&id), &task.children, out, seen);
+        }
+    }
+    let mut out = Vec::new();
+    if parent.is_some_and(|parent| !is_valid_id(parent)) {
+        return out;
+    }
+    walk(
+        parent,
+        tasks,
+        &mut out,
+        &mut std::collections::BTreeSet::new(),
+    );
+    out
+}
+
+/// Keeps a set of child records in step with the terminal: the
+/// many-record counterpart of [`StatusReporter`].
+///
+/// [`update`](Self::update) sends each record whose report changed and
+/// clears records that are no longer in the set; [`finish`](Self::finish)
+/// clears those still `working` or `blocked`, leaving `done` and `error`.
+/// Reports without an id are ignored — the root record is a
+/// [`StatusReporter`]'s.
+#[derive(Debug, Clone, Default)]
+pub struct TaskReporter {
+    /// Record id → (state, bytes) last written.
+    sent: std::collections::BTreeMap<String, (State, String)>,
+    support: StatusSupport,
+}
+
+impl TaskReporter {
+    /// A reporter that has sent nothing.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adapt reports to what the terminal accepts. See
+    /// [`StatusSupport::adapt`].
+    pub fn with_support(mut self, support: StatusSupport) -> Self {
+        self.support = support;
+        self
+    }
+
+    /// The ids currently reported, in id order.
+    pub fn records(&self) -> impl Iterator<Item = &str> {
+        self.sent.keys().map(String::as_str)
+    }
+
+    /// Bring the terminal's child records in line with `reports`. Returns
+    /// whether anything was written.
+    pub fn update(&mut self, out: &mut impl Write, reports: &[Report]) -> io::Result<bool> {
+        let mut wrote = false;
+        let mut current = std::collections::BTreeSet::new();
+        for report in reports {
+            let Some(id) = report.id.as_deref() else {
+                continue;
+            };
+            let Some(report) = self.support.adapt(report) else {
+                continue;
+            };
+            let Some(bytes) = report.encode() else {
+                continue;
+            };
+            current.insert(id.to_string());
+            if self.sent.get(id).is_some_and(|(_, sent)| *sent == bytes) {
+                continue;
+            }
+            out.write_all(bytes.as_bytes())?;
+            wrote = true;
+            self.sent.insert(id.to_string(), (report.state, bytes));
+        }
+        let gone: Vec<String> = self
+            .sent
+            .keys()
+            .filter(|id| !current.contains(*id))
+            .cloned()
+            .collect();
+        for id in gone {
+            self.sent.remove(&id);
+            write(out, &Report::clear(Some(&id)))?;
+            wrote = true;
+        }
+        if wrote {
+            out.flush()?;
+        }
+        Ok(wrote)
+    }
+
+    /// Apply the exit rule to every record: clear the ones still `working`
+    /// or `blocked`. Idempotent.
+    pub fn finish(&mut self, out: &mut impl Write) -> io::Result<()> {
+        let live: Vec<String> = self
+            .sent
+            .iter()
+            .filter(|(_, (state, _))| matches!(state, State::Working | State::Blocked))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in live {
+            self.sent.remove(&id);
+            write(out, &Report::clear(Some(&id)))?;
+        }
+        out.flush()
+    }
+}
+
 /// Write one report. Invalid reports emit nothing and still succeed, so a
 /// host can fire-and-forget without branching on validation.
 pub fn write(out: &mut impl Write, report: &Report) -> std::io::Result<()> {
@@ -1165,5 +1384,108 @@ mod tests {
                 .unwrap();
         }
         assert_eq!(reports(&out), ["7501;state=idle"]);
+    }
+
+    #[test]
+    fn segment_makes_any_key_valid() {
+        assert_eq!(segment("agent #3"), "agent--3");
+        assert_eq!(segment(""), "_");
+        assert_eq!(segment("ü"), "-");
+        assert_eq!(segment(&"x".repeat(40)).len(), 32);
+        assert!(is_valid_segment(&segment("a/b:c;d=e")));
+    }
+
+    #[test]
+    fn task_reports_flatten_depth_first_with_paths() {
+        let tree = [
+            StatusTask::new("a", Report::new(State::Working).title("A"))
+                .child(StatusTask::new("x", Report::new(State::Done).id("ignored")))
+                .child(
+                    StatusTask::new("y", Report::new(State::Blocked))
+                        .child(StatusTask::new("z", Report::new(State::Working))),
+                ),
+            StatusTask::new("b", Report::new(State::Idle)),
+        ];
+        let ids: Vec<String> = task_reports(None, &tree)
+            .iter()
+            .map(|r| r.record_id().unwrap().to_string())
+            .collect();
+        assert_eq!(ids, ["a", "a/x", "a/y", "a/y/z", "b"]);
+        let nested: Vec<String> = task_reports(Some("run"), &tree[1..])
+            .iter()
+            .map(|r| r.record_id().unwrap().to_string())
+            .collect();
+        assert_eq!(nested, ["run/b"]);
+        assert!(task_reports(Some("bad id"), &tree).is_empty());
+    }
+
+    #[test]
+    fn task_reports_drop_subtrees_past_the_limits_and_duplicates() {
+        let mut deep = StatusTask::new("l8", Report::new(State::Working));
+        for level in (1..=8).rev() {
+            deep = StatusTask::new(&format!("l{level}"), Report::new(State::Working)).child(deep);
+        }
+        let reports = task_reports(None, &[deep]);
+        assert_eq!(reports.len(), 8, "the ninth level is past the spec's depth");
+        assert!(reports.iter().all(|r| r.encode().is_some()));
+
+        let dupes = [
+            StatusTask::new("a b", Report::new(State::Working)),
+            StatusTask::new("a:b", Report::new(State::Done)),
+        ];
+        let reports = task_reports(None, &dupes);
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].state(), State::Working);
+    }
+
+    #[test]
+    fn task_reporter_sends_changes_and_clears_vanished_tasks() {
+        let mut out = Vec::new();
+        let mut reporter = TaskReporter::new();
+        let two = task_reports(
+            None,
+            &[
+                StatusTask::new("a", Report::new(State::Working)),
+                StatusTask::new("b", Report::new(State::Working)),
+            ],
+        );
+        assert!(reporter.update(&mut out, &two).unwrap());
+        assert!(!reporter.update(&mut out, &two).unwrap());
+        let one = task_reports(None, &[StatusTask::new("a", Report::new(State::Done))]);
+        reporter.update(&mut out, &one).unwrap();
+        assert_eq!(
+            reports(&out),
+            [
+                "7501;state=working:id=a",
+                "7501;state=working:id=b",
+                "7501;state=done:id=a",
+                "7501;state=clear:id=b",
+            ]
+        );
+        assert_eq!(reporter.records().collect::<Vec<_>>(), ["a"]);
+    }
+
+    #[test]
+    fn task_reporter_exit_clears_only_live_records() {
+        let mut out = Vec::new();
+        let mut reporter = TaskReporter::new();
+        let tree = [StatusTask::new("a", Report::new(State::Done))
+            .child(StatusTask::new("b", Report::new(State::Blocked)))
+            .child(StatusTask::new("c", Report::new(State::Error)))];
+        // The root report is a `StatusReporter`'s, not a task.
+        assert!(
+            !reporter
+                .update(&mut out, &[Report::new(State::Working)])
+                .unwrap()
+        );
+        reporter
+            .update(&mut out, &task_reports(None, &tree))
+            .unwrap();
+        out.clear();
+        reporter.finish(&mut out).unwrap();
+        assert_eq!(reports(&out), ["7501;state=clear:id=a/b"]);
+        out.clear();
+        reporter.finish(&mut out).unwrap();
+        assert!(out.is_empty());
     }
 }

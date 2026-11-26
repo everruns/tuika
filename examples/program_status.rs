@@ -8,8 +8,9 @@
 //! The app only sets one value, [`Runner::program_status`]; the runner sends a
 //! report when it changes and applies the exit rule — quitting mid-job clears
 //! the record, quitting after `done` or `error` leaves it for the user to find.
-//! The lower panel prints the exact bytes of every report, so what the
-//! terminal receives is on screen.
+//! Each step is also reported as a child record through
+//! [`Runner::task_status`]. The lower panel prints the exact bytes of every
+//! root report, so what the terminal receives is on screen.
 //!
 //! In a terminal that reads the protocol (such as tuios) the pane's status follows
 //! along; anywhere else the sequences are swallowed and only the UI changes.
@@ -19,7 +20,7 @@ use std::io;
 use std::time::Duration;
 
 use tuika::live::Live;
-use tuika::term::program_status::{self, BlockKind, Report, State, StatusSupport};
+use tuika::term::program_status::{self, BlockKind, Report, State, StatusSupport, StatusTask};
 use tuika::ui::{Line, Span};
 
 use tuika::prelude::*;
@@ -120,7 +121,30 @@ impl Job {
 
     /// Hand the current report to the runner, and log it if it changed. The
     /// runner does its own change detection; the log only mirrors it.
-    fn sync(&mut self, status: &Live<Option<Report>>) {
+    /// Each step as a child record (`id=Compiling` and so on), so a terminal
+    /// that groups records shows the job's steps under it.
+    fn tasks(&self) -> Vec<StatusTask> {
+        let mut start = 0;
+        STEPS
+            .iter()
+            .map(|(name, end)| {
+                let state = if self.progress >= *end {
+                    State::Done
+                } else if self.progress >= start && self.phase == Phase::Failed {
+                    State::Error
+                } else if self.progress >= start {
+                    State::Working
+                } else {
+                    State::Idle
+                };
+                start = *end;
+                StatusTask::new(name, Report::new(state).title(name))
+            })
+            .collect()
+    }
+
+    fn sync(&mut self, status: &Live<Option<Report>>, tasks: &Live<Vec<StatusTask>>) {
+        tasks.set(self.tasks());
         let report = self.report();
         if self.last.as_ref() == Some(&report) {
             return;
@@ -145,6 +169,7 @@ struct App {
     job: Job,
     theme: Theme,
     status: Live<Option<Report>>,
+    tasks: Live<Vec<StatusTask>>,
     /// What the startup probe found, shown in the footer.
     detected: String,
 }
@@ -166,7 +191,7 @@ impl Application for App {
             },
             _ => return UpdateResult::Clean,
         }
-        self.job.sync(&self.status);
+        self.job.sync(&self.status, &self.tasks);
         UpdateResult::Dirty
     }
 
@@ -298,8 +323,9 @@ fn main() -> io::Result<()> {
         job: Job::new(),
         theme: cli.theme,
         status: runner.program_status(),
+        tasks: runner.task_status(),
         detected,
     };
-    app.job.sync(&app.status);
+    app.job.sync(&app.status, &app.tasks);
     runner.run(&cli.theme, &mut app)
 }
