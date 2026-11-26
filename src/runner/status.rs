@@ -2,6 +2,7 @@
 //! records, and the window title: the glue between the values a host sets and
 //! the drivers that report them for one run.
 
+use crate::term::attention::{Notifications, Notifier, Protocol};
 use crate::term::title::WindowTitle;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
@@ -19,6 +20,9 @@ pub(crate) struct RunnerStatus {
     value: Live<Option<Report>>,
     tasks: Live<Vec<StatusTask>>,
     title: Live<Option<String>>,
+    notifications: Notifications,
+    /// `None` until the host chooses; then detected from the environment.
+    notify_protocol: Option<Option<Protocol>>,
     native_progress: bool,
     support: StatusSupport,
     output: Option<StatusOutput>,
@@ -31,7 +35,9 @@ impl RunnerStatus {
             // from a background thread reported without waiting for a tick.
             value: Live::with_redraw(None, redraw.clone()),
             tasks: Live::with_redraw(Vec::new(), redraw.clone()),
-            title: Live::with_redraw(None, redraw),
+            title: Live::with_redraw(None, redraw.clone()),
+            notifications: Notifications::new(redraw),
+            notify_protocol: None,
             native_progress: false,
             support: StatusSupport::ALL,
             output: None,
@@ -48,6 +54,14 @@ impl RunnerStatus {
 
     pub(crate) fn title(&self) -> Live<Option<String>> {
         self.title.clone()
+    }
+
+    pub(crate) fn notifications(&self) -> Notifications {
+        self.notifications.clone()
+    }
+
+    pub(crate) fn set_notify_protocol(&mut self, protocol: Option<Protocol>) {
+        self.notify_protocol = Some(protocol);
     }
 
     pub(crate) fn set_native_progress(&mut self, enabled: bool) {
@@ -74,6 +88,10 @@ impl RunnerStatus {
                     .with_support(self.support),
                 tasks: TaskReporter::new().with_support(self.support),
                 title: WindowTitle::new(),
+                notifier: self
+                    .notify_protocol
+                    .unwrap_or_else(Protocol::detect)
+                    .map(Notifier::new),
             }),
             stdout: owns_stdout,
         }
@@ -84,6 +102,7 @@ struct Drivers {
     status: StatusReporter,
     tasks: TaskReporter,
     title: WindowTitle,
+    notifier: Option<Notifier>,
 }
 
 /// One run's drivers. Dropping it applies the exit rules — clear live status
@@ -116,10 +135,18 @@ impl StatusSession<'_> {
         let current = self.status.value.with(Clone::clone);
         let children = self.status.tasks.with(|tasks| task_reports(None, tasks));
         let title = self.status.title.with(Clone::clone);
+        let queued = self.status.notifications.drain();
+        let now = std::time::Instant::now();
         self.with_output(|drivers, mut out| {
             let _ = drivers.status.update(&mut out, current.as_ref());
             let _ = drivers.tasks.update(&mut out, &children);
             let _ = drivers.title.set(&mut out, title.as_deref());
+            if let Some(notifier) = &mut drivers.notifier {
+                for notification in queued {
+                    let _ = notifier.notify(&mut out, notification, now);
+                }
+                let _ = notifier.poll(&mut out, now);
+            }
         });
     }
 }

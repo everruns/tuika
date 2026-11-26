@@ -729,6 +729,29 @@ impl Runner {
         self.status.title()
     }
 
+    /// Queue desktop notifications (OSC 99, 777, or 9) from `update` or any
+    /// thread; sending wakes the loop.
+    ///
+    /// The runner rate-limits them — within two seconds of the last one, a
+    /// new notification waits and replaces any already waiting, so a burst
+    /// of changes becomes one popup carrying the latest news. The protocol is
+    /// detected from the environment, and a terminal that cannot be placed
+    /// gets none: notifications are dropped rather than guessed at. Pick one
+    /// with [`with_notify_protocol`](Self::with_notify_protocol).
+    pub fn notifications(&self) -> crate::term::attention::Notifications {
+        self.status.notifications()
+    }
+
+    /// Choose the notification protocol instead of detecting it; `None`
+    /// turns notifications off.
+    pub fn with_notify_protocol(
+        mut self,
+        protocol: Option<crate::term::attention::Protocol>,
+    ) -> Self {
+        self.status.set_notify_protocol(protocol);
+        self
+    }
+
     /// Also drive the terminal's OSC 9;4 progress indicator from
     /// [`program_status`](Self::program_status), mapped by
     /// [`Report::native_progress`], so the two never disagree. Off by default.
@@ -2585,5 +2608,65 @@ mod tests {
             bytes, "\x1b[22;0t\x1b]2;job a\x1b\\\x1b]2;job b\x1b\\\x1b[23;0t",
             "saved once, set on change, restored on exit"
         );
+    }
+
+    #[test]
+    fn notifications_are_sent_through_the_chosen_protocol() {
+        use crate::term::attention::{Notification, Protocol};
+
+        let out = SharedBytes::default();
+        let runner = quiet_runner()
+            .with_status_output(out.clone())
+            .with_notify_protocol(Some(Protocol::Osc777));
+        let notes = runner.notifications();
+        let mut terminal = terminal(8, 1);
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut (),
+                    |(), _frame| element(Text::raw("x")),
+                    |(), signal| match signal {
+                        Signal::Event(Event::Key(key)) if key.code == KeyCode::Enter => {
+                            notes.send(Notification::new("Build").body("done"));
+                            // A second one inside the interval waits; the run
+                            // ends before it is due, so it is never sent.
+                            notes.send(Notification::new("Later"));
+                            UpdateResult::Clean
+                        }
+                        Signal::Event(Event::Key(_)) => UpdateResult::Exit,
+                        _ => UpdateResult::Clean,
+                    },
+                ),
+                scripted_events([key_event(KeyCode::Enter), key_event(KeyCode::Esc)]),
+            )
+            .expect("run");
+        assert_eq!(out.sequences(), ["777;notify;Build;done"]);
+    }
+
+    #[test]
+    fn notifications_are_dropped_without_a_protocol() {
+        use crate::term::attention::Notification;
+
+        let out = SharedBytes::default();
+        let runner = quiet_runner()
+            .with_status_output(out.clone())
+            .with_notify_protocol(None);
+        runner.notifications().send(Notification::new("x"));
+        let mut terminal = terminal(4, 1);
+        runner
+            .run_driven_by(
+                &mut terminal,
+                &Theme::default(),
+                from_fn(
+                    &mut (),
+                    |(), _frame| element(Text::raw("x")),
+                    |(), _signal| UpdateResult::Exit,
+                ),
+                scripted_events([key_event(KeyCode::Esc)]),
+            )
+            .expect("run");
+        assert!(out.sequences().is_empty());
     }
 }

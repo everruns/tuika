@@ -10,7 +10,9 @@
 //! the record, quitting after `done` or `error` leaves it for the user to find.
 //! Each step is also reported as a child record through
 //! [`Runner::task_status`], and the window title follows the job through
-//! [`Runner::window_title`] (the terminal's own title comes back on exit). The lower panel prints the exact bytes of every
+//! [`Runner::window_title`] (the terminal's own title comes back on exit).
+//! Blocking, finishing, and failing also send a desktop notification through
+//! [`Runner::notifications`], in terminals that show them. The lower panel prints the exact bytes of every
 //! root report, so what the terminal receives is on screen.
 //!
 //! In a terminal that reads the protocol (such as tuios) the pane's status follows
@@ -21,6 +23,7 @@ use std::io;
 use std::time::Duration;
 
 use tuika::live::Live;
+use tuika::term::attention::{Notification, Notifications, Urgency};
 use tuika::term::program_status::{self, BlockKind, Report, State, StatusSupport, StatusTask};
 use tuika::ui::{Line, Span};
 
@@ -188,12 +191,41 @@ struct App {
     status: Live<Option<Report>>,
     tasks: Live<Vec<StatusTask>>,
     title: Live<Option<String>>,
+    notes: Notifications,
     /// What the startup probe found, shown in the footer.
     detected: String,
 }
 
 impl Application for App {
     fn update(&mut self, signal: Signal) -> UpdateResult {
+        let before = self.job.phase;
+        let result = self.handle(signal);
+        if self.job.phase != before {
+            // The moments a user who switched away wants to hear about.
+            let note = match self.job.phase {
+                Phase::Asking => Some(
+                    Notification::new("build is waiting for you")
+                        .body("Tests passed. Publish the build?")
+                        .urgency(Urgency::Critical),
+                ),
+                Phase::Done => Some(Notification::new("build finished").body("Built 12 crates")),
+                Phase::Failed => Some(Notification::new("build stopped").body("Publish declined")),
+                Phase::Running => None,
+            };
+            if let Some(note) = note {
+                self.notes.send(note);
+            }
+        }
+        result
+    }
+
+    fn view(&self, frame: u64) -> tuika::ScopedElement<'_> {
+        build(&self.job, frame, &self.theme, &self.detected)
+    }
+}
+
+impl App {
+    fn handle(&mut self, signal: Signal) -> UpdateResult {
         match signal {
             Signal::Tick => self.job.tick(),
             Signal::Event(Event::Key(key)) => match key.code {
@@ -211,10 +243,6 @@ impl Application for App {
         }
         self.job.sync(&self.status, &self.tasks, &self.title);
         UpdateResult::Dirty
-    }
-
-    fn view(&self, frame: u64) -> tuika::ScopedElement<'_> {
-        build(&self.job, frame, &self.theme, &self.detected)
     }
 }
 
@@ -348,6 +376,7 @@ fn main() -> io::Result<()> {
         status: runner.program_status(),
         tasks: runner.task_status(),
         title: runner.window_title(),
+        notes: runner.notifications(),
         detected,
     };
     app.job.sync(&app.status, &app.tasks, &app.title);

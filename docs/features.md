@@ -477,6 +477,40 @@ Terminals without a title stack ignore the save and restore, so the worst case
 is that the program's last title stays. Renaming a tab through a terminal's own
 CLI, such as Rex's `rex`, is up to the app.
 
+## Desktop notifications (OSC 99, 777, 9)
+
+Reach a user who switched away when the program finishes, fails, or needs an
+answer. [API](https://docs.rs/tuika/latest/tuika/term/attention/index.html)
+
+```rust,no_run
+use tuika::prelude::*;
+use tuika::term::attention::{Notification, Urgency};
+
+let runner = Runner::new(RunnerConfig::default());
+let notes = runner.notifications(); // cloneable, Send
+notes.send(
+    Notification::new("build is waiting for you")
+        .body("Tests passed. Publish?")
+        .urgency(Urgency::Critical),
+);
+```
+
+Terminals disagree on the escape, so there are three: Kitty's OSC 99 (kitty,
+foot, Ghostty), OSC 777 (rxvt-unicode, WezTerm, Konsole) and OSC 9 (iTerm2,
+Windows Terminal). The runner detects one from the environment. A terminal it
+can't place, or a session inside tmux or Screen, gets none, because a popup sent
+on a wrong guess is the one out-of-band effect a user notices. Choose a
+protocol yourself with `with_notify_protocol`.
+
+The runner also rate-limits notifications. Within two seconds of the last one,
+a new notification waits and replaces any already waiting, so a burst of state
+changes becomes one popup carrying the latest news. Outside the runner,
+`term::attention::Notifier` does the same, `Protocol::detect` picks the protocol,
+and `Notification::encode` builds one sequence. Each field is capped at 256
+characters and loses its control characters. OSC 99 carries the text
+base64-encoded; for OSC 777 and OSC 9, `;` becomes `,`, so host text can't add a
+field or turn into an OSC 9 subcommand such as `9;4` progress.
+
 ## Program status (OSC 7501)
 
 Tell the terminal what the program is doing — idle, working (with optional
@@ -807,9 +841,9 @@ inline placeholder rather than dropping the URL.
 ## Desktop attention
 
 Custom hosts can opt into `tuika::term::attention::FocusReporting` for terminal
-focus events and select `Protocol::Osc9` or `Protocol::Osc777` when sending a
-notification with `attention::write`. Text fields are bounded and control-safe.
-Keep the guard alive for the host scope; it disables focus reporting on drop.
+focus events, and send a notification themselves with `attention::write` (or see
+[Desktop notifications](#desktop-notifications-osc-99-777-9) to let the runner
+detect, rate-limit, and send them). Keep the guard alive for the host scope; it disables focus reporting on drop.
 Treat focus as unknown until a focus event arrives. Hosts decide consent,
 privacy, deduplication and when to notify. Keep a visible in-app unread state
 because unsupported terminals ignore these sequences. See `examples/attention.rs`.

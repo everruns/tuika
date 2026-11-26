@@ -53,11 +53,19 @@ described in the release process begins with the entry below.
   working (a spinner), done, blocked, and error — the OSC 7501 states — and
   `Tabs::badges` / `TreeList::badges` (with `frame`) draw them beside labels.
   `BadgeState` converts into `program_status::State` and from `ActivityStatus`.
+- Desktop notifications from the runner: `Runner`/`AsyncRunner::notifications()`
+  returns a cloneable, `Send` queue; the runner picks a protocol from the
+  environment (`term::attention::Protocol::detect`, `None` when unsure or
+  inside tmux/Screen), rate-limits with `attention::Notifier` (one per two
+  seconds, delivering the latest), and `with_notify_protocol` overrides the
+  choice. `attention::Notification` adds an optional body and an `Urgency`.
 
 ### Breaking Changes
 
 - `Capabilities` gained the public field `rex`. Struct-literal construction
   must set it; `from_env`, `from_env_parts`, and `query` fill it.
+- `term::attention::Protocol` gained `Osc99` (kitty, foot, Ghostty) and is now
+  `#[non_exhaustive]`, so an exhaustive `match` on it needs a wildcard arm.
 
 ## [0.14.0] - 2026-11-24
 
