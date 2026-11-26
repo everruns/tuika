@@ -161,6 +161,12 @@ pub struct Capabilities {
     /// terminals, never inside tmux or screen, which do not forward it);
     /// authoritative after [`query`](Self::query), which asks the terminal.
     pub kitty_keyboard: bool,
+    /// Running inside a Rex pane: Rex sets `REX_BLOCK` in the environment of
+    /// the programs it runs. Rex reads OSC 7501 program status (shown as tab
+    /// spinners and in its session picker), so a host can use this to decide
+    /// whether to report child records or rename its tab through Rex's own
+    /// CLI. Environment-only: there is no terminal query for it.
+    pub rex: bool,
 }
 
 impl Capabilities {
@@ -184,6 +190,7 @@ impl Capabilities {
             env("TMUX").is_some() || env("STY").is_some(),
         )
         .with_multiplexer(env("TMUX").is_some() || env("STY").is_some())
+        .with_rex(env("REX_BLOCK").as_deref())
     }
 
     /// The pure core of [`from_env`](Self::from_env), taking the environment
@@ -230,7 +237,16 @@ impl Capabilities {
                 || term_has("kitty")
                 || term_has("foot")
                 || term_has("alacritty"),
+            rex: false,
         }
+    }
+
+    /// Note a Rex pane from the value of `REX_BLOCK` (set and non-empty means
+    /// Rex). [`from_env`](Self::from_env) reads the variable itself; this is
+    /// the pure half, for tests and hosts with their own environment.
+    pub fn with_rex(mut self, rex_block: Option<&str>) -> Self {
+        self.rex = rex_block.is_some_and(|block| !block.trim().is_empty());
+        self
     }
 
     /// Drop the advisory features a terminal multiplexer does not pass through
@@ -553,6 +569,16 @@ pub(crate) fn probe_terminal(_request: &str, _timeout: std::time::Duration) -> O
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rex_is_detected_from_rex_block() {
+        let base = Capabilities::from_env_parts(None, None, None, None, None);
+        assert!(!base.rex);
+        assert!(base.with_rex(Some("blk_42")).rex);
+        assert!(!base.with_rex(Some("")).rex);
+        assert!(!base.with_rex(Some("  ")).rex);
+        assert!(!base.with_rex(Some("blk_42")).with_rex(None).rex);
+    }
 
     #[test]
     fn hyperlink_heuristics_do_not_promote_unrelated_capabilities() {

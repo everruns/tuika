@@ -65,6 +65,9 @@ minor release for the accumulated public API changes.
 - **Program status is assertable in tests**
   - `testing::StatusRecorder` reads reports back as values; see
     [Testing](processes/testing.md).
+- **Window titles are borrowed and restored**
+  - `term::title` pushes the terminal's title before the first change and pops
+    it on exit; Rex is detected from `REX_BLOCK`.
 
 - **Shortcuts on non-Latin layouts**
   - Unmatched Ctrl/Alt chords retry as the QWERTY key in the same position;

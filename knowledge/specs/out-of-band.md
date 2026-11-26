@@ -32,6 +32,7 @@ Out-of-band capabilities, in three families:
 | Program status | OSC 7501 | `term::program_status` | host-initiated, or runner-owned from one status value |
 | Program resume | OSC 7577 | `term::program_resume` | host-initiated on state change; only when the terminal provided a token |
 | Pointer shape | OSC 22 | `term::pointer` | host-initiated, any time |
+| Window title | OSC 2, CSI 22/23 t | `term::title` | host-initiated, or runner-owned from one title value |
 | Images | Kitty / iTerm2 / Sixel | `term::image` | after `terminal.draw()` returns |
 | Sized text | OSC 66 | `term::text_size` | embedded in cells by `apply_sized_runs_in` |
 | Terminal queries | DA1, Kitty keyboard (`CSI ? u`), OSC 10 / 11 / 4, OSC 7501 `?` | `term::capabilities`, `term::palette`, `term::program_status` | host-initiated, once at startup, in raw mode |
@@ -228,6 +229,17 @@ A terminal may accept only some states. The detection reply lists them, and a
 report in a missing state is dropped whole, so a host that probed adapts each
 report to the nearest state with the same meaning (`blocked` → `working`,
 `error` → `done`, then `idle`) rather than going silent.
+
+### A title is borrowed, so it is given back
+
+A window title outlives the program that set it: a shell tab left named
+"build: compiling" misleads the user long after the build ended. Titles are
+therefore pushed onto the xterm title stack before the first change and popped
+on exit, and the runner owns that pair the way it owns other enter/exit pairs.
+Host text is sanitized rather than rejected (controls become spaces, the
+length is capped), because an unrenamed window is worse than a slightly
+altered title. Rex is recognized from its `REX_BLOCK` environment variable
+only; renaming a tab through Rex's own CLI is host policy.
 
 ## Constraints
 

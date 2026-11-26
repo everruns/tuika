@@ -300,6 +300,18 @@ impl AsyncRunner {
         self.status.tasks()
     }
 
+    /// The window (and tab) title, as OSC 2. `None`, the default, leaves the
+    /// terminal's title alone.
+    ///
+    /// The first title saves the terminal's own on the xterm title stack, and
+    /// the run restores it on exit — or as soon as this is set back to `None`
+    /// — so the user's tab is not left named after a program that has ended.
+    /// Titles are sent only on change; control characters are replaced. It
+    /// goes wherever [`program_status`](Self::program_status) reports go.
+    pub fn window_title(&self) -> crate::live::Live<Option<String>> {
+        self.status.title()
+    }
+
     /// Also drive OSC 9;4 from [`program_status`](Self::program_status). See
     /// [`Runner::with_native_progress`](crate::Runner::with_native_progress).
     pub fn with_native_progress(mut self, enabled: bool) -> Self {

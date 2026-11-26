@@ -9,7 +9,8 @@
 //! report when it changes and applies the exit rule — quitting mid-job clears
 //! the record, quitting after `done` or `error` leaves it for the user to find.
 //! Each step is also reported as a child record through
-//! [`Runner::task_status`]. The lower panel prints the exact bytes of every
+//! [`Runner::task_status`], and the window title follows the job through
+//! [`Runner::window_title`] (the terminal's own title comes back on exit). The lower panel prints the exact bytes of every
 //! root report, so what the terminal receives is on screen.
 //!
 //! In a terminal that reads the protocol (such as tuios) the pane's status follows
@@ -143,8 +144,24 @@ impl Job {
             .collect()
     }
 
-    fn sync(&mut self, status: &Live<Option<Report>>, tasks: &Live<Vec<StatusTask>>) {
+    /// The window title for the job's current state.
+    fn title(&self) -> String {
+        match self.phase {
+            Phase::Running => format!("build: {} {}%", self.step(), self.progress),
+            Phase::Asking => "build: waiting for you".to_string(),
+            Phase::Done => "build: done".to_string(),
+            Phase::Failed => "build: declined".to_string(),
+        }
+    }
+
+    fn sync(
+        &mut self,
+        status: &Live<Option<Report>>,
+        tasks: &Live<Vec<StatusTask>>,
+        title: &Live<Option<String>>,
+    ) {
         tasks.set(self.tasks());
+        title.set(Some(self.title()));
         let report = self.report();
         if self.last.as_ref() == Some(&report) {
             return;
@@ -170,6 +187,7 @@ struct App {
     theme: Theme,
     status: Live<Option<Report>>,
     tasks: Live<Vec<StatusTask>>,
+    title: Live<Option<String>>,
     /// What the startup probe found, shown in the footer.
     detected: String,
 }
@@ -191,7 +209,7 @@ impl Application for App {
             },
             _ => return UpdateResult::Clean,
         }
-        self.job.sync(&self.status, &self.tasks);
+        self.job.sync(&self.status, &self.tasks, &self.title);
         UpdateResult::Dirty
     }
 
@@ -305,7 +323,12 @@ fn probe() -> (Option<StatusSupport>, String) {
             format!("terminal accepts {}", states.join(","))
         }
     };
-    (support, detected)
+    let rex = if tuika::term::capabilities::Capabilities::from_env().rex {
+        " · in Rex"
+    } else {
+        ""
+    };
+    (support, format!("{detected}{rex}"))
 }
 
 fn main() -> io::Result<()> {
@@ -324,8 +347,9 @@ fn main() -> io::Result<()> {
         theme: cli.theme,
         status: runner.program_status(),
         tasks: runner.task_status(),
+        title: runner.window_title(),
         detected,
     };
-    app.job.sync(&app.status, &app.tasks);
+    app.job.sync(&app.status, &app.tasks, &app.title);
     runner.run(&cli.theme, &mut app)
 }
