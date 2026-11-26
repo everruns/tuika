@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 
 use crate::live::{Live, RedrawHandle};
-use crate::term::program_status::{Report, StatusReporter};
+use crate::term::program_status::{Report, StatusReporter, StatusSupport};
 
 /// Where a run's status reports go when the host named a destination.
 type StatusOutput = Arc<Mutex<Box<dyn Write + Send>>>;
@@ -14,6 +14,7 @@ type StatusOutput = Arc<Mutex<Box<dyn Write + Send>>>;
 pub(crate) struct RunnerStatus {
     value: Live<Option<Report>>,
     native_progress: bool,
+    support: StatusSupport,
     output: Option<StatusOutput>,
 }
 
@@ -24,6 +25,7 @@ impl RunnerStatus {
             // from a background thread reported without waiting for a tick.
             value: Live::with_redraw(None, redraw),
             native_progress: false,
+            support: StatusSupport::ALL,
             output: None,
         }
     }
@@ -36,6 +38,10 @@ impl RunnerStatus {
         self.native_progress = enabled;
     }
 
+    pub(crate) fn set_support(&mut self, support: StatusSupport) {
+        self.support = support;
+    }
+
     pub(crate) fn set_output(&mut self, output: impl Write + Send + 'static) {
         self.output = Some(Arc::new(Mutex::new(Box::new(output))));
     }
@@ -46,7 +52,11 @@ impl RunnerStatus {
     pub(crate) fn session(&self, owns_stdout: bool) -> StatusSession<'_> {
         StatusSession {
             status: self,
-            reporter: Mutex::new(StatusReporter::new().with_native_progress(self.native_progress)),
+            reporter: Mutex::new(
+                StatusReporter::new()
+                    .with_native_progress(self.native_progress)
+                    .with_support(self.support),
+            ),
             stdout: owns_stdout,
         }
     }

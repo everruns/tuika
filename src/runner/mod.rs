@@ -721,6 +721,21 @@ impl Runner {
         self
     }
 
+    /// Adapt [`program_status`](Self::program_status) reports to what the
+    /// terminal said it accepts — from [`program_status::query`] or a parsed
+    /// [`StatusSupport::parse`] reply — so a missing state is sent as its
+    /// nearest supported one rather than dropped by the terminal.
+    ///
+    /// [`program_status::query`]: crate::term::program_status::query
+    /// [`StatusSupport::parse`]: crate::term::program_status::StatusSupport::parse
+    pub fn with_status_support(
+        mut self,
+        support: crate::term::program_status::StatusSupport,
+    ) -> Self {
+        self.status.set_support(support);
+        self
+    }
+
     /// Override terminal lifecycle policy while retaining the runner's loop.
     pub fn with_session_config(mut self, config: crate::host::TerminalSessionConfig) -> Self {
         self.config.screen_mode = config.screen_mode;
@@ -2429,5 +2444,21 @@ mod tests {
                 scripted_events([key_event(KeyCode::Esc)]),
             )
             .expect("run");
+    }
+
+    #[test]
+    fn program_status_adapts_to_terminal_support() {
+        let support =
+            crate::term::program_status::StatusSupport::parse(b"\x1b]7501;?:states=idle\x1b\\")
+                .unwrap();
+        let sent = run_status_script(
+            quiet_runner().with_status_support(support),
+            &[KeyCode::Char('w'), KeyCode::Esc],
+        );
+        assert_eq!(
+            sent,
+            ["7501;state=idle:app=job:title=Sm9i"],
+            "working went out as idle, which the exit rule leaves alone"
+        );
     }
 }

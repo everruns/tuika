@@ -21,6 +21,22 @@ described in the release process begins with the entry below.
   and sending nothing when the terminal offers none. `verify` checks a report
   the way a conforming terminal does, for hosts' own tests; `scrub_env` keeps
   the token out of child processes. New `program_resume` example.
+- Runner-owned program status: `Runner::program_status()` /
+  `AsyncRunner::program_status()` hold one OSC 7501 `Report`; the runner reports
+  it only when it changes and, on exit, clears it only if it was `working` or
+  `blocked`, so `done` and `error` stay for the user. `with_native_progress`
+  drives OSC 9;4 from the same value; `with_status_output` redirects the
+  reports (and enables them in `run_driven_by`). For custom loops,
+  `term::program_status::StatusReporter` is the same logic.
+  `Report::cancelled` builds the spec's `idle` for a cancelled program, and
+  `Report::native_progress` maps a report to its OSC 9;4 state. `Report` gains
+  read accessors (`state`, `record_id`, `block_kind`, `percent`, `app_name`,
+  `record_title`, `message`). The `program_status` example now uses the runner.
+- OSC 7501 detection: `term::program_status::query` asks the terminal what it
+  accepts (fenced by DA1, so there is no timeout on unsupporting terminals) and
+  `StatusSupport::parse` reads the reply. `StatusSupport::adapt`,
+  `StatusReporter::with_support`, and `Runner`/`AsyncRunner::with_status_support`
+  send a missing state as its nearest supported one.
 
 ## [0.14.0] - 2026-11-24
 
@@ -202,17 +218,6 @@ original text, while keeping the selection anchored to content.
 - `ImageLayer::invalidate`, for a custom host to call after anything that may
   have erased or moved images on screen (a resize, a clear, scrolled output).
   `Runner` and `AsyncRunner` call it themselves.
-- Runner-owned program status: `Runner::program_status()` /
-  `AsyncRunner::program_status()` hold one OSC 7501 `Report`; the runner reports
-  it only when it changes and, on exit, clears it only if it was `working` or
-  `blocked`, so `done` and `error` stay for the user. `with_native_progress`
-  drives OSC 9;4 from the same value; `with_status_output` redirects the
-  reports (and enables them in `run_driven_by`). For custom loops,
-  `term::program_status::StatusReporter` is the same logic.
-  `Report::cancelled` builds the spec's `idle` for a cancelled program, and
-  `Report::native_progress` maps a report to its OSC 9;4 state. `Report` gains
-  read accessors (`state`, `record_id`, `block_kind`, `percent`, `app_name`,
-  `record_title`, `message`). The `program_status` example now uses the runner.
 
 ### Changed
 

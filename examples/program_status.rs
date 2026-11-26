@@ -19,7 +19,7 @@ use std::io;
 use std::time::Duration;
 
 use tuika::live::Live;
-use tuika::term::program_status::{BlockKind, Report, State};
+use tuika::term::program_status::{self, BlockKind, Report, State, StatusSupport};
 use tuika::ui::{Line, Span};
 
 use tuika::prelude::*;
@@ -145,6 +145,8 @@ struct App {
     job: Job,
     theme: Theme,
     status: Live<Option<Report>>,
+    /// What the startup probe found, shown in the footer.
+    detected: String,
 }
 
 impl Application for App {
@@ -169,11 +171,11 @@ impl Application for App {
     }
 
     fn view(&self, frame: u64) -> tuika::ScopedElement<'_> {
-        build(&self.job, frame, &self.theme)
+        build(&self.job, frame, &self.theme, &self.detected)
     }
 }
 
-fn build(job: &Job, frame: u64, theme: &Theme) -> tuika::Element {
+fn build(job: &Job, frame: u64, theme: &Theme, detected: &str) -> tuika::Element {
     let fraction = f32::from(job.progress) / 100.0;
     let (status, status_style) = match job.phase {
         Phase::Running => (format!("{}…", job.step()), theme.accent_style()),
@@ -245,7 +247,7 @@ fn build(job: &Job, frame: u64, theme: &Theme) -> tuika::Element {
             }
             fixed(1) {
                 node(Text::new(vec![Line::from(Span::styled(
-                    "y / n answer   r restart   q quit",
+                    format!("y / n answer   r restart   q quit   · {detected}"),
                     theme.muted_style(),
                 ))]))
             }
@@ -253,16 +255,50 @@ fn build(job: &Job, frame: u64, theme: &Theme) -> tuika::Element {
     }
 }
 
+/// Ask the terminal what it accepts. The probe reads its reply from stdin,
+/// so it runs in raw mode and before the runner's event loop starts reading.
+fn probe() -> (Option<StatusSupport>, String) {
+    if crossterm::terminal::enable_raw_mode().is_err() {
+        return (None, "OSC 7501 not probed".to_string());
+    }
+    let support = program_status::query(Duration::from_millis(200));
+    let _ = crossterm::terminal::disable_raw_mode();
+    let detected = match support {
+        None => "terminal does not report OSC 7501".to_string(),
+        Some(support) => {
+            let states: Vec<&str> = [
+                (State::Idle, "idle"),
+                (State::Working, "working"),
+                (State::Done, "done"),
+                (State::Blocked, "blocked"),
+                (State::Error, "error"),
+            ]
+            .into_iter()
+            .filter(|(state, _)| support.supports(*state))
+            .map(|(_, name)| name)
+            .collect();
+            format!("terminal accepts {}", states.join(","))
+        }
+    };
+    (support, detected)
+}
+
 fn main() -> io::Result<()> {
     let cli = support::Cli::parse()?;
-    let runner = Runner::new(RunnerConfig {
+    let (support, detected) = probe();
+    let mut runner = Runner::new(RunnerConfig {
         tick_rate: Duration::from_millis(80),
         ..RunnerConfig::default()
     });
+    if let Some(support) = support {
+        // A state the terminal lacks goes out as its nearest supported one.
+        runner = runner.with_status_support(support);
+    }
     let mut app = App {
         job: Job::new(),
         theme: cli.theme,
         status: runner.program_status(),
+        detected,
     };
     app.job.sync(&app.status);
     runner.run(&cli.theme, &mut app)
