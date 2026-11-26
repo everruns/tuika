@@ -501,6 +501,35 @@ over-long id (more than 128 bytes or 8 segments), an `app` outside
 `progress` outside `working`/`blocked` are dropped rather than rejected.
 `encode_query()` builds the `ESC ] 7501 ; ? ESC \` feature query.
 
+### Let the runner own the protocol
+
+A program usually has one status, not a stream of reports. Give it to the
+runner instead and it handles the protocol around that value:
+
+```rust,no_run
+use tuika::prelude::*;
+use tuika::term::program_status::{Report, State};
+
+let runner = Runner::new(RunnerConfig::default()).with_native_progress(true);
+let status = runner.program_status();
+status.set(Some(Report::new(State::Working).app("build").progress(40)));
+// … later, from `update` or any thread:
+status.set(Some(Report::new(State::Done).app("build")));
+```
+
+- A report goes out only when the value changes, however often the loop runs.
+  Setting it from another thread wakes the loop.
+- On exit the record is cleared only if it was last `working` or `blocked`. A
+  `done` or `error` record is left for the user to find, which is what the
+  spec asks for. Sending `clear` on exit would wipe it.
+- When the user cancels, set `report.cancelled()`: the spec's `idle`, keeping
+  the record's `app` and `title`.
+- `with_native_progress(true)` drives OSC 9;4 from the same value (working is
+  a bar or a busy indicator, blocked a warning, error an error), so the two
+  indicators never disagree. The bar is hidden when the run ends.
+
+A host with its own loop gets the same behavior from `StatusReporter`.
+
 The [`program_status`](../examples/program_status.rs) example walks a scripted
 build through every state and prints the exact reports it sends; run it in a
 terminal that reads OSC 7501 to watch the pane's status follow along. The

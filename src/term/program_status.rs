@@ -17,6 +17,13 @@
 //! assert!(bytes.starts_with("\x1b]7501;"));
 //! ```
 //!
+//! A host that keeps one status value rather than a stream of reports hands
+//! it to the runner instead — see
+//! [`Runner::program_status`](crate::Runner::program_status) — or drives a
+//! [`StatusReporter`] from its own loop. Either way a report goes out only on
+//! change, and exit clears only a `working` or `blocked` record, leaving
+//! `done` and `error` for the user as the spec asks.
+//!
 //! Anything tuika did not produce itself is untrusted: ids, app names,
 //! titles, and messages come from the host and are validated here before
 //! they reach the terminal. Invalid reports return `None` from
@@ -28,7 +35,9 @@
 //!
 //! ![program status in tuios](https://raw.githubusercontent.com/everruns/tuika/main/examples/program_status.gif)
 
-use std::io::Write;
+use std::io::{self, Write};
+
+use crate::term::progress::{self, ProgressState};
 
 /// Program activity states (`state=` key).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,6 +169,81 @@ impl Report {
         self
     }
 
+    /// The same record reported `idle`: what the spec asks a program to send
+    /// when the user interrupts or cancels its work. Keeps `id`, `app`, and
+    /// `title` (a report replaces its record whole, so they must be repeated)
+    /// and drops `kind`, `progress`, and `msg`, which described the work.
+    pub fn cancelled(&self) -> Self {
+        Report {
+            state: State::Idle,
+            id: self.id.clone(),
+            kind: None,
+            progress: None,
+            app: self.app.clone(),
+            title: self.title.clone(),
+            msg: None,
+        }
+    }
+
+    /// The report's state.
+    pub fn state(&self) -> State {
+        self.state
+    }
+
+    /// The record id, `None` for the root record.
+    pub fn record_id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+
+    /// The block reason, as set (encoded only with [`State::Blocked`]).
+    pub fn block_kind(&self) -> Option<BlockKind> {
+        self.kind
+    }
+
+    /// The completion percent, as set (encoded only with `working`/`blocked`
+    /// and only when `0..=100`).
+    pub fn percent(&self) -> Option<u8> {
+        self.progress
+    }
+
+    /// The application name, as set.
+    pub fn app_name(&self) -> Option<&str> {
+        self.app.as_deref()
+    }
+
+    /// The record label, as set.
+    pub fn record_title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    /// The human-readable line, as set.
+    pub fn message(&self) -> Option<&str> {
+        self.msg.as_deref()
+    }
+
+    /// The OSC 9;4 indicator that shows the same thing, so a host that drives
+    /// both escapes from one status never shows two disagreeing answers:
+    ///
+    /// | Report | OSC 9;4 |
+    /// | --- | --- |
+    /// | `working` with progress | normal, at that percent |
+    /// | `working` without | indeterminate |
+    /// | `blocked` | warning, at its percent (0 without) |
+    /// | `error` | error, full |
+    /// | `idle`, `done`, `clear` | clear |
+    pub fn native_progress(&self) -> (ProgressState, u8) {
+        let percent = self.progress.filter(|p| *p <= 100);
+        match self.state {
+            State::Working => match percent {
+                Some(p) => (ProgressState::Normal, p),
+                None => (ProgressState::Indeterminate, 0),
+            },
+            State::Blocked => (ProgressState::Warning, percent.unwrap_or(0)),
+            State::Error => (ProgressState::Error, 100),
+            State::Idle | State::Done | State::Clear => (ProgressState::Clear, 0),
+        }
+    }
+
     /// Encode the report as `OSC 7501 … ST`, or `None` when invalid.
     ///
     /// Invalid means: bad `id`/`app` grammar, a control character in
@@ -239,6 +323,124 @@ pub fn write(out: &mut impl Write, report: &Report) -> std::io::Result<()> {
         out.write_all(bytes.as_bytes())?;
     }
     Ok(())
+}
+
+/// Turns "the program's status is now X" into the reports the spec wants,
+/// for a host that keeps one status value rather than emitting reports
+/// itself. The runners own one per run (see
+/// [`Runner::program_status`](crate::Runner::program_status)); a host with its
+/// own loop can drive one directly.
+///
+/// - [`update`](Self::update) writes a report only when the value changed, so
+///   it can be called every frame.
+/// - [`finish`](Self::finish) is the exit rule: it clears the record only when
+///   it was last reported `working` or `blocked`. `done`, `error`, and `idle`
+///   are left for the user to find, which is the point of reporting them —
+///   a program that sends `clear` on exit wipes the `done` record the spec
+///   asks it to leave behind.
+/// - With [`with_native_progress`](Self::with_native_progress) the same value
+///   also drives OSC 9;4 through [`Report::native_progress`], and `finish`
+///   hides that indicator whatever the state, since a stuck taskbar bar after
+///   exit is a defect, not a record.
+///
+/// ```
+/// use tuika::term::program_status::{Report, State, StatusReporter};
+///
+/// let mut out = Vec::new();
+/// let mut reporter = StatusReporter::new();
+/// let working = Report::new(State::Working).app("build");
+/// reporter.update(&mut out, Some(&working)).unwrap();
+/// reporter.update(&mut out, Some(&working)).unwrap(); // unchanged: nothing sent
+/// reporter.finish(&mut out).unwrap(); // was working: cleared
+/// assert_eq!(out, b"\x1b]7501;state=working:app=build\x1b\\\x1b]7501;state=clear\x1b\\");
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct StatusReporter {
+    /// The value last passed to `update`, to skip unchanged ones.
+    seen: Option<Report>,
+    /// The last report that was valid and written.
+    sent: Option<Report>,
+    native_progress: bool,
+    native_active: bool,
+}
+
+impl StatusReporter {
+    /// A reporter that has sent nothing, with OSC 9;4 mirroring off.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Also drive the terminal's OSC 9;4 indicator from the same value.
+    pub fn with_native_progress(mut self, enabled: bool) -> Self {
+        self.native_progress = enabled;
+        self
+    }
+
+    /// The last report written, if any.
+    pub fn last_sent(&self) -> Option<&Report> {
+        self.sent.as_ref()
+    }
+
+    /// Report `current` if it differs from the last value seen. `None` means
+    /// the host has no status: a record it reported earlier is cleared.
+    /// Returns whether anything was written. An invalid report writes nothing
+    /// and is not retried until the value changes.
+    pub fn update(&mut self, out: &mut impl Write, current: Option<&Report>) -> io::Result<bool> {
+        if self.seen.as_ref() == current {
+            return Ok(false);
+        }
+        self.seen = current.cloned();
+        let report = match current {
+            Some(report) => report.clone(),
+            None => match self.sent.take() {
+                Some(previous) => Report::clear(previous.id.as_deref()),
+                None => return Ok(false),
+            },
+        };
+        let Some(bytes) = report.encode() else {
+            return Ok(false);
+        };
+        // A record moved to a different id leaves the old one behind unless
+        // it is cleared: one status value is one record.
+        if let Some(previous) = &self.sent
+            && previous.id != report.id
+            && matches!(previous.state, State::Working | State::Blocked)
+            && let Some(clear) = Report::clear(previous.id.as_deref()).encode()
+        {
+            out.write_all(clear.as_bytes())?;
+        }
+        out.write_all(bytes.as_bytes())?;
+        if self.native_progress {
+            let (state, percent) = report.native_progress();
+            if state != ProgressState::Clear || self.native_active {
+                out.write_all(progress::encode(state, percent).as_bytes())?;
+            }
+            self.native_active = state != ProgressState::Clear;
+        }
+        self.sent = (report.state != State::Clear).then_some(report);
+        out.flush()?;
+        Ok(true)
+    }
+
+    /// Apply the exit rule: clear the record if it was last reported
+    /// `working` or `blocked`, and hide a mirrored OSC 9;4 indicator.
+    /// Idempotent.
+    pub fn finish(&mut self, out: &mut impl Write) -> io::Result<()> {
+        if let Some(previous) = self.sent.take() {
+            if matches!(previous.state, State::Working | State::Blocked) {
+                write(out, &Report::clear(previous.id.as_deref()))?;
+            } else {
+                self.sent = Some(previous);
+            }
+        }
+        if self.native_active {
+            out.write_all(progress::encode(ProgressState::Clear, 0).as_bytes())?;
+            self.native_active = false;
+        }
+        // A later `update` with the same value must report it again.
+        self.seen = self.sent.clone();
+        out.flush()
+    }
 }
 
 fn is_valid_segment(segment: &str) -> bool {
@@ -447,5 +649,187 @@ mod tests {
 
         write(&mut out, &Report::new(State::Done)).unwrap();
         assert_eq!(out, b"\x1b]7501;state=done\x1b\\");
+    }
+
+    fn reports(bytes: &[u8]) -> Vec<String> {
+        String::from_utf8(bytes.to_vec())
+            .unwrap()
+            .split("\x1b]")
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                s.trim_end_matches("\x1b\\")
+                    .trim_end_matches('\x07')
+                    .to_string()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn reporter_sends_only_changes() {
+        let mut out = Vec::new();
+        let mut reporter = StatusReporter::new();
+        let working = Report::new(State::Working).progress(10);
+        assert!(reporter.update(&mut out, Some(&working)).unwrap());
+        assert!(!reporter.update(&mut out, Some(&working)).unwrap());
+        assert!(!reporter.update(&mut out, Some(&working.clone())).unwrap());
+        let more = Report::new(State::Working).progress(20);
+        assert!(reporter.update(&mut out, Some(&more)).unwrap());
+        assert_eq!(
+            reports(&out),
+            [
+                "7501;state=working:progress=10",
+                "7501;state=working:progress=20"
+            ]
+        );
+    }
+
+    #[test]
+    fn reporter_exit_clears_only_working_and_blocked() {
+        for (state, cleared) in [
+            (State::Working, true),
+            (State::Blocked, true),
+            (State::Done, false),
+            (State::Error, false),
+            (State::Idle, false),
+        ] {
+            let mut out = Vec::new();
+            let mut reporter = StatusReporter::new();
+            reporter
+                .update(&mut out, Some(&Report::new(state).id("job")))
+                .unwrap();
+            out.clear();
+            reporter.finish(&mut out).unwrap();
+            let expected: &[&str] = if cleared {
+                &["7501;state=clear:id=job"]
+            } else {
+                &[]
+            };
+            assert_eq!(reports(&out), expected, "{state:?}");
+            // Idempotent.
+            out.clear();
+            reporter.finish(&mut out).unwrap();
+            assert!(out.is_empty(), "{state:?}");
+        }
+    }
+
+    #[test]
+    fn reporter_none_clears_what_was_reported() {
+        let mut out = Vec::new();
+        let mut reporter = StatusReporter::new();
+        assert!(!reporter.update(&mut out, None).unwrap());
+        reporter
+            .update(&mut out, Some(&Report::new(State::Done).id("a")))
+            .unwrap();
+        reporter.update(&mut out, None).unwrap();
+        reporter.finish(&mut out).unwrap();
+        assert_eq!(
+            reports(&out),
+            ["7501;state=done:id=a", "7501;state=clear:id=a"]
+        );
+    }
+
+    #[test]
+    fn reporter_moving_ids_clears_the_old_live_record() {
+        let mut out = Vec::new();
+        let mut reporter = StatusReporter::new();
+        reporter
+            .update(&mut out, Some(&Report::new(State::Working).id("a")))
+            .unwrap();
+        reporter
+            .update(&mut out, Some(&Report::new(State::Working).id("b")))
+            .unwrap();
+        assert_eq!(
+            reports(&out),
+            [
+                "7501;state=working:id=a",
+                "7501;state=clear:id=a",
+                "7501;state=working:id=b"
+            ]
+        );
+    }
+
+    #[test]
+    fn reporter_skips_invalid_reports_without_retrying() {
+        let mut out = Vec::new();
+        let mut reporter = StatusReporter::new();
+        let bad = Report::new(State::Working).id("bad id");
+        assert!(!reporter.update(&mut out, Some(&bad)).unwrap());
+        assert!(!reporter.update(&mut out, Some(&bad)).unwrap());
+        reporter.finish(&mut out).unwrap();
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn reporter_mirrors_native_progress_and_hides_it_on_exit() {
+        let mut out = Vec::new();
+        let mut reporter = StatusReporter::new().with_native_progress(true);
+        // Idle before anything is shown sends no stray 9;4 clear.
+        reporter
+            .update(&mut out, Some(&Report::new(State::Idle)))
+            .unwrap();
+        reporter
+            .update(&mut out, Some(&Report::new(State::Working)))
+            .unwrap();
+        reporter
+            .update(&mut out, Some(&Report::new(State::Working).progress(40)))
+            .unwrap();
+        reporter
+            .update(&mut out, Some(&Report::new(State::Error)))
+            .unwrap();
+        reporter.finish(&mut out).unwrap();
+        assert_eq!(
+            reports(&out),
+            [
+                "7501;state=idle",
+                "7501;state=working",
+                "9;4;3;0",
+                "7501;state=working:progress=40",
+                "9;4;1;40",
+                "7501;state=error",
+                "9;4;2;100",
+                "9;4;0;0",
+            ]
+        );
+    }
+
+    #[test]
+    fn native_progress_mapping() {
+        use ProgressState::*;
+        let cases = [
+            (Report::new(State::Working).progress(30), (Normal, 30)),
+            (Report::new(State::Working), (Indeterminate, 0)),
+            (Report::new(State::Blocked).progress(70), (Warning, 70)),
+            (Report::new(State::Blocked), (Warning, 0)),
+            (Report::new(State::Error), (Error, 100)),
+            (Report::new(State::Idle), (Clear, 0)),
+            (Report::new(State::Done), (Clear, 0)),
+            (Report::clear(None), (Clear, 0)),
+            (
+                Report::new(State::Working).progress(150),
+                (Indeterminate, 0),
+            ),
+        ];
+        for (report, expected) in cases {
+            assert_eq!(report.native_progress(), expected, "{report:?}");
+        }
+    }
+
+    #[test]
+    fn cancelled_keeps_identity_and_drops_work() {
+        let report = Report::new(State::Blocked)
+            .id("job")
+            .app("build")
+            .title("Build")
+            .kind(BlockKind::Question)
+            .progress(50)
+            .msg("Continue?");
+        let cancelled = report.cancelled();
+        assert_eq!(cancelled.state(), State::Idle);
+        assert_eq!(cancelled.record_id(), Some("job"));
+        assert_eq!(cancelled.app_name(), Some("build"));
+        assert_eq!(cancelled.record_title(), Some("Build"));
+        assert_eq!(cancelled.block_kind(), None);
+        assert_eq!(cancelled.percent(), None);
+        assert_eq!(cancelled.message(), None);
     }
 }
