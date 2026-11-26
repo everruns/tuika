@@ -30,6 +30,7 @@ Out-of-band capabilities, in three families:
 | Focus reporting | CSI ? 1004 | `term::attention::FocusReporting` | host-initiated scope; drop disables reporting |
 | Native progress | OSC 9;4 | `term::progress` | host-initiated, any time |
 | Program status | OSC 7501 | `term::program_status` | host-initiated, any time |
+| Program resume | OSC 7577 | `term::program_resume` | host-initiated on state change; only when the terminal provided a token |
 | Pointer shape | OSC 22 | `term::pointer` | host-initiated, any time |
 | Images | Kitty / iTerm2 / Sixel | `term::image` | after `terminal.draw()` returns |
 | Sized text | OSC 66 | `term::text_size` | embedded in cells by `apply_sized_runs_in` |
@@ -64,6 +65,31 @@ so they cannot be spliced. They are emitted after the frame, wrapped in a cursor
 save/restore with an explicit CUP to each image's cell origin, leaving the net
 effect on tuika's cursor model at nil. See [images.md](./images.md).
 
+### Program resume is signed, so the token is the capability test
+
+OSC 7577 records a command the terminal may later *run*. Every other escape
+here is harmless if forged; this one is not, so each report carries a SHA-256
+MAC keyed by a per-pty secret the terminal puts in `OSC7577_TOKEN`. Three
+consequences shape `term::program_resume`:
+
+- **No token, no report.** The variable is the protocol's only feature test
+  (there is no query), and a report without it could never verify. `Reporter`
+  exists only when a token does, so a host cannot emit an unsigned report.
+- **The token is a credential.** It is redacted from `Debug`, never written
+  anywhere but the MAC input, and `scrub_env` strips it from child processes,
+  which the spec requires: a child holding it could report in the host's name.
+- **Both halves live in tuika.** `verify` implements the terminal's side —
+  strict grammar, MAC before anything else, the time window, and the
+  ignored/rejected split — so the encoder is tested against a strict decoder
+  and the spec's published vectors rather than against itself, and the PTY
+  suite can play a restoring terminal end to end: verify every report, then
+  relaunch the recorded argv on a fresh pty and check the program came back
+  where it was. Hosts get the same check for their own tests.
+
+SHA-256 is implemented in-crate (FIPS vectors in the unit tests) rather than
+taken as a dependency: it is one small function, and the dependency set stays
+small.
+
 ### A query is answered on stdin, so it must be fenced and timed
 
 The escapes tuika *tells* the terminal are fire-and-forget. A query is not: the
@@ -97,8 +123,8 @@ default by what terminal it finds itself in, unless a host asks it to.
 
 ### "Unknown escapes are swallowed" holds for three of the four
 
-A terminal that does not understand OSC 8, 52, 9;4, or 7501 ignores it. That is why
-those four need no capability detection and are safe to emit everywhere — the
+A terminal that does not understand OSC 8, 52, 9;4, 7501, or 7577 ignores it. That is why
+those five need no capability detection and are safe to emit everywhere — the
 worst case is that nothing happens.
 
 Graphics protocols break that assumption: an unsupported terminal may render the

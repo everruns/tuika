@@ -1,5 +1,13 @@
 # Knowledge Log
 
+## 2026-11-26
+
+- **Program resume (OSC 7577)**
+  - `term::program_resume` signs resume reports with the terminal's per-pty
+    token and ships the terminal-side `verify`, so the PTY suite can act as a
+    restoring terminal end to end. See
+    [Out-of-band escapes](specs/out-of-band.md).
+
 ## 2026-11-24
 
 - Desktop attention protocols

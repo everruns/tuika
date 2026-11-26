@@ -21,6 +21,7 @@
 //! | [`hyperlink`] | OSC 8 | makes a text run clickable |
 //! | [`progress`] | OSC 9;4 | lights its own progress bar or taskbar |
 //! | [`program_status`] | OSC `7501` | reports program activity: idle, working, done, blocked, error, clear |
+//! | [`program_resume`] | OSC `7577` | records the command that would resume the program after a restart (signed with a per-pty token) |
 //! | [`mod@pointer`] | OSC 22 | changes the mouse pointer shape |
 //! | [`text_size`] | OSC 66 | draws text two to seven cells tall |
 //! | [`capabilities`] | DA1 | answers what it supports |
@@ -44,6 +45,7 @@ pub mod hyperlink;
 pub mod image;
 pub mod palette;
 pub mod pointer;
+pub mod program_resume;
 pub mod program_status;
 pub mod progress;
 pub mod terminal;

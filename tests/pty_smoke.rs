@@ -23,6 +23,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
+use tuika::term::program_resume;
 
 /// The URL rendered in the gallery footer, emitted as an OSC 8 hyperlink target.
 const GALLERY_URL: &str = "https://github.com/everruns/tuika";
@@ -117,7 +118,13 @@ impl ExampleRun {
 /// drives.
 struct Script {
     name: &'static str,
-    args: Vec<&'static str>,
+    args: Vec<String>,
+    /// Extra environment, set after the inherited-variable scrub.
+    env: Vec<(String, String)>,
+    cwd: Option<PathBuf>,
+    /// End the session the way closing a terminal does — the child is killed
+    /// instead of being sent the quit key.
+    hang_up: bool,
     rows: u16,
     cols: u16,
     settle: Duration,
@@ -136,6 +143,9 @@ impl Script {
         Self {
             name,
             args: Vec::new(),
+            env: Vec::new(),
+            cwd: None,
+            hang_up: false,
             rows: 24,
             cols: 80,
             settle: Duration::from_millis(1200),
@@ -151,8 +161,24 @@ impl Script {
         self
     }
 
-    fn arg(mut self, arg: &'static str) -> Self {
-        self.args.push(arg);
+    fn arg(mut self, arg: impl Into<String>) -> Self {
+        self.args.push(arg.into());
+        self
+    }
+
+    fn env(mut self, key: &str, value: &str) -> Self {
+        self.env.push((key.to_string(), value.to_string()));
+        self
+    }
+
+    fn cwd(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.cwd = Some(dir.into());
+        self
+    }
+
+    /// Kill the child instead of quitting: the terminal went away.
+    fn hang_up(mut self) -> Self {
+        self.hang_up = true;
         self
     }
 
@@ -219,8 +245,15 @@ impl Script {
             "LC_TERMINAL",
             "TMUX",
             "TMUX_PANE",
+            "OSC7577_TOKEN",
         ] {
             cmd.env_remove(inherited);
+        }
+        for (key, value) in &self.env {
+            cmd.env(key, value);
+        }
+        if let Some(dir) = &self.cwd {
+            cmd.cwd(dir);
         }
 
         let mut child = pair.slave.spawn_command(cmd).expect("spawn example");
@@ -317,7 +350,11 @@ impl Script {
         // parse.
         let live = buffer.lock().expect("lock read buffer").clone();
 
-        send(self.quit);
+        if self.hang_up {
+            let _ = child.kill();
+        } else {
+            send(self.quit);
+        }
 
         // Wait for a clean exit.
         let deadline = Instant::now() + Duration::from_secs(20);
@@ -1040,4 +1077,168 @@ fn attention_notifications_and_focus_reporting_restore_in_a_real_pty() {
             .contents()
             .contains("Cleanup restores focus reporting")
     );
+}
+
+// ---------------------------------------------------------------------------
+// OSC 7577 program resume: this harness plays the terminal. It hands the
+// example a token, checks every report the way a conforming terminal must
+// (`program_resume::verify`), and then *restores*: it relaunches the recorded
+// argv, in the recorded directory, on a fresh pty with a fresh token — the
+// whole round trip a terminal like Rex performs after a restart.
+
+const RESUME_TOKEN: &str = "pty-smoke-resume-token-0123456789";
+const RESUME_TOKEN_AFTER_RESTART: &str = "a-different-token-after-restart";
+
+/// Every `ESC ] 7577 ; … ST` in a byte stream, terminator included.
+fn resume_reports(stream: &[u8]) -> Vec<&[u8]> {
+    const PREFIX: &[u8] = b"\x1b]7577;";
+    let mut out = Vec::new();
+    let mut rest = stream;
+    while let Some(start) = rest.windows(PREFIX.len()).position(|w| w == PREFIX) {
+        let tail = &rest[start..];
+        let end = tail
+            .iter()
+            .enumerate()
+            .find_map(|(i, &b)| match b {
+                0x07 => Some(i + 1),
+                b'\\' if i > 0 && tail[i - 1] == 0x1b => Some(i + 1),
+                _ => None,
+            })
+            .expect("a 7577 report is terminated");
+        out.push(&tail[..end]);
+        rest = &tail[end..];
+    }
+    out
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after 1970")
+        .as_secs()
+}
+
+fn verify_all(stream: &[u8], token: &str) -> Vec<program_resume::Record> {
+    let token = program_resume::Token::new(token).expect("test token is valid");
+    let now = unix_now();
+    resume_reports(stream)
+        .into_iter()
+        .map(|seq| match program_resume::verify(seq, &token, now) {
+            program_resume::Verdict::Accepted(record) => record,
+            other => panic!(
+                "a conforming terminal would not accept {:?}: {other:?}",
+                String::from_utf8_lossy(seq)
+            ),
+        })
+        .collect()
+}
+
+#[test]
+fn program_resume_round_trips_through_a_terminal_restart() {
+    use program_resume::Action;
+
+    let start_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .canonicalize()
+        .expect("manifest dir");
+
+    // First life: open chapter 4, then the terminal goes away.
+    let first = Script::new("program_resume")
+        .env(program_resume::TOKEN_ENV, RESUME_TOKEN)
+        .cwd(&start_dir)
+        .settle_until(b"\x1b]7577;", Duration::from_secs(10))
+        .key(b"j", Duration::from_millis(300))
+        .key(b"j", Duration::from_millis(300))
+        .key(b"j", Duration::from_millis(800))
+        .hang_up()
+        .run();
+
+    // The token authenticates; it is never echoed.
+    assert!(
+        !contains(&first.output, RESUME_TOKEN.as_bytes()),
+        "the token must never reach the screen"
+    );
+    let records = verify_all(&first.output, RESUME_TOKEN);
+    assert_eq!(
+        records.len(),
+        4,
+        "one report per chapter shown (1 → 4), none for unchanged frames"
+    );
+    // A forged copy — same bytes, another terminal's token — is ignored.
+    let other = program_resume::Token::new(RESUME_TOKEN_AFTER_RESTART).unwrap();
+    let first_report = resume_reports(&first.output)[0];
+    assert_eq!(
+        program_resume::verify(first_report, &other, unix_now()),
+        program_resume::Verdict::Ignored(program_resume::Ignored::BadMac)
+    );
+    assert!(
+        records
+            .iter()
+            .all(|r| matches!(r.action, Action::Resume { .. })),
+        "a hang-up is not the user quitting: no clear may be sent"
+    );
+    let last = records.last().expect("at least one record");
+    let Action::Resume { argv, cwd } = &last.action else {
+        unreachable!()
+    };
+    let program = std::path::Path::new(&argv[0]);
+    assert!(
+        program.is_absolute(),
+        "argv[0] must not need PATH: {argv:?}"
+    );
+    assert_eq!(
+        program.canonicalize().expect("argv[0] exists"),
+        example_bin("program_resume").canonicalize().unwrap()
+    );
+    assert_eq!(&argv[1..], ["--chapter", "4"]);
+    let cwd = cwd.as_ref().expect("the reader reports its directory");
+    assert_eq!(cwd.canonicalize().unwrap(), start_dir);
+
+    // Restore: exactly the recorded argv, one argument each, in the recorded
+    // directory, with a fresh token. Then the user quits on purpose.
+    let mut second = Script::new("program_resume")
+        .env(program_resume::TOKEN_ENV, RESUME_TOKEN_AFTER_RESTART)
+        .cwd(cwd)
+        .settle_until(b"Resumed", Duration::from_secs(10));
+    for arg in &argv[1..] {
+        second = second.arg(arg.clone());
+    }
+    let second = second.run();
+    assert!(second.exited_ok, "resumed reader exits cleanly on q");
+
+    let screen = second.live_screen();
+    let text = screen.screen().contents();
+    assert!(
+        text.contains("Resumed at chapter 4"),
+        "the relaunched reader knows it was resumed:\n{text}"
+    );
+    assert!(
+        text.contains("▸ 4. Rock pools"),
+        "and opens chapter 4:\n{text}"
+    );
+
+    let records = verify_all(&second.output, RESUME_TOKEN_AFTER_RESTART);
+    let (first_record, last_record) = (records.first().unwrap(), records.last().unwrap());
+    assert_eq!(
+        first_record.action, last.action,
+        "the resumed process re-reports the same command, taking the record over"
+    );
+    assert_eq!(
+        last_record.action,
+        Action::Clear,
+        "quitting with q clears the record"
+    );
+}
+
+#[test]
+fn program_resume_sends_nothing_without_a_token() {
+    let run = Script::new("program_resume")
+        .settle_until(b"OSC7577_TOKEN", Duration::from_secs(10))
+        .run();
+    assert!(run.exited_ok);
+    assert!(
+        resume_reports(&run.output).is_empty(),
+        "no token means the terminal does not support resume: nothing may be sent"
+    );
+    let text = run.live_screen().screen().contents();
+    assert!(text.contains("No OSC7577_TOKEN"), "{text}");
 }

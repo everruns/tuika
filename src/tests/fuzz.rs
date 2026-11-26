@@ -24,7 +24,7 @@
 //!   into an inset area of a larger buffer, so a write past the rect is caught
 //!   as a scribble on the margin instead of landing in a neighbour.
 //! - **Parsers on untrusted bytes** — terminal replies, bare-URL detection, QR
-//!   payloads, image buffers: input tuika does not author and cannot trust.
+//!   payloads, image buffers, OSC 7577 resume reports: input tuika does not author and cannot trust.
 //!
 //! The per-component black-box sweep — every component × corpus × degenerate
 //! size, through the published API only — is its peer in `tests/robustness.rs`.
@@ -935,5 +935,60 @@ proptest! {
             .label(label);
         let spoken = crate::testing::screen_reader(&view, width, height, &crate::Theme::default());
         prop_assert!(!spoken.chars().any(|c| c.is_control() && c != '\n'), "{spoken:?}");
+    }
+}
+
+proptest! {
+    /// OSC 7577 reports reach a terminal from whatever is writing to the pty,
+    /// so the verifier is a parser on untrusted bytes: nothing may panic it,
+    /// and nothing unsigned may ever be accepted or reach the reject path
+    /// (which would let a forger drop someone else's record).
+    #[test]
+    fn program_resume_verify_never_trusts_unsigned_bytes(
+        body in proptest::collection::vec(any::<u8>(), 0..300),
+        now in any::<u64>(),
+    ) {
+        use crate::term::program_resume::{verify, Token, Verdict};
+        let token = Token::new("fuzz-token-0123456789abcdef").unwrap();
+        let mut seq = b"\x1b]7577;".to_vec();
+        seq.extend_from_slice(&body);
+        seq.extend_from_slice(b"\x1b\\");
+        let verdict = verify(&seq, &token, now);
+        prop_assert!(matches!(verdict, Verdict::Ignored(_)), "{verdict:?}");
+        let _ = verify(&body, &token, now);
+    }
+
+    /// Whatever the encoder agrees to send, a conforming terminal accepts
+    /// and decodes back to the same argument list — argument boundaries,
+    /// shell metacharacters, and non-ASCII text included. What it refuses,
+    /// a terminal would have refused too.
+    #[test]
+    fn program_resume_encode_round_trips_through_verify(
+        program in prop_oneof![
+            Just("nvim".to_string()),
+            Just("/usr/bin/env".to_string()),
+            fuzz_text(),
+        ],
+        args in proptest::collection::vec(fuzz_text(), 0..6),
+        cwd in prop_oneof![Just(None), Just(Some("/tmp/x y".to_string())), fuzz_text().prop_map(Some)],
+    ) {
+        use crate::term::program_resume::{verify, Action, Record, Report, Token, Verdict};
+        let token = Token::new("fuzz-token-0123456789abcdef").unwrap();
+        let mut argv = vec![program];
+        argv.extend(args);
+        let mut report = Report::resume(argv.clone()).pid(42).time(2_000_000_000);
+        if let Some(cwd) = &cwd {
+            report = report.cwd(cwd);
+        }
+        if let Ok(seq) = report.encode(&token) {
+            prop_assert_eq!(
+                verify(seq.as_bytes(), &token, 2_000_000_000),
+                Verdict::Accepted(Record {
+                    pid: 42,
+                    time: 2_000_000_000,
+                    action: Action::Resume { argv, cwd: cwd.map(Into::into) },
+                })
+            );
+        }
     }
 }
