@@ -52,12 +52,204 @@ pub enum Color {
     LightCyan,
     /// ANSI bright white (fg 97 / bg 107).
     White,
-    /// A 24-bit truecolor value. Terminals without truecolor support render
-    /// this unpredictably; [`term::capabilities`](crate::term::capabilities)
-    /// is how a host detects that before choosing a theme.
+    /// A 24-bit truecolor value. A terminal without truecolor support renders
+    /// this unpredictably, so the backends map it to the nearest color the
+    /// terminal can show — see [`Color::downsample`] and
+    /// [`ColorDepth`](crate::term::capabilities::ColorDepth).
     Rgb(u8, u8, u8),
     /// An 8-bit indexed color from the 256-color palette.
     Indexed(u8),
+}
+
+/// The xterm defaults for the sixteen ANSI slots, in slot order. A terminal's
+/// theme may repaint these, which is why downsampling only *targets* them when
+/// it has to: they are the one palette every color terminal has.
+const ANSI16_RGB: [(u8, u8, u8); 16] = [
+    (0, 0, 0),
+    (205, 0, 0),
+    (0, 205, 0),
+    (205, 205, 0),
+    (0, 0, 238),
+    (205, 0, 205),
+    (0, 205, 205),
+    (229, 229, 229),
+    (127, 127, 127),
+    (255, 0, 0),
+    (0, 255, 0),
+    (255, 255, 0),
+    (92, 92, 255),
+    (255, 0, 255),
+    (0, 255, 255),
+    (255, 255, 255),
+];
+
+/// The named variants in ANSI slot order, so slot `i` is `ANSI16[i]`.
+const ANSI16: [Color; 16] = [
+    Color::Black,
+    Color::Red,
+    Color::Green,
+    Color::Yellow,
+    Color::Blue,
+    Color::Magenta,
+    Color::Cyan,
+    Color::Gray,
+    Color::DarkGray,
+    Color::LightRed,
+    Color::LightGreen,
+    Color::LightYellow,
+    Color::LightBlue,
+    Color::LightMagenta,
+    Color::LightCyan,
+    Color::White,
+];
+
+/// The six channel levels of the xterm 6×6×6 cube (slots 16–231).
+const CUBE_LEVELS: [u8; 6] = [0, 95, 135, 175, 215, 255];
+
+impl Color {
+    /// The nearest color a terminal of `depth` can show.
+    ///
+    /// [`ColorDepth::TrueColor`] returns `self` unchanged. Below that, an
+    /// [`Rgb`](Color::Rgb) becomes the nearest slot of the xterm 256-color
+    /// palette (its 6×6×6 cube or 24-step gray ramp — never slots 0–15, whose
+    /// values the user's theme decides), and at [`ColorDepth::Ansi16`] both
+    /// `Rgb` and [`Indexed`](Color::Indexed) become the nearest of the sixteen
+    /// named colors. `Reset` and the named colors are already representable
+    /// everywhere and pass through.
+    ///
+    /// The backends call this on every cell they emit, so a host normally never
+    /// does; it is public for a host that writes styled text some other way.
+    ///
+    /// ```
+    /// use tuika::style::Color;
+    /// use tuika::term::capabilities::ColorDepth;
+    ///
+    /// assert_eq!(Color::Rgb(255, 0, 0).downsample(ColorDepth::Ansi256), Color::Indexed(196));
+    /// assert_eq!(Color::Rgb(250, 10, 10).downsample(ColorDepth::Ansi16), Color::LightRed);
+    /// assert_eq!(Color::Rgb(1, 2, 3).downsample(ColorDepth::TrueColor), Color::Rgb(1, 2, 3));
+    /// ```
+    ///
+    /// [`ColorDepth::TrueColor`]: crate::term::capabilities::ColorDepth::TrueColor
+    /// [`ColorDepth::Ansi16`]: crate::term::capabilities::ColorDepth::Ansi16
+    #[must_use = "returns the downsampled color"]
+    pub fn downsample(self, depth: crate::term::capabilities::ColorDepth) -> Self {
+        use crate::term::capabilities::ColorDepth;
+        match (depth, self) {
+            (ColorDepth::TrueColor, _) => self,
+            (ColorDepth::Ansi256, Self::Rgb(r, g, b)) => Self::Indexed(nearest_256(r, g, b)),
+            (ColorDepth::Ansi16, Self::Rgb(r, g, b)) => ANSI16[nearest_16(r, g, b)],
+            (ColorDepth::Ansi16, Self::Indexed(i)) if i < 16 => ANSI16[usize::from(i)],
+            (ColorDepth::Ansi16, Self::Indexed(i)) => {
+                let (r, g, b) = indexed_rgb(i);
+                ANSI16[nearest_16(r, g, b)]
+            }
+            _ => self,
+        }
+    }
+}
+
+/// The RGB value xterm assigns to palette slot `i`.
+fn indexed_rgb(i: u8) -> (u8, u8, u8) {
+    match i {
+        0..=15 => ANSI16_RGB[usize::from(i)],
+        16..=231 => {
+            let i = i - 16;
+            (
+                CUBE_LEVELS[usize::from(i / 36)],
+                CUBE_LEVELS[usize::from(i / 6 % 6)],
+                CUBE_LEVELS[usize::from(i % 6)],
+            )
+        }
+        232..=255 => {
+            let v = 8 + 10 * (i - 232);
+            (v, v, v)
+        }
+    }
+}
+
+/// Perceptual-ish squared distance ("redmean"): plain Euclidean RGB distance
+/// over-weights blue and under-weights green, which is what makes a naive
+/// nearest-match turn mid greens gray. Cheap, dependency-free, and good enough
+/// for picking among at most 256 fixed candidates.
+fn distance((r1, g1, b1): (u8, u8, u8), (r2, g2, b2): (u8, u8, u8)) -> u32 {
+    let rmean = (u32::from(r1) + u32::from(r2)) / 2;
+    let dr = i32::from(r1) - i32::from(r2);
+    let dg = i32::from(g1) - i32::from(g2);
+    let db = i32::from(b1) - i32::from(b2);
+    let (dr2, dg2, db2) = (
+        dr.unsigned_abs().pow(2),
+        dg.unsigned_abs().pow(2),
+        db.unsigned_abs().pow(2),
+    );
+    (((512 + rmean) * dr2) >> 8) + 4 * dg2 + (((767 - rmean) * db2) >> 8)
+}
+
+/// The nearest slot in 16–255: the closest cube color or the closest gray,
+/// whichever is nearer. Two candidates rather than a scan of all 240, the way
+/// tmux does it, because each axis of the cube can be quantised on its own.
+fn nearest_256(r: u8, g: u8, b: u8) -> u8 {
+    // A channel's nearest cube level: the midpoints between 0, 95, 135, … are
+    // 47.5, 115, 155, 195, 235.
+    let level = |v: u8| -> u8 {
+        match v {
+            0..48 => 0,
+            48..115 => 1,
+            _ => (v - 35) / 40,
+        }
+    };
+    let (qr, qg, qb) = (level(r), level(g), level(b));
+    let cube_slot = 16 + 36 * qr + 6 * qg + qb;
+    let cube = indexed_rgb(cube_slot);
+    if cube == (r, g, b) {
+        return cube_slot;
+    }
+    let avg = (u16::from(r) + u16::from(g) + u16::from(b)) / 3;
+    // Grays are 8, 18, …, 238; anything past 238 is nearest the last step
+    // (white itself is a cube corner, and wins there on distance).
+    let step = if avg > 238 {
+        23
+    } else {
+        (avg.saturating_sub(3) / 10) as u8
+    };
+    let gray_slot = 232 + step;
+    let gray = indexed_rgb(gray_slot);
+    if distance(gray, (r, g, b)) < distance(cube, (r, g, b)) {
+        gray_slot
+    } else {
+        cube_slot
+    }
+}
+
+/// The index (0–15) of the ANSI color that best stands in for `(r, g, b)`.
+///
+/// Not a nearest-RGB match. Against only sixteen fixed, fully saturated
+/// candidates, distance sends every muted color — a copper, a sage, a plum, the
+/// palettes real themes are made of — to gray, and a 16-color frame of a warm
+/// theme comes out monochrome. So hue and lightness are judged separately:
+///
+/// - A color with little chroma, or too dark to read as a hue, is a gray, and
+///   its lightness picks black, bright black, white, or bright white.
+/// - Otherwise each channel that sits in the upper half of the color's own
+///   range is "on", which picks one of the six hues, and a light color (or a
+///   near-full channel) takes the bright variant.
+fn nearest_16(r: u8, g: u8, b: u8) -> usize {
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let chroma = max - min;
+    let lightness = (u16::from(max) + u16::from(min)) / 2;
+    if chroma < 40 || max < 64 {
+        // Midpoints between the gray slots' values: 0, 127, 229, 255.
+        return match lightness {
+            0..64 => 0,
+            64..178 => 8,
+            178..242 => 7,
+            _ => 15,
+        };
+    }
+    let on = |v: u8| usize::from(v - min >= chroma.div_ceil(2));
+    let hue = on(r) | on(g) << 1 | on(b) << 2;
+    let bright = max >= 230 || lightness >= 150;
+    if bright { hue + 8 } else { hue }
 }
 
 /// Text attributes, composable as bitflags.
@@ -360,6 +552,88 @@ impl fmt::Debug for Modifier {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::term::capabilities::ColorDepth;
+
+    #[test]
+    fn truecolor_depth_is_the_identity() {
+        for color in [
+            Color::Reset,
+            Color::Red,
+            Color::Rgb(1, 2, 3),
+            Color::Indexed(200),
+        ] {
+            assert_eq!(color.downsample(ColorDepth::TrueColor), color);
+        }
+    }
+
+    #[test]
+    fn named_and_reset_pass_through_every_depth() {
+        for depth in [ColorDepth::Ansi16, ColorDepth::Ansi256] {
+            for color in ANSI16.iter().copied().chain([Color::Reset]) {
+                assert_eq!(color.downsample(depth), color, "{color:?} at {depth:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn rgb_to_256_lands_exactly_on_palette_colors() {
+        // Every cube and gray slot round-trips through its own RGB value.
+        for slot in 16..=255u8 {
+            let (r, g, b) = indexed_rgb(slot);
+            let got = Color::Rgb(r, g, b).downsample(ColorDepth::Ansi256);
+            assert_eq!(got, Color::Indexed(slot), "slot {slot} = ({r},{g},{b})");
+        }
+    }
+
+    #[test]
+    fn rgb_to_256_picks_the_nearer_of_cube_and_gray() {
+        let down = |r, g, b| Color::Rgb(r, g, b).downsample(ColorDepth::Ansi256);
+        // A near-gray goes to the finer gray ramp, not the coarse cube.
+        assert_eq!(down(100, 100, 102), Color::Indexed(241)); // gray 98
+        // A saturated color stays in the cube.
+        assert_eq!(down(250, 5, 5), Color::Indexed(196));
+        // Solarized base03 lands on 234, the slot Solarized's own 256-color
+        // fallback picks for it.
+        assert_eq!(down(0x00, 0x2b, 0x36), Color::Indexed(234));
+        // Never one of the theme-owned slots 0–15.
+        for (r, g, b) in [(0, 0, 0), (255, 255, 255), (205, 0, 0), (127, 127, 127)] {
+            let Color::Indexed(slot) = down(r, g, b) else {
+                panic!("not indexed")
+            };
+            assert!(slot >= 16, "({r},{g},{b}) -> {slot}");
+        }
+    }
+
+    #[test]
+    fn rgb_and_indexed_to_16_choose_the_nearest_named_color() {
+        let down = |c: Color| c.downsample(ColorDepth::Ansi16);
+        assert_eq!(down(Color::Rgb(250, 10, 10)), Color::LightRed);
+        assert_eq!(down(Color::Rgb(180, 0, 0)), Color::Red);
+        assert_eq!(down(Color::Rgb(0, 0x2b, 0x36)), Color::Black);
+        assert_eq!(down(Color::Rgb(250, 250, 250)), Color::White);
+        assert_eq!(down(Color::Rgb(235, 235, 235)), Color::Gray);
+        assert_eq!(down(Color::Rgb(120, 120, 120)), Color::DarkGray);
+        assert_eq!(down(Color::Rgb(30, 200, 40)), Color::Green);
+        // Muted theme colors keep their hue instead of collapsing to gray…
+        assert_eq!(down(Color::Rgb(175, 91, 59)), Color::Red); // copper
+        assert_eq!(down(Color::Rgb(189, 143, 179)), Color::LightMagenta); // plum
+        assert_eq!(down(Color::Rgb(128, 155, 177)), Color::LightCyan); // steel blue
+        // …while near-neutrals stay gray and dark backgrounds stay black.
+        assert_eq!(down(Color::Rgb(222, 204, 199)), Color::Gray);
+        assert_eq!(down(Color::Rgb(151, 119, 115)), Color::DarkGray);
+        assert_eq!(down(Color::Rgb(22, 18, 21)), Color::Black);
+        // Slots 0–15 map to their named color; the rest via their RGB value.
+        for (slot, named) in ANSI16.iter().enumerate() {
+            assert_eq!(down(Color::Indexed(slot as u8)), *named);
+        }
+        assert_eq!(down(Color::Indexed(196)), Color::LightRed);
+        assert_eq!(down(Color::Indexed(232)), Color::Black);
+        assert_eq!(down(Color::Indexed(255)), Color::Gray);
+        // Every result is a named color.
+        for slot in 0..=255u8 {
+            assert!(ANSI16.contains(&down(Color::Indexed(slot))), "{slot}");
+        }
+    }
 
     /// The composition law components rely on: unset fields inherit, set fields
     /// win. Asserted field by field rather than on a whole `Style` so a

@@ -24,6 +24,13 @@ minor release for the accumulated public API changes.
     overrides, a dispatch-time `<leader>`, and a source-located dump. See
     [Keymap engine](specs/keymap.md).
 
+- **Downsample colors at the backend, not in themes**
+  - Runners detect a `ColorDepth` and the backend maps truecolor cells to the
+    nearest 256- or 16-color value as it writes them; buffers keep theme
+    colors. Detection reduces only on positive evidence of a limited terminal. See
+    [Styling](specs/styling.md).
+
+
 - **Frames carry screen-reader semantics**
   - Views may record role, label, value, and state while painting; unlabelled
     cells are read back as text, and container nodes group what they hold.

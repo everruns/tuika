@@ -52,6 +52,31 @@ raw mode, before the event loop reads stdin (Unix ttys only; elsewhere it is jus
 round-trip itself. Kitty and iTerm2 keep their reliable environment detection
 (DA1 doesn't report them).
 
+## Color depth
+
+A theme written in hex is correct on every terminal. `Runner` and `AsyncRunner`
+detect how many colors the terminal has and map each cell's truecolor values to
+the nearest one it can show before writing them — the 6×6×6 cube and gray ramp of
+the 256-color palette, or the sixteen ANSI colors on a Linux console. Only the
+bytes on the wire change; the frame, and every test that reads it, keeps the
+theme's own colors.
+[API](https://docs.rs/tuika/latest/tuika/term/capabilities/enum.ColorDepth.html)
+
+```rust
+use tuika::{Runner, RunnerConfig};
+use tuika::term::capabilities::ColorDepth;
+
+// Detected by default; override when the host knows better.
+let runner = Runner::new(RunnerConfig::default()).with_color_depth(ColorDepth::Ansi256);
+```
+
+Detection is `ColorDepth::from_env()`, and it reduces only on positive evidence:
+16 colors for terminals known to be limited (`linux`, `vt…`, `ansi`,
+`…-16color`), 256 for Apple Terminal, and true color for everything else —
+including an SSH session, where `COLORTERM` is usually not forwarded. A host driving its own backend opts in with
+`CrosstermBackend::with_color_depth`, and `Color::downsample` is the mapping on
+its own.
+
 ## Inheriting the terminal's colors
 
 The user already chose a palette — in Ghostty, kitty, WezTerm, wherever they

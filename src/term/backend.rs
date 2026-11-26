@@ -20,6 +20,7 @@ use std::io::{self, Write};
 use crate::buffer::Cell;
 use crate::geometry::{Position, Size};
 use crate::style::{Color, Modifier};
+use crate::term::capabilities::ColorDepth;
 use crate::term::traits::{Backend, ClearType, WindowSize};
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::queue;
@@ -41,13 +42,35 @@ use super::hyperlink::to_ct_color;
 /// [`Terminal`](crate::term::terminal::Terminal) itself.
 pub struct CrosstermBackend<W: Write> {
     writer: W,
+    color_depth: ColorDepth,
 }
 
 impl<W: Write> CrosstermBackend<W> {
     /// Draw into `writer` — in production the process's stdout, in tests a
     /// `Vec<u8>` the assertions read back.
+    ///
+    /// Colors are emitted exactly as the buffer holds them
+    /// ([`ColorDepth::TrueColor`]); see [`with_color_depth`](Self::with_color_depth).
     pub const fn new(writer: W) -> Self {
-        Self { writer }
+        Self {
+            writer,
+            color_depth: ColorDepth::TrueColor,
+        }
+    }
+
+    /// Map every emitted color to the nearest one a terminal of `depth` can
+    /// show (see [`Color::downsample`]). The buffer is untouched — only the
+    /// bytes written change — so tests reading cells back see the theme's own
+    /// colors at every depth.
+    #[must_use = "returns the configured backend"]
+    pub const fn with_color_depth(mut self, depth: ColorDepth) -> Self {
+        self.color_depth = depth;
+        self
+    }
+
+    /// The depth set by [`with_color_depth`](Self::with_color_depth).
+    pub const fn color_depth(&self) -> ColorDepth {
+        self.color_depth
     }
 }
 
@@ -77,6 +100,7 @@ impl<W: Write> Backend for CrosstermBackend<W> {
         let mut underline_color = Color::Reset;
         let mut modifier = Modifier::empty();
         let mut last_pos: Option<Position> = None;
+        let depth = self.color_depth;
         for (x, y, cell) in content {
             if !matches!(last_pos, Some(p) if x == p.x + 1 && y == p.y) {
                 queue!(self.writer, MoveTo(x, y))?;
@@ -86,20 +110,36 @@ impl<W: Write> Backend for CrosstermBackend<W> {
                 queue_modifier_diff(&mut self.writer, modifier, cell.modifier)?;
                 modifier = cell.modifier;
             }
-            if cell.fg != fg || cell.bg != bg {
-                queue!(
-                    self.writer,
-                    SetColors(CtColors::new(to_ct_color(cell.fg), to_ct_color(cell.bg)))
-                )?;
-                fg = cell.fg;
-                bg = cell.bg;
+            // Compared after downsampling, so two RGB values that land on the
+            // same palette slot do not re-emit an identical escape.
+            let (cell_fg, cell_bg) = (cell.fg.downsample(depth), cell.bg.downsample(depth));
+            if cell_fg != fg || cell_bg != bg {
+                if depth == ColorDepth::Ansi16 {
+                    write!(
+                        self.writer,
+                        "\x1b[{};{}m",
+                        ansi16_sgr(cell_fg, 30),
+                        ansi16_sgr(cell_bg, 40)
+                    )?;
+                } else {
+                    queue!(
+                        self.writer,
+                        SetColors(CtColors::new(to_ct_color(cell_fg), to_ct_color(cell_bg)))
+                    )?;
+                }
+                fg = cell_fg;
+                bg = cell_bg;
             }
-            if cell.underline_color != underline_color {
-                queue!(
-                    self.writer,
-                    SetUnderlineColor(to_ct_color(cell.underline_color))
-                )?;
-                underline_color = cell.underline_color;
+            // An underline color (SGR 58) is a modern extension no 16-color
+            // terminal implements, so it is not sent at all there.
+            let cell_underline = if depth == ColorDepth::Ansi16 {
+                Color::Reset
+            } else {
+                cell.underline_color.downsample(depth)
+            };
+            if cell_underline != underline_color {
+                queue!(self.writer, SetUnderlineColor(to_ct_color(cell_underline)))?;
+                underline_color = cell_underline;
             }
             queue!(self.writer, Print(cell.symbol()))?;
         }
@@ -207,6 +247,43 @@ impl<W: Write> Backend for CrosstermBackend<W> {
 /// of the two survives — which is why the intensity reset is decided first and
 /// the `added` pass skips bold/dim when it already ran. Slow and rapid blink
 /// share a slot the same way.
+/// The classic SGR code for a named color: `base + slot` for the first eight
+/// (`30`–`37` foreground, `40`–`47` background) and `base + 60 + slot` for the
+/// bright eight, with `base + 9` resetting to the default.
+///
+/// crossterm writes even the named colors in the 256-color form (`38;5;1`),
+/// which a terminal limited to sixteen colors — the very case
+/// [`ColorDepth::Ansi16`] exists for — may not parse. At that depth the backend
+/// therefore writes these codes itself; every other depth keeps crossterm's
+/// bytes, so the full-color stream still matches `ratatui-crossterm`.
+fn ansi16_sgr(color: Color, base: u8) -> u8 {
+    let slot = match color {
+        Color::Black => 0,
+        Color::Red => 1,
+        Color::Green => 2,
+        Color::Yellow => 3,
+        Color::Blue => 4,
+        Color::Magenta => 5,
+        Color::Cyan => 6,
+        Color::Gray => 7,
+        Color::DarkGray => 8,
+        Color::LightRed => 9,
+        Color::LightGreen => 10,
+        Color::LightYellow => 11,
+        Color::LightBlue => 12,
+        Color::LightMagenta => 13,
+        Color::LightCyan => 14,
+        Color::White => 15,
+        // `downsample` leaves nothing else at this depth.
+        Color::Reset | Color::Rgb(..) | Color::Indexed(_) => return base + 9,
+    };
+    if slot < 8 {
+        base + slot
+    } else {
+        base + 60 + slot - 8
+    }
+}
+
 fn queue_modifier_diff<W: Write>(w: &mut W, from: Modifier, to: Modifier) -> io::Result<()> {
     let removed = from - to;
     if removed.contains(Modifier::REVERSED) {
@@ -337,6 +414,10 @@ mod tests {
 
     /// Draw `cells` at consecutive columns on row 0 and return the byte stream.
     fn drawn(cells: &[(&'static str, Style)]) -> String {
+        drawn_at(cells, ColorDepth::TrueColor)
+    }
+
+    fn drawn_at(cells: &[(&'static str, Style)], depth: ColorDepth) -> String {
         let owned: Vec<Cell> = cells
             .iter()
             .map(|&(symbol, style)| {
@@ -345,7 +426,7 @@ mod tests {
                 cell
             })
             .collect();
-        let mut backend = CrosstermBackend::new(Vec::<u8>::new());
+        let mut backend = CrosstermBackend::new(Vec::<u8>::new()).with_color_depth(depth);
         backend
             .draw(
                 owned
@@ -355,6 +436,42 @@ mod tests {
             )
             .expect("draw");
         String::from_utf8(backend.writer).expect("utf8")
+    }
+
+    #[test]
+    fn a_256_color_terminal_gets_indexed_escapes_instead_of_rgb() {
+        let style = Style::default()
+            .fg(Color::Rgb(255, 0, 0))
+            .bg(Color::Rgb(0, 0x2b, 0x36))
+            .underline_color(Color::Rgb(0, 0, 255));
+        let out = drawn_at(&[("x", style)], ColorDepth::Ansi256);
+        assert!(!out.contains("38;2;") && !out.contains("48;2;"), "{out:?}");
+        assert!(out.contains("38;5;196"), "fg: {out:?}");
+        assert!(out.contains("48;5;234"), "bg: {out:?}");
+        assert!(out.contains("58;5;21"), "underline: {out:?}");
+    }
+
+    #[test]
+    fn a_16_color_terminal_gets_only_ansi_escapes() {
+        let style = Style::default()
+            .fg(Color::Rgb(250, 10, 10))
+            .bg(Color::Indexed(232))
+            .underline_color(Color::Rgb(0, 0, 255));
+        let out = drawn_at(&[("x", style)], ColorDepth::Ansi16);
+        assert!(!out.contains(";2;") && !out.contains(";5;"), "{out:?}");
+        assert!(out.contains("[91;40m"), "{out:?}");
+        assert!(!out.contains("[58"), "no underline color at 16: {out:?}");
+    }
+
+    #[test]
+    fn rgb_values_that_share_a_slot_emit_one_color_change() {
+        let a = Style::default().fg(Color::Rgb(255, 0, 0));
+        let b = Style::default().fg(Color::Rgb(250, 3, 3));
+        let out = drawn_at(&[("a", a), ("b", b)], ColorDepth::Ansi256);
+        assert_eq!(out.matches("38;5;196").count(), 1, "{out:?}");
+        // At full depth they are distinct colors and both are emitted.
+        let full = drawn(&[("a", a), ("b", b)]);
+        assert!(full.contains("38;2;255;0;0") && full.contains("38;2;250;3;3"));
     }
 
     #[test]
