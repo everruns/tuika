@@ -9,7 +9,8 @@
 # Both are recorded at exactly 2x pixel density and displayed at half width.
 #
 # Requirements: vhs (https://github.com/charmbracelet/vhs), which needs ttyd and
-# ffmpeg on PATH. Run from anywhere:
+# ffmpeg on PATH. A scene marked `ghostty_demo` in the registry records through
+# the Ghostty VHS fork instead (scripts/build-vhs-ghostty.sh). Run from anywhere:
 #   scripts/gen-demos.sh [scene ...]   (no args = all).
 
 set -euo pipefail
@@ -50,7 +51,15 @@ for tape in "${tapes_dir}"/*.tape; do
   # Tape Output paths are relative to the repo root.
   # Documentation records the theme's palette even when the caller prefers
   # colorless command output in their own shell.
-  (cd "${repo_root}" && env -u NO_COLOR vhs "${tape}")
+  # A scene whose glyphs xterm.js cannot draw (Unicode 16 octants) asks for
+  # the Ghostty renderer; the fork draws block mosaics edge to edge, as
+  # terminals do.
+  recorder=vhs
+  if grep -qx 'Set Renderer Ghostty' "${tape}"; then
+    recorder="${VHS_GHOSTTY_BIN:-${repo_root}/target/tools/vhs-ghostty}"
+    [[ -x "${recorder}" ]] || scripts/build-vhs-ghostty.sh
+  fi
+  (cd "${repo_root}" && env -u NO_COLOR "${recorder}" "${tape}")
   # A recorder can fail without failing: vhs 0.12.0 hands ffmpeg an already
   # cancelled context, so it writes nothing, logs nothing, and exits 0 —
   # leaving the previous asset in place to be committed as if it were fresh.

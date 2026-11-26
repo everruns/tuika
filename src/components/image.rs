@@ -3,13 +3,15 @@
 //! An image is the one component whose pixels tuika cannot paint into the cell
 //! buffer, so this view owns only the half that *is* cells — it reserves a
 //! `cols × rows` footprint, keeps those cells blank when the picture will cover
-//! them, and paints alt text when it won't. The pixels themselves are recorded
+//! them, and paints alt text — or, when asked, a [`Blitter`] mosaic of the
+//! pixels — when it won't. The pixels themselves are recorded
 //! into an [`ImageLayer`] and emitted after the frame by
 //! [`term::image`](crate::term::image), which owns the graphics protocols.
 
 use crate::geometry::Rect;
 use crate::style::{Modifier, Style};
 
+use crate::framebuffer::{Blitter, paint_mosaic};
 use crate::geometry::Size;
 use crate::surface::Surface;
 use crate::term::image::{ImageData, ImageLayer, ImageSupport};
@@ -28,6 +30,7 @@ pub struct Image {
     cols: u16,
     rows: u16,
     alt: String,
+    mosaic: Option<Blitter>,
     support: Option<ImageSupport>,
     layer: Option<ImageLayer>,
 }
@@ -43,6 +46,7 @@ impl Image {
             cols,
             rows,
             alt: String::new(),
+            mosaic: None,
             support: None,
             layer: None,
         }
@@ -63,6 +67,28 @@ impl Image {
     /// Text shown (dimmed) when the resolved graphics context cannot paint.
     pub fn alt(mut self, alt: impl Into<String>) -> Self {
         self.alt = alt.into();
+        self
+    }
+
+    /// Without a graphics protocol, draw the picture from cells with
+    /// `blitter` instead of showing the alt text.
+    ///
+    /// Each sub-cell averages the pixels it covers, and finer blitters trade
+    /// color detail for shape: see [`Blitter`] for the trade-off and font
+    /// support. The alt text is not shown while a mosaic is set.
+    ///
+    /// ```
+    /// use tuika::framebuffer::Blitter;
+    /// use tuika::prelude::*;
+    /// use tuika::term::image::ImageData;
+    ///
+    /// let red = ImageData::from_rgba(1, 1, vec![255, 0, 0, 255]).unwrap();
+    /// let image = Image::new(red, 2, 1).mosaic(Blitter::Octant);
+    /// let frame = tuika::testing::render(&image, 2, 1, &Theme::default());
+    /// assert_eq!(frame[(0, 0)].bg, Color::Rgb(255, 0, 0));
+    /// ```
+    pub fn mosaic(mut self, blitter: Blitter) -> Self {
+        self.mosaic = Some(blitter);
         self
     }
 
@@ -115,6 +141,10 @@ impl Image {
     /// without graphics support shows.
     fn render_fallback(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx) {
         surface.fill(Style::default().bg(ctx.theme.background));
+        if let Some(blitter) = self.mosaic {
+            self.render_mosaic(area, surface, ctx, blitter);
+            return;
+        }
         let label = if self.alt.is_empty() {
             "[image]".to_string()
         } else {
@@ -129,6 +159,60 @@ impl Image {
         let x = area.x + area.width.saturating_sub(width) / 2;
         let y = area.y + area.height / 2;
         surface.set_string(x, y, &label, style);
+    }
+}
+
+impl Image {
+    /// Paint the pixels as a cell mosaic over the reserved `cols × rows`.
+    fn render_mosaic(&self, area: Rect, surface: &mut Surface, ctx: &RenderCtx, blitter: Blitter) {
+        let cols = self.cols.min(area.width);
+        let rows = self.rows.min(area.height);
+        if cols == 0 || rows == 0 {
+            return;
+        }
+        let (w, h) = (self.data.pixel_width(), self.data.pixel_height());
+        let (sw, sh) = blitter.subcells();
+        let (grid_w, grid_h) = (
+            u64::from(cols) * u64::from(sw),
+            u64::from(rows) * u64::from(sh),
+        );
+        let bg = match ctx.theme.background {
+            crate::style::Color::Rgb(r, g, b) => [r, g, b],
+            _ => [0, 0, 0],
+        };
+        // Average a few evenly spaced source pixels per sub-cell (up to 4×4):
+        // a box filter good enough to keep thin features, at a cost bounded
+        // by the cell count rather than the image size.
+        const TAPS: u64 = 4;
+        let sample = |px: u32, py: u32| {
+            let span = |p: u32, size: u32, grid: u64| {
+                let lo = u64::from(p) * u64::from(size) / grid;
+                let hi = ((u64::from(p) + 1) * u64::from(size) / grid).max(lo + 1);
+                (lo, hi)
+            };
+            let (x0, x1) = span(px, w, grid_w);
+            let (y0, y1) = span(py, h, grid_h);
+            let (nx, ny) = ((x1 - x0).min(TAPS), (y1 - y0).min(TAPS));
+            let mut sum = [0u64; 3];
+            for j in 0..ny {
+                let y = y0 + (2 * j + 1) * (y1 - y0) / (2 * ny);
+                for i in 0..nx {
+                    let x = x0 + (2 * i + 1) * (x1 - x0) / (2 * nx);
+                    let p = self
+                        .data
+                        .pixel((x as u32).min(w - 1), (y as u32).min(h - 1));
+                    // Composite over the theme background, so transparency
+                    // reads as the surrounding UI.
+                    let a = u64::from(p[3]);
+                    for c in 0..3 {
+                        sum[c] += (u64::from(p[c]) * a + u64::from(bg[c]) * (255 - a)) / 255;
+                    }
+                }
+            }
+            let n = nx * ny;
+            sum.map(|c| ((c + n / 2) / n) as u8)
+        };
+        paint_mosaic(surface, (area.x, area.y), cols, rows, blitter, sample);
     }
 }
 
@@ -237,5 +321,35 @@ mod tests {
 
         assert!(text.contains("[image: cat]"));
         assert!(layer.is_empty());
+    }
+
+    #[test]
+    fn mosaic_draws_pixels_instead_of_alt_text_without_graphics() {
+        use crate::framebuffer::{Blitter, OCTANTS};
+        // 4×4 pixels: left half white, right half black.
+        let mut rgba = Vec::new();
+        for _y in 0..4 {
+            for x in 0..4 {
+                let v = if x < 2 { 255 } else { 0 };
+                rgba.extend_from_slice(&[v, v, v, 255]);
+            }
+        }
+        let data = ImageData::from_rgba(4, 4, rgba).unwrap();
+        let image = Image::new(data.clone(), 1, 1)
+            .alt("cat")
+            .mosaic(Blitter::Octant);
+        let buf = render(&image, 1, 1, &Theme::default());
+        assert_eq!(buf[(0, 0)].symbol(), "▌");
+        assert_eq!(buf[(0, 0)].fg, crate::style::Color::Rgb(255, 255, 255));
+        assert!(OCTANTS.contains(&'▌'));
+
+        // Every blitter at every size: no panic, never the alt text.
+        for blitter in Blitter::ALL {
+            for (w, h) in [(0, 0), (1, 1), (3, 2), (30, 9)] {
+                let image = Image::new(data.clone(), 9, 4).alt("cat").mosaic(blitter);
+                let buf = render(&image, w, h, &Theme::default());
+                assert!(!crate::testing::grid(&buf).contains("cat"));
+            }
+        }
     }
 }

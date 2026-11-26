@@ -1,5 +1,5 @@
 diff --git a/ghostty_enabled.go b/ghostty_enabled.go
-index 9c88df0..da1521e 100644
+index 9c88df0..0da6d09 100644
 --- a/ghostty_enabled.go
 +++ b/ghostty_enabled.go
 @@ -29,6 +29,7 @@ import (
@@ -90,3 +90,91 @@ index 9c88df0..da1521e 100644
  func (b *ghosttyBackend) snapshotLocked() ([][]renderedCell, int, int, error) {
  	colsValue, err := b.state.Cols()
  	if err != nil {
+@@ -759,6 +826,18 @@ func cellGeometryRects(text string, bounds image.Rectangle, thickness int) ([]im
+ 		return []image.Rectangle{image.Rect(fractionX(7), y0, x1, y1)}, true
+ 	case char >= '▖' && char <= '▟':
+ 		return quadrantRects(char, bounds), true
++	case char >= 0x1FB00 && char <= 0x1FB3B:
++		// Sextants skip the two masks that are the left and right halves.
++		mask := int(char-0x1FB00) + 1
++		if mask >= 21 {
++			mask++
++		}
++		if mask >= 42 {
++			mask++
++		}
++		return subcellRects(uint8(mask), 3, bounds), true
++	case octantMasks[char] != 0:
++		return subcellRects(octantMasks[char], 4, bounds), true
+ 	default:
+ 		return boxDrawingRects(char, bounds, thickness)
+ 	}
+@@ -1073,3 +1152,68 @@ func validRune(value uint32) rune {
+ 	}
+ 	return rune(value)
+ }
++
++// subcellRects fills a 2-column, rows-row sub-cell grid from mask (bit
++// row*2+col), edge to edge, the way a terminal draws block mosaics.
++func subcellRects(mask uint8, rows int, bounds image.Rectangle) []image.Rectangle {
++	x0, y0 := bounds.Min.X, bounds.Min.Y
++	w, h := bounds.Dx(), bounds.Dy()
++	rects := make([]image.Rectangle, 0, 8)
++	for row := 0; row < rows; row++ {
++		for col := 0; col < 2; col++ {
++			if mask&(1<<(row*2+col)) == 0 {
++				continue
++			}
++			rects = append(rects, image.Rect(
++				x0+w*col/2, y0+h*row/rows,
++				x0+w*(col+1)/2, y0+h*(row+1)/rows,
++			))
++		}
++	}
++	return rects
++}
++
++// octantMasks maps each octant-only glyph (and the quarter blocks the octant
++// table reuses) to its 2x4 occupancy mask, bit row*2+col.
++var octantMasks = map[rune]uint8{
++	0x1CD00: 4, 0x1CD01: 6, 0x1CD02: 7, 0x1CD03: 8, 0x1CD04: 9, 0x1CD05: 11,
++	0x1CD06: 12, 0x1CD07: 13, 0x1CD08: 14, 0x1CD09: 16, 0x1CD0A: 17, 0x1CD0B: 18,
++	0x1CD0C: 19, 0x1CD0D: 21, 0x1CD0E: 22, 0x1CD0F: 23, 0x1CD10: 24, 0x1CD11: 25,
++	0x1CD12: 26, 0x1CD13: 27, 0x1CD14: 28, 0x1CD15: 29, 0x1CD16: 30, 0x1CD17: 31,
++	0x1CD18: 32, 0x1CD19: 33, 0x1CD1A: 34, 0x1CD1B: 35, 0x1CD1C: 36, 0x1CD1D: 37,
++	0x1CD1E: 38, 0x1CD1F: 39, 0x1CD20: 41, 0x1CD21: 42, 0x1CD22: 43, 0x1CD23: 44,
++	0x1CD24: 45, 0x1CD25: 46, 0x1CD26: 47, 0x1CD27: 48, 0x1CD28: 49, 0x1CD29: 50,
++	0x1CD2A: 51, 0x1CD2B: 52, 0x1CD2C: 53, 0x1CD2D: 54, 0x1CD2E: 55, 0x1CD2F: 56,
++	0x1CD30: 57, 0x1CD31: 58, 0x1CD32: 59, 0x1CD33: 60, 0x1CD34: 61, 0x1CD35: 62,
++	0x1CD36: 65, 0x1CD37: 66, 0x1CD38: 67, 0x1CD39: 68, 0x1CD3A: 69, 0x1CD3B: 70,
++	0x1CD3C: 71, 0x1CD3D: 72, 0x1CD3E: 73, 0x1CD3F: 74, 0x1CD40: 75, 0x1CD41: 76,
++	0x1CD42: 77, 0x1CD43: 78, 0x1CD44: 79, 0x1CD45: 81, 0x1CD46: 82, 0x1CD47: 83,
++	0x1CD48: 84, 0x1CD49: 86, 0x1CD4A: 87, 0x1CD4B: 88, 0x1CD4C: 89, 0x1CD4D: 91,
++	0x1CD4E: 92, 0x1CD4F: 93, 0x1CD50: 94, 0x1CD51: 96, 0x1CD52: 97, 0x1CD53: 98,
++	0x1CD54: 99, 0x1CD55: 100, 0x1CD56: 101, 0x1CD57: 102, 0x1CD58: 103, 0x1CD59: 104,
++	0x1CD5A: 105, 0x1CD5B: 106, 0x1CD5C: 107, 0x1CD5D: 108, 0x1CD5E: 109, 0x1CD5F: 110,
++	0x1CD60: 111, 0x1CD61: 112, 0x1CD62: 113, 0x1CD63: 114, 0x1CD64: 115, 0x1CD65: 116,
++	0x1CD66: 117, 0x1CD67: 118, 0x1CD68: 119, 0x1CD69: 120, 0x1CD6A: 121, 0x1CD6B: 122,
++	0x1CD6C: 123, 0x1CD6D: 124, 0x1CD6E: 125, 0x1CD6F: 126, 0x1CD70: 127, 0x1CD71: 129,
++	0x1CD72: 130, 0x1CD73: 131, 0x1CD74: 132, 0x1CD75: 133, 0x1CD76: 134, 0x1CD77: 135,
++	0x1CD78: 136, 0x1CD79: 137, 0x1CD7A: 138, 0x1CD7B: 139, 0x1CD7C: 140, 0x1CD7D: 141,
++	0x1CD7E: 142, 0x1CD7F: 143, 0x1CD80: 144, 0x1CD81: 145, 0x1CD82: 146, 0x1CD83: 147,
++	0x1CD84: 148, 0x1CD85: 149, 0x1CD86: 150, 0x1CD87: 151, 0x1CD88: 152, 0x1CD89: 153,
++	0x1CD8A: 154, 0x1CD8B: 155, 0x1CD8C: 156, 0x1CD8D: 157, 0x1CD8E: 158, 0x1CD8F: 159,
++	0x1CD90: 161, 0x1CD91: 162, 0x1CD92: 163, 0x1CD93: 164, 0x1CD94: 166, 0x1CD95: 167,
++	0x1CD96: 168, 0x1CD97: 169, 0x1CD98: 171, 0x1CD99: 172, 0x1CD9A: 173, 0x1CD9B: 174,
++	0x1CD9C: 176, 0x1CD9D: 177, 0x1CD9E: 178, 0x1CD9F: 179, 0x1CDA0: 180, 0x1CDA1: 181,
++	0x1CDA2: 182, 0x1CDA3: 183, 0x1CDA4: 184, 0x1CDA5: 185, 0x1CDA6: 186, 0x1CDA7: 187,
++	0x1CDA8: 188, 0x1CDA9: 189, 0x1CDAA: 190, 0x1CDAB: 191, 0x1CDAC: 193, 0x1CDAD: 194,
++	0x1CDAE: 195, 0x1CDAF: 196, 0x1CDB0: 197, 0x1CDB1: 198, 0x1CDB2: 199, 0x1CDB3: 200,
++	0x1CDB4: 201, 0x1CDB5: 202, 0x1CDB6: 203, 0x1CDB7: 204, 0x1CDB8: 205, 0x1CDB9: 206,
++	0x1CDBA: 207, 0x1CDBB: 208, 0x1CDBC: 209, 0x1CDBD: 210, 0x1CDBE: 211, 0x1CDBF: 212,
++	0x1CDC0: 213, 0x1CDC1: 214, 0x1CDC2: 215, 0x1CDC3: 216, 0x1CDC4: 217, 0x1CDC5: 218,
++	0x1CDC6: 219, 0x1CDC7: 220, 0x1CDC8: 221, 0x1CDC9: 222, 0x1CDCA: 223, 0x1CDCB: 224,
++	0x1CDCC: 225, 0x1CDCD: 226, 0x1CDCE: 227, 0x1CDCF: 228, 0x1CDD0: 229, 0x1CDD1: 230,
++	0x1CDD2: 231, 0x1CDD3: 232, 0x1CDD4: 233, 0x1CDD5: 234, 0x1CDD6: 235, 0x1CDD7: 236,
++	0x1CDD8: 237, 0x1CDD9: 238, 0x1CDDA: 239, 0x1CDDB: 241, 0x1CDDC: 242, 0x1CDDD: 243,
++	0x1CDDE: 244, 0x1CDDF: 246, 0x1CDE0: 247, 0x1CDE1: 248, 0x1CDE2: 249, 0x1CDE3: 251,
++	0x1CDE4: 253, 0x1CDE5: 254, 0x1CEA0: 128, 0x1CEA3: 64, 0x1CEA8: 1, 0x1CEAB: 2,
++	0x1FB82: 3, 0x1FB85: 63, 0x1FBE6: 20, 0x1FBE7: 40,
++}

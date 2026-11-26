@@ -161,6 +161,9 @@ struct Demo {
     /// whose whole point is that content runs past the bottom. Exempts it from
     /// the clipping check in [`check`].
     fills_frame: bool,
+    /// Record through the Ghostty VHS renderer instead of xterm.js, for scenes
+    /// whose glyphs xterm.js cannot draw (Unicode 16 octants).
+    ghostty: bool,
     build: Build,
 }
 
@@ -189,7 +192,23 @@ const fn demo(
         rows,
         animated,
         fills_frame: false,
+        ghostty: false,
         build,
+    }
+}
+
+/// A scene recorded through the Ghostty renderer (see [`Demo::ghostty`]).
+const fn ghostty_demo(
+    name: &'static str,
+    title: &'static str,
+    blurb: &'static str,
+    rows: u16,
+    animated: bool,
+    build: Build,
+) -> Demo {
+    Demo {
+        ghostty: true,
+        ..demo(name, title, blurb, rows, animated, build)
     }
 }
 
@@ -474,6 +493,14 @@ const DEMOS: &[Demo] = &[
         true,
         scene_framebuffer,
     ),
+    ghostty_demo(
+        "blitters",
+        "Blitters",
+        "one picture, five sub-cell glyph sets",
+        12,
+        false,
+        scene_blitters,
+    ),
     demo(
         "status_bar",
         "StatusBar",
@@ -669,6 +696,7 @@ fn tape_for(
              {output}\n\
              \n\
              Set Shell bash\n\
+             {renderer}\
              Set FontSize 40\n\
              Set CursorBlink false\n\
              Set Width {width}\n\
@@ -690,6 +718,11 @@ fn tape_for(
              Show\n\
              {ending}\n",
         name = d.name,
+        renderer = if d.ghostty {
+            "Set Renderer Ghostty\n"
+        } else {
+            ""
+        },
     )
 }
 

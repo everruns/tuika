@@ -59,8 +59,8 @@ view! { node(qr) }
 
 A mutable RGBA pixel canvas — `set`/`blend`/`fill_rect`/`blit`, a per-pixel
 `shade` shader post-pass, and `Sprite` spritesheet frames. `FrameBufferView`
-packs two vertical pixels per cell with a half-block, so it renders in any
-terminal; `to_image_data()` hands the same pixels to the Kitty/iTerm2/Sixel
+packs two vertical pixels per cell with a half-block by default, so it renders
+in any terminal; `to_image_data()` hands the same pixels to the Kitty/iTerm2/Sixel
 graphics protocols for a crisp render.
 [API](https://docs.rs/tuika/latest/tuika/framebuffer/struct.FrameBuffer.html)
 
@@ -72,6 +72,28 @@ let mut fb = FrameBuffer::new(64, 32);
 fb.clear([20, 20, 40, 255]);
 fb.fill_rect(8, 8, 16, 16, [240, 90, 90, 255]);
 view! { node(FrameBufferView::new(&fb, 64, 16)) }
+```
+
+#### Blitters
+
+`FrameBufferView::blitter` packs pixels with a finer glyph set: quadrants
+(2×2 sub-cells), sextants (2×3), octants (2×4), or Braille dots (2×4). Each
+cell still has one foreground and one background color, so a finer blitter
+trades color detail for shape: it splits each cell's pixels into the two
+colors that best separate them. Half-blocks and quadrants are in every
+terminal font. Sextants (Unicode 13) are widely drawn, and octants
+(Unicode 16) are drawn by recent terminals such as Ghostty, kitty, WezTerm,
+and foot. The same `Blitter` draws an `Image` when the terminal has no
+graphics protocol (`Image::mosaic`), and chart lines in `tuika-charts`
+(`Chart::blitter`).
+[API](https://docs.rs/tuika/latest/tuika/framebuffer/enum.Blitter.html)
+
+<img src="../demos/blitters.png" width="880" alt="One ring-and-line picture drawn with half-block, quadrant, sextant, octant, and Braille glyphs side by side">
+
+```rust
+use tuika::framebuffer::Blitter;
+view! { node(FrameBufferView::new(&fb, 32, 8).blitter(Blitter::Octant)) }
+let fallback = Image::new(data, 40, 12).mosaic(Blitter::Sextant);
 ```
 
 ### `KeyHints`

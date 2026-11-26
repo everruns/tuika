@@ -30,7 +30,11 @@ cells, and have it painted by the terminal's graphics protocol over the cells
 tuika reserved for it. `Runner` detects support and owns the image layer
 lifecycle. Custom hosts can supply the same graphics context explicitly. When
 the terminal does not support the protocol, the same component degrades to a
-text placeholder (its alt text) with no garbage on screen.
+text placeholder (its alt text) with no garbage on screen — or, when the host
+opts in with `Image::mosaic`, to the picture drawn from block glyphs by a
+`Blitter`. The mosaic is opt-in because a finer blitter's glyphs may be missing
+from an older terminal font, and a host that does not know its terminal is
+better served by readable alt text than by missing-glyph boxes.
 
 Scope is deliberately phased:
 

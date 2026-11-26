@@ -44,6 +44,521 @@ pub const QUADRANTS: [char; 16] = [
     ' ', '▘', '▝', '▀', '▖', '▌', '▞', '▛', '▗', '▚', '▐', '▜', '▄', '▙', '▟', '█',
 ];
 
+/// The sixty-four sextant glyphs, indexed by a six-bit occupancy mask.
+///
+/// A sextant cell is two columns by three rows; bit `row * 2 + col` is set when
+/// that sub-cell is inked, so bit 0 is the top-left and bit 5 the bottom-right.
+/// The four masks Unicode already covers elsewhere map to those characters:
+/// blank, `▌`, `▐`, and `█`. Everything else is in *Symbols for Legacy
+/// Computing* (Unicode 13).
+pub const SEXTANTS: [char; 64] = [
+    '\u{20}',
+    '\u{1FB00}',
+    '\u{1FB01}',
+    '\u{1FB02}',
+    '\u{1FB03}',
+    '\u{1FB04}',
+    '\u{1FB05}',
+    '\u{1FB06}',
+    '\u{1FB07}',
+    '\u{1FB08}',
+    '\u{1FB09}',
+    '\u{1FB0A}',
+    '\u{1FB0B}',
+    '\u{1FB0C}',
+    '\u{1FB0D}',
+    '\u{1FB0E}',
+    '\u{1FB0F}',
+    '\u{1FB10}',
+    '\u{1FB11}',
+    '\u{1FB12}',
+    '\u{1FB13}',
+    '\u{258C}',
+    '\u{1FB14}',
+    '\u{1FB15}',
+    '\u{1FB16}',
+    '\u{1FB17}',
+    '\u{1FB18}',
+    '\u{1FB19}',
+    '\u{1FB1A}',
+    '\u{1FB1B}',
+    '\u{1FB1C}',
+    '\u{1FB1D}',
+    '\u{1FB1E}',
+    '\u{1FB1F}',
+    '\u{1FB20}',
+    '\u{1FB21}',
+    '\u{1FB22}',
+    '\u{1FB23}',
+    '\u{1FB24}',
+    '\u{1FB25}',
+    '\u{1FB26}',
+    '\u{1FB27}',
+    '\u{2590}',
+    '\u{1FB28}',
+    '\u{1FB29}',
+    '\u{1FB2A}',
+    '\u{1FB2B}',
+    '\u{1FB2C}',
+    '\u{1FB2D}',
+    '\u{1FB2E}',
+    '\u{1FB2F}',
+    '\u{1FB30}',
+    '\u{1FB31}',
+    '\u{1FB32}',
+    '\u{1FB33}',
+    '\u{1FB34}',
+    '\u{1FB35}',
+    '\u{1FB36}',
+    '\u{1FB37}',
+    '\u{1FB38}',
+    '\u{1FB39}',
+    '\u{1FB3A}',
+    '\u{1FB3B}',
+    '\u{2588}',
+];
+
+/// The 256 octant glyphs, indexed by an eight-bit occupancy mask.
+///
+/// An octant cell is two columns by four rows; bit `row * 2 + col` is set when
+/// that sub-cell is inked. Unicode 16 added the octants proper; the 26 masks
+/// that already had a character — blank, `█`, the halves and quadrants, and the
+/// quarter blocks — map to it instead, so every mask is one glyph.
+pub const OCTANTS: [char; 256] = [
+    '\u{20}',
+    '\u{1CEA8}',
+    '\u{1CEAB}',
+    '\u{1FB82}',
+    '\u{1CD00}',
+    '\u{2598}',
+    '\u{1CD01}',
+    '\u{1CD02}',
+    '\u{1CD03}',
+    '\u{1CD04}',
+    '\u{259D}',
+    '\u{1CD05}',
+    '\u{1CD06}',
+    '\u{1CD07}',
+    '\u{1CD08}',
+    '\u{2580}',
+    '\u{1CD09}',
+    '\u{1CD0A}',
+    '\u{1CD0B}',
+    '\u{1CD0C}',
+    '\u{1FBE6}',
+    '\u{1CD0D}',
+    '\u{1CD0E}',
+    '\u{1CD0F}',
+    '\u{1CD10}',
+    '\u{1CD11}',
+    '\u{1CD12}',
+    '\u{1CD13}',
+    '\u{1CD14}',
+    '\u{1CD15}',
+    '\u{1CD16}',
+    '\u{1CD17}',
+    '\u{1CD18}',
+    '\u{1CD19}',
+    '\u{1CD1A}',
+    '\u{1CD1B}',
+    '\u{1CD1C}',
+    '\u{1CD1D}',
+    '\u{1CD1E}',
+    '\u{1CD1F}',
+    '\u{1FBE7}',
+    '\u{1CD20}',
+    '\u{1CD21}',
+    '\u{1CD22}',
+    '\u{1CD23}',
+    '\u{1CD24}',
+    '\u{1CD25}',
+    '\u{1CD26}',
+    '\u{1CD27}',
+    '\u{1CD28}',
+    '\u{1CD29}',
+    '\u{1CD2A}',
+    '\u{1CD2B}',
+    '\u{1CD2C}',
+    '\u{1CD2D}',
+    '\u{1CD2E}',
+    '\u{1CD2F}',
+    '\u{1CD30}',
+    '\u{1CD31}',
+    '\u{1CD32}',
+    '\u{1CD33}',
+    '\u{1CD34}',
+    '\u{1CD35}',
+    '\u{1FB85}',
+    '\u{1CEA3}',
+    '\u{1CD36}',
+    '\u{1CD37}',
+    '\u{1CD38}',
+    '\u{1CD39}',
+    '\u{1CD3A}',
+    '\u{1CD3B}',
+    '\u{1CD3C}',
+    '\u{1CD3D}',
+    '\u{1CD3E}',
+    '\u{1CD3F}',
+    '\u{1CD40}',
+    '\u{1CD41}',
+    '\u{1CD42}',
+    '\u{1CD43}',
+    '\u{1CD44}',
+    '\u{2596}',
+    '\u{1CD45}',
+    '\u{1CD46}',
+    '\u{1CD47}',
+    '\u{1CD48}',
+    '\u{258C}',
+    '\u{1CD49}',
+    '\u{1CD4A}',
+    '\u{1CD4B}',
+    '\u{1CD4C}',
+    '\u{259E}',
+    '\u{1CD4D}',
+    '\u{1CD4E}',
+    '\u{1CD4F}',
+    '\u{1CD50}',
+    '\u{259B}',
+    '\u{1CD51}',
+    '\u{1CD52}',
+    '\u{1CD53}',
+    '\u{1CD54}',
+    '\u{1CD55}',
+    '\u{1CD56}',
+    '\u{1CD57}',
+    '\u{1CD58}',
+    '\u{1CD59}',
+    '\u{1CD5A}',
+    '\u{1CD5B}',
+    '\u{1CD5C}',
+    '\u{1CD5D}',
+    '\u{1CD5E}',
+    '\u{1CD5F}',
+    '\u{1CD60}',
+    '\u{1CD61}',
+    '\u{1CD62}',
+    '\u{1CD63}',
+    '\u{1CD64}',
+    '\u{1CD65}',
+    '\u{1CD66}',
+    '\u{1CD67}',
+    '\u{1CD68}',
+    '\u{1CD69}',
+    '\u{1CD6A}',
+    '\u{1CD6B}',
+    '\u{1CD6C}',
+    '\u{1CD6D}',
+    '\u{1CD6E}',
+    '\u{1CD6F}',
+    '\u{1CD70}',
+    '\u{1CEA0}',
+    '\u{1CD71}',
+    '\u{1CD72}',
+    '\u{1CD73}',
+    '\u{1CD74}',
+    '\u{1CD75}',
+    '\u{1CD76}',
+    '\u{1CD77}',
+    '\u{1CD78}',
+    '\u{1CD79}',
+    '\u{1CD7A}',
+    '\u{1CD7B}',
+    '\u{1CD7C}',
+    '\u{1CD7D}',
+    '\u{1CD7E}',
+    '\u{1CD7F}',
+    '\u{1CD80}',
+    '\u{1CD81}',
+    '\u{1CD82}',
+    '\u{1CD83}',
+    '\u{1CD84}',
+    '\u{1CD85}',
+    '\u{1CD86}',
+    '\u{1CD87}',
+    '\u{1CD88}',
+    '\u{1CD89}',
+    '\u{1CD8A}',
+    '\u{1CD8B}',
+    '\u{1CD8C}',
+    '\u{1CD8D}',
+    '\u{1CD8E}',
+    '\u{1CD8F}',
+    '\u{2597}',
+    '\u{1CD90}',
+    '\u{1CD91}',
+    '\u{1CD92}',
+    '\u{1CD93}',
+    '\u{259A}',
+    '\u{1CD94}',
+    '\u{1CD95}',
+    '\u{1CD96}',
+    '\u{1CD97}',
+    '\u{2590}',
+    '\u{1CD98}',
+    '\u{1CD99}',
+    '\u{1CD9A}',
+    '\u{1CD9B}',
+    '\u{259C}',
+    '\u{1CD9C}',
+    '\u{1CD9D}',
+    '\u{1CD9E}',
+    '\u{1CD9F}',
+    '\u{1CDA0}',
+    '\u{1CDA1}',
+    '\u{1CDA2}',
+    '\u{1CDA3}',
+    '\u{1CDA4}',
+    '\u{1CDA5}',
+    '\u{1CDA6}',
+    '\u{1CDA7}',
+    '\u{1CDA8}',
+    '\u{1CDA9}',
+    '\u{1CDAA}',
+    '\u{1CDAB}',
+    '\u{2582}',
+    '\u{1CDAC}',
+    '\u{1CDAD}',
+    '\u{1CDAE}',
+    '\u{1CDAF}',
+    '\u{1CDB0}',
+    '\u{1CDB1}',
+    '\u{1CDB2}',
+    '\u{1CDB3}',
+    '\u{1CDB4}',
+    '\u{1CDB5}',
+    '\u{1CDB6}',
+    '\u{1CDB7}',
+    '\u{1CDB8}',
+    '\u{1CDB9}',
+    '\u{1CDBA}',
+    '\u{1CDBB}',
+    '\u{1CDBC}',
+    '\u{1CDBD}',
+    '\u{1CDBE}',
+    '\u{1CDBF}',
+    '\u{1CDC0}',
+    '\u{1CDC1}',
+    '\u{1CDC2}',
+    '\u{1CDC3}',
+    '\u{1CDC4}',
+    '\u{1CDC5}',
+    '\u{1CDC6}',
+    '\u{1CDC7}',
+    '\u{1CDC8}',
+    '\u{1CDC9}',
+    '\u{1CDCA}',
+    '\u{1CDCB}',
+    '\u{1CDCC}',
+    '\u{1CDCD}',
+    '\u{1CDCE}',
+    '\u{1CDCF}',
+    '\u{1CDD0}',
+    '\u{1CDD1}',
+    '\u{1CDD2}',
+    '\u{1CDD3}',
+    '\u{1CDD4}',
+    '\u{1CDD5}',
+    '\u{1CDD6}',
+    '\u{1CDD7}',
+    '\u{1CDD8}',
+    '\u{1CDD9}',
+    '\u{1CDDA}',
+    '\u{2584}',
+    '\u{1CDDB}',
+    '\u{1CDDC}',
+    '\u{1CDDD}',
+    '\u{1CDDE}',
+    '\u{2599}',
+    '\u{1CDDF}',
+    '\u{1CDE0}',
+    '\u{1CDE1}',
+    '\u{1CDE2}',
+    '\u{259F}',
+    '\u{1CDE3}',
+    '\u{2586}',
+    '\u{1CDE4}',
+    '\u{1CDE5}',
+    '\u{2588}',
+];
+
+/// How a cell is divided into sub-cells when pixels or plotted points are
+/// packed into glyphs.
+///
+/// Finer blitters resolve more detail per cell but need newer glyphs in the
+/// terminal's font. `HalfBlock` and `Quadrant` are in every font a terminal
+/// ships; `Sextant` (Unicode 13) is widely drawn, and `Octant` (Unicode 16) is
+/// drawn natively by recent terminals — Ghostty, kitty, WezTerm, foot — but may
+/// fall back to a missing-glyph box elsewhere. `Braille` is universally
+/// available but draws separated dots rather than solid blocks, so it suits
+/// scatter points better than filled pictures.
+///
+/// A cell holds one foreground and one background color, so a mosaic finer
+/// than `HalfBlock` approximates each cell with the two colors that best split
+/// its pixels: more spatial detail, less color detail.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Blitter {
+    /// 1×2 sub-cells with `▀`: full color per sub-cell. The default.
+    #[default]
+    HalfBlock,
+    /// 2×2 sub-cells from the quadrant blocks ([`QUADRANTS`]).
+    Quadrant,
+    /// 2×3 sub-cells from the sextant blocks ([`SEXTANTS`]).
+    Sextant,
+    /// 2×4 sub-cells from the octant blocks ([`OCTANTS`]).
+    Octant,
+    /// 2×4 Braille dots (U+2800–U+28FF).
+    Braille,
+}
+
+impl Blitter {
+    /// Every blitter, coarsest first.
+    pub const ALL: [Blitter; 5] = [
+        Blitter::HalfBlock,
+        Blitter::Quadrant,
+        Blitter::Sextant,
+        Blitter::Octant,
+        Blitter::Braille,
+    ];
+
+    /// Sub-cells per terminal cell, as `(columns, rows)`.
+    pub const fn subcells(self) -> (u32, u32) {
+        match self {
+            Blitter::HalfBlock => (1, 2),
+            Blitter::Quadrant => (2, 2),
+            Blitter::Sextant => (2, 3),
+            Blitter::Octant | Blitter::Braille => (2, 4),
+        }
+    }
+
+    /// The glyph for an occupancy `mask`, bit `row * columns + col` set for
+    /// each inked sub-cell (see [`subcells`](Self::subcells)). Bits beyond
+    /// the blitter's sub-cell count are ignored.
+    ///
+    /// ```
+    /// use tuika::framebuffer::Blitter;
+    ///
+    /// assert_eq!(Blitter::HalfBlock.glyph(0b01), '▀');
+    /// assert_eq!(Blitter::Quadrant.glyph(0b0101), '▌');
+    /// assert_eq!(Blitter::Sextant.glyph(0b11_1111), '█');
+    /// assert_eq!(Blitter::Braille.glyph(0b1000_0001), '⢁');
+    /// ```
+    pub const fn glyph(self, mask: u8) -> char {
+        match self {
+            Blitter::HalfBlock => [' ', '▀', '▄', '█'][(mask & 0b11) as usize],
+            Blitter::Quadrant => QUADRANTS[(mask & 0b1111) as usize],
+            Blitter::Sextant => SEXTANTS[(mask & 0b11_1111) as usize],
+            Blitter::Octant => OCTANTS[mask as usize],
+            Blitter::Braille => {
+                // Braille numbers its dots down the left column first, with
+                // the bottom row added last: 1 2 3 7 left, 4 5 6 8 right.
+                const DOTS: [u8; 8] = [0, 3, 1, 4, 2, 5, 6, 7];
+                let mut bits = 0u32;
+                let mut i = 0;
+                while i < 8 {
+                    if mask & (1 << i) != 0 {
+                        bits |= 1 << DOTS[i];
+                    }
+                    i += 1;
+                }
+                match char::from_u32(0x2800 + bits) {
+                    Some(ch) => ch,
+                    None => ' ',
+                }
+            }
+        }
+    }
+}
+
+/// Paint a `cols × rows` cell mosaic at `origin` from `sample`, which returns
+/// the opaque color of virtual pixel `(px, py)` in a grid of
+/// `cols·sub_w × rows·sub_h` (see [`Blitter::subcells`]).
+///
+/// `HalfBlock` keeps both pixel colors exactly. The other blitters split each
+/// cell's pixels into two clusters around its most distant pair of colors and
+/// paint the brighter cluster's mean as the glyph's foreground over the other
+/// cluster's mean, so edges stay sharp and flat regions become plain cells.
+pub(crate) fn paint_mosaic(
+    surface: &mut Surface,
+    origin: (u16, u16),
+    cols: u16,
+    rows: u16,
+    blitter: Blitter,
+    sample: impl Fn(u32, u32) -> [u8; 3],
+) {
+    let (sw, sh) = blitter.subcells();
+    let rgb = |c: [u8; 3]| Color::Rgb(c[0], c[1], c[2]);
+    let mut pixels = [[0u8; 3]; 8];
+    for row in 0..rows {
+        for col in 0..cols {
+            let n = (sw * sh) as usize;
+            for (i, px) in pixels.iter_mut().take(n).enumerate() {
+                let i = i as u32;
+                *px = sample(col as u32 * sw + i % sw, row as u32 * sh + i / sw);
+            }
+            let (x, y) = (origin.0 + col, origin.1 + row);
+            if blitter == Blitter::HalfBlock {
+                let style = Style::default().fg(rgb(pixels[0])).bg(rgb(pixels[1]));
+                surface.set(x, y, '▀', style);
+                continue;
+            }
+            let (mask, fg, bg) = split(&pixels[..n]);
+            let style = Style::default().fg(rgb(fg)).bg(rgb(bg));
+            surface.set(x, y, blitter.glyph(mask), style);
+        }
+    }
+}
+
+fn distance(a: [u8; 3], b: [u8; 3]) -> u32 {
+    let d = |i: usize| (i32::from(a[i]) - i32::from(b[i])).unsigned_abs();
+    d(0) * d(0) + d(1) * d(1) + d(2) * d(2)
+}
+
+fn luma(c: [u8; 3]) -> u32 {
+    299 * u32::from(c[0]) + 587 * u32::from(c[1]) + 114 * u32::from(c[2])
+}
+
+/// Two-color quantization of one cell's pixels: the occupancy mask of the
+/// foreground cluster, then the foreground and background means.
+fn split(pixels: &[[u8; 3]]) -> (u8, [u8; 3], [u8; 3]) {
+    let (mut a, mut b, mut far) = (0, 0, 0);
+    for i in 0..pixels.len() {
+        for j in i + 1..pixels.len() {
+            let d = distance(pixels[i], pixels[j]);
+            if d > far {
+                (a, b, far) = (i, j, d);
+            }
+        }
+    }
+    if far == 0 {
+        return (0, pixels[0], pixels[0]);
+    }
+    let (ink, paper) = if luma(pixels[a]) >= luma(pixels[b]) {
+        (pixels[a], pixels[b])
+    } else {
+        (pixels[b], pixels[a])
+    };
+    let mut mask = 0u8;
+    let (mut fg, mut bg) = ([0u32; 3], [0u32; 3]);
+    let (mut nf, mut nb) = (0u32, 0u32);
+    for (i, &px) in pixels.iter().enumerate() {
+        let (sum, count) = if distance(px, ink) < distance(px, paper) {
+            mask |= 1 << i;
+            (&mut fg, &mut nf)
+        } else {
+            (&mut bg, &mut nb)
+        };
+        for c in 0..3 {
+            sum[c] += u32::from(px[c]);
+        }
+        *count += 1;
+    }
+    let mean = |sum: [u32; 3], n: u32| sum.map(|c| ((c + n / 2) / n) as u8);
+    (mask, mean(fg, nf), mean(bg, nb))
+}
+
 /// Source-over alpha composite of `src` onto `dst`.
 fn over(src: Rgba, dst: Rgba) -> Rgba {
     let sa = src[3] as u32;
@@ -283,32 +798,47 @@ impl Sprite {
 }
 
 /// A [`View`] that paints a [`FrameBuffer`] into the `cols × rows` cells it
-/// reserves, packing two vertical pixels per cell with the `▀` half-block.
+/// reserves, packing pixels into glyphs with a [`Blitter`] — by default two
+/// vertical pixels per cell with the `▀` half-block.
 ///
-/// The buffer is nearest-neighbor sampled to `cols × 2·rows` pixels, and each
-/// pixel is alpha-composited over the theme background so transparency reads as
-/// the surrounding UI.
+/// The buffer is nearest-neighbor sampled to the blitter's sub-cell grid
+/// (`cols × 2·rows` for the half-block), and each pixel is alpha-composited
+/// over the theme background so transparency reads as the surrounding UI.
+///
+/// ![blitters demo](https://raw.githubusercontent.com/everruns/tuika/main/docs/demos/blitters.png)
 pub struct FrameBufferView<'a> {
     fb: &'a FrameBuffer,
     cols: u16,
     rows: u16,
+    blitter: Blitter,
 }
 
 impl<'a> FrameBufferView<'a> {
     /// A view of `fb` reserving `cols × rows` cells.
     pub fn new(fb: &'a FrameBuffer, cols: u16, rows: u16) -> Self {
-        Self { fb, cols, rows }
+        Self {
+            fb,
+            cols,
+            rows,
+            blitter: Blitter::HalfBlock,
+        }
+    }
+
+    /// Pack pixels into cells with `blitter` instead of the half-block.
+    pub fn blitter(mut self, blitter: Blitter) -> Self {
+        self.blitter = blitter;
+        self
     }
 }
 
-/// Composite `px` over an opaque `bg`, returning a ratatui color.
-fn composite(px: Rgba, bg: Color) -> Color {
+/// Composite `px` over an opaque `bg`.
+fn composite(px: Rgba, bg: Color) -> [u8; 3] {
     let (br, bg_, bb) = match bg {
         Color::Rgb(r, g, b) => (r, g, b),
         _ => (0, 0, 0),
     };
     let out = over(px, [br, bg_, bb, 255]);
-    Color::Rgb(out[0], out[1], out[2])
+    [out[0], out[1], out[2]]
 }
 
 impl View for FrameBufferView<'_> {
@@ -322,25 +852,23 @@ impl View for FrameBufferView<'_> {
         }
         let cols = self.cols.min(area.width);
         let rows = self.rows.min(area.height);
-        let bg = ctx.theme.background;
-        // Sample the buffer into a cols × (2*rows) pixel grid (nearest neighbor).
-        let sample = |cx: u16, py: u32| -> Rgba {
-            let src_x = (cx as u32 * self.fb.width) / cols as u32;
-            let src_y = (py * self.fb.height) / (rows as u32 * 2);
-            self.fb
-                .pixel(src_x.min(self.fb.width - 1), src_y.min(self.fb.height - 1))
-        };
-        for row in 0..rows {
-            let y = area.y + row;
-            for cx in 0..cols {
-                let top = sample(cx, row as u32 * 2);
-                let bottom = sample(cx, row as u32 * 2 + 1);
-                let style = Style::default()
-                    .fg(composite(top, bg))
-                    .bg(composite(bottom, bg));
-                surface.set(area.x + cx, y, '▀', style);
-            }
+        if cols == 0 || rows == 0 {
+            return;
         }
+        let bg = ctx.theme.background;
+        let (sw, sh) = self.blitter.subcells();
+        let (grid_w, grid_h) = (cols as u32 * sw, rows as u32 * sh);
+        // Nearest-neighbor sample of the buffer into the sub-cell grid.
+        let sample = |px: u32, py: u32| {
+            let src_x = (px * self.fb.width) / grid_w;
+            let src_y = (py * self.fb.height) / grid_h;
+            composite(
+                self.fb
+                    .pixel(src_x.min(self.fb.width - 1), src_y.min(self.fb.height - 1)),
+                bg,
+            )
+        };
+        paint_mosaic(surface, (area.x, area.y), cols, rows, self.blitter, sample);
     }
 }
 
@@ -476,5 +1004,110 @@ mod tests {
         // A zero-sized buffer renders nothing but must not panic.
         let empty = FrameBuffer::new(0, 0);
         let _ = crate::testing::render(&FrameBufferView::new(&empty, 4, 2), 4, 2, &theme);
+    }
+
+    #[test]
+    fn glyph_tables_are_complete_and_distinct() {
+        use std::collections::HashSet;
+        assert_eq!(SEXTANTS.iter().collect::<HashSet<_>>().len(), 64);
+        assert_eq!(OCTANTS.iter().collect::<HashSet<_>>().len(), 256);
+        let braille: HashSet<char> = (0..=255u8).map(|m| Blitter::Braille.glyph(m)).collect();
+        assert_eq!(braille.len(), 256);
+        assert_eq!(SEXTANTS[0], ' ');
+        assert_eq!(SEXTANTS[1], '\u{1FB00}');
+        assert_eq!(SEXTANTS[62], '\u{1FB3B}');
+        assert_eq!(OCTANTS[4], '\u{1CD00}', "BLOCK OCTANT-3");
+        assert_eq!(OCTANTS[255], '█');
+    }
+
+    #[test]
+    fn finer_blitters_agree_on_shapes_every_table_can_draw() {
+        // A shape drawable at quadrant resolution — each quadrant is two
+        // sextant/octant rows tall or one — must use the same character.
+        for q in 0..16u8 {
+            let bit = |b: u8| (q >> b) & 1;
+            // Quadrant bits: 0 TL, 1 TR, 2 BL, 3 BR. Octant rows 0-1 are the
+            // upper quadrants, rows 2-3 the lower ones.
+            let octant = (bit(0) * 0b0000_0101)
+                | (bit(1) * 0b0000_1010)
+                | (bit(2) * 0b0101_0000)
+                | (bit(3) * 0b1010_0000);
+            assert_eq!(
+                OCTANTS[octant as usize], QUADRANTS[q as usize],
+                "quadrant mask {q:#06b}"
+            );
+        }
+        // Left/right halves are the same character at every resolution.
+        assert_eq!(SEXTANTS[0b01_0101], '▌');
+        assert_eq!(SEXTANTS[0b10_1010], '▐');
+        assert_eq!(Blitter::HalfBlock.glyph(0b10), '▄');
+    }
+
+    #[test]
+    fn braille_maps_row_major_bits_to_dot_numbers() {
+        assert_eq!(Blitter::Braille.glyph(0b0000_0001), '⠁'); // dot 1
+        assert_eq!(Blitter::Braille.glyph(0b0000_0010), '⠈'); // dot 4
+        assert_eq!(Blitter::Braille.glyph(0b0100_0000), '⡀'); // dot 7
+        assert_eq!(Blitter::Braille.glyph(0b1000_0000), '⢀'); // dot 8
+        assert_eq!(Blitter::Braille.glyph(0xFF), '⣿');
+    }
+
+    #[test]
+    fn subcells_match_table_sizes() {
+        for blitter in Blitter::ALL {
+            let (w, h) = blitter.subcells();
+            let full = ((1u32 << (w * h)) - 1) as u8;
+            assert_ne!(blitter.glyph(full), ' ', "{blitter:?}");
+            assert_eq!(
+                blitter.glyph(0),
+                if blitter == Blitter::Braille {
+                    '⠀'
+                } else {
+                    ' '
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn split_picks_the_two_colors_and_the_brighter_as_ink() {
+        let white = [255, 255, 255];
+        let black = [0, 0, 0];
+        let (mask, fg, bg) = split(&[white, black, black, white]);
+        assert_eq!((mask, fg, bg), (0b1001, white, black));
+        let (mask, fg, bg) = split(&[black; 4]);
+        assert_eq!((mask, fg, bg), (0, black, black));
+    }
+
+    #[test]
+    fn view_packs_a_diagonal_into_one_octant_cell() {
+        // A 2×4 image: white on the top-left/bottom-right diagonal halves.
+        let mut fb = FrameBuffer::new(2, 4);
+        fb.clear([0, 0, 0, 255]);
+        for (x, y) in [(0, 0), (0, 1), (1, 2), (1, 3)] {
+            fb.set(x, y, [255, 255, 255, 255]);
+        }
+        let theme = Theme::default();
+        let view = FrameBufferView::new(&fb, 1, 1).blitter(Blitter::Octant);
+        let buf = crate::testing::render(&view, 1, 1, &theme);
+        assert_eq!(buf[(0, 0)].symbol(), "▚");
+        assert_eq!(buf[(0, 0)].fg, Color::Rgb(255, 255, 255));
+        assert_eq!(buf[(0, 0)].bg, Color::Rgb(0, 0, 0));
+
+        let sextant = FrameBufferView::new(&fb, 1, 1).blitter(Blitter::Sextant);
+        let buf = crate::testing::render(&sextant, 1, 1, &theme);
+        assert!(SEXTANTS.contains(&buf[(0, 0)].symbol().chars().next().unwrap()));
+    }
+
+    #[test]
+    fn every_blitter_survives_degenerate_sizes() {
+        let mut fb = FrameBuffer::new(3, 5);
+        fb.clear(RED);
+        for blitter in Blitter::ALL {
+            for (w, h) in [(0, 0), (1, 1), (7, 3), (40, 20)] {
+                let view = FrameBufferView::new(&fb, 7, 3).blitter(blitter);
+                let _ = crate::testing::render(&view, w, h, &Theme::default());
+            }
+        }
     }
 }

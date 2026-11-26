@@ -9,6 +9,7 @@
 //! [`tuika::term::image::ImageSupport`] and an
 //! [`tuika::term::image::ImageLayer`] through [`tuika::RenderCtx`].
 
+use tuika::framebuffer::Blitter;
 use tuika::term::image::{ImageLayer, ImageSupport};
 use tuika::ui::Rect;
 use tuika::ui::{Color, Style};
@@ -64,6 +65,7 @@ pub struct Chart {
     support: Option<ImageSupport>,
     layer: Option<ImageLayer>,
     legend: bool,
+    blitter: Blitter,
 }
 
 impl Chart {
@@ -84,7 +86,20 @@ impl Chart {
             support: None,
             layer: None,
             legend: true,
+            blitter: Blitter::Quadrant,
         }
+    }
+
+    /// Pack lines, areas, and bands into cells with `blitter` when the chart
+    /// renders as cells (default [`Blitter::Quadrant`], 2×2 per cell).
+    ///
+    /// [`Blitter::Sextant`] and [`Blitter::Octant`] resolve 1.5× and 2× more
+    /// vertical detail, so shallow slopes step less, but need newer glyphs in
+    /// the terminal font; see [`Blitter`]. Scatter points always use Braille,
+    /// and graphics-mode rendering is unaffected.
+    pub fn blitter(mut self, blitter: Blitter) -> Self {
+        self.blitter = blitter;
+        self
     }
 
     /// Set the title rendered above the plot.
@@ -533,7 +548,7 @@ mod annotation_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cells::{BrailleGrid, QuadrantGrid, draw_quadrant_band};
+    use crate::cells::{BrailleGrid, SubcellGrid, draw_quadrant_band};
     use tuika::Theme;
     use tuika::ui::Buffer;
 
@@ -651,6 +666,58 @@ mod tests {
         assert!(grid.chars().any(is_quadrant));
         assert!(grid.contains('█'));
         assert!(grid.contains("requests"));
+    }
+
+    #[test]
+    fn finer_blitters_draw_lines_from_their_own_glyphs() {
+        use tuika::framebuffer::{OCTANTS, SEXTANTS};
+        for (blitter, table) in [
+            (Blitter::Sextant, &SEXTANTS[..]),
+            (Blitter::Octant, &OCTANTS[..]),
+        ] {
+            let area = Rect::new(0, 0, 12, 6);
+            let mut buffer = Buffer::empty(area);
+            Chart::new()
+                .legend(false)
+                .blitter(blitter)
+                .x_domain(Domain::new(0.0, 1.0).unwrap())
+                .y_domain(Domain::new(0.0, 1.0).unwrap())
+                .series(Series::line(
+                    "line",
+                    [Point::new(0.0, 0.0), Point::new(1.0, 0.3)],
+                ))
+                .render(
+                    area,
+                    &mut Surface::new(&mut buffer, area),
+                    &RenderCtx::new(&Theme::default()),
+                );
+            // A shallow slope needs glyphs only the finer table has.
+            let exclusive =
+                |ch: char| table.contains(&ch) && !tuika::framebuffer::QUADRANTS.contains(&ch);
+            assert!(
+                buffer.content.iter().any(|cell| cell
+                    .symbol()
+                    .chars()
+                    .next()
+                    .is_some_and(exclusive)),
+                "{blitter:?} line should use its own sub-cell glyphs"
+            );
+        }
+    }
+
+    #[test]
+    fn subcell_grids_pack_every_subcell_of_each_blitter() {
+        for blitter in [Blitter::Sextant, Blitter::Octant, Blitter::HalfBlock] {
+            let (w, h) = blitter.subcells();
+            let mut grid = SubcellGrid::new(blitter, 1, 1);
+            for y in 0..h as i32 {
+                for x in 0..w as i32 {
+                    grid.set(x, y);
+                }
+            }
+            grid.set(w as i32, 0); // out of range: ignored
+            assert_eq!(grid.masks, [((1u32 << (w * h)) - 1) as u8], "{blitter:?}");
+        }
     }
 
     #[test]
@@ -772,7 +839,7 @@ mod tests {
 
     #[test]
     fn a_band_fills_down_to_its_floor_subcell() {
-        let mut grid = QuadrantGrid::new(1, 2);
+        let mut grid = SubcellGrid::new(Blitter::Quadrant, 1, 2);
         draw_quadrant_band(&mut grid, &[(0, 1), (1, 1)], &[(0, 3), (1, 3)]);
         assert_eq!(
             grid.masks,
@@ -794,7 +861,7 @@ mod tests {
 
     #[test]
     fn quadrant_grid_packs_all_four_subcells() {
-        let mut grid = QuadrantGrid::new(1, 1);
+        let mut grid = SubcellGrid::new(Blitter::Quadrant, 1, 1);
         for y in 0..2 {
             for x in 0..2 {
                 grid.set(x, y);

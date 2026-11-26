@@ -652,7 +652,9 @@ its own: a terminal that can't read the graphics escape may paint the payload as
 garbage rather than swallowing it. So this is the only feature gated on real
 capability detection — `ImageSupport::detect()` reads the environment (`TERM`,
 `TERM_PROGRAM`, `KITTY_WINDOW_ID`, the Ghostty marker) and defaults to *no*
-graphics, where the same `Image` view falls back to an alt-text placeholder.
+graphics, where the same `Image` view falls back to an alt-text placeholder —
+or, with `Image::mosaic(Blitter::Sextant)` and friends, to the picture itself
+drawn from block glyphs.
 
 Decoding stays in the host (it's a heavy dependency, kept out of tuika like
 syntax highlighting is): a host hands in raw RGBA via `ImageData::from_rgba`,

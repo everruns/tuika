@@ -84,6 +84,13 @@ minor release for the accumulated public API changes.
     opaque fallback for colors that have no RGB value. See
     [Architecture](specs/architecture.md).
 
+- **Sextant and octant blitters**
+  - `Blitter` names the sub-cell glyph sets (half-block, quadrant, sextant,
+    octant, Braille) shared by `FrameBufferView`, an opt-in `Image` mosaic
+    fallback, and chart lines. Finer sets stay opt-in because terminal fonts
+    may lack them. See [Images](specs/images.md) and
+    [Adaptive charts](specs/charts.md).
+
 - **Chart annotations join the portable grammar**
   - Bands, value/position reference lines, dashed strokes, grid lines, axis
     titles, and per-series legend visibility are now part of `tuika-charts`'

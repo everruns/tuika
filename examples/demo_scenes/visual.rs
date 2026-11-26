@@ -203,3 +203,51 @@ pub(crate) fn scene_framebuffer(frame: u64, theme: &Theme) -> Element {
         }
     }
 }
+
+/// One picture through every [`Blitter`], coarsest to finest: the same cells,
+/// with more of each cell's area resolved as the glyph set grows.
+pub(crate) fn scene_blitters(frame: u64, theme: &Theme) -> Element {
+    use tuika::framebuffer::Blitter;
+    let _ = frame;
+    let (w, h) = (96u32, 96u32);
+    let mut fb = FrameBuffer::new(w, h);
+    let bg = match theme.background {
+        Color::Rgb(r, g, b) => [r, g, b, 255],
+        _ => [0, 0, 0, 255],
+    };
+    fb.clear(bg);
+    // A ring, a thin diagonal, and a small dot: curves, slopes, and detail
+    // below one cell are where the blitters differ.
+    let (cx, cy) = (48.0f32, 48.0f32);
+    fb.shade(|x, y, px| {
+        let (dx, dy) = (x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
+        let d = (dx * dx + dy * dy).sqrt();
+        if (30.0..42.0).contains(&d) {
+            [42, 161, 152, 255]
+        } else if ((x as i32) - (y as i32) / 2 - 24).abs() <= 2 && d < 30.0 {
+            [181, 137, 0, 255]
+        } else if (dx - 8.0).powi(2) + (dy + 12.0).powi(2) < 25.0 {
+            [211, 54, 130, 255]
+        } else {
+            px
+        }
+    });
+    let fb: &'static FrameBuffer = Box::leak(Box::new(fb));
+    let panel = |blitter: Blitter, label: &'static str| -> Element {
+        view! {
+            col(gap = 0) {
+                fixed(6) { node(FrameBufferView::new(fb, 12, 6).blitter(blitter)) }
+                fixed(1) { node(caption(label, theme)) }
+            }
+        }
+    };
+    view! {
+        row(gap = 1) {
+            fixed(12) { node(panel(Blitter::HalfBlock, "half-block")) }
+            fixed(12) { node(panel(Blitter::Quadrant, "quadrant")) }
+            fixed(12) { node(panel(Blitter::Sextant, "sextant")) }
+            fixed(12) { node(panel(Blitter::Octant, "octant")) }
+            fixed(12) { node(panel(Blitter::Braille, "braille")) }
+        }
+    }
+}

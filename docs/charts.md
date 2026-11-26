@@ -43,6 +43,11 @@ Runner::new(RunnerConfig::default())
     .run(&Theme::default(), &mut app)?;
 ```
 
+On the cell path, lines, areas, and bands pack into 2×2 quadrant sub-cells.
+`Chart::blitter(Blitter::Octant)` (or `Sextant`) resolves twice (or 1.5×) the
+vertical detail, so shallow slopes step less, on terminals whose font draws
+those glyphs. Scatter points stay Braille.
+
 Direct calls to `paint` use cells by default, making in-memory tests stable.
 Custom terminal hosts can supply `ImageSupport` and `ImageLayer` through
 `RenderCtx::with_image_graphics`, then emit and clear that layer after each cell
