@@ -6,6 +6,7 @@ use crate::text::Line;
 
 use crate::{Event, InputOutcome, KeyCode, RenderCtx, Size, Surface, View};
 
+use super::BadgeState;
 use super::text::line_width;
 
 #[derive(Clone, Debug, Default)]
@@ -72,6 +73,8 @@ impl TabsState {
 pub struct Tabs {
     labels: Vec<Line<'static>>,
     selected: usize,
+    badges: Vec<Option<BadgeState>>,
+    frame: u64,
 }
 
 impl Tabs {
@@ -80,7 +83,27 @@ impl Tabs {
         Self {
             labels,
             selected: state.selected(),
+            badges: Vec::new(),
+            frame: 0,
         }
+    }
+
+    /// A [`BadgeState`] mark before each label, by tab index — a spinner on
+    /// working tabs, `!` on blocked ones, as Rex marks its own. `None`, or a
+    /// missing entry, draws no mark for that tab.
+    pub fn badges(mut self, badges: Vec<Option<BadgeState>>) -> Self {
+        self.badges = badges;
+        self
+    }
+
+    /// Set the host-driven animation frame for working badges.
+    pub fn frame(mut self, frame: u64) -> Self {
+        self.frame = frame;
+        self
+    }
+
+    fn badge(&self, index: usize) -> Option<BadgeState> {
+        self.badges.get(index).copied().flatten()
     }
 }
 
@@ -89,7 +112,10 @@ impl View for Tabs {
         let labels = self
             .labels
             .iter()
-            .map(line_width)
+            .enumerate()
+            .map(|(index, label)| {
+                line_width(label).saturating_add(if self.badge(index).is_some() { 2 } else { 0 })
+            })
             .fold(0, u16::saturating_add);
         let gaps = (self.labels.len().saturating_sub(1) as u16).saturating_mul(2);
         Size::new(
@@ -108,6 +134,10 @@ impl View for Tabs {
                 x = surface.set_string(x, area.y, "  ", ctx.theme.muted_style());
             }
             let selected = index == self.selected;
+            if let Some(badge) = self.badge(index) {
+                x = surface.set_string(x, area.y, badge.glyph(self.frame), badge.style(ctx.theme));
+                x = surface.set_string(x, area.y, " ", ctx.theme.muted_style());
+            }
             for span in &label.spans {
                 let style = if selected {
                     span.style.patch(
@@ -134,6 +164,33 @@ mod tests {
     use crate::style::Theme;
     use crate::tests::support::row;
     use crate::text::Line;
+
+    #[test]
+    fn tabs_draw_badges_in_their_theme_slots() {
+        let state = TabsState::default();
+        let tabs = Tabs::new(
+            vec![Line::from("a"), Line::from("b"), Line::from("c")],
+            &state,
+        )
+        .badges(vec![
+            Some(BadgeState::Blocked),
+            None,
+            Some(BadgeState::Done),
+        ]);
+        let theme = Theme::default();
+        assert_eq!(
+            tabs.measure(Size::new(40, 1), &RenderCtx::new(&theme))
+                .width,
+            11
+        );
+        let rendered = crate::testing::render(&tabs, 20, 1, &theme);
+        assert!(row(&rendered, 0).starts_with("! a  b  ✓ c"));
+        assert_eq!(rendered[(0, 0)].fg, theme.warning_style().fg.unwrap());
+        assert_eq!(rendered[(8, 0)].fg, theme.success_style().fg.unwrap());
+        for size in [(0, 0), (1, 1), (3, 1), (20, 0)] {
+            let _ = crate::testing::render(&tabs, size.0, size.1, &theme);
+        }
+    }
 
     #[test]
     fn tabs_state_wraps_and_tabs_render_selection() {

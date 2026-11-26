@@ -16,7 +16,7 @@ description, and an animated demo.
 
 Progress, activity, loading, and host-driven animation.
 
-[`Spinner`](components/motion.md#spinner) · [`ProgressBar`](components/motion.md#progressbar) · [`ActivityList`](components/motion.md#activitylist) · [`Loader`](components/motion.md#loader) · [`Timeline`](components/motion.md#timeline)
+[`Spinner`](components/motion.md#spinner) · [`ProgressBar`](components/motion.md#progressbar) · [`ActivityList`](components/motion.md#activitylist) · [`StatusBadge`](components/motion.md#statusbadge) · [`Loader`](components/motion.md#loader) · [`Timeline`](components/motion.md#timeline)
 
 ## [Text](components/text.md)
 

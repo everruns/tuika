@@ -24,13 +24,13 @@
 //! exact component, corpus, and size that broke.
 
 use tuika::components::{
-    ActivityItem, ActivityList, ActivityStatus, AsciiFont, Boxed, CodeBlock, CompletionItem,
-    CompletionPalette, CompletionState, Console, ConsoleLog, Diff, Flow, FormField, FormState,
-    Grid, ItemScroll, KeyHints, LargeText, Loader, Markdown, MarkdownState, Paragraph, ProgressBar,
-    QrCode, QrEcc, Rule, Scroll, ScrollState, Scrollbar, SelectList, SelectState, SelectionScreen,
-    Slider, SliderState, Spinner, StatusBar, TabSelect, TabSelectState, Table, Tabs, TabsState,
-    Text, TextInput, TextInputState, ToastLevel, ToastList, Toasts, TreeList, TreeRow, TreeState,
-    Viewport, VirtualWindow, Wrap,
+    ActivityItem, ActivityList, ActivityStatus, AsciiFont, BadgeState, Boxed, CodeBlock,
+    CompletionItem, CompletionPalette, CompletionState, Console, ConsoleLog, Diff, Flow, FormField,
+    FormState, Grid, ItemScroll, KeyHints, LargeText, Loader, Markdown, MarkdownState, Paragraph,
+    ProgressBar, QrCode, QrEcc, Rule, Scroll, ScrollState, Scrollbar, SelectList, SelectState,
+    SelectionScreen, Slider, SliderState, Spinner, StatusBadge, StatusBar, TabSelect,
+    TabSelectState, Table, Tabs, TabsState, Text, TextInput, TextInputState, ToastLevel, ToastList,
+    Toasts, TreeList, TreeRow, TreeState, Viewport, VirtualWindow, Wrap,
 };
 use tuika::prelude::*;
 use tuika::style::StyleSheet;
@@ -171,6 +171,10 @@ fn for_each_component(text: &'static str, visit: &mut dyn FnMut(&str, &dyn View)
         &ProgressBar::determinate(0.42).label(text).percent(true),
     );
     visit("spinner", &Spinner::new(7));
+    visit(
+        "status_badge",
+        &StatusBadge::new(BadgeState::Working).frame(3),
+    );
     visit("loader", &Loader::new(3, text).hint(text));
     visit(
         "activity_list",
@@ -230,6 +234,16 @@ fn for_each_component(text: &'static str, visit: &mut dyn FnMut(&str, &dyn View)
 
     let tabs = TabsState::default();
     visit("tabs", &Tabs::new(words.clone(), &tabs));
+    visit(
+        "tabs_badged",
+        &Tabs::new(words.clone(), &tabs)
+            .badges(vec![
+                Some(BadgeState::Blocked),
+                None,
+                Some(BadgeState::Working),
+            ])
+            .frame(5),
+    );
     let tab_select = TabSelectState::default();
     visit("tab_select", &TabSelect::new(words.clone(), &tab_select));
 

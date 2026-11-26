@@ -225,6 +225,10 @@ left it, and applies the same exit rule per record. Ids come from host keys made
 valid rather than rejected, and a subtree past the spec's id limits is left out
 whole, since a truncated id would address the wrong record.
 
+The cell-grid side uses the same vocabulary: `components::BadgeState` has
+exactly the five reportable states and converts into `State`, so the badge on an
+app's tab and the record in the terminal come from one value and cannot drift.
+
 A terminal may accept only some states. The detection reply lists them, and a
 report in a missing state is dropped whole, so a host that probed adapts each
 report to the nearest state with the same meaning (`blocked` → `working`,

@@ -231,3 +231,36 @@ pub(crate) fn scene_boxed(frame: u64, theme: &Theme) -> Element {
         }
     }
 }
+
+pub(crate) fn scene_status_badge(frame: u64, theme: &Theme) -> Element {
+    // Sessions move through the states over time, the way an agent's do.
+    let phase = (frame / 20) % 4;
+    let states = [
+        [BadgeState::Working, BadgeState::Idle, BadgeState::Done],
+        [BadgeState::Working, BadgeState::Working, BadgeState::Done],
+        [BadgeState::Blocked, BadgeState::Working, BadgeState::Done],
+        [BadgeState::Done, BadgeState::Error, BadgeState::Done],
+    ][phase as usize];
+    let labels: Vec<Line<'static>> = ["planner", "search", "review"]
+        .iter()
+        .map(|s| Line::from(Span::styled((*s).to_string(), theme.text_style())))
+        .collect();
+    let tabs = Tabs::new(labels, &TabsState::default())
+        .badges(states.iter().copied().map(Some).collect())
+        .frame(frame);
+    let legend = |state: BadgeState, label: &str| {
+        labeled_row(element(StatusBadge::new(state).frame(frame)), label, theme)
+    };
+    view! {
+        col(gap = 1) {
+            fixed(1) { node(tabs) }
+            col {
+            fixed(1) { node(legend(BadgeState::Idle, "idle — at rest")) }
+            fixed(1) { node(legend(BadgeState::Working, "working — spinner")) }
+            fixed(1) { node(legend(BadgeState::Done, "done")) }
+            fixed(1) { node(legend(BadgeState::Blocked, "blocked — needs you")) }
+            fixed(1) { node(legend(BadgeState::Error, "error")) }
+            }
+        }
+    }
+}

@@ -12,7 +12,7 @@ use crate::surface::Surface;
 use crate::view::{RenderCtx, View};
 
 use super::text::line_width;
-use super::{Scrollbar, VirtualWindow};
+use super::{BadgeState, Scrollbar, VirtualWindow};
 
 /// One host-provided node in depth-first display order.
 ///
@@ -416,6 +416,9 @@ fn visible_indices<K: Ord>(rows: &[TreeRow<'_, K>], expanded: &BTreeSet<K>) -> V
     visible
 }
 
+/// Looks up a row's badge by id.
+type BadgeLookup<'a, K> = &'a dyn Fn(&K) -> Option<BadgeState>;
+
 /// A selectable, expandable tree over host-provided [`TreeRow`]s.
 ///
 /// Domain traversal and labels remain in the host. `TreeList` owns generic
@@ -445,6 +448,8 @@ pub struct TreeList<'a, K> {
     visible_window: Option<VirtualWindow>,
     scrollbar: bool,
     selection_style: Option<Style>,
+    badges: Option<BadgeLookup<'a, K>>,
+    frame: u64,
 }
 
 impl<'a, K> TreeList<'a, K> {
@@ -457,7 +462,24 @@ impl<'a, K> TreeList<'a, K> {
             visible_window: None,
             scrollbar: true,
             selection_style: None,
+            badges: None,
+            frame: 0,
         }
+    }
+
+    /// A [`BadgeState`] mark before each label, looked up by row id — an
+    /// agent tree whose sub-agents show working, blocked, or done the way
+    /// their OSC 7501 records do. Rows for which `badge` returns `None` keep
+    /// a blank column, so labels stay aligned.
+    pub fn badges(mut self, badge: &'a dyn Fn(&K) -> Option<BadgeState>) -> Self {
+        self.badges = Some(badge);
+        self
+    }
+
+    /// Set the host-driven animation frame for working badges.
+    pub fn frame(mut self, frame: u64) -> Self {
+        self.frame = frame;
+        self
     }
 
     /// Cap the visible row count.
@@ -511,7 +533,7 @@ impl<K: Clone + Ord> View for TreeList<'_, K> {
                 self.rows[index]
                     .depth
                     .saturating_mul(2)
-                    .saturating_add(2)
+                    .saturating_add(if self.badges.is_some() { 4 } else { 2 })
                     .saturating_add(usize::from(line_width(&self.rows[index].label)))
             })
             .max()
@@ -595,6 +617,23 @@ impl<K: Clone + Ord> View for TreeList<'_, K> {
                 },
                 muted,
             );
+            if let Some(badges) = self.badges {
+                match badges(&row.id) {
+                    Some(badge) => {
+                        let badge_style = if selected {
+                            selection_style.patch(Style {
+                                fg: badge.style(ctx.theme).fg,
+                                ..Style::default()
+                            })
+                        } else {
+                            badge.style(ctx.theme)
+                        };
+                        x = surface.set_string(x, y, badge.glyph(self.frame), badge_style);
+                        x = surface.set_string(x, y, " ", muted);
+                    }
+                    None => x = surface.set_string(x, y, "  ", muted),
+                }
+            }
             for span in &row.label.spans {
                 if x >= right {
                     break;
@@ -739,6 +778,34 @@ mod tests {
             for height in 0..=5 {
                 let _ = crate::testing::render(&tree, width, height, &theme);
             }
+        }
+    }
+
+    #[test]
+    fn badges_sit_between_the_expander_and_the_label() {
+        let rows = rows();
+        let mut state = TreeState::new();
+        state.expand(1);
+        let badge = |id: &u8| match id {
+            1 => Some(BadgeState::Working),
+            4 => Some(BadgeState::Blocked),
+            _ => None,
+        };
+        let theme = Theme::default();
+        let tree = TreeList::new(&rows, &state).badges(&badge);
+        let rendered = crate::testing::render(&tree, 20, 4, &theme);
+        let grid = crate::testing::grid(&rendered);
+        let lines: Vec<&str> = grid.lines().collect();
+        assert!(lines[0].starts_with(&format!("▾ {} root", BadgeState::Working.glyph(0))));
+        assert!(
+            lines[1].starts_with("├─▸   src"),
+            "no badge keeps the column: {:?}",
+            lines[1]
+        );
+        assert!(lines[2].starts_with("└─  ! tests"));
+        assert_eq!(rendered[(4, 2)].fg, theme.warning_style().fg.unwrap());
+        for size in [(0, 0), (1, 1), (3, 2), (20, 0)] {
+            let _ = crate::testing::render(&tree, size.0, size.1, &theme);
         }
     }
 }
