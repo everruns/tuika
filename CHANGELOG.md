@@ -39,6 +39,8 @@ original text, while keeping the selection anchored to content.
 
 - `Capabilities` gained the public field `kitty_keyboard`. Struct-literal
   construction must set it; `from_env`, `from_env_parts`, and `query` fill it.
+- `Backdrop` gained a `Tint { color, alpha }` variant and is now
+  `#[non_exhaustive]`, so an exhaustive `match` on it needs a wildcard arm.
 - `tuika-charts`: `SeriesKind` gained a `Band { lower }` variant, and `Series`
   gained the public fields `dashed` and `legend`. Exhaustive matches on
   `SeriesKind` and struct-literal `Series` construction must be updated; the
@@ -162,6 +164,13 @@ original text, while keeping the selection anchored to content.
   instead of re-deriving the layout by hand. `RenderCtx::is_layout_pass` tells a
   view with side effects that the pass is layout-only; `Image` uses it to skip
   recording a placement.
+- Translucent overlays. `Backdrop::tint(color, alpha)` blends a color over the
+  layers behind an overlay instead of dimming them, and
+  `SceneOverlay::opacity(alpha)` makes a layer semi-transparent: its background
+  blends with what it covers, and the content beneath shows through wherever it
+  drew nothing. `Dialog` gains matching `backdrop` and `opacity` builders.
+  Colors without an RGB value (an ANSI-palette theme) fall back to dimming and
+  an opaque layer.
 - `tuika-charts`: `Series::band` fills between two edges (percentile ranges,
   confidence intervals); `Chart::reference` with `Reference::value` /
   `Reference::position` draws labelled, optionally dashed threshold and event

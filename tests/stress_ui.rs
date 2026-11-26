@@ -743,7 +743,9 @@ impl OverlayScene<'_> {
             scene.dialog(
                 Dialog::new("dialog 界", element(Text::raw(PROSE)))
                     .key_hints([("esc", "close")])
-                    .dim_backdrop(true),
+                    // Translucent compositing over wide glyphs at every size.
+                    .backdrop(Backdrop::tint(Color::Rgb(0, 0, 0), 150))
+                    .opacity(200),
             )
         } else {
             scene
