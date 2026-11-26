@@ -833,6 +833,23 @@ proptest! {
     /// was never sent. Parsing must always terminate with *some* answer, never
     /// panic on a slice or an integer conversion.
     #[test]
+    fn notifications_frame_any_host_text(title in ".{0,300}", body in ".{0,300}") {
+        use crate::term::attention::{Notification, Protocol, Urgency};
+
+        let note = Notification::new(title).body(body).urgency(Urgency::Critical);
+        for protocol in [Protocol::Osc9, Protocol::Osc777, Protocol::Osc99] {
+            let encoded = note.encode(protocol);
+            // Only the framing's own ESC bytes: one per OSC introducer and one
+            // per ST, and no BEL, so host text can never end a sequence early.
+            let sequences = encoded.matches("\x1b]").count();
+            prop_assert_eq!(encoded.matches('\x1b').count(), sequences * 2);
+            prop_assert!(!encoded.contains('\x07'));
+            let c1 = encoded.chars().any(|c| matches!(c, '\u{80}'..='\u{9f}'));
+            prop_assert!(!c1, "no C1 controls");
+        }
+    }
+
+    #[test]
     fn terminal_replies_parse_or_decline(bytes in proptest::collection::vec(any::<u8>(), 0..64)) {
         use crate::term::capabilities::DeviceAttributes;
         use crate::term::palette::TerminalPalette;

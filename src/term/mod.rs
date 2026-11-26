@@ -17,7 +17,7 @@
 //! | Module | Sequence | What the terminal does |
 //! | --- | --- | --- |
 //! | [`clipboard`] | OSC 52 | puts text on the system clipboard |
-//! | [`attention`] | OSC 9 / OSC 777, CSI ? 1004 | sends desktop notifications and enables focus reports |
+//! | [`attention`] | OSC 99 / 777 / 9, CSI ? 1004 | sends desktop notifications and enables focus reports |
 //! | [`hyperlink`] | OSC 8 | makes a text run clickable |
 //! | [`progress`] | OSC 9;4 | lights its own progress bar or taskbar |
 //! | [`program_status`] | OSC `7501` | reports program activity: idle, working, done, blocked, error, clear |

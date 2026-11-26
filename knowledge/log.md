@@ -68,6 +68,9 @@ minor release for the accumulated public API changes.
 - **Window titles are borrowed and restored**
   - `term::title` pushes the terminal's title before the first change and pops
     it on exit; Rex is detected from `REX_BLOCK`.
+- **Desktop notifications pick a protocol and rate-limit**
+  - `term::attention` gains OSC 99; the runner chooses OSC 99/777/9 from the
+    environment (none when unsure) and sends at most one per interval.
 
 - **Shortcuts on non-Latin layouts**
   - Unmatched Ctrl/Alt chords retry as the QWERTY key in the same position;

@@ -312,6 +312,29 @@ impl AsyncRunner {
         self.status.title()
     }
 
+    /// Queue desktop notifications (OSC 99, 777, or 9) from `update` or any
+    /// thread; sending wakes the loop.
+    ///
+    /// The runner rate-limits them — within two seconds of the last one, a
+    /// new notification waits and replaces any already waiting, so a burst
+    /// of changes becomes one popup carrying the latest news. The protocol is
+    /// detected from the environment, and a terminal that cannot be placed
+    /// gets none: notifications are dropped rather than guessed at. Pick one
+    /// with [`with_notify_protocol`](Self::with_notify_protocol).
+    pub fn notifications(&self) -> crate::term::attention::Notifications {
+        self.status.notifications()
+    }
+
+    /// Choose the notification protocol instead of detecting it; `None`
+    /// turns notifications off.
+    pub fn with_notify_protocol(
+        mut self,
+        protocol: Option<crate::term::attention::Protocol>,
+    ) -> Self {
+        self.status.set_notify_protocol(protocol);
+        self
+    }
+
     /// Also drive OSC 9;4 from [`program_status`](Self::program_status). See
     /// [`Runner::with_native_progress`](crate::Runner::with_native_progress).
     pub fn with_native_progress(mut self, enabled: bool) -> Self {
