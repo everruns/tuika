@@ -11,6 +11,17 @@ those `.crate` files. Their sources remain on
 [crates.io](https://crates.io/crates/tuika/versions); the tag and release history
 described in the release process begins with the entry below.
 
+## [Unreleased]
+
+### Added
+
+- `term::program_resume`: the OSC 7577 Program Resume Protocol. `Reporter`
+  tells a terminal that restores panes (such as Rex) which command would bring
+  the program back, signing each report with the token from `OSC7577_TOKEN`
+  and sending nothing when the terminal offers none. `verify` checks a report
+  the way a conforming terminal does, for hosts' own tests; `scrub_env` keeps
+  the token out of child processes. New `program_resume` example.
+
 ## [0.14.0] - 2026-11-24
 
 Released alongside `tuika-codeformatters` 0.9.0, `tuika-mermaid` 0.6.0,

@@ -1,6 +1,6 @@
 ---
 title: Terminal features
-description: Images, hyperlinks, clipboard, native progress, program status, terminal palettes, mouse input, and screen modes in tuika.
+description: Images, hyperlinks, clipboard, native progress, program status and resume, terminal palettes, mouse input, and screen modes in tuika.
 sidebar:
   order: 9
 ---
@@ -488,6 +488,96 @@ terminal.
 as [tuios](https://tuios.dev/docs/program-status). Others swallow the unknown
 OSC.
 
+## Program resume (OSC 7577)
+
+Tell the terminal which command would bring the program back — the same
+document, the same view, the same project — so a terminal that restores its
+panes after a restart relaunches *that* instead of a bare shell. This is the
+[Program Resume Protocol](https://www.superlogical.com/rex/docs/build/program-resume),
+a companion to program status from the same family of open protocols. The
+terminal never replies; whether and when to resume is entirely its call.
+[API](https://docs.rs/tuika/latest/tuika/term/program_resume/index.html)
+
+Unlike every other escape on this page, a resume report is **signed**. The
+command it carries is one the terminal may later run, so a report must not be
+forgeable by whatever else can write to the pty — a `cat` of a hostile file,
+a remote shell, a child process. The terminal puts a random per-pty secret in
+`OSC7577_TOKEN`, and every report carries `mac = sha256(body ":" token)`. That
+variable is also the feature test: no token, no report, and tuika will not
+write one without it.
+
+`Reporter` owns the token and the current command. Create it once, update it
+whenever the state that defines "where the user was" changes, and clear it
+when the user quits:
+
+```rust
+use tuika::term::program_resume::{Report, Reporter};
+
+let mut out = std::io::stdout();
+let mut resume = Reporter::from_env(); // None: the terminal doesn't offer resume
+
+// Whenever the open document changes (unchanged commands are not re-sent):
+if let Some(resume) = &mut resume {
+    let exe = std::env::current_exe().unwrap();
+    let report = Report::resume([exe.to_str().unwrap(), "--open", "notes.md"])
+        .cwd(std::env::current_dir().unwrap());
+    let _ = resume.update(&mut out, &report);
+}
+
+// When the *user* quits — not on SIGHUP, SIGTERM, or a lost terminal:
+if let Some(resume) = &mut resume {
+    let _ = resume.clear(&mut out);
+}
+```
+
+The emitted bytes (each argument is base64 of UTF-8, so spaces, `;`, and
+`$(…)` stay inside one argument and are never shell source):
+
+```text
+ESC ] 7577 ; pid=74877:time=1795543200:argv=bGF6eWdpdA==:cwd=L2hvbWUvdXNlci9zcmMvcHJvamVjdA==:mac=35cb9098…58e1 ESC \
+```
+
+What the spec asks of a program, and where tuika does it for you:
+
+- **Fresh, not replayed.** A report is valid for about a minute, so `pid` and
+  `time` are stamped when it is sent. `Reporter::refresh` re-sends the current
+  command with a new time; call it after `SIGCONT`, or after a child you ran in
+  the foreground exits.
+- **Only what a terminal would accept.** Element 0 must be a bare name (found
+  on `PATH` at resume time) or an absolute path — prefer the absolute path
+  from `current_exe()`. `cwd` must be absolute. Control characters, more than
+  64 arguments, or a sequence over 2048 bytes make `encode` fail rather than
+  emit something the terminal would discard. When a new command cannot be
+  sent, `Reporter` sends `clear` so the old one is not resumed by mistake.
+- **No environment.** The protocol carries no environment variables, so
+  anything the command depends on — a theme, a profile, a cluster context —
+  belongs in `argv`.
+- **The token stays private.** `Token`'s `Debug` is redacted, and
+  `scrub_env(&mut command)` removes `OSC7577_TOKEN` from every child process
+  you spawn, which the spec requires: a child holding it could report in your
+  name.
+
+`verify` is the terminal's half: strict parsing, the MAC and time checks, and
+the spec's split between *ignored* (unauthenticated — touch nothing) and
+*rejected* (authentic but invalid — drop the owner's records). Use it in your
+own tests to assert that what you send would actually be accepted.
+
+The [`program_resume`](../examples/program_resume.rs) example is a small reader
+that reports `[<its own path>, --chapter, N]` as you move between chapters. Run
+it in a terminal that restores panes, restart the terminal, and it reopens on
+the same chapter and says it was resumed. Anywhere else, give it a token to see
+the reports it sends:
+
+```sh
+OSC7577_TOKEN=local-demo-token-0123456789 cargo run --example program_resume
+```
+
+<img src="../examples/program_resume.png" width="880" alt="The program_resume example after a resume: the field guide list with chapter 4, Rock pools, selected, and below it the OSC 7577 resume record panel showing it was resumed at chapter 4 from the command line, the absolute command and directory it reports, and the signed sequence it last sent with the MAC shortened.">
+
+**Supported terminals:** any that implement the Program Resume Protocol, such
+as [Rex](https://www.superlogical.com/rex). Others never set `OSC7577_TOKEN`,
+so nothing is sent.
+
 ## Images (Kitty, iTerm2 & Sixel graphics protocols)
 
 Paint real pixels — an avatar, a chart, a rendered diagram — over the cells a
@@ -587,7 +677,7 @@ inline placeholder rather than dropping the URL.
 - [Markdown guide](markdown.md) — where hyperlinks and images meet rendered
   markdown.
 - [API documentation](https://docs.rs/tuika) — the complete reference for the
-  `capabilities`, `hyperlink`, `mouse`, `clipboard`, `native`, `program_status`, and `image`
+  `capabilities`, `hyperlink`, `mouse`, `clipboard`, `native`, `program_status`, `program_resume`, and `image`
   modules.
 - [Runnable examples](../examples/) — `mouse` records the selection/clipboard
   workflow live; quit with `q`/`esc`.

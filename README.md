@@ -185,7 +185,7 @@ Four places, so you can guess where something is:
 | --- | --- |
 | `tuika::` | the framework spine — `View`, `view_fn`, `Element`, `ScopedElement`, `RenderCtx`, layout, events, `Theme`, `Surface`, the host boundary |
 | `tuika::components` | every widget: `Flex`, `Boxed`, `Text`, `Scroll`, `Markdown`, `Table`, … |
-| `tuika::term` | everything out-of-band: `clipboard` (OSC 52), `hyperlink` (OSC 8), `progress` (OSC 9;4), `program_status` (OSC 7501), `pointer` (OSC 22), `image`, `capabilities`, `palette` (the terminal's own colors) |
+| `tuika::term` | everything out-of-band: `clipboard` (OSC 52), `hyperlink` (OSC 8), `progress` (OSC 9;4), `program_status` (OSC 7501), `program_resume` (OSC 7577), `pointer` (OSC 22), `image`, `capabilities`, `palette` (the terminal's own colors) |
 | `tuika::prelude` | the spine and the components in one glob import |
 
 Application code usually wants the prelude:
@@ -580,6 +580,7 @@ palette, for example `cargo run --example gallery -- --theme gruvbox-dark`.
 | [`image`](examples/image.rs)     | `cargo run --example image`      | `Image` over reserved cells (Kitty/iTerm2/Sixel), alt-text fallback |
 | [`inherit`](examples/inherit.rs) | `cargo run --example inherit`    | adopting the terminal's own palette — probe, derive, and the no-I/O fallback |
 | [`program_status`](examples/program_status.rs) | `cargo run --example program_status` | OSC 7501 program-status reports (working, blocked, done) with the bytes sent shown on screen |
+| [`program_resume`](examples/program_resume.rs) | `cargo run --example program_resume` | OSC 7577 program resume: a reader that reports the command reopening its current chapter, signed with the terminal's token |
 | [`split_footer`](examples/split_footer.rs) | `cargo run --example split_footer` | a pinned footer over live terminal scrollback, published through `Scrollback` |
 | [`codex`](examples/codex)        | `cargo run --example codex`      | a scripted Codex CLI interface replica: streaming transcript, composer, `@`/`/` pickers, approval prompt |
 | [`codex --split-footer`](examples/codex) | `cargo run --example codex -- --split-footer` | the same agent UI with its transcript published into the terminal's own scrollback |
@@ -881,6 +882,15 @@ terminal that reads it (such as tuios) shows that state beside the pane. tuika
 validates each report against the spec's grammar and limits, and an invalid one
 writes nothing. The [`program_status`](examples/program_status.rs) example
 walks through every state.
+
+`term::program_resume` emits OSC 7577, the Program Resume Protocol: the host
+reports the command that would bring it back, and a terminal that restores its
+panes after a restart (such as Rex) relaunches it. Reports are signed with a
+per-pty token the terminal provides in `OSC7577_TOKEN`, so nothing is sent
+where the terminal does not offer it, and `verify` lets a host's tests check
+its reports the way a terminal would. The
+[`program_resume`](examples/program_resume.rs) example reopens on the chapter
+it was left at.
 
 ## Images
 
